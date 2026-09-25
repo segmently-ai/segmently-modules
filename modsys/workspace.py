@@ -29,11 +29,16 @@ class Workspace:
     _registry: Registry | None = field(default=None, repr=False)
 
     @classmethod
-    def from_args(cls, args) -> "Workspace":
-        root = (args.root or find_root(Path.cwd())).resolve()
-        config_dir = (args.config_dir or root / ".modsys").resolve()
+    def load(cls, root: Path, config_dir: Path | None = None) -> "Workspace":
+        """A workspace for programmatic callers (pipelines, hooks, tests) — no argparse needed."""
+        root = Path(root).resolve()
+        config_dir = Path(config_dir or root / ".modsys").resolve()
         config = load_config(config_dir)
         return cls(root, config_dir, config, load_field_defs(config))
+
+    @classmethod
+    def from_args(cls, args) -> "Workspace":
+        return cls.load(args.root or find_root(Path.cwd()), args.config_dir)
 
     @property
     def registry(self) -> Registry:

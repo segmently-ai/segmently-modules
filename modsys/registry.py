@@ -1,6 +1,7 @@
+import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from modsys.output import UsageError
@@ -10,6 +11,8 @@ from modsys.output import UsageError
 class Registry:
     path: Path
     raw: dict  # the full document, never normalized
+    sha256: str = ""  # of the bytes it was loaded from; writers use it to detect concurrent edits
+    parts: dict = field(default_factory=dict)  # per-module layout: module name -> entry file sha256
 
     @property
     def modules(self) -> dict:
@@ -28,7 +31,8 @@ def as_list(v) -> list:
 
 def load_registry(path: Path) -> Registry:
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        data = path.read_bytes()
+        raw = json.loads(data.decode("utf-8"))
     except FileNotFoundError:
         raise UsageError(f"registry not found: {path}") from None
     except UnicodeDecodeError as e:
@@ -39,7 +43,7 @@ def load_registry(path: Path) -> Registry:
         raise UsageError(f"{path}: invalid JSON: {e}") from None
     if not isinstance(raw, dict) or not isinstance(raw.get("modules"), dict):
         raise UsageError(f"{path}: no 'modules' object")
-    return Registry(path, raw)
+    return Registry(path, raw, hashlib.sha256(data).hexdigest())
 
 
 def stub_head(root: Path, config: dict, name: str) -> str | None:

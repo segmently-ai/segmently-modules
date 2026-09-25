@@ -1,3 +1,4 @@
+import copy
 import re
 import tomllib
 from importlib import resources
@@ -105,10 +106,18 @@ def discover_packs(config_dir: Path) -> list[dict]:
 
 
 def _pack_layer(pack: dict) -> dict:
-    layer = {k: v for k, v in pack["data"].items() if k not in PACK_META_KEYS}
+    """The pack's config layer. A deep copy, so the parsed pack data stays untouched; every
+    field, role and hook the pack declares records the pack as its `owner` (provenance for
+    error messages, pack-relative templates and hook paths)."""
+    layer = {k: copy.deepcopy(v) for k, v in pack["data"].items() if k not in PACK_META_KEYS}
     validate_layer(layer, pack["path"])
-    for spec in (layer.get("fields") or {}).values():
-        spec.setdefault("owner", pack["id"])
+    for section in ("fields", "roles"):
+        for spec in (layer.get(section) or {}).values():
+            spec.setdefault("owner", pack["id"])
+    for hooks in (layer.get("hooks") or {}).values():
+        for hook in hooks if isinstance(hooks, list) else []:
+            if isinstance(hook, dict):
+                hook.setdefault("owner", pack["id"])
     return layer
 
 
@@ -123,6 +132,7 @@ def load_config(config_dir: Path) -> dict:
             layers.append(layer)
     config = merge_layers(layers)
     config["_packs"] = [p["id"] for p in packs]
+    config["_pack_dirs"] = {p["id"]: str(p["path"].parent) for p in packs}
     return config
 
 
