@@ -1,0 +1,52 @@
+# modsys core defaults. Teams override in .modsys/config.toml, packs in .modsys/packs/*/pack.toml.
+schema_version = 1
+
+[paths]
+modules_dir = "modules"
+registry = "modules/registry.json"
+registry_layout = "single"
+module_doc = "MODULE.md"
+
+[registry]
+statuses = ["active", "draft", "planned", "temporary"]
+relations = ["depends-on", "complements", "implemented-in", "shares-contract", "superseded-by"]
+stub_pattern = 'status:?\**\s*\**(retired|merged|migrated|superseded)'
+dir_whitelist = []
+
+[budgets]
+module_doc_split_signal = 600
+module_doc_hard_stop = 1000
+role_doc_max = 600
+keywords_soft = 40
+keyword_shared_warn = 4
+
+[match]
+keyword_weight = 3
+combination_weight = 2
+negative_weight = -5
+min_score = 3
+top = 8
+
+[lint]
+fail_on = "error"
+component_table_heading = "EXISTING Components"
+
+[roles.developer]
+order = 10
+standard = true
+description = "What to know when changing the module's code"
+
+[roles.qa]
+order = 20
+standard = true
+description = "How to test the module; test patterns"
+
+[roles.po]
+order = 30
+standard = true
+description = "Product context and user stories"
+
+[roles.architect]
+order = 40
+standard = true
+description = "Design, boundaries and relationships with other modules"
