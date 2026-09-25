@@ -4,6 +4,7 @@ from typing import Callable
 EXIT_OK = 0
 EXIT_FINDINGS = 1
 EXIT_USAGE = 2
+EXIT_INTERRUPTED = 130  # SIGINT (Ctrl-C), the shell convention 128 + 2
 
 
 class UsageError(Exception):

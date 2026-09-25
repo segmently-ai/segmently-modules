@@ -6,7 +6,7 @@ from pathlib import Path
 from modsys import __version__
 from modsys import (create_cmd, hooks_cmd, index_cmd, lint, match, migrate_cmd, pipeline,
                     proposals_cmd, query, registry_cmd, schema_cmd, sync_cmd)
-from modsys.output import EXIT_USAGE, UsageError
+from modsys.output import EXIT_INTERRUPTED, EXIT_USAGE, UsageError
 
 COMMANDS: list = [schema_cmd, match, query, lint, registry_cmd, index_cmd, proposals_cmd,
                   hooks_cmd, sync_cmd, create_cmd, migrate_cmd, pipeline]
@@ -37,6 +37,9 @@ def main(argv: list[str] | None = None) -> int:
     except UsageError as e:
         print(f"modsys: error: {e}", file=sys.stderr)
         return EXIT_USAGE
+    except KeyboardInterrupt:  # Ctrl-C (lock wait, `create` prompt): no traceback either
+        print("modsys: interrupted", file=sys.stderr)
+        return EXIT_INTERRUPTED
     except Exception as e:  # headless contract: exit 2, never a traceback
         if os.environ.get("MODSYS_DEBUG"):
             raise
