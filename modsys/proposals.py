@@ -67,9 +67,10 @@ def check_doc_path(ws, module: str, doc: str) -> Path:
     if home != path and home not in path.parents:
         raise outside()
     if not child:
-        submodules = home / "submodules"
-        if path == submodules or submodules in path.parents:
-            raise outside()  # a parent never writes into a child's own directory
+        rel = path.relative_to(home)
+        if rel.parts and rel.parts[0].casefold() == "submodules":
+            raise outside()  # a parent never writes into a child's own directory (case-folded:
+                             # `SUBMODULES` bypasses this on a case-insensitive filesystem too)
     if path == home:
         raise UsageError(f"doc '{doc}' must be a file inside module '{module}'")
     if path.name.lower().endswith(".legacy.md"):
@@ -166,7 +167,8 @@ def _apply_item(ws, raw: dict, start_raw: dict, docs: dict, touched: dict, file_
             touched.setdefault(key, set()).add(file_name)
             return {**result, "status": "applied"}
         path = check_doc_path(ws, module, item["doc"])
-        key = ("doc", path)
+        key = ("doc", str(path).casefold())  # conflict tracking is case-insensitive: two
+                                             # case-variant paths to one file must still conflict
         current = docs.get(path)
         if current is None:
             current = path.read_text(encoding="utf-8") if path.exists() else None

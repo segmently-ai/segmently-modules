@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 
+from modsys.store import file_sha256
 from tests.helpers import copy_fixture, run, run_json
 
 
@@ -193,15 +194,17 @@ class ProposalsGapTest(unittest.TestCase):  # AC-015, AC-016
     def test_apply_time_revalidates_hand_crafted_module(self):
         # A hand-written queue item ("module": "..") must be refused at APPLY time too, not
         # only at propose time (F1) — check_doc_path alone is not enough; entry_for must run
-        # for every op.
+        # for every op. The item carries the target's REAL current hash as base_sha256, so this
+        # probes the actual exploit (a valid base hash used to be enough to get the write
+        # applied) rather than being masked by an incidental base-hash mismatch.
         self.queue.mkdir(parents=True)
+        target = self.root / "modules/checkout/MODULE.md"
+        before = target.read_bytes()
         item = {"id": "1", "op": "doc_write", "module": "..", "doc": "modules/checkout/MODULE.md",
-                "value": "# hacked", "base_sha256": None}
+                "value": "# hacked", "base_sha256": file_sha256(target)}
         bad = {"schema": "modsys.proposal/1", "run_id": "r1", "agent": "planner",
                "created_at": "2026-01-01T00:00:00Z", "items": [item]}
         (self.queue / "r1-planner.json").write_text(json.dumps(bad), encoding="utf-8")
-        target = self.root / "modules/checkout/MODULE.md"
-        before = target.read_bytes()
         code, env, _ = run_json("proposals", "apply", *self.R)
         self.assertEqual(code, 1)
         result = env["data"]["files"][0]["results"][0]
@@ -221,13 +224,34 @@ class ProposalsGapTest(unittest.TestCase):  # AC-015, AC-016
                    "modules/catalog/MODULE.LEGACY.MD", "--value", "x"), "frozen legacy snapshot"),
                  (("--module", "payments", "--op", "doc_write", "--doc",
                    "modules/payments/submodules/refunds/MODULE.md", "--value", "x"),
-                  "outside module")]
+                  "outside module"),
+                 (("--module", "payments", "--op", "doc_append", "--doc",
+                   "modules/payments/SUBMODULES/refunds/MODULE.md", "--value", "x"),
+                  "outside module")]  # case-variant "SUBMODULES" must be caught too
         for argv, needle in cases:
             with self.subTest(needle=needle):
                 code, out, err = run("propose", *argv, "--reason", "r", "--run-id", "r1", *self.R)
                 self.assertEqual((code, out), (2, ""))
                 self.assertIn(needle, err)
         self.assertEqual(list(self.queue.glob("*.json")), [])
+
+    def test_doc_conflict_key_is_case_insensitive(self):
+        # Two case-variant paths to the same doc must still conflict — the run that appended
+        # applies, the run that would silently overwrite it (dropping the append) is rejected.
+        dev = "modules/catalog/roles/developer.md"
+        run("propose", "--module", "catalog", "--op", "doc_append", "--doc", dev,
+            "--value", "## Note\n\nFrom run a.", "--reason", "r", "--run-id", "a",
+            "--agent", "planner", *self.R)
+        run("propose", "--module", "catalog", "--op", "doc_write",
+            "--doc", "modules/catalog/roles/Developer.md", "--value", "# rewritten",
+            "--reason", "r", "--run-id", "b", "--agent", "planner", *self.R)
+        code, env, _ = run_json("proposals", "apply", *self.R)
+        self.assertEqual(code, 1)
+        by_file = {f["file"]: f["results"][0] for f in env["data"]["files"]}
+        self.assertEqual(by_file["a-planner.json"]["status"], "applied")
+        self.assertEqual(by_file["b-planner.json"]["status"], "rejected")
+        self.assertIn("conflicts with", by_file["b-planner.json"]["reason"])
+        self.assertIn("From run a.", (self.root / dev).read_text())
 
     def test_two_agents_one_run_different_fields_both_apply(self):
         run("propose", "--module", "catalog", "--op", "set", "--field", "status",
