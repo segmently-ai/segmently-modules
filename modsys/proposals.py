@@ -2,21 +2,35 @@
 they queue proposals (`<proposals_dir>/<run_id>-<agent>.json`, schema `modsys.proposal/1`).
 One step applies them under the registry lock:
 
-- `set` / `unset` / `doc_write` carry `base_sha256` (the entry or file as the agent saw it);
-  a different current state rejects the item with a reason — others still apply.
-- `append` / `remove` / `doc_append` merge safely, so they skip the base check.
-- Processed files move to `<proposals_dir>/done/` with per-item results; re-running apply
-  finds nothing pending (idempotent).
+- Every item is revalidated at apply time (not just at propose time): the module must still
+  exist, and a doc item's path must still resolve inside its module's own directory, never a
+  submodule's directory, the module's registry entry file, or a frozen `*.legacy.md` snapshot.
+- The WHOLE apply shares one apply-start snapshot: `set` / `unset` / `doc_write` carry
+  `base_sha256` (the entry or file as the agent saw it at propose time), compared against the
+  registry/file state as it was when this apply started — not against another file's edits made
+  earlier in the same apply. A mismatch rejects that one item; others still apply.
+- Within one apply, two files touching the same key (field or doc) conflict: the first
+  (file-name order) applies, a later CHECKED item on the same key is rejected naming the file
+  that touched it first. Items inside ONE file never conflict with each other.
+- `append` / `remove` / `doc_append` merge safely (no base check, never rejected for conflict),
+  so a checked `set` that lands after another file's merge on the same key is rejected — it
+  would otherwise silently drop the merge.
+- If an item's op would not change anything against the current state, it is reported `noop`
+  before either check runs — a re-run after a crash between commit and archive is idempotent.
+- Every queue file involved is locked for the whole apply (registry lock, then queue-file locks
+  in sorted name order) and re-read under its lock; a file that vanished since listing (applied
+  or rejected concurrently) is simply skipped. Processed files move to `<proposals_dir>/done/`
+  with per-item results.
 """
 import copy
 import json
 import os
 import re
+from contextlib import ExitStack
 from pathlib import Path
 
 from modsys.output import UsageError
-from modsys.store import (atomic_write, file_lock, file_sha256, open_store, sha256_bytes,
-                          utc_now)
+from modsys.store import atomic_write, file_lock, file_sha256, open_store, utc_now
 from modsys.writers import OPS as FIELD_OPS, apply_field_op, entry_for, entry_sha256
 
 SCHEMA = "modsys.proposal/1"
@@ -36,14 +50,34 @@ def module_dir(ws, module: str) -> Path:
 
 
 def check_doc_path(ws, module: str, doc: str) -> Path:
-    """A doc proposal may only touch files inside its own module directory, never a frozen
-    `*.legacy.md` snapshot."""
-    path = (ws.root / doc).resolve()
+    """A doc proposal may only touch one markdown file inside its own module directory: never
+    the module directory itself, a submodule's directory (each child is its own target), the
+    module's registry entry file, or a frozen `*.legacy.md` snapshot (case-insensitive)."""
+    _, _, child = module.partition("/")
+    modules_root = (ws.root / ws.config["paths"]["modules_dir"]).resolve()
     home = module_dir(ws, module).resolve()
+    path = (ws.root / doc).resolve()
+
+    def outside() -> UsageError:
+        return UsageError(f"doc '{doc}' is outside module '{module}' "
+                          f"({home.relative_to(ws.root)})")
+
+    if modules_root not in home.parents:  # e.g. module ".." resolves home above modules_root
+        raise outside()
     if home != path and home not in path.parents:
-        raise UsageError(f"doc '{doc}' is outside module '{module}' ({home.relative_to(ws.root)})")
-    if path.name.endswith(".legacy.md"):
+        raise outside()
+    if not child:
+        submodules = home / "submodules"
+        if path == submodules or submodules in path.parents:
+            raise outside()  # a parent never writes into a child's own directory
+    if path == home:
+        raise UsageError(f"doc '{doc}' must be a file inside module '{module}'")
+    if path.name.lower().endswith(".legacy.md"):
         raise UsageError(f"doc '{doc}' is a frozen legacy snapshot and is never edited")
+    if path.name == ws.config["paths"]["module_entry"]:
+        raise UsageError(f"doc '{doc}' is the module's registry entry — use field ops")
+    if path.suffix.lower() != ".md":
+        raise UsageError(f"doc '{doc}' is not a markdown doc (.md)")
     return path
 
 
@@ -85,57 +119,58 @@ def add_proposal(ws, run_id: str, agent: str, item: dict) -> Path:
     return path
 
 
+def _read_proposal(path: Path) -> dict:
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+        raise UsageError(f"{path}: not a valid proposal file: {e}") from e
+    if not isinstance(doc, dict) or doc.get("schema") != SCHEMA:
+        raise UsageError(f"{path}: not a {SCHEMA} file")
+    return doc
+
+
 def pending(ws, run_id: str | None = None) -> list[tuple[Path, dict]]:
     d = proposals_dir(ws)
     out = []
     for path in sorted(d.glob("*.json")) if d.is_dir() else []:
-        try:
-            doc = json.loads(path.read_text(encoding="utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as e:
-            raise UsageError(f"{path}: not a valid proposal file: {e}") from None
-        if not isinstance(doc, dict) or doc.get("schema") != SCHEMA:
-            raise UsageError(f"{path}: not a {SCHEMA} file")
+        doc = _read_proposal(path)
         if run_id is None or doc.get("run_id") == run_id:
             out.append((path, doc))
     return out
 
 
-class _Snapshot:
-    """The state before one proposal file's items: every item of a run was made against it,
-    so base hashes compare with this, not with the run's own earlier (applied) items."""
-
-    def __init__(self, raw: dict, docs: dict):
-        self.raw, self.docs = copy.deepcopy(raw), dict(docs)
-
-    def entry_sha(self, module: str) -> str:
-        return entry_sha256(self.raw, module)
-
-    def doc_sha(self, path: Path) -> str | None:
-        if path in self.docs:
-            return sha256_bytes(self.docs[path].encode("utf-8"))
-        return file_sha256(path)
-
-
-def _apply_item(ws, raw: dict, snap: _Snapshot, item: dict, docs: dict) -> dict:
-    """Apply one item to the in-memory registry / pending doc writes; return its result."""
+def _apply_item(ws, raw: dict, start_raw: dict, docs: dict, touched: dict, file_name: str,
+                item: dict) -> dict:
+    """Apply one item to the in-memory registry / pending doc writes; return its result.
+    `raw` is mutated for applied field ops; `docs` collects pending doc writes (path -> text);
+    `touched` records, per key, which queue file names already applied a change to it in this
+    apply (conflict tracking)."""
     result = {"id": item.get("id"), "op": item.get("op"), "module": item.get("module")}
     try:
         op, module = item["op"], item["module"]
+        entry_for(raw, module)  # unknown module / child -> UsageError, for every op
         if op in FIELD_OPS:
-            entry_for(raw, module)
-            if op in CHECKED_OPS and snap.entry_sha(module) != item.get("base_sha256"):
-                return {**result, "status": "rejected",
-                        "reason": f"'{module}' changed since the proposal was made"}
-            changed = apply_field_op(raw, ws.fields, op, module, item["field"], item.get("value"))
-            return {**result, "status": "applied" if changed else "noop"}
+            field, value = item["field"], item.get("value")
+            key = ("field", module, field)
+            if not apply_field_op(copy.deepcopy(raw), ws.fields, op, module, field, value):
+                return {**result, "status": "noop"}
+            if op in CHECKED_OPS:
+                others = touched.get(key, set()) - {file_name}
+                if others:
+                    return {**result, "status": "rejected",
+                            "reason": f"conflicts with {sorted(others)[0]} in this apply"}
+                if entry_sha256(start_raw, module) != item.get("base_sha256"):
+                    return {**result, "status": "rejected",
+                            "reason": f"'{module}' changed since the proposal was made"}
+            apply_field_op(raw, ws.fields, op, module, field, value)
+            touched.setdefault(key, set()).add(file_name)
+            return {**result, "status": "applied"}
         path = check_doc_path(ws, module, item["doc"])
+        key = ("doc", path)
         current = docs.get(path)
         if current is None:
             current = path.read_text(encoding="utf-8") if path.exists() else None
         if op == "doc_write":
-            if snap.doc_sha(path) != item.get("base_sha256"):
-                return {**result, "status": "rejected",
-                        "reason": f"'{item['doc']}' changed since the proposal was made"}
             new = item["value"]
         elif op == "doc_append":
             text = item["value"]
@@ -149,38 +184,57 @@ def _apply_item(ws, raw: dict, snap: _Snapshot, item: dict, docs: dict) -> dict:
             new += "\n"
         if new == current:
             return {**result, "status": "noop"}
+        if op == "doc_write":
+            others = touched.get(key, set()) - {file_name}
+            if others:
+                return {**result, "status": "rejected",
+                        "reason": f"conflicts with {sorted(others)[0]} in this apply"}
+            if file_sha256(path) != item.get("base_sha256"):
+                return {**result, "status": "rejected",
+                        "reason": f"'{item['doc']}' changed since the proposal was made"}
         docs[path] = new
+        touched.setdefault(key, set()).add(file_name)
         return {**result, "status": "applied"}
     except (UsageError, KeyError, TypeError) as e:
         return {**result, "status": "rejected", "reason": f"invalid item: {e}"}
 
 
 def apply_proposals(ws, run_id: str | None = None, dry_run: bool = False) -> dict:
-    """Apply every pending proposal file (optionally one run) in file-name order."""
-    files = pending(ws, run_id)
+    """Apply every pending proposal file (optionally one run), in file-name order, under the
+    registry lock plus a lock on every queue file involved (held for the whole apply)."""
+    store = open_store(ws)
     report = {"files": [], "summary": {"applied": 0, "noop": 0, "rejected": 0},
               "dry_run": dry_run}
-    if not files:
-        return report
-    store = open_store(ws)
-    docs: dict[Path, str] = {}
     with store.locked():
-        registry = store.load()
-        raw = copy.deepcopy(registry.raw)
-        for path, doc in files:
-            snap = _Snapshot(raw, docs)
-            results = [_apply_item(ws, raw, snap, item, docs) for item in doc.get("items", [])]
-            for r in results:
-                report["summary"][r["status"]] += 1
-            report["files"].append({"file": path.name, "run_id": doc.get("run_id"),
-                                    "agent": doc.get("agent"), "results": results})
-        if dry_run:
+        files = pending(ws, run_id)
+        if not files:
             return report
-        store.commit(registry, raw)
-        for path, text in docs.items():
-            atomic_write(path, text)
-        for (path, doc), entry in zip(files, report["files"]):
-            _archive(path, doc, entry["results"])
+        with ExitStack() as stack:
+            for path, _ in files:
+                stack.enter_context(file_lock(path))
+            live = [(path, _read_proposal(path)) for path, _ in files if path.exists()]
+            if not live:
+                return report
+            registry = store.load()
+            start_raw = copy.deepcopy(registry.raw)
+            raw = copy.deepcopy(registry.raw)
+            docs: dict[Path, str] = {}
+            touched: dict[tuple, set] = {}
+            for path, doc in live:
+                results = [_apply_item(ws, raw, start_raw, docs, touched, path.name, item)
+                           for item in doc.get("items", [])]
+                for r in results:
+                    report["summary"][r["status"]] += 1
+                report["files"].append({"file": path.name, "run_id": doc.get("run_id"),
+                                        "agent": doc.get("agent"), "results": results})
+            if dry_run:
+                return report
+            store.commit(registry, raw)
+            for path, text in docs.items():
+                atomic_write(path, text)
+            results_by_file = {f["file"]: f["results"] for f in report["files"]}
+            for path, doc in live:
+                _archive(path, doc, results_by_file[path.name])
     return report
 
 
@@ -197,11 +251,21 @@ def _archive(path: Path, doc: dict, results: list, reason: str | None = None) ->
 def reject_run(ws, run_id: str, reason: str) -> list[str]:
     if not reason:
         raise UsageError("rejecting proposals needs --reason")
-    files = pending(ws, run_id)
-    if not files:
-        raise UsageError(f"no pending proposals for run '{run_id}'")
-    for path, doc in files:
-        results = [{"id": i.get("id"), "op": i.get("op"), "module": i.get("module"),
-                    "status": "rejected", "reason": reason} for i in doc.get("items", [])]
-        _archive(path, doc, results, reason)
-    return [p.name for p, _ in files]
+    store = open_store(ws)
+    with store.locked():
+        files = pending(ws, run_id)
+        if not files:
+            raise UsageError(f"no pending proposals for run '{run_id}'")
+        rejected = []
+        with ExitStack() as stack:
+            for path, _ in files:
+                stack.enter_context(file_lock(path))
+            for path, _ in files:
+                if not path.exists():
+                    continue
+                doc = _read_proposal(path)
+                results = [{"id": i.get("id"), "op": i.get("op"), "module": i.get("module"),
+                            "status": "rejected", "reason": reason} for i in doc.get("items", [])]
+                _archive(path, doc, results, reason)
+                rejected.append(path.name)
+    return rejected

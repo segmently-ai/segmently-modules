@@ -190,6 +190,97 @@ class ProposalsGapTest(unittest.TestCase):  # AC-015, AC-016
                 self.assertIn("bad.json", err)
                 self.assertIn(needle, err)
 
+    def test_apply_time_revalidates_hand_crafted_module(self):
+        # A hand-written queue item ("module": "..") must be refused at APPLY time too, not
+        # only at propose time (F1) — check_doc_path alone is not enough; entry_for must run
+        # for every op.
+        self.queue.mkdir(parents=True)
+        item = {"id": "1", "op": "doc_write", "module": "..", "doc": "modules/checkout/MODULE.md",
+                "value": "# hacked", "base_sha256": None}
+        bad = {"schema": "modsys.proposal/1", "run_id": "r1", "agent": "planner",
+               "created_at": "2026-01-01T00:00:00Z", "items": [item]}
+        (self.queue / "r1-planner.json").write_text(json.dumps(bad), encoding="utf-8")
+        target = self.root / "modules/checkout/MODULE.md"
+        before = target.read_bytes()
+        code, env, _ = run_json("proposals", "apply", *self.R)
+        self.assertEqual(code, 1)
+        result = env["data"]["files"][0]["results"][0]
+        self.assertEqual(result["status"], "rejected")
+        self.assertIn("invalid item", result["reason"])
+        self.assertEqual(target.read_bytes(), before)
+
+    def test_propose_refuses_bad_doc_paths(self):
+        (self.root / "modules/catalog/MODULE.legacy.md").write_text("# frozen\n")
+        cases = [(("--module", "catalog", "--op", "doc_write", "--doc",
+                   "modules/catalog/module.json", "--value", "x"), "registry entry"),
+                 (("--module", "catalog", "--op", "doc_write", "--doc", "modules/catalog",
+                   "--value", "x"), "must be a file"),
+                 (("--module", "catalog", "--op", "doc_write", "--doc",
+                   "modules/catalog/notes.txt", "--value", "x"), "not a markdown doc"),
+                 (("--module", "catalog", "--op", "doc_write", "--doc",
+                   "modules/catalog/MODULE.LEGACY.MD", "--value", "x"), "frozen legacy snapshot"),
+                 (("--module", "payments", "--op", "doc_write", "--doc",
+                   "modules/payments/submodules/refunds/MODULE.md", "--value", "x"),
+                  "outside module")]
+        for argv, needle in cases:
+            with self.subTest(needle=needle):
+                code, out, err = run("propose", *argv, "--reason", "r", "--run-id", "r1", *self.R)
+                self.assertEqual((code, out), (2, ""))
+                self.assertIn(needle, err)
+        self.assertEqual(list(self.queue.glob("*.json")), [])
+
+    def test_two_agents_one_run_different_fields_both_apply(self):
+        run("propose", "--module", "catalog", "--op", "set", "--field", "status",
+            "--value", '"draft"', "--reason", "r", "--run-id", "r1", "--agent", "planner", *self.R)
+        run("propose", "--module", "catalog", "--op", "set", "--field", "description",
+            "--value", '"New copy."', "--reason", "r", "--run-id", "r1", "--agent", "builder",
+            *self.R)
+        code, env, _ = run_json("proposals", "apply", *self.R)
+        self.assertEqual((code, env["data"]["summary"]),
+                         (0, {"applied": 2, "noop": 0, "rejected": 0}))
+
+    def test_order_independence_across_two_runs(self):
+        def apply_pair(id_a, id_b):
+            tmp = tempfile.TemporaryDirectory()
+            root = copy_fixture(tmp.name)
+            R = ("--root", str(root))
+            run("propose", "--module", "catalog", "--op", "append", "--field", "keywords",
+                "--value", '"ebook"', "--reason", "r", "--run-id", id_a, "--agent", "planner", *R)
+            run("propose", "--module", "catalog", "--op", "set", "--field", "status",
+                "--value", '"draft"', "--reason", "r", "--run-id", id_b, "--agent", "planner", *R)
+            _, env, _ = run_json("proposals", "apply", *R)
+            tmp.cleanup()
+            return env["data"]["summary"]
+
+        self.assertEqual(apply_pair("a", "b"), {"applied": 2, "noop": 0, "rejected": 0})
+        self.assertEqual(apply_pair("z", "b"), {"applied": 2, "noop": 0, "rejected": 0})
+
+    def test_same_field_conflict_first_applies_second_rejected(self):
+        run("propose", "--module", "catalog", "--op", "set", "--field", "status",
+            "--value", '"draft"', "--reason", "r", "--run-id", "a", "--agent", "planner", *self.R)
+        run("propose", "--module", "catalog", "--op", "set", "--field", "status",
+            "--value", '"planned"', "--reason", "r", "--run-id", "b", "--agent", "planner",
+            *self.R)
+        code, env, _ = run_json("proposals", "apply", *self.R)
+        self.assertEqual(code, 1)
+        by_file = {f["file"]: f["results"][0] for f in env["data"]["files"]}
+        self.assertEqual(by_file["a-planner.json"]["status"], "applied")
+        self.assertEqual(by_file["b-planner.json"]["status"], "rejected")
+        self.assertIn("conflicts with a-planner.json", by_file["b-planner.json"]["reason"])
+        reg = json.loads((self.root / "modules" / "registry.json").read_text())
+        self.assertEqual(reg["modules"]["catalog"]["status"], "draft")
+
+    def test_reapply_after_crash_reports_noop(self):
+        run("propose", "--module", "catalog", "--op", "set", "--field", "status",
+            "--value", '"draft"', "--reason", "r", "--run-id", "r1", "--agent", "planner", *self.R)
+        run("proposals", "apply", *self.R)
+        done = json.loads((self.queue / "done" / "r1-planner.json").read_text())
+        replay = {k: v for k, v in done.items() if k not in ("results", "processed_at")}
+        (self.queue / "r1-planner.json").write_text(json.dumps(replay), encoding="utf-8")
+        code, env, _ = run_json("proposals", "apply", *self.R)
+        self.assertEqual((code, env["data"]["summary"]),
+                         (0, {"applied": 0, "noop": 1, "rejected": 0}))
+
 
 if __name__ == "__main__":
     unittest.main()
