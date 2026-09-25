@@ -27,7 +27,7 @@ _TYPES = {
 # Only KNOWN keys are checked; unknown keys and sections pass (forward compatibility).
 LAYER_SCHEMA = {
     "paths": {k: "str" for k in ("modules_dir", "registry", "registry_layout", "module_doc",
-                                 "module_entry")},
+                                 "module_entry", "proposals_dir")},
     "registry": {"statuses": "list[str]", "relations": "list[str]", "dir_whitelist": "list[str]",
                  "stub_pattern": "str", "updated_at_path": "str"},
     "budgets": {k: "int" for k in ("module_doc_split_signal", "module_doc_hard_stop",

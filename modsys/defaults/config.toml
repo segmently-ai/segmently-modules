@@ -7,6 +7,7 @@ registry = "modules/registry.json"
 registry_layout = "single"   # or "per-module": <modules_dir>/<name>/<module_entry> + generated index
 module_doc = "MODULE.md"
 module_entry = "module.json"
+proposals_dir = ".modsys/proposals"   # proposals queue (pipelines); done/ keeps processed files
 
 [registry]
 statuses = ["active", "draft", "planned", "temporary"]
