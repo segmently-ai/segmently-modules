@@ -40,13 +40,22 @@ def _object(entry, label: str) -> dict:
 
 
 def show_module(ws, arg: str, role: str | None, all_roles: bool) -> tuple[int, dict]:
-    modules = ws.registry.modules
+    """`show` for USER input: a module name, `module/child`, or a path into the modules dir;
+    an argument that names an existing path outside the modules dir is refused as a file path."""
     modules_dir = ws.config["paths"]["modules_dir"]
     resolved = resolve_module_arg(arg, modules_dir)
     if resolved == arg and "/" in arg and (Path(arg).exists() or (ws.root / arg).exists()):
         raise UsageError(f"'{arg}' is a file path outside {modules_dir}/ — not a module; "
                          f"read it directly")
-    parent, _, child = resolved.partition("/")
+    return show_target(ws, resolved, role, all_roles)
+
+
+def show_target(ws, target: str, role: str | None, all_roles: bool) -> tuple[int, dict]:
+    """The read set of a `module[/child]` target the engine produced itself (match rows,
+    changed-file mapping): no user-input path heuristics, so a code directory that happens to
+    be spelled like `parent/child` never shadows the module."""
+    modules = ws.registry.modules
+    parent, _, child = target.partition("/")
     if parent not in modules:
         return _stub_or_unknown(ws, parent)
     entry = _object(modules[parent], parent)

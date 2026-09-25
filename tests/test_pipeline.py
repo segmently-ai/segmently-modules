@@ -101,6 +101,28 @@ class DiscoverTest(unittest.TestCase):
         self.assertEqual(mods["catalog"]["usage"], "modify")
         self.assertIn("src/catalog/service.py", mods["catalog"]["touched_files"])
 
+    def test_child_whose_name_is_also_a_real_directory(self):
+        # The engine generated "payments/refunds" itself; the user-input "that is a file path"
+        # heuristic of `show` must not fire just because a code dir payments/refunds/ exists.
+        (self.root / "payments" / "refunds").mkdir(parents=True)
+        (self.root / "payments" / "refunds" / "api.py").write_text("x = 1\n")
+        code, env, err = run_json("context", "--task", "partial refund", "--role", "developer",
+                                  *self.R)
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("payments/refunds", [m["module"] for m in env["data"]["modules"]])
+        self.assertIn("modules/payments/submodules/refunds/roles/developer.md",
+                      [r["path"] for r in env["data"]["read"]])
+        code, env, err = run_json("discover", "--task", "partial refund", "--files",
+                                  "modules/payments/submodules/refunds/MODULE.md", *self.R)
+        self.assertEqual((code, err), (0, ""))
+        refunds = self.modules(env)["payments/refunds"]
+        self.assertEqual(refunds["usage"], "modify")
+        self.assertIn("modules/payments/submodules/refunds/MODULE.md", refunds["docs_to_update"])
+        # `show` keeps its P2 behaviour for USER input naming that directory
+        code, out, err = run("show", "payments/refunds", *self.R)
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("is a file path outside modules/", err)
+
 
 class TaskFromStdinTest(unittest.TestCase):  # AC-034
     def test_task_from_stdin(self):

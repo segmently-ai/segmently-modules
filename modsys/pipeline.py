@@ -10,7 +10,7 @@ from modsys.changes import changed_files, map_files
 from modsys.config import enabled_roles
 from modsys.match import match_modules
 from modsys.output import EXIT_OK, UsageError, emit
-from modsys.query import show_module
+from modsys.query import show_target
 from modsys.workspace import Workspace
 
 _PATHLIKE = re.compile(r"(?<![\w/.-])((?:\.{0,2}/)?[\w.-]+(?:/[\w.-]+)+)")
@@ -40,7 +40,7 @@ def _rows(ws, text: str, top: int | None) -> list[dict]:
 def build_context(ws, text: str, role: str | None, all_roles: bool, top: int | None) -> dict:
     modules, read, seen = [], [], set()
     for row in _rows(ws, text, top):
-        _, shown = show_module(ws, row["module"], role, all_roles)
+        _, shown = show_target(ws, row["module"], role, all_roles)
         modules.append({**row, "read": shown["read"], "code": shown["code"]})
         for r in shown["read"]:
             if r["path"] not in seen:
@@ -97,7 +97,7 @@ def build_discover(ws, text: str, files: list[str], top: int | None) -> dict:
         s["usage"] = "modify" if s["touched_files"] else "reference"
         docs = []
         for role in (roles if s["usage"] == "modify" else [None]):
-            _, shown = show_module(ws, module, role, False)
+            _, shown = show_target(ws, module, role, False)
             docs += [r["path"] for r in shown["read"] if r["path"] not in docs]
         s["docs_to_read"] = docs
         s["docs_to_update"] = docs if s["usage"] == "modify" else []
