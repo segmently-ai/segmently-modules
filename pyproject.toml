@@ -9,4 +9,4 @@ dependencies = []
 modsys = "modsys.cli:main"
 
 [tool.setuptools.package-data]
-modsys = ["defaults/*.toml"]
+modsys = ["defaults/*.toml", "defaults/templates/*.md", "defaults/templates/roles/*.md"]

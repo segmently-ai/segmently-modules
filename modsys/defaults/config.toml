@@ -35,6 +35,12 @@ fail_on = "error"
 component_table_heading = "EXISTING Components"
 drift_severity = "warning"     # MS050 (lint --changed): code changed, no doc of its module
 
+[create]
+min_keywords = 5              # top-level modules; a child needs at least 1
+description_min = 20
+description_max = 200
+default_status = "planned"
+
 [roles.developer]
 order = 10
 standard = true

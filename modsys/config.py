@@ -35,8 +35,11 @@ LAYER_SCHEMA = {
     "match": {k: "int" for k in ("keyword_weight", "combination_weight", "negative_weight",
                                  "min_score", "top")},
     "lint": {"fail_on": "str", "component_table_heading": "str", "drift_severity": "str"},
+    "create": {"min_keywords": "int", "description_min": "int", "description_max": "int",
+               "default_status": "str"},
 }
-ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str"}
+ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str",
+               "applies_when": "str", "template": "str"}
 
 
 def _require_table(value, section: str, source) -> dict:
