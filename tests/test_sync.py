@@ -61,6 +61,13 @@ class SyncMappingTest(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("pattern needs a {module} segment", err)
 
+    def test_code_map_rule_needs_a_pattern_or_globs(self):
+        (self.root / ".modsys" / "config.toml").write_text(
+            '[[code_map]]\nid = "x"\n', encoding="utf-8")
+        code, out, err = run("sync", "--files", "a.py", *self.R)
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("needs a pattern or globs", err)
+
 
 class SyncHooksAndProposalsTest(unittest.TestCase):
     def setUp(self):
@@ -125,6 +132,22 @@ class SyncHooksAndProposalsTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {"MODSYS_RUN_ID": "envrun"}):
             _, env, _ = run_json("sync", "--files", "a.py", "--dry-run", *self.R)
         self.assertEqual(env["data"]["run_id"], "envrun")
+
+    def test_apply_proposals_without_run_id_applies_every_pending_run(self):
+        run("propose", "--module", "checkout", "--op", "set", "--field", "status",
+            "--value", '"draft"', "--reason", "r", "--run-id", "r1", *self.R)
+        with mock.patch.dict(os.environ):
+            os.environ.pop("MODSYS_RUN_ID", None)
+            code, env, _ = run_json("sync", "--files", "src/catalog/service.py",
+                                    "--apply-proposals", *self.R)
+        self.assertEqual(code, 0)
+        # r1's unrelated 'checkout' proposal plus this sync's own hook-queued 'catalog'
+        # proposal both apply: with no --run-id / $MODSYS_RUN_ID, apply-proposals is not
+        # scoped to the run id sync generated for its own hook run.
+        self.assertEqual(env["data"]["proposals"]["summary"]["applied"], 2)
+        reg = json.loads((self.root / "modules/registry.json").read_text())
+        self.assertEqual(reg["modules"]["checkout"]["status"], "draft")
+        self.assertIn("touched", reg["modules"]["catalog"]["keywords"])
 
 
 if __name__ == "__main__":

@@ -88,6 +88,8 @@ def validate_code_map(layer: dict, source, check_table) -> None:
         if not isinstance(rule.get("id"), str) or not rule["id"]:
             raise UsageError(f"{source}: every [[code_map]] entry needs an id")
         check_table(rule, CODE_MAP_SCHEMA, f"code_map.{rule['id']}", source)
+        if "pattern" not in rule and "globs" not in rule:
+            raise UsageError(f"{source}: code_map.{rule['id']}: needs a pattern or globs")
         if "globs" in rule and "module" not in rule:
             raise UsageError(f"{source}: code_map.{rule['id']}: globs need a module")
         if "pattern" in rule and "{module}" not in rule["pattern"]:
