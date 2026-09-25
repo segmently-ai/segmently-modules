@@ -22,18 +22,43 @@ def git_env() -> dict:
     return {k: v for k, v in os.environ.items() if k not in _GIT_LOCATION_VARS}
 
 
-def git(root: Path, *args: str) -> str:
-    proc = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True,
-                          env=git_env())
+def git(root: Path, *args: str, label: str | None = None) -> str:
+    """Run git in `root`; `label` replaces the argv in the error message."""
+    proc = subprocess.run(["git", "-C", str(root), *args], capture_output=True,
+                          encoding="utf-8", errors="replace", env=git_env())
     if proc.returncode != 0:
-        raise UsageError(f"git {' '.join(args)} failed: {proc.stderr.strip()[:300]}")
+        raise UsageError(f"git {label or ' '.join(args)} failed: {proc.stderr.strip()[:300]}")
     return proc.stdout
+
+
+def _rev(value: str) -> str:
+    """A user-given ref or `A..B` range; one that starts with '-' would be read as an option
+    (e.g. `--output=FILE` makes git write a file), so it is refused."""
+    if value.startswith("-"):
+        raise UsageError(f"git ref or range {value!r} may not start with '-'")
+    return value
+
+
+def _paths(output: str) -> list[str]:
+    return [p for p in output.split("\0") if p]
+
+
+def diff_names(root: Path, rev: str, *options: str) -> list[str]:
+    """Paths `git diff` reports against `rev` (a ref: vs the working tree; or `A..B`):
+    relative to `root` and limited to it (--relative: `root` may be a subdirectory of the git
+    repository), a rename listed as delete + add (--no-renames), raw names (-z: no C-quoting
+    of non-ASCII names), and `rev` after --end-of-options."""
+    rev = _rev(rev)
+    return _paths(git(root, "diff", "--name-only", "--relative", "--no-renames", "-z", *options,
+                      "--end-of-options", rev,
+                      label=" ".join(("diff", "--name-only", *options, rev))))
 
 
 def changed_files(root: Path, diff_range: str | None = None, files=None,
                   base: str | None = None) -> list[str]:
-    """Repo-relative changed paths from explicit `files`, a `diff_range` ("A..B"), or `base`
-    (base vs the working tree, plus untracked files). Sorted, de-duplicated."""
+    """Root-relative changed paths from explicit `files`, a `diff_range` ("A..B"), or `base`
+    (base vs the working tree, plus untracked files); git listings keep only files under
+    `root`. Sorted, de-duplicated."""
     if files:
         out = set()
         for f in files:
@@ -49,11 +74,11 @@ def changed_files(root: Path, diff_range: str | None = None, files=None,
             out.add(rel)
         return sorted(out)
     if diff_range:
-        return sorted({l for l in git(root, "diff", "--name-only", diff_range).splitlines() if l})
+        return sorted(set(diff_names(root, diff_range)))
     if base:
-        tracked = git(root, "diff", "--name-only", base).splitlines()
-        untracked = git(root, "ls-files", "--others", "--exclude-standard").splitlines()
-        return sorted({l for l in tracked + untracked if l})
+        tracked = diff_names(root, base)
+        untracked = _paths(git(root, "ls-files", "-z", "--others", "--exclude-standard"))
+        return sorted(set(tracked + untracked))
     raise UsageError("give changed files: --from-diff A..B, --files …, or --base REF")
 
 

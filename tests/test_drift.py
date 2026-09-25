@@ -1,8 +1,10 @@
 """lint --changed: MS050 drift, MS051 frozen snapshots, report narrowed to changed modules."""
 import tempfile
+import unicodedata
 import unittest
+from pathlib import Path
 
-from tests.helpers import copy_fixture, git, init_git, run_json
+from tests.helpers import copy_fixture, git, init_git, run, run_json
 
 
 def codes(env):
@@ -80,6 +82,75 @@ class DriftLintTest(unittest.TestCase):
         (self.root / "modules/catalog/MODULE.legacy.md").unlink()
         _, env, _ = self.lint()
         self.assertIn(("MS051", "error", "catalog"), codes(env))
+
+    # final-review hardening of the git listings (F4b-d)
+    def test_renamed_legacy_snapshot_is_ms051(self):
+        git(self.root, "mv", "modules/catalog/MODULE.legacy.md", "modules/catalog/OLD.md")
+        _, env, _ = self.lint()
+        self.assertIn(("MS051", "error", "catalog"), codes(env))
+        self.assertIn("modules/catalog/MODULE.legacy.md", env["data"]["changed"]["files"])
+
+    def test_refs_that_look_like_options_are_refused(self):
+        out = Path(self._tmp.name) / "injected.txt"
+        cases = [("lint", "--changed", f"--base=--output={out}"),
+                 ("sync", f"--from-diff=--output={out}"),
+                 ("discover", "--task", "isbn", f"--from-diff=--output={out}")]
+        for argv in cases:
+            with self.subTest(verb=argv[0]):
+                code, stdout, err = run(*argv, *self.R)
+                self.assertEqual((code, stdout), (2, ""))
+                self.assertIn("may not start with '-'", err)
+                self.assertFalse(out.exists())
+
+    def test_non_ascii_paths_map_to_their_module(self):
+        (self.root / ".modsys/config.toml").write_text(
+            '[[code_map]]\nid = "src"\npattern = "src/{module}/**"\n', encoding="utf-8")
+        tracked = self.root / "src" / "catalog" / "café.py"
+        tracked.write_text("x = 1\n", encoding="utf-8")
+        git(self.root, "add", ".modsys/config.toml", str(tracked))
+        git(self.root, "commit", "-qm", "non-ascii file")
+        with tracked.open("a") as fh:  # a tracked change: the diff listing
+            fh.write("y = 2\n")
+        git(self.root, "commit", "-qam", "change it")
+        _, env, _ = run_json("sync", "--from-diff", "HEAD~1..HEAD", "--dry-run", *self.R)
+        self.assertEqual(env["data"]["unmapped"], [])
+        self.assertEqual([(m["module"], [unicodedata.normalize("NFC", f) for f in m["files"]])
+                          for m in env["data"]["modules"]],
+                         [("catalog", ["src/catalog/café.py"])])
+        (self.root / "src" / "catalog" / "nëu.py").write_text("z = 3\n", encoding="utf-8")
+        _, env, _ = self.lint()  # an untracked file: the ls-files listing
+        self.assertEqual([unicodedata.normalize("NFC", f) for f in env["data"]["changed"]["files"]],
+                         ["src/catalog/nëu.py"])
+        self.assertIn(("MS050", "warning", "catalog"), codes(env))
+
+
+class DriftInSubdirectoryRootTest(unittest.TestCase):
+    """The modsys root is a subdirectory of the git repository (a monorepo package)."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.top = Path(self._tmp.name)
+        self.root = copy_fixture(self._tmp.name)  # <top>/repo
+        (self.top / "outside.txt").write_text("outside\n")
+        init_git(self.top)
+        self.R = ("--root", str(self.root))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_code_only_change_is_ms050_and_files_outside_the_root_drop_out(self):
+        with (self.root / "src/catalog/service.py").open("a") as fh:
+            fh.write("# changed\n")
+        with (self.top / "outside.txt").open("a") as fh:
+            fh.write("changed too\n")
+        code, env, _ = run_json("lint", "--changed", "--fail-on", "never", *self.R)
+        self.assertEqual(code, 0)
+        self.assertEqual(env["data"]["changed"]["files"], ["src/catalog/service.py"])
+        self.assertIn(("MS050", "warning", "catalog"), codes(env))
+        git(self.top, "commit", "-qam", "change")
+        _, env, _ = run_json("sync", "--from-diff", "HEAD~1..HEAD", "--dry-run", *self.R)
+        self.assertEqual((env["data"]["changed_files"], [m["module"] for m in env["data"]["modules"]]),
+                         (["src/catalog/service.py"], ["catalog"]))
 
 
 if __name__ == "__main__":

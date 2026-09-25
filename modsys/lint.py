@@ -7,7 +7,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from modsys.changes import changed_files, git, map_files
+from modsys.changes import changed_files, diff_names, map_files
 from modsys.fields import value_matches
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.query import role_paths
@@ -251,8 +251,8 @@ def run(args) -> int:
     changed = None
     if args.changed:
         files = changed_files(ws.root, base=args.base)
-        frozen = [f for f in git(ws.root, "diff", "--name-only", "--diff-filter=MD",
-                                 args.base).splitlines() if f.endswith(".legacy.md")]
+        frozen = [f for f in diff_names(ws.root, args.base, "--diff-filter=MD")
+                  if f.endswith(".legacy.md")]  # a renamed snapshot shows as D (--no-renames)
         drift, touched = drift_findings(ws, files, frozen)
         findings = [f for f in findings if f.module.partition("/")[0] in touched] + drift
         changed = {"base": args.base, "files": files, "modules": sorted(touched)}
