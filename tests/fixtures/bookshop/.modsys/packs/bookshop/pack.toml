@@ -1,0 +1,18 @@
+id = "bookshop"
+version = "0.1.0"
+priority = 50
+description = "Fixture pack: a custom role, a code-pointer field, a deprecated field"
+
+[roles.designer]
+order = 50
+standard = false
+description = "UX invariants for UI modules"
+
+[fields.file_paths]
+type = "string[]"
+kind = "code_pointer"
+description = "Key source files of the module"
+
+[fields.depends_on_modules]
+type = "string[]"
+deprecated = "use related_modules"
