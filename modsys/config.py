@@ -74,8 +74,10 @@ def validate_layer(layer: dict, source) -> None:
     top = layer.get("match", {}).get("top")
     if top is not None and top < 0:
         raise UsageError(f"{source}: [match] top: expected an integer >= 0, got {top!r}")
+    from modsys.changes import validate_code_map  # lazy: keeps config import-light
     from modsys.hooks import validate_hooks  # hooks imports proposals -> store; keep lazy
     validate_hooks(layer, source, _check_table)
+    validate_code_map(layer, source, _check_table)
     for section in ("roles", "fields"):
         for name, spec in _require_table(layer.get(section, {}), section, source).items():
             _require_table(spec, f"{section}.{name}", source)

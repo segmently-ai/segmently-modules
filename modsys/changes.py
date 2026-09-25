@@ -1,0 +1,153 @@
+"""Changed files -> modules. A file belongs to a module (or `module/child`) through:
+  docs          — it lives under `<modules_dir>/<module>/` (children: `…/submodules/<child>/`)
+  code_pointer  — a `kind = "code_pointer"` field names the file or a directory above it
+  code_map      — a `[[code_map]]` rule: `globs` for one `module`, or a `pattern` whose
+                  `{module}` segment names the module (e.g. "src/{module}/**")
+Glob syntax: `**` any path, `*` one segment, `?` one character."""
+import os
+import re
+import subprocess
+from pathlib import Path
+
+from modsys.output import UsageError
+from modsys.registry import as_dict, as_list
+
+# git location variables a parent git hook may export; they would point git at another repo
+_GIT_LOCATION_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+                      "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_PREFIX")
+CODE_MAP_SCHEMA = {"id": "str", "module": "str", "pattern": "str", "globs": "list[str]"}
+
+
+def git_env() -> dict:
+    return {k: v for k, v in os.environ.items() if k not in _GIT_LOCATION_VARS}
+
+
+def git(root: Path, *args: str) -> str:
+    proc = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True,
+                          env=git_env())
+    if proc.returncode != 0:
+        raise UsageError(f"git {' '.join(args)} failed: {proc.stderr.strip()[:300]}")
+    return proc.stdout
+
+
+def changed_files(root: Path, diff_range: str | None = None, files=None,
+                  base: str | None = None) -> list[str]:
+    """Repo-relative changed paths from explicit `files`, a `diff_range` ("A..B"), or `base`
+    (base vs the working tree, plus untracked files). Sorted, de-duplicated."""
+    if files:
+        out = set()
+        for f in files:
+            p = Path(f)
+            if p.is_absolute():
+                try:
+                    p = p.resolve().relative_to(Path(root).resolve())
+                except ValueError:
+                    raise UsageError(f"{f} is outside the repository {root}") from None
+            rel = Path(os.path.normpath(p)).as_posix()
+            if rel == ".." or rel.startswith("../"):
+                raise UsageError(f"{f} is outside the repository {root}")
+            out.add(rel)
+        return sorted(out)
+    if diff_range:
+        return sorted({l for l in git(root, "diff", "--name-only", diff_range).splitlines() if l})
+    if base:
+        tracked = git(root, "diff", "--name-only", base).splitlines()
+        untracked = git(root, "ls-files", "--others", "--exclude-standard").splitlines()
+        return sorted({l for l in tracked + untracked if l})
+    raise UsageError("give changed files: --from-diff A..B, --files …, or --base REF")
+
+
+def glob_to_regex(pattern: str) -> re.Pattern:
+    out, i = [], 0
+    while i < len(pattern):
+        if pattern.startswith("**", i):
+            out.append(".*")
+            i += 2
+        elif pattern.startswith("{module}", i):
+            out.append("(?P<module>[^/]+)")
+            i += len("{module}")
+        elif pattern[i] == "*":
+            out.append("[^/]*")
+            i += 1
+        elif pattern[i] == "?":
+            out.append("[^/]")
+            i += 1
+        else:
+            out.append(re.escape(pattern[i]))
+            i += 1
+    return re.compile("".join(out) + r"\Z")
+
+
+def validate_code_map(layer: dict, source, check_table) -> None:
+    rules = layer.get("code_map")
+    if rules is None:
+        return
+    if not isinstance(rules, list) or not all(isinstance(r, dict) for r in rules):
+        raise UsageError(f"{source}: code_map must be an array of tables ([[code_map]])")
+    for rule in rules:
+        if not isinstance(rule.get("id"), str) or not rule["id"]:
+            raise UsageError(f"{source}: every [[code_map]] entry needs an id")
+        check_table(rule, CODE_MAP_SCHEMA, f"code_map.{rule['id']}", source)
+        if "globs" in rule and "module" not in rule:
+            raise UsageError(f"{source}: code_map.{rule['id']}: globs need a module")
+        if "pattern" in rule and "{module}" not in rule["pattern"]:
+            raise UsageError(f"{source}: code_map.{rule['id']}: pattern needs a {{module}} segment")
+
+
+def _pointer_paths(value) -> list[str]:
+    paths = value if isinstance(value, list) else [value]
+    return [p.split(":")[0].rstrip("/") for p in paths if isinstance(p, str) and p]
+
+
+def _targets(modules: dict):
+    """(target, entry) for every module and child entry that is an object."""
+    for name, entry in modules.items():
+        if isinstance(entry, dict):
+            yield name, entry
+            for child, sub in as_dict(entry.get("submodules")).items():
+                if isinstance(sub, dict):
+                    yield f"{name}/{child}", sub
+
+
+def map_files(ws, files: list[str]) -> dict:
+    """{"modules": {target: {"files": […], "via": […]}}, "unmapped": […]}"""
+    modules = ws.registry.modules
+    mdir = ws.config["paths"]["modules_dir"].rstrip("/") + "/"
+    pointers = [(t, f, p) for t, e in _targets(modules)
+                for f, d in ws.fields.items() if d.kind == "code_pointer" and f in e
+                for p in _pointer_paths(e[f])]
+    rules = [(r["id"], r.get("module"), [glob_to_regex(g) for g in
+                                         ([r["pattern"]] if "pattern" in r else r["globs"])])
+             for r in as_list(ws.config.get("code_map")) if isinstance(r, dict) and "id" in r]
+    hits: dict[str, dict] = {}
+
+    def hit(target, path, via):
+        slot = hits.setdefault(target, {"files": [], "via": []})
+        if path not in slot["files"]:
+            slot["files"].append(path)
+        if via not in slot["via"]:
+            slot["via"].append(via)
+        mapped.add(path)
+
+    mapped: set = set()
+    for path in files:
+        if path.startswith(mdir):
+            parts = path[len(mdir):].split("/")
+            if parts[0] in modules:
+                child = parts[2] if len(parts) > 3 and parts[1] == "submodules" else None
+                target = f"{parts[0]}/{child}" if child and child in as_dict(
+                    as_dict(modules[parts[0]]).get("submodules")) else parts[0]
+                hit(target, path, "docs")
+        for target, field, pointer in pointers:
+            if path == pointer or path.startswith(pointer + "/"):
+                hit(target, path, f"code_pointer:{field}")
+        for rule_id, module, regexes in rules:
+            for rx in regexes:
+                m = rx.match(path)
+                if not m:
+                    continue
+                name = module or m.group("module")
+                if name in modules:
+                    hit(name, path, f"code_map:{rule_id}")
+    return {"modules": dict(sorted(hits.items())),
+            "unmapped": [f for f in files if f not in mapped]}
