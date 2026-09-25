@@ -1,5 +1,6 @@
 """Proposals queue: propose during a run, apply once under the lock."""
 import json
+import os
 import tempfile
 import unittest
 
@@ -252,6 +253,32 @@ class ProposalsGapTest(unittest.TestCase):  # AC-015, AC-016
         self.assertEqual(by_file["b-planner.json"]["status"], "rejected")
         self.assertIn("conflicts with", by_file["b-planner.json"]["reason"])
         self.assertIn("From run a.", (self.root / dev).read_text())
+
+    def test_case_variant_doc_ops_in_one_apply_keep_every_edit(self):
+        # Doc paths are case-insensitive for the engine (as for conflict tracking): two
+        # case-variant spellings of one doc are ONE pending write, landing on the first spelling
+        # seen. Before the fix each spelling re-read the original from disk, so on a
+        # case-insensitive filesystem the later write clobbered the earlier edit.
+        dev = "modules/catalog/roles/developer.md"
+        variant = "modules/catalog/roles/Developer.md"
+        cases = [("doc_append", "## First\n\nFrom item one.", "From item one."),
+                 ("doc_write", "# Rewritten by item one", "# Rewritten by item one")]
+        for op, value, needle in cases:
+            with self.subTest(first_op=op):
+                run("propose", "--module", "catalog", "--op", op, "--doc", dev,
+                    "--value", value, "--reason", "r", "--run-id", op, *self.R)
+                run("propose", "--module", "catalog", "--op", "doc_append", "--doc", variant,
+                    "--value", f"## Second ({op})\n\nFrom item two.", "--reason", "r",
+                    "--run-id", op, *self.R)
+                code, env, _ = run_json("proposals", "apply", *self.R)
+                self.assertEqual((code, env["data"]["summary"]),
+                                 (0, {"applied": 2, "noop": 0, "rejected": 0}))
+                text = (self.root / dev).read_text()
+                self.assertIn(needle, text)
+                self.assertIn(f"## Second ({op})", text)
+                if (self.root / variant).exists() and os.path.samefile(self.root / dev,
+                                                                      self.root / variant):
+                    self.assertEqual((self.root / variant).read_text(), text)
 
     def test_two_agents_one_run_different_fields_both_apply(self):
         run("propose", "--module", "catalog", "--op", "set", "--field", "status",

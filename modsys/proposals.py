@@ -143,9 +143,11 @@ def pending(ws, run_id: str | None = None) -> list[tuple[Path, dict]]:
 def _apply_item(ws, raw: dict, start_raw: dict, docs: dict, touched: dict, file_name: str,
                 item: dict) -> dict:
     """Apply one item to the in-memory registry / pending doc writes; return its result.
-    `raw` is mutated for applied field ops; `docs` collects pending doc writes (path -> text);
-    `touched` records, per key, which queue file names already applied a change to it in this
-    apply (conflict tracking)."""
+    `raw` is mutated for applied field ops; `docs` collects pending doc writes, keyed like
+    conflict tracking by the case-folded path (key -> (path, text), the path being the first
+    spelling seen), so case-variant spellings of one doc build on each other's edit instead of
+    re-reading the original; `touched` records, per key, which queue file names already
+    applied a change to it in this apply (conflict tracking)."""
     result = {"id": item.get("id"), "op": item.get("op"), "module": item.get("module")}
     try:
         op, module = item["op"], item["module"]
@@ -167,10 +169,12 @@ def _apply_item(ws, raw: dict, start_raw: dict, docs: dict, touched: dict, file_
             touched.setdefault(key, set()).add(file_name)
             return {**result, "status": "applied"}
         path = check_doc_path(ws, module, item["doc"])
-        key = ("doc", str(path).casefold())  # conflict tracking is case-insensitive: two
-                                             # case-variant paths to one file must still conflict
-        current = docs.get(path)
-        if current is None:
+        key = ("doc", str(path).casefold())  # conflict tracking and pending writes are
+                                             # case-insensitive: two case-variant paths to one
+                                             # file conflict and share one pending write
+        if key in docs:
+            path, current = docs[key]  # keep writing through the first spelling seen
+        else:
             current = path.read_text(encoding="utf-8") if path.exists() else None
         if op == "doc_write":
             new = item["value"]
@@ -194,7 +198,7 @@ def _apply_item(ws, raw: dict, start_raw: dict, docs: dict, touched: dict, file_
             if file_sha256(path) != item.get("base_sha256"):
                 return {**result, "status": "rejected",
                         "reason": f"'{item['doc']}' changed since the proposal was made"}
-        docs[path] = new
+        docs[key] = (path, new)
         touched.setdefault(key, set()).add(file_name)
         return {**result, "status": "applied"}
     except (UsageError, KeyError, TypeError) as e:
@@ -220,7 +224,7 @@ def apply_proposals(ws, run_id: str | None = None, dry_run: bool = False) -> dic
             registry = store.load()
             start_raw = copy.deepcopy(registry.raw)
             raw = copy.deepcopy(registry.raw)
-            docs: dict[Path, str] = {}
+            docs: dict[tuple, tuple[Path, str]] = {}
             touched: dict[tuple, set] = {}
             for path, doc in live:
                 results = [_apply_item(ws, raw, start_raw, docs, touched, path.name, item)
@@ -232,7 +236,7 @@ def apply_proposals(ws, run_id: str | None = None, dry_run: bool = False) -> dic
             if dry_run:
                 return report
             store.commit(registry, raw)
-            for path, text in docs.items():
+            for path, text in docs.values():
                 atomic_write(path, text)
             results_by_file = {f["file"]: f["results"] for f in report["files"]}
             for path, doc in live:
