@@ -4,12 +4,12 @@ import sys
 from pathlib import Path
 
 from modsys import __version__
-from modsys import (create_cmd, hooks_cmd, index_cmd, lint, match, proposals_cmd, query, registry_cmd,
-                    schema_cmd, sync_cmd)
+from modsys import (create_cmd, hooks_cmd, index_cmd, lint, match, migrate_cmd, proposals_cmd,
+                    query, registry_cmd, schema_cmd, sync_cmd)
 from modsys.output import EXIT_USAGE, UsageError
 
 COMMANDS: list = [schema_cmd, match, query, lint, registry_cmd, index_cmd, proposals_cmd,
-                  hooks_cmd, sync_cmd, create_cmd]
+                  hooks_cmd, sync_cmd, create_cmd, migrate_cmd]
 
 
 def common_parser() -> argparse.ArgumentParser:
