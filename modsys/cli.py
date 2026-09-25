@@ -3,10 +3,10 @@ import sys
 from pathlib import Path
 
 from modsys import __version__
-from modsys import schema_cmd
+from modsys import match, schema_cmd
 from modsys.output import EXIT_USAGE, UsageError
 
-COMMANDS: list = [schema_cmd]
+COMMANDS: list = [schema_cmd, match]
 
 
 def common_parser() -> argparse.ArgumentParser:
