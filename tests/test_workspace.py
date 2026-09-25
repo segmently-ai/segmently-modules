@@ -6,6 +6,7 @@ from pathlib import Path
 from modsys.config import load_config
 from modsys.output import UsageError
 from modsys.registry import load_registry, resolve_module_arg, stub_head
+from modsys.workspace import find_root
 from tests.helpers import FIXTURE, run_json
 
 
@@ -63,7 +64,6 @@ class RootAndRegistryGapTest(unittest.TestCase):  # AC-014, AC-015
             repo = Path(tmp) / "repo"
             (repo / ".git").mkdir(parents=True)
             (repo / "a" / "b").mkdir(parents=True)
-            from modsys.workspace import find_root
             self.assertEqual(find_root(repo / "a" / "b"), repo.resolve())
 
     def test_registry_only_marker(self):
@@ -72,13 +72,11 @@ class RootAndRegistryGapTest(unittest.TestCase):  # AC-014, AC-015
             (repo / "modules").mkdir(parents=True)
             (repo / "modules" / "registry.json").write_text('{"modules": {}}')
             (repo / "deep").mkdir()
-            from modsys.workspace import find_root
             self.assertEqual(find_root(repo / "deep"), repo.resolve())
 
     def test_no_markers_is_usage_error(self):
         # assumes the system temp dir is not inside a git checkout (default on macOS/Linux)
         with tempfile.TemporaryDirectory() as tmp:
-            from modsys.workspace import find_root
             with self.assertRaises(UsageError) as ctx:
                 find_root(Path(tmp))
         self.assertIn("--root", str(ctx.exception))
