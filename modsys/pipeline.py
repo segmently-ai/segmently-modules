@@ -49,6 +49,27 @@ def build_context(ws, text: str, role: str | None, all_roles: bool, top: int | N
     return {"task": text, "role": role, "all_roles": all_roles, "modules": modules, "read": read}
 
 
+def _mentioned_paths(ws, text: str) -> list[str]:
+    """Path-like tokens in free text, made safe before they ever reach a filesystem check:
+    a relative mention that escapes the repo (`..`) is dropped; an absolute mention is
+    rewritten to a repo-relative posix path when it resolves inside `ws.root`, and dropped
+    otherwise — no absolute path survives to be joined onto `ws.root` downstream."""
+    paths = set()
+    for m in _PATHLIKE.finditer(text):
+        raw = Path(m.group(1))
+        if raw.is_absolute():
+            try:
+                rel = raw.resolve().relative_to(ws.root)
+            except ValueError:
+                continue  # outside the repo — dropped, like a ".." escape
+            paths.add(rel.as_posix())
+        else:
+            posix = Path(os.path.normpath(raw)).as_posix()
+            if not posix.startswith(".."):
+                paths.add(posix)
+    return sorted(paths)
+
+
 def build_discover(ws, text: str, files: list[str], top: int | None) -> dict:
     by_module: dict[str, dict] = {}
 
@@ -60,9 +81,7 @@ def build_discover(ws, text: str, files: list[str], top: int | None) -> dict:
         s = slot(row["module"])
         s.update(score=row["score"], keywords=row["keywords"])
         s["sources"].append("keyword")
-    mentioned = sorted({p for p in (Path(os.path.normpath(m.group(1))).as_posix()
-                                     for m in _PATHLIKE.finditer(text))
-                        if not p.startswith("..")})
+    mentioned = _mentioned_paths(ws, text)
     touched = map_files(ws, files)
     in_text = map_files(ws, mentioned)
     for source, mapping in (("diff", touched), ("path", in_text)):

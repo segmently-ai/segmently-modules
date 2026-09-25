@@ -87,6 +87,20 @@ class DiscoverTest(unittest.TestCase):
         self.assertEqual(mods["payments/refunds"]["usage"], "reference")
         self.assertEqual(env["data"]["files_outside_modules"], ["tools/report.py"])
 
+    def test_absolute_path_outside_the_repo_is_dropped(self):
+        _, env, _ = run_json("discover", "--task",
+                             "please check /etc/passwd for the book listing", *self.R)
+        self.assertNotIn("/etc/passwd", env["data"]["files_outside_modules"])
+        for m in env["data"]["modules"]:
+            self.assertNotIn("/etc/passwd", m["touched_files"])
+
+    def test_absolute_path_inside_the_repo_becomes_repo_relative(self):
+        abs_path = self.root / "src" / "catalog" / "service.py"
+        _, env, _ = run_json("discover", "--task", f"Check {abs_path} for the total", *self.R)
+        mods = self.modules(env)
+        self.assertEqual(mods["catalog"]["usage"], "modify")
+        self.assertIn("src/catalog/service.py", mods["catalog"]["touched_files"])
+
 
 class TaskFromStdinTest(unittest.TestCase):  # AC-034
     def test_task_from_stdin(self):
