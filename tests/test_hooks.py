@@ -19,6 +19,13 @@ SCRIPTS = {
     "badjson.py": "print('not json')\n",
     "badprop.py": "import json\nprint(json.dumps({'proposals': [{'op': 'set', 'module': 'catalog',\n"
                   "    'field': 'owner_team', 'value': 'x', 'reason': 'r'}]}))\n",
+    # garbage that used to escape the per-hook report (exit 2 "internal error" for the sync)
+    "docint.py": "import json\nprint(json.dumps({'proposals': [{'op': 'doc_append',\n"
+                 "    'module': 'catalog', 'doc': 5, 'value': 'x', 'reason': 'r'}]}))\n",
+    "fieldlist.py": "import json\nprint(json.dumps({'proposals': [{'op': 'set',\n"
+                    "    'module': 'catalog', 'field': ['a'], 'value': 'x', 'reason': 'r'}]}))\n",
+    "nonutf8.py": "import sys\nsys.stdout.buffer.write(b'{\"messages\": [\"\\xff\\xfe\"]}\\n')\n",
+    "marker.py": "import pathlib\npathlib.Path('hook-ran.marker').write_text('ran')\n",
 }
 
 
@@ -73,6 +80,60 @@ class HooksTest(unittest.TestCase):
         self.assertIn("unknown field 'owner_team'", errors["d"])
         self.assertFalse(report["failed_required"])
         self.assertFalse((self.root / ".modsys/proposals/r1-hook-d.json").exists())
+
+    def test_garbage_output_fails_that_hook_only_and_sync_still_exits_0(self):
+        self.use("a:docint.py", "b:fieldlist.py", "c:nonutf8.py", "tag:ok.py")
+        code, env, err = run_json("sync", "--files", "src/catalog/service.py",
+                                  "--run-id", "r1", "--root", str(self.root))
+        self.assertEqual((code, err), (0, ""))
+        hooks = {h["id"]: h for h in env["data"]["hooks"]["hooks"]}
+        for hid in ("a", "b", "c"):
+            with self.subTest(hook=hid):
+                self.assertEqual(hooks[hid]["status"], "failed")
+                self.assertIn("bad output", hooks[hid]["error"])
+                self.assertFalse((self.root / f".modsys/proposals/r1-hook-{hid}.json").exists())
+        self.assertIn("not valid UTF-8", hooks["c"]["error"])
+        self.assertEqual((hooks["tag"]["status"], hooks["tag"]["queued"]), ("ok", 1))
+        self.assertFalse(env["data"]["hooks"]["failed_required"])
+
+    def test_garbage_output_of_a_required_hook_fails_the_run(self):
+        self.use("a:docint.py:required", "tag:ok.py")
+        code, env, _ = run_json("sync", "--files", "src/catalog/service.py",
+                                "--root", str(self.root))
+        self.assertEqual(code, 1)
+        self.assertTrue(env["data"]["hooks"]["failed_required"])
+        self.assertEqual(env["data"]["hooks"]["hooks"][1]["status"], "ok")
+
+    def test_hook_id_outside_the_safe_charset_is_exit_2_at_load(self):
+        for where in ("team", "pack"):
+            with self.subTest(where=where):
+                bad = '[[hooks.post_sync]]\nid = "bad id/x"\nrun = ["true"]\n'
+                if where == "team":
+                    (self.pack / "pack.toml").write_text('id = "notify"\n', encoding="utf-8")
+                    (self.root / ".modsys" / "config.toml").write_text(bad, encoding="utf-8")
+                    source = "config.toml"
+                else:
+                    (self.root / ".modsys" / "config.toml").write_text("", encoding="utf-8")
+                    (self.pack / "pack.toml").write_text('id = "notify"\n' + bad,
+                                                         encoding="utf-8")
+                    source = "pack.toml"
+                code, out, err = run("hooks", "list", "--root", str(self.root))
+                self.assertEqual((code, out), (2, ""))
+                self.assertIn(source, err)
+                self.assertIn("'bad id/x'", err)
+
+    def test_sync_refuses_a_bad_run_id_before_any_hook_runs(self):
+        self.use("mark:marker.py")
+        for run_id in ("../x", "a b"):
+            with self.subTest(run_id=run_id):
+                code, out, err = run("sync", "--files", "src/catalog/service.py",
+                                     "--run-id", run_id, "--root", str(self.root))
+                self.assertEqual((code, out), (2, ""))
+                self.assertIn("run id", err)
+                self.assertFalse((self.root / "hook-ran.marker").exists())
+        self.assertEqual(run("sync", "--files", "src/catalog/service.py", "--run-id", "ok-1",
+                             "--root", str(self.root))[0], 0)
+        self.assertTrue((self.root / "hook-ran.marker").exists())  # the marker hook works
 
     def test_required_failure_flags_the_run(self):
         self.assertTrue(self.fire(self.use("a:fail.py:required"))["failed_required"])

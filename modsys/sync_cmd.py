@@ -3,7 +3,7 @@ import os
 from modsys.changes import changed_files, map_files
 from modsys.hooks import run_hooks
 from modsys.output import EXIT_FINDINGS, EXIT_OK, emit
-from modsys.proposals import apply_proposals
+from modsys.proposals import apply_proposals, check_safe_id
 from modsys.store import utc_now
 from modsys.workspace import Workspace
 
@@ -25,6 +25,8 @@ def register(sub, common) -> None:
 
 
 def run(args) -> int:
+    if args.run_id:  # refused up front: never after hooks already ran
+        check_safe_id("run id", args.run_id)
     ws = Workspace.from_args(args)
     run_id = args.run_id or utc_now().replace(":", "").replace("-", "")
     files = changed_files(ws.root, diff_range=args.from_diff, files=args.files)

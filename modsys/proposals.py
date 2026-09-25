@@ -36,7 +36,13 @@ from modsys.writers import OPS as FIELD_OPS, apply_field_op, entry_for, entry_sh
 SCHEMA = "modsys.proposal/1"
 DOC_OPS = ("doc_write", "doc_append")
 CHECKED_OPS = {"set", "unset", "doc_write"}
-_SAFE = re.compile(r"^[A-Za-z0-9._-]+$")
+SAFE_ID = re.compile(r"[A-Za-z0-9._-]+")  # run ids, agents, hook ids: always fullmatch()
+
+
+def check_safe_id(label: str, value: str) -> None:
+    """Refuse an id that is not a plain file-name token (it becomes part of a queue file name)."""
+    if not isinstance(value, str) or not SAFE_ID.fullmatch(value):
+        raise UsageError(f"{label} {value!r} may only contain letters, digits, '.', '_', '-'")
 
 
 def proposals_dir(ws) -> Path:
@@ -107,15 +113,20 @@ def make_item(ws, op: str, module: str, reason: str, field: str | None = None,
 
 
 def add_proposal(ws, run_id: str, agent: str, item: dict) -> Path:
-    for label, value in (("run id", run_id), ("agent", agent)):
-        if not _SAFE.match(value):
-            raise UsageError(f"{label} {value!r} may only contain letters, digits, '.', '_', '-'")
+    return add_proposals(ws, run_id, agent, [item])
+
+
+def add_proposals(ws, run_id: str, agent: str, items: list[dict]) -> Path:
+    """Queue `items` under `<run_id>-<agent>.json` in ONE locked atomic write: all or nothing."""
+    check_safe_id("run id", run_id)
+    check_safe_id("agent", agent)
     path = proposals_dir(ws) / f"{run_id}-{agent}.json"
     with file_lock(path):
         doc = (json.loads(path.read_text(encoding="utf-8")) if path.exists() else
                {"schema": SCHEMA, "run_id": run_id, "agent": agent, "created_at": utc_now(),
                 "items": []})
-        doc["items"].append({"id": str(len(doc["items"]) + 1), **item})
+        for item in items:
+            doc["items"].append({"id": str(len(doc["items"]) + 1), **item})
         atomic_write(path, json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
     return path
 

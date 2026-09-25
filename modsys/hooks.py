@@ -10,7 +10,7 @@ import subprocess
 from pathlib import Path
 
 from modsys.output import UsageError
-from modsys.proposals import add_proposal, make_item
+from modsys.proposals import SAFE_ID, add_proposals, make_item
 
 DEFAULT_TIMEOUT_S = 60
 EVENTS = ("post_sync",)  # validated; other keys under [hooks] pass (forward compatibility)
@@ -35,6 +35,9 @@ def validate_hooks(layer: dict, source, check_table) -> None:
         for entry in entries:
             if not isinstance(entry.get("id"), str) or not entry["id"]:
                 raise UsageError(f"{source}: every [[hooks.{event}]] entry needs an id")
+            if not SAFE_ID.fullmatch(entry["id"]):  # it becomes part of a queue file name
+                raise UsageError(f"{source}: hooks.{event}: id {entry['id']!r} may only contain "
+                                 f"letters, digits, '.', '_', '-'")
             check_table(entry, HOOK_SCHEMA, f"hooks.{event}.{entry['id']}", source)
             if "run" in entry and not entry["run"]:
                 raise UsageError(f"{source}: hooks.{event}.{entry['id']}: run is empty")
@@ -56,6 +59,13 @@ def _argv(ws, hook: dict) -> list[str]:
     return [str(base / a) if a.startswith(("./", "../")) else a for a in run]
 
 
+def _decode(stdout: bytes) -> str:
+    try:
+        return stdout.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise ValueError(f"stdout is not valid UTF-8 ({e.reason} at byte {e.start})") from None
+
+
 def _parse(stdout: str) -> dict:
     if not stdout.strip():
         return {"proposals": [], "messages": []}
@@ -70,7 +80,9 @@ def _parse(stdout: str) -> dict:
 
 def run_hooks(ws, event: str, payload: dict, run_id: str) -> dict:
     """Run every hook of `event` in declaration order. Returns
-    {"hooks": [result…], "failed_required": bool}; never raises for a hook's own failure."""
+    {"hooks": [result…], "failed_required": bool}; never raises for a hook's own failure:
+    whatever a hook prints (invalid UTF-8, wrong JSON shapes, wrongly typed proposal fields)
+    fails that hook alone, and its proposals are queued all or nothing."""
     results = []
     for hook in hooks_for(ws.config, event):
         result = {"id": hook["id"], "owner": hook.get("owner", "config"),
@@ -87,9 +99,9 @@ def run_hooks(ws, event: str, payload: dict, run_id: str) -> dict:
         timeout = hook.get("timeout_s", DEFAULT_TIMEOUT_S)
         env = {**os.environ, "MODSYS_ROOT": str(ws.root), "MODSYS_EVENT": event,
                "MODSYS_HOOK_ID": hook["id"], "MODSYS_RUN_ID": run_id}
-        try:
-            proc = subprocess.run(argv, input=json.dumps(payload), cwd=ws.root,
-                                  env=env, capture_output=True, text=True, timeout=timeout)
+        try:  # bytes, decoded below: invalid UTF-8 output is this hook's failure, not ours
+            proc = subprocess.run(argv, input=json.dumps(payload).encode("utf-8"), cwd=ws.root,
+                                  env=env, capture_output=True, timeout=timeout)
         except subprocess.TimeoutExpired:
             results.append({**result, "status": "failed", "error": f"timed out after {timeout}s"})
             continue
@@ -97,20 +109,27 @@ def run_hooks(ws, event: str, payload: dict, run_id: str) -> dict:
             results.append({**result, "status": "failed", "error": f"cannot start: {e}"})
             continue
         if proc.returncode != 0:
-            tail = proc.stderr.strip().splitlines()[-1:] or [""]
+            stderr = proc.stderr.decode("utf-8", errors="replace")
+            tail = stderr.strip().splitlines()[-1:] or [""]
             results.append({**result, "status": "failed",
                             "error": f"exit {proc.returncode}: {tail[0][:200]}"})
             continue
         try:
-            out = _parse(proc.stdout)
+            out = _parse(_decode(proc.stdout))
             items = [make_item(ws, p.get("op"), p.get("module"), p.get("reason"),
                                field=p.get("field"), doc=p.get("doc"), value=p.get("value"))
                      for p in out["proposals"]]
-        except (ValueError, AttributeError, UsageError) as e:
-            results.append({**result, "status": "failed", "error": f"bad output: {e}"})
+        except Exception as e:  # any garbage: this hook fails, the run goes on
+            detail = e if isinstance(e, (ValueError, UsageError)) else f"{type(e).__name__}: {e}"
+            results.append({**result, "status": "failed", "error": f"bad output: {detail}"})
             continue
-        for item in items:
-            add_proposal(ws, run_id, f"hook-{hook['id']}", item)
+        try:
+            if items:
+                add_proposals(ws, run_id, f"hook-{hook['id']}", items)
+        except Exception as e:
+            results.append({**result, "status": "failed",
+                            "error": f"cannot queue proposals: {e}"})
+            continue
         results.append({**result, "status": "ok", "messages": out["messages"],
                         "queued": len(items)})
     failed_required = any(r["status"] == "failed" and r["required"] for r in results)
