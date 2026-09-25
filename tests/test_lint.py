@@ -156,5 +156,27 @@ class LintTest(unittest.TestCase):
             self.assertIn(expected, got)
 
 
+class LintAdditionsTest(unittest.TestCase):  # MS015, MS022, MS040 alias/placeholder skip
+    def test_unconfigured_role_is_warning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = copy_fixture(tmp)
+            mutate_registry(root, lambda d: d["modules"]["catalog"]["context_files"]["roles"].update(
+                security="modules/catalog/roles/qa.md"))
+            self.assertIn(("MS015", "warning"), lint_codes(root))
+
+    def test_empty_keyword_is_warning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = copy_fixture(tmp)
+            mutate_registry(root, lambda d: d["modules"]["catalog"].update(keywords=["catalog", " "]))
+            self.assertIn(("MS022", "warning"), lint_codes(root))
+
+    def test_component_aliases_and_placeholders_are_skipped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = copy_fixture(tmp)
+            with (root / "modules" / "catalog" / "MODULE.md").open("a") as fh:
+                fh.write("| Alias | `@app/catalog/x.ts` | a |\n| Ph | `src/<name>/x.py` | p |\n")
+            self.assertNotIn(("MS040", "warning"), lint_codes(root))
+
+
 if __name__ == "__main__":
     unittest.main()

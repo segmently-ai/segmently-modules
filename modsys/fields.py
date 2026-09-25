@@ -10,6 +10,9 @@ _MAP = re.compile(r"map<string,(.+)>")
 SCALARS = {"string": str, "bool": bool, "int": int, "object": dict}
 JSON_TYPES = {"string": "string", "bool": "boolean", "int": "integer", "object": "object"}
 BOTH = ("module", "submodule")
+KINDS = ("data", "code_pointer")
+DECLARATION_KEYS = {"type", "scope", "description", "kind", "used_by", "ask_on_create",
+                    "sync_hint", "deprecated", "required", "owner"}
 
 
 @dataclass(frozen=True)
@@ -84,14 +87,36 @@ def _tuple(v) -> tuple:
     return tuple(v) if isinstance(v, list) else (v,)
 
 
+def _check_declaration(name: str, spec: dict, owner) -> None:
+    where = f"field {name!r} (owner {owner})"
+    for key in spec:
+        if key not in DECLARATION_KEYS:
+            raise UsageError(f"{where}: unknown key {key!r}")
+    t = spec.get("type")
+    if not (isinstance(t, str) or (isinstance(t, list) and t
+                                   and all(isinstance(i, str) for i in t))):
+        raise UsageError(f"{where}: 'type' is required and must be a type expression "
+                         f"or a non-empty list of them, got {t!r}")
+    if spec.get("kind", "data") not in KINDS:
+        raise UsageError(f"{where}: kind must be one of {list(KINDS)}, got {spec['kind']!r}")
+    for key in ("scope", "required"):
+        for value in _tuple(spec.get(key, [])):
+            if value not in BOTH:
+                raise UsageError(f"{where}: {key} values must be one of {list(BOTH)}, "
+                                 f"got {value!r}")
+
+
 def load_field_defs(config: dict) -> dict[str, FieldDef]:
     defs = dict(CORE_FIELDS)
     for name, spec in (config.get("fields") or {}).items():
+        if not isinstance(spec, dict):
+            raise UsageError(f"field {name!r}: declaration must be a table")
         owner = spec.get("owner", "config")
         if name in CORE_FIELDS:
             raise UsageError(f"field {name!r} (owner {owner}) is a core field; "
                              f"it cannot be redeclared")
-        types = _tuple(spec.get("type", "object"))
+        _check_declaration(name, spec, owner)
+        types = _tuple(spec["type"])
         for t in types:
             try:
                 validate_type_expr(t)

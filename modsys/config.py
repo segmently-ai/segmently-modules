@@ -1,3 +1,4 @@
+import re
 import tomllib
 from importlib import resources
 from pathlib import Path
@@ -7,6 +8,70 @@ from modsys.output import UsageError
 
 PACK_META_KEYS = {"id", "version", "priority", "requires", "description", "skills", "agents"}
 DEFAULT_PACK_PRIORITY = 50
+
+
+def _is_int(v) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+# value type name -> (check, wording used in error messages)
+_TYPES = {
+    "str": (lambda v: isinstance(v, str), "a string"),
+    "int": (_is_int, "an integer"),
+    "bool": (lambda v: isinstance(v, bool), "a boolean"),
+    "list[str]": (lambda v: isinstance(v, list) and all(isinstance(i, str) for i in v),
+                  "a list of strings"),
+}
+# Only KNOWN keys are checked; unknown keys and sections pass (forward compatibility).
+LAYER_SCHEMA = {
+    "paths": {k: "str" for k in ("modules_dir", "registry", "registry_layout", "module_doc")},
+    "registry": {"statuses": "list[str]", "relations": "list[str]", "dir_whitelist": "list[str]",
+                 "stub_pattern": "str"},
+    "budgets": {k: "int" for k in ("module_doc_split_signal", "module_doc_hard_stop",
+                                   "role_doc_max", "keywords_soft", "keyword_shared_warn")},
+    "match": {k: "int" for k in ("keyword_weight", "combination_weight", "negative_weight",
+                                 "min_score", "top")},
+    "lint": {"fail_on": "str", "component_table_heading": "str"},
+}
+ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str"}
+
+
+def _require_table(value, section: str, source) -> dict:
+    if not isinstance(value, dict):
+        raise UsageError(f"{source}: [{section}] must be a table, got {value!r}")
+    return value
+
+
+def _check_table(table: dict, schema: dict, section: str, source) -> None:
+    for key, type_name in schema.items():
+        if key in table:
+            check, expected = _TYPES[type_name]
+            if not check(table[key]):
+                raise UsageError(f"{source}: [{section}] {key}: expected {expected}, "
+                                 f"got {table[key]!r}")
+
+
+def validate_layer(layer: dict, source) -> None:
+    """Type-check the known keys of one config layer (a pack, config.toml or
+    config.user.toml) before it is merged; `source` names the file in errors."""
+    for section, schema in LAYER_SCHEMA.items():
+        if section in layer:
+            _check_table(_require_table(layer[section], section, source), schema, section, source)
+    pattern = layer.get("registry", {}).get("stub_pattern")
+    if pattern is not None:
+        try:
+            re.compile(pattern)
+        except re.error as e:
+            raise UsageError(f"{source}: [registry] stub_pattern: invalid regular expression: "
+                             f"{e}") from None
+    top = layer.get("match", {}).get("top")
+    if top is not None and top < 0:
+        raise UsageError(f"{source}: [match] top: expected an integer >= 0, got {top!r}")
+    for section in ("roles", "fields"):
+        for name, spec in _require_table(layer.get(section, {}), section, source).items():
+            _require_table(spec, f"{section}.{name}", source)
+            if section == "roles":
+                _check_table(spec, ROLE_SCHEMA, f"roles.{name}", source)
 
 
 def read_toml(path: Path) -> dict:
@@ -29,14 +94,19 @@ def discover_packs(config_dir: Path) -> list[dict]:
     packs = []
     for pack_toml in sorted((config_dir / "packs").glob("*/pack.toml")):
         data = read_toml(pack_toml)
-        packs.append({"id": data.get("id", pack_toml.parent.name),
-                      "priority": int(data.get("priority", DEFAULT_PACK_PRIORITY)),
-                      "path": pack_toml, "data": data})
+        priority = data.get("priority", DEFAULT_PACK_PRIORITY)
+        if not _is_int(priority):
+            raise UsageError(f"{pack_toml}: priority must be an integer, got {priority!r}")
+        pack_id = data.get("id", pack_toml.parent.name)
+        if not isinstance(pack_id, str) or not pack_id:
+            raise UsageError(f"{pack_toml}: id must be a non-empty string, got {pack_id!r}")
+        packs.append({"id": pack_id, "priority": priority, "path": pack_toml, "data": data})
     return sorted(packs, key=lambda p: (p["priority"], p["id"]))
 
 
 def _pack_layer(pack: dict) -> dict:
     layer = {k: v for k, v in pack["data"].items() if k not in PACK_META_KEYS}
+    validate_layer(layer, pack["path"])
     for spec in (layer.get("fields") or {}).values():
         spec.setdefault("owner", pack["id"])
     return layer
@@ -48,7 +118,9 @@ def load_config(config_dir: Path) -> dict:
     for name in ("config.toml", "config.user.toml"):
         path = config_dir / name
         if path.exists():
-            layers.append(read_toml(path))
+            layer = read_toml(path)
+            validate_layer(layer, path)
+            layers.append(layer)
     config = merge_layers(layers)
     config["_packs"] = [p["id"] for p in packs]
     return config

@@ -79,5 +79,45 @@ class LoadConfigTest(unittest.TestCase):
         self.assertEqual(config["_packs"], ["a", "b"])
 
 
+
+class LayerValidationTest(unittest.TestCase):  # per-layer config + pack meta validation
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.cfg = Path(self._tmp.name) / ".modsys"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def assertConfigError(self, *needles):
+        with self.assertRaises(UsageError) as ctx:
+            load_config(self.cfg)
+        for needle in needles:
+            self.assertIn(needle, str(ctx.exception))
+
+    def test_bool_is_not_an_integer(self):
+        write(self.cfg / "config.user.toml", "[budgets]\nrole_doc_max = true\n")
+        self.assertConfigError("config.user.toml", "[budgets] role_doc_max", "True")
+
+    def test_pack_layer_is_validated_before_merge(self):
+        write(self.cfg / "packs/ui/pack.toml", 'id = "ui"\n[roles.designer]\nenabled = "yes"\n')
+        self.assertConfigError("packs/ui/pack.toml", "[roles.designer] enabled")
+
+    def test_fields_value_must_be_a_table_in_a_pack(self):
+        write(self.cfg / "packs/ui/pack.toml", 'id = "ui"\n[fields]\nfigma_url = "string"\n')
+        self.assertConfigError("packs/ui/pack.toml", "[fields.figma_url] must be a table")
+
+    def test_pack_meta_id_and_priority(self):
+        write(self.cfg / "packs/a/pack.toml", 'id = ""\n')
+        self.assertConfigError("packs/a/pack.toml", "id must be a non-empty string")
+        write(self.cfg / "packs/a/pack.toml", 'id = "a"\npriority = true\n')
+        self.assertConfigError("packs/a/pack.toml", "priority must be an integer, got True")
+
+    def test_unknown_keys_and_sections_pass(self):
+        write(self.cfg / "config.toml", '[match]\nfuture_knob = "x"\n[hooks]\nrun = 5\n')
+        config = load_config(self.cfg)
+        self.assertEqual(config["match"]["future_knob"], "x")
+        self.assertEqual(config["hooks"], {"run": 5})
+
+
 if __name__ == "__main__":
     unittest.main()

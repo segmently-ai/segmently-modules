@@ -2,12 +2,12 @@ from pathlib import Path
 
 from modsys.config import enabled_roles
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
-from modsys.registry import resolve_module_arg, stub_head
+from modsys.registry import as_dict, as_list, resolve_module_arg, stub_head
 from modsys.workspace import Workspace
 
 
 def role_paths(cf: dict, role: str) -> list:
-    val = ((cf or {}).get("roles") or {}).get(role)
+    val = as_dict(as_dict(cf).get("roles")).get(role)
     if isinstance(val, str):
         return [val]
     if isinstance(val, list):
@@ -16,7 +16,7 @@ def role_paths(cf: dict, role: str) -> list:
 
 
 def _extras(cf: dict):
-    for key, val in (cf or {}).items():
+    for key, val in as_dict(cf).items():
         if key in ("universal", "roles"):
             continue
         for p in val if isinstance(val, list) else [val]:
@@ -33,6 +33,12 @@ def _stub_or_unknown(ws, name: str) -> tuple[int, dict]:
     raise UsageError(f"unknown module '{name}'{hint}")
 
 
+def _object(entry, label: str) -> dict:
+    if not isinstance(entry, dict):
+        raise UsageError(f"registry entry '{label}' is not an object")
+    return entry
+
+
 def show_module(ws, arg: str, role: str | None, all_roles: bool) -> tuple[int, dict]:
     modules = ws.registry.modules
     modules_dir = ws.config["paths"]["modules_dir"]
@@ -43,25 +49,26 @@ def show_module(ws, arg: str, role: str | None, all_roles: bool) -> tuple[int, d
     parent, _, child = resolved.partition("/")
     if parent not in modules:
         return _stub_or_unknown(ws, parent)
-    entry = modules[parent]
-    subs = entry.get("submodules") or {}
+    entry = _object(modules[parent], parent)
+    subs = as_dict(entry.get("submodules"))
     if child and child not in subs:
         raise UsageError(f"'{child}' is not a submodule of '{parent}' "
                          f"(children: {', '.join(subs) or 'none'})")
+    sub = _object(subs[child], f"{parent}/{child}") if child else {}
     result = {"module": f"{parent}/{child}" if child else parent,
               "status": entry.get("status"), "description": entry.get("description"),
               "read": [], "code": []}
 
     def add(label, path):
-        if path:
+        if isinstance(path, str) and path:  # malformed paths are lint's job (MS004)
             result["read"].append({"label": label, "path": path,
                                    "exists": (ws.root / path).exists()})
 
     roles = enabled_roles(ws.config) if all_roles else ([role] if role else [])
-    cf = entry.get("context_files") or {}
+    cf = as_dict(entry.get("context_files"))
     add("universal (parent INDEX)" if subs else "universal", cf.get("universal"))
     if child:
-        ccf = subs[child].get("context_files") or {}
+        ccf = as_dict(sub.get("context_files"))
         add(f"child universal ({child})", ccf.get("universal"))
         for r in roles:
             for p in role_paths(ccf, r):
@@ -77,7 +84,8 @@ def show_module(ws, arg: str, role: str | None, all_roles: bool) -> tuple[int, d
         for key, p in _extras(cf):
             add(key, p)
         if subs:
-            result["submodules"] = {c: (s.get("description") or "") for c, s in subs.items()}
+            result["submodules"] = {c: (as_dict(s).get("description") or "")
+                                    for c, s in subs.items()}
     for name, fdef in ws.fields.items():
         if fdef.kind == "code_pointer" and entry.get(name):
             val = entry[name]
@@ -90,18 +98,23 @@ def related_edges(ws, arg: str, relation: str | None) -> tuple[int, dict]:
     name = resolve_module_arg(arg, ws.config["paths"]["modules_dir"]).partition("/")[0]
     if name not in modules:
         return _stub_or_unknown(ws, name)
+    entry = _object(modules[name], name)
     if relation and relation not in ws.config["registry"]["relations"]:
         raise UsageError(f"unknown relation '{relation}' "
                          f"(relations: {', '.join(ws.config['registry']['relations'])})")
-    fwd = [e for e in modules[name].get("related_modules") or []
-           if not relation or e.get("relation") == relation]
+
+    def edges(e: dict):  # malformed edges are lint's job (MS013); skip them here
+        return [x for x in as_list(e.get("related_modules")) if isinstance(x, dict)
+                and (not relation or x.get("relation") == relation)]
+
+    fwd = edges(entry)
     rev = []
-    for other, entry in modules.items():
+    for other, other_entry in modules.items():
         if other == name:
             continue
-        for e in entry.get("related_modules") or []:
-            if ((e.get("module") or "").partition("/")[0] == name
-                    and (not relation or e.get("relation") == relation)):
+        for e in edges(as_dict(other_entry)):
+            target = e.get("module")
+            if isinstance(target, str) and target.partition("/")[0] == name:
                 rev.append({"from": other, **e})
     return EXIT_OK, {"module": name, "edges": fwd, "reverse": rev}
 
@@ -109,11 +122,13 @@ def related_edges(ws, arg: str, relation: str | None) -> tuple[int, dict]:
 def list_modules(ws, status: str | None) -> tuple[int, list]:
     rows = []
     for name, entry in ws.registry.modules.items():
+        entry = as_dict(entry)  # a non-object entry is still listed (lint reports it)
         if status and entry.get("status") != status:
             continue
+        desc = entry.get("description")
         rows.append({"module": name, "status": entry.get("status"),
-                     "description": (entry.get("description") or "").split(". ")[0][:100],
-                     "children": ",".join(entry.get("submodules") or {})})
+                     "description": (desc if isinstance(desc, str) else "").split(". ")[0][:100],
+                     "children": ",".join(as_dict(entry.get("submodules")))})
     return EXIT_OK, rows
 
 
@@ -176,14 +191,14 @@ def _render_related(d) -> None:
         return
     print(f"forward edges — {len(d['edges']) or 'NONE'}:")
     for e in d["edges"]:
-        print(f"  {e.get('relation'):<18} {e.get('module'):<38} {e.get('description')}")
+        print(f"  {str(e.get('relation')):<18} {str(e.get('module')):<38} {e.get('description')}")
     print(f"reverse edges — {len(d['reverse']) or 'NONE'}:")
     for e in d["reverse"]:
-        print(f"  {e.get('relation'):<18} {e['from']:<38} {e.get('description')}")
+        print(f"  {str(e.get('relation')):<18} {e['from']:<38} {e.get('description')}")
 
 
 def _render_list(rows) -> None:
     for r in sorted(rows, key=lambda r: r["module"]):
         kids = f"  [children: {r['children']}]" if r["children"] else ""
-        print(f"{r['module']:<36} {r['status']:<9} {r['description']}{kids}")
+        print(f"{r['module']:<36} {str(r['status'] or ''):<9} {r['description']}{kids}")
     print(f"\n{len(rows)} modules")

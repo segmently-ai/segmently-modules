@@ -10,11 +10,11 @@ ROOT_MARKERS = (".modsys", "modules/registry.json")
 
 
 def find_root(start: Path) -> Path:
+    """Nearest directory holding a root marker; the nearest `.git` ends the search."""
     start = start.resolve()
     for d in (start, *start.parents):
         if any((d / marker).exists() for marker in ROOT_MARKERS):
             return d
-    for d in (start, *start.parents):
         if (d / ".git").exists():
             return d
     raise UsageError(f"cannot find a repository root above {start}; pass --root")

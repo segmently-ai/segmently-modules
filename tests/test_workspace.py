@@ -74,6 +74,16 @@ class RootAndRegistryGapTest(unittest.TestCase):  # AC-014, AC-015
             (repo / "deep").mkdir()
             self.assertEqual(find_root(repo / "deep"), repo.resolve())
 
+    def test_nearest_git_stops_the_search(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            outer = Path(tmp) / "outer"
+            (outer / "modules").mkdir(parents=True)
+            (outer / "modules" / "registry.json").write_text('{"modules": {}}')
+            inner = outer / "inner"
+            (inner / ".git").mkdir(parents=True)
+            (inner / "sub").mkdir()
+            self.assertEqual(find_root(inner / "sub"), inner.resolve())
+
     def test_no_markers_is_usage_error(self):
         # assumes the system temp dir is not inside a git checkout (default on macOS/Linux)
         with tempfile.TemporaryDirectory() as tmp:

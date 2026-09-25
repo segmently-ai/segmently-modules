@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -33,4 +34,10 @@ def main(argv: list[str] | None = None) -> int:
         return args.func(args)
     except UsageError as e:
         print(f"modsys: error: {e}", file=sys.stderr)
+        return EXIT_USAGE
+    except Exception as e:  # headless contract: exit 2, never a traceback
+        if os.environ.get("MODSYS_DEBUG"):
+            raise
+        print(f"modsys: internal error: {type(e).__name__}: {e} "
+              f"(set MODSYS_DEBUG=1 for a traceback)", file=sys.stderr)
         return EXIT_USAGE

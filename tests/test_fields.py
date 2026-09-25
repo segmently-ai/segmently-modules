@@ -61,5 +61,31 @@ class JsonSchemaTest(unittest.TestCase):
         self.assertIn("anyOf", module["properties"]["negative_keywords"])
 
 
+
+class FieldDeclarationValidationTest(unittest.TestCase):  # every declaration is checked
+    def assertFieldError(self, spec, *needles):
+        with self.assertRaises(UsageError) as ctx:
+            load_field_defs({"fields": {"x": spec}})
+        for needle in ("'x'", *needles):
+            self.assertIn(needle, str(ctx.exception))
+
+    def test_type_is_required_and_typed(self):
+        for spec in ({"owner": "ui"}, {"type": [], "owner": "ui"}, {"type": ["string", 5], "owner": "ui"}):
+            with self.subTest(spec=spec):
+                self.assertFieldError(spec, "owner ui", "type")
+
+    def test_scope_and_required_values(self):
+        self.assertFieldError({"type": "string", "scope": "child"}, "owner config", "scope")
+        self.assertFieldError({"type": "string", "required": ["module", "all"]}, "required")
+
+    def test_valid_declaration_with_every_key(self):
+        defs = load_field_defs({"fields": {"x": {
+            "type": ["string", "string[]"], "scope": ["module", "submodule"], "description": "d",
+            "kind": "code_pointer", "used_by": ["show"], "ask_on_create": True, "sync_hint": "h",
+            "deprecated": "", "required": "module", "owner": "ui"}}})
+        self.assertEqual(defs["x"].type, ("string", "string[]"))
+        self.assertEqual(defs["x"].required, ("module",))
+
+
 if __name__ == "__main__":
     unittest.main()

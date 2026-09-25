@@ -16,11 +16,25 @@ class Registry:
         return self.raw["modules"]
 
 
+def as_dict(v) -> dict:
+    """A registry value where an object is expected; anything else reads as empty."""
+    return v if isinstance(v, dict) else {}
+
+
+def as_list(v) -> list:
+    """A registry value where an array is expected; anything else reads as empty."""
+    return v if isinstance(v, list) else []
+
+
 def load_registry(path: Path) -> Registry:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         raise UsageError(f"registry not found: {path}") from None
+    except UnicodeDecodeError as e:
+        raise UsageError(f"{path}: not valid UTF-8: {e}") from None
+    except OSError as e:
+        raise UsageError(f"{path}: cannot read: {e}") from None
     except json.JSONDecodeError as e:
         raise UsageError(f"{path}: invalid JSON: {e}") from None
     if not isinstance(raw, dict) or not isinstance(raw.get("modules"), dict):
@@ -32,7 +46,7 @@ def stub_head(root: Path, config: dict, name: str) -> str | None:
     """If <modules_dir>/<name>/<module_doc> is a pointer stub, return its first lines."""
     doc = root / config["paths"]["modules_dir"] / name / config["paths"]["module_doc"]
     if doc.exists():
-        head = doc.read_text(encoding="utf-8")[:600]
+        head = doc.read_text(encoding="utf-8", errors="replace")[:600]
         if re.search(config["registry"]["stub_pattern"], head, re.IGNORECASE):
             return "\n".join(line for line in head.splitlines()[:8] if line.strip())
     return None

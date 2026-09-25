@@ -1,3 +1,5 @@
+"""Registry lint. Codes: MS001-MS004, MS006-MS015 registry/field checks · MS020-MS022
+keyword budgets and hygiene · MS030-MS032 doc budgets · MS040 component paths."""
 import re
 from collections import Counter
 from dataclasses import asdict, dataclass
@@ -6,7 +8,7 @@ from pathlib import Path
 from modsys.fields import value_matches
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.query import role_paths
-from modsys.registry import stub_head
+from modsys.registry import as_dict, as_list, stub_head
 from modsys.workspace import Workspace
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "error": 2}
@@ -25,7 +27,7 @@ class Finding:
 
 def _context_paths(cf) -> list[tuple[str, object]]:
     out = []
-    for key, val in (cf or {}).items() if isinstance(cf, dict) else []:
+    for key, val in as_dict(cf).items():
         if isinstance(val, str):
             out.append((key, val))
         elif isinstance(val, dict):
@@ -39,14 +41,23 @@ def _context_paths(cf) -> list[tuple[str, object]]:
     return out
 
 
+def _role_docs(cf: dict) -> list:
+    return [p for r in as_dict(cf.get("roles")) for p in role_paths(cf, r)]
+
+
 def _docs(entry: dict, name: str):
     """(module label, universal doc, [role docs]) for a module and its children."""
-    cf = entry.get("context_files") or {}
-    yield name, cf.get("universal"), [p for r in (cf.get("roles") or {}) for p in role_paths(cf, r)]
-    for child, sub in (entry.get("submodules") or {}).items():
-        ccf = sub.get("context_files") or {}
-        yield (f"{name}/{child}", ccf.get("universal"),
-               [p for r in (ccf.get("roles") or {}) for p in role_paths(ccf, r)])
+    cf = as_dict(entry.get("context_files"))
+    yield name, cf.get("universal"), _role_docs(cf)
+    for child, sub in as_dict(entry.get("submodules")).items():
+        if isinstance(sub, dict):
+            ccf = as_dict(sub.get("context_files"))
+            yield f"{name}/{child}", ccf.get("universal"), _role_docs(ccf)
+
+
+def _objects(modules: dict):
+    """Module entries that are objects; the others get MS013 in the entry pass."""
+    return ((n, e) for n, e in modules.items() if isinstance(e, dict))
 
 
 def _line_count(path: Path) -> int:
@@ -84,18 +95,39 @@ def lint_registry(ws) -> list[Finding]:
             elif not (root / p).exists():
                 add("MS004", "error", label, f"{prefix}.{key} path missing on disk", p)
 
+    declared_roles = set(cfg.get("roles") or {})
+
+    def check_roles(label, cf):
+        roles = cf.get("roles") if isinstance(cf, dict) else None
+        if roles is not None and not isinstance(roles, dict):
+            add("MS013", "error", label, "field 'context_files.roles' does not match type object")
+        for r in as_dict(roles):
+            if r not in declared_roles:
+                add("MS015", "warning", label,
+                    f"role '{r}' is not configured (declare [roles.{r}] in config or a pack)")
+
     for name, entry in modules.items():
+        if not isinstance(entry, dict):
+            add("MS013", "error", name, "module entry is not an object")
+            continue
         check_fields(name, entry, "module")
         if entry.get("name") and entry["name"] != name:
             add("MS002", "error", name, f"'name' field mismatch: {entry['name']!r}")
         if entry.get("status") is not None and entry["status"] not in statuses:
             add("MS003", "error", name, f"status {entry['status']!r} not in {statuses}")
         check_paths(name, entry.get("context_files"), "context_files")
-        for child, sub in (entry.get("submodules") or {}).items():
+        check_roles(name, entry.get("context_files"))
+        for child, sub in as_dict(entry.get("submodules")).items():
+            if not isinstance(sub, dict):
+                add("MS013", "error", f"{name}/{child}", "submodule entry is not an object")
+                continue
             check_fields(f"{name}/{child}", sub, "submodule")
             check_paths(f"{name}/{child}", sub.get("context_files"),
                         f"submodules.{child}.context_files")
-        for i, edge in enumerate(entry.get("related_modules") or []):
+            check_roles(f"{name}/{child}", sub.get("context_files"))
+        for i, edge in enumerate(as_list(entry.get("related_modules"))):
+            if not isinstance(edge, dict):  # the field type check reports MS013
+                continue
             where = f"related_modules[{i}]"
             if edge.get("relation") not in relations:
                 add("MS006", "error", name, f"{where}: relation {edge.get('relation')!r} "
@@ -109,7 +141,7 @@ def lint_registry(ws) -> list[Finding]:
             parent, _, child = target.partition("/")
             if parent not in modules:
                 add("MS009", "error", name, f"{where}: target '{parent}' not in registry")
-            elif child and child not in (modules[parent].get("submodules") or {}):
+            elif child and child not in as_dict(as_dict(modules[parent]).get("submodules")):
                 add("MS010", "error", name, f"{where}: '{child}' is not a submodule of '{parent}'")
 
     mdir = root / cfg["paths"]["modules_dir"]
@@ -122,18 +154,24 @@ def lint_registry(ws) -> list[Finding]:
                                               f"not registered and is not a pointer stub")
 
     shared: Counter = Counter()
-    for name, entry in modules.items():
+    for name, entry in _objects(modules):
         kws = entry.get("keywords") if isinstance(entry.get("keywords"), list) else []
         if len(kws) > budgets["keywords_soft"] and "submodules" not in entry:
             add("MS020", "info", name, f"{len(kws)} keywords > soft budget {budgets['keywords_soft']}")
         for kw in {k.lower() for k in kws if isinstance(k, str)}:
             shared[kw] += 1
+        subs = [(f"{name}/{c}", s) for c, s in as_dict(entry.get("submodules")).items()
+                if isinstance(s, dict)]
+        for label, holder in [(name, entry), *subs]:
+            for kw in as_list(holder.get("keywords")):
+                if isinstance(kw, str) and not kw.strip():
+                    add("MS022", "warning", label, "empty keyword matches every task")
     for kw, count in sorted(shared.items()):
         if count >= budgets["keyword_shared_warn"]:
             add("MS021", "info", "*", f"keyword {kw!r} shared by {count} modules")
 
     heading = cfg["lint"]["component_table_heading"]
-    for name, entry in modules.items():
+    for name, entry in _objects(modules):
         for label, universal, roles in _docs(entry, name):
             if isinstance(universal, str) and (root / universal).is_file():
                 n = _line_count(root / universal)
@@ -152,6 +190,8 @@ def lint_registry(ws) -> list[Finding]:
                     if not in_section or not line.startswith("|"):
                         continue
                     for token in _BACKTICK.findall(line):
+                        if token.strip().startswith("@") or any(c in token for c in "<{["):
+                            continue  # import alias or placeholder, not a repo path
                         candidate = re.split(r"[:#]", token.strip())[0]
                         if ("/" in candidate and " " not in candidate and "*" not in candidate
                                 and "://" not in token and not (root / candidate).exists()):
