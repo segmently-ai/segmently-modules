@@ -4,8 +4,9 @@ schema_version = 1
 [paths]
 modules_dir = "modules"
 registry = "modules/registry.json"
-registry_layout = "single"
+registry_layout = "single"   # or "per-module": <modules_dir>/<name>/<module_entry> + generated index
 module_doc = "MODULE.md"
+module_entry = "module.json"
 
 [registry]
 statuses = ["active", "draft", "planned", "temporary"]

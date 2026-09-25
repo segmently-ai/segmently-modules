@@ -9,6 +9,7 @@ from modsys.output import UsageError
 
 PACK_META_KEYS = {"id", "version", "priority", "requires", "description", "skills", "agents"}
 DEFAULT_PACK_PRIORITY = 50
+REGISTRY_LAYOUTS = ("single", "per-module")
 
 
 def _is_int(v) -> bool:
@@ -25,7 +26,8 @@ _TYPES = {
 }
 # Only KNOWN keys are checked; unknown keys and sections pass (forward compatibility).
 LAYER_SCHEMA = {
-    "paths": {k: "str" for k in ("modules_dir", "registry", "registry_layout", "module_doc")},
+    "paths": {k: "str" for k in ("modules_dir", "registry", "registry_layout", "module_doc",
+                                 "module_entry")},
     "registry": {"statuses": "list[str]", "relations": "list[str]", "dir_whitelist": "list[str]",
                  "stub_pattern": "str", "updated_at_path": "str"},
     "budgets": {k: "int" for k in ("module_doc_split_signal", "module_doc_hard_stop",
@@ -65,6 +67,10 @@ def validate_layer(layer: dict, source) -> None:
         except re.error as e:
             raise UsageError(f"{source}: [registry] stub_pattern: invalid regular expression: "
                              f"{e}") from None
+    layout = layer.get("paths", {}).get("registry_layout")
+    if layout is not None and layout not in REGISTRY_LAYOUTS:
+        raise UsageError(f"{source}: [paths] registry_layout: expected one of "
+                         f"{list(REGISTRY_LAYOUTS)}, got {layout!r}")
     top = layer.get("match", {}).get("top")
     if top is not None and top < 0:
         raise UsageError(f"{source}: [match] top: expected an integer >= 0, got {top!r}")

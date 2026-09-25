@@ -177,7 +177,10 @@ def locked_edit(store):
         working.sha256, working.parts = original.sha256, original.parts
 
 
-def open_store(ws) -> RegistryStore:
+def open_store(ws):
     """The store for a workspace's configured registry layout."""
+    if ws.config["paths"]["registry_layout"] == "per-module":
+        from modsys.layout import PerModuleStore  # layout imports this module
+        return PerModuleStore(ws.root, ws.config)
     return RegistryStore(ws.root / ws.config["paths"]["registry"],
                          updated_at_path=ws.config["registry"].get("updated_at_path", ""))

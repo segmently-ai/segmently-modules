@@ -43,5 +43,9 @@ class Workspace:
     @property
     def registry(self) -> Registry:
         if self._registry is None:
-            self._registry = load_registry(self.root / self.config["paths"]["registry"])
+            if self.config["paths"]["registry_layout"] == "per-module":
+                from modsys.layout import load_per_module
+                self._registry = load_per_module(self.root, self.config)
+            else:
+                self._registry = load_registry(self.root / self.config["paths"]["registry"])
         return self._registry
