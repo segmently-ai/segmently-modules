@@ -6,10 +6,29 @@
       "name": "catalog",
       "description": "Book catalog: titles, authors, formats. Use when changing how books are listed or found.",
       "status": "active",
-      "keywords": ["catalog", "book", "author", "isbn", ".epub", "BookRepository"],
-      "negative_keywords": {"search": ["full text search engine", "elasticsearch"]},
-      "required_combinations": [["book", "listing"]],
-      "file_paths": ["src/catalog/service.py"],
+      "keywords": [
+        "catalog",
+        "book",
+        "author",
+        "isbn",
+        ".epub",
+        "BookRepository"
+      ],
+      "negative_keywords": {
+        "search": [
+          "full text search engine",
+          "elasticsearch"
+        ]
+      },
+      "required_combinations": [
+        [
+          "book",
+          "listing"
+        ]
+      ],
+      "file_paths": [
+        "src/catalog/service.py"
+      ],
       "context_files": {
         "universal": "modules/catalog/MODULE.md",
         "roles": {
@@ -19,43 +38,76 @@
         }
       },
       "related_modules": [
-        {"module": "checkout", "relation": "complements", "description": "Cart lines show catalog items"}
+        {
+          "module": "checkout",
+          "relation": "complements",
+          "description": "Cart lines show catalog items"
+        }
       ]
     },
     "checkout": {
       "name": "checkout",
       "description": "Cart and order placement. Use for cart contents, order totals and confirmation.",
       "status": "active",
-      "keywords": ["cart", "checkout", "order", "CartService"],
-      "negative_keywords": ["order of operations"],
+      "keywords": [
+        "cart",
+        "checkout",
+        "order",
+        "CartService"
+      ],
+      "negative_keywords": [
+        "order of operations"
+      ],
       "context_files": {
         "universal": "modules/checkout/MODULE.md",
-        "roles": {"developer": "modules/checkout/roles/developer.md"}
+        "roles": {
+          "developer": "modules/checkout/roles/developer.md"
+        }
       },
       "related_modules": [
-        {"module": "payments/refunds", "relation": "depends-on", "description": "Cancelled orders trigger refunds"}
+        {
+          "module": "payments/refunds",
+          "relation": "depends-on",
+          "description": "Cancelled orders trigger refunds"
+        }
       ]
     },
     "payments": {
       "name": "payments",
       "description": "Payment capture and refunds. Use for charging customers or returning money.",
       "status": "active",
-      "keywords": ["payment", "charge", "refund", "partial refund", "PaymentGateway"],
+      "keywords": [
+        "payment",
+        "charge",
+        "refund",
+        "partial refund",
+        "PaymentGateway"
+      ],
       "context_files": {
         "universal": "modules/payments/MODULE.md",
-        "roles": {"developer": "modules/payments/roles/developer.md"}
+        "roles": {
+          "developer": "modules/payments/roles/developer.md"
+        }
       },
       "submodules": {
         "refunds": {
           "description": "Refund requests and partial refunds",
-          "keywords": ["refund", "partial refund"],
+          "keywords": [
+            "refund",
+            "partial refund"
+          ],
           "context_files": {
             "universal": "modules/payments/submodules/refunds/MODULE.md",
-            "roles": {"developer": "modules/payments/submodules/refunds/roles/developer.md"}
+            "roles": {
+              "developer": "modules/payments/submodules/refunds/roles/developer.md"
+            }
           }
         }
       }
     }
   },
-  "metadata": {"created_at": "2026-01-01T00:00:00Z", "last_updated": "2026-01-01T00:00:00Z"}
+  "metadata": {
+    "created_at": "2026-01-01T00:00:00Z",
+    "last_updated": "2026-01-01T00:00:00Z"
+  }
 }

@@ -12,6 +12,7 @@ statuses = ["active", "draft", "planned", "temporary"]
 relations = ["depends-on", "complements", "implemented-in", "shares-contract", "superseded-by"]
 stub_pattern = 'status:?\**\s*\**(retired|merged|migrated|superseded)'
 dir_whitelist = []
+updated_at_path = ""        # e.g. "metadata.last_updated": stamped on every registry write
 
 [budgets]
 module_doc_split_signal = 600

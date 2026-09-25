@@ -27,7 +27,7 @@ _TYPES = {
 LAYER_SCHEMA = {
     "paths": {k: "str" for k in ("modules_dir", "registry", "registry_layout", "module_doc")},
     "registry": {"statuses": "list[str]", "relations": "list[str]", "dir_whitelist": "list[str]",
-                 "stub_pattern": "str"},
+                 "stub_pattern": "str", "updated_at_path": "str"},
     "budgets": {k: "int" for k in ("module_doc_split_signal", "module_doc_hard_stop",
                                    "role_doc_max", "keywords_soft", "keyword_shared_warn")},
     "match": {k: "int" for k in ("keyword_weight", "combination_weight", "negative_weight",
