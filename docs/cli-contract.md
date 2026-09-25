@@ -7,12 +7,33 @@ and `--json`.
 - **stdout with `--json`:** exactly one JSON document `{"schema": "modsys.<verb>/1", "data": …}`.
 - **Exit codes:** `0` ok · `1` findings (lint at/above `--fail-on`, rejected proposals, a failed
   required hook, a stale index with `--check`, a pointer stub) · `2` usage, config or registry
-  error — stdout is empty, stderr carries `modsys: error: …`.
+  error — stdout is empty, stderr carries `modsys: error: …`. The one extra code is `130`:
+  interrupted by Ctrl-C (SIGINT, e.g. during a lock wait or at a `create` prompt), stderr
+  `modsys: interrupted`.
 - **Never a traceback:** an unexpected failure is exit `2` with `modsys: internal error: …`;
   set `MODSYS_DEBUG=1` to see the traceback.
 - **Writers** (`registry`, `index`, `proposals apply`, `sync --apply-proposals`, `create`,
   `migrate`) take the registry lock (`<registry>.lock`), write atomically, and refuse a file that
   changed since it was read. `--dry-run` writes nothing.
+- **Git refs** (`--from-diff A..B` of `sync` / `discover`, `--base REF` of `lint --changed`): a
+  value starting with `-` is refused (exit `2`) — it would be read as a git option. Changed paths
+  are relative to the root and limited to it, also when the root is a subdirectory of the git
+  repository; a rename counts as a delete plus an add.
+
+## Files the engine creates
+
+- `<registry>.lock` (default `modules/registry.json.lock`): the advisory lock every writer takes
+  — in the per-module layout too, where it guards every `<module>/module.json` and the index
+  (`index build` takes the same lock). It stays on disk; ignore it in git.
+- `<proposals_dir>/` (default `.modsys/proposals/`): the proposals queue — pending
+  `<run_id>-<agent>.json` files, a `<run_id>-<agent>.json.lock` next to each, and `done/` with
+  every processed file and its per-item results. Ignore the whole directory unless the team wants
+  the queue history in git; then ignore only its `*.lock` files.
+
+```gitignore
+modules/registry.json.lock
+.modsys/proposals/
+```
 
 | Verb | `data` |
 |---|---|
