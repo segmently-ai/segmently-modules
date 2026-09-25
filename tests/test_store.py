@@ -1,10 +1,12 @@
 """Registry store: canonical serialization, lock, atomic replace, optimistic concurrency."""
+import errno
 import json
 import os
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -115,6 +117,21 @@ class LockTest(unittest.TestCase):
             finally:
                 holder.wait(timeout=10)
                 holder.stdout.close()
+
+    def test_non_contention_errno_raises_immediately(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "registry.json"
+            path.write_text('{"modules": {}}\n', encoding="utf-8")
+            store = RegistryStore(path, lock_timeout_s=10)
+            start = time.monotonic()
+            with mock.patch("modsys.store._try_lock",
+                             side_effect=OSError(errno.ENOLCK, "No locks available")):
+                with self.assertRaises(UsageError) as ctx:
+                    with store.locked():
+                        pass
+            elapsed = time.monotonic() - start
+            self.assertIn("cannot lock", str(ctx.exception))
+            self.assertLess(elapsed, 2.0)
 
 
 class AtomicWriteFailureTest(unittest.TestCase):  # AC-006

@@ -3,6 +3,7 @@ advisory lock next to the file, atomic replace, and optimistic concurrency (a wr
 refused when the file changed since it was read)."""
 import contextlib
 import copy
+import errno
 import hashlib
 import json
 import os
@@ -18,6 +19,11 @@ from modsys.output import UsageError
 from modsys.registry import Registry, load_registry
 
 DEFAULT_LOCK_TIMEOUT_S = 10.0
+# Errnos meaning "someone else holds the lock" (fcntl.flock on POSIX: EAGAIN/EWOULDBLOCK;
+# msvcrt.locking on Windows: EACCES/EDEADLK). Any other errno (ENOLCK on NFS without lockd,
+# ENOTSUP/EOPNOTSUPP on some FUSE/synced filesystems, EBADF, EINVAL, …) is a real failure, not
+# contention, and must not be waited out.
+_LOCK_CONTENTION_ERRNOS = (errno.EAGAIN, errno.EWOULDBLOCK, errno.EACCES, errno.EDEADLK)
 
 
 def serialize(raw: dict) -> str:
@@ -64,7 +70,9 @@ def file_lock(path: Path, timeout_s: float = DEFAULT_LOCK_TIMEOUT_S):
             try:
                 _try_lock(fh)
                 break
-            except OSError:
+            except OSError as e:
+                if e.errno not in _LOCK_CONTENTION_ERRNOS:
+                    raise UsageError(f"{lock_path}: cannot lock: {e}") from e
                 if time.monotonic() >= deadline:
                     raise UsageError(f"{path}: locked by another writer ({lock_path}); "
                                      f"retry later") from None
