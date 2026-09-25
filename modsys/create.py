@@ -115,13 +115,18 @@ def resolve_template(ws, relpath: str, role: str | None = None) -> str:
         encoding="utf-8")
 
 
+def _check_name(value: str) -> None:
+    if not NAME.fullmatch(value) or len(value) > 48:
+        raise UsageError(f"module name {value!r}: use lowercase words joined by '-' (max 48)")
+
+
 def plan_create(ws, name: str, parent: str | None, answers: dict) -> dict:
     """Validate everything and compute files + entry; writes nothing."""
-    if not NAME.match(name) or len(name) > 48:
-        raise UsageError(f"module name {name!r}: use lowercase words joined by '-' (max 48)")
+    _check_name(name)
     modules = ws.registry.modules
     mdir = ws.config["paths"]["modules_dir"]
     if parent:
+        _check_name(parent)
         if not isinstance(modules.get(parent), dict):
             raise UsageError(f"unknown parent module '{parent}'")
         if name in (modules[parent].get("submodules") or {}):
@@ -162,7 +167,23 @@ def plan_create(ws, name: str, parent: str | None, answers: dict) -> dict:
     for key in ask_fields(ws, scope):
         entry[key] = answers[key]
     return {"module": f"{parent}/{name}" if parent else name, "files": files, "entry": entry,
-            "parent": parent, "name": name}
+            "parent": parent, "name": name, "rel_dir": rel_dir}
+
+
+def _check_still_free(ws, plan: dict, modules: dict) -> None:
+    """Re-check existence against the just-locked registry (and the filesystem) before any
+    doc is written — the plan-time check (`plan_create`) can be stale by the time the lock is
+    held, since another writer may have created the same module in between."""
+    parent, name = plan["parent"], plan["name"]
+    if parent:
+        if not isinstance(modules.get(parent), dict):
+            raise UsageError(f"unknown parent module '{parent}'")
+        if name in (modules[parent].get("submodules") or {}):
+            raise UsageError(f"'{parent}/{name}' already exists")
+    elif name in modules:
+        raise UsageError(f"module '{name}' already exists")
+    if (ws.root / plan["rel_dir"]).exists():
+        raise UsageError(f"{plan['rel_dir']}/ already exists (a stub or unregistered directory?)")
 
 
 def apply_create(ws, plan: dict) -> None:
@@ -171,11 +192,12 @@ def apply_create(ws, plan: dict) -> None:
     store = open_store(ws)
     try:
         with store.edit() as reg:
+            modules = reg.raw["modules"]
+            _check_still_free(ws, plan, modules)
             for rel, text in plan["files"].items():
                 path = ws.root / rel
                 atomic_write(path, text)
                 written.append(path)
-            modules = reg.raw["modules"]
             if plan["parent"]:
                 modules[plan["parent"]].setdefault("submodules", {})[plan["name"]] = plan["entry"]
             else:

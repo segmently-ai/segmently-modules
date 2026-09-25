@@ -5,7 +5,9 @@ import tempfile
 import unittest
 from unittest import mock
 
+from modsys import create as creator
 from modsys.output import UsageError
+from modsys.workspace import Workspace
 from tests.helpers import copy_fixture, run, run_json
 
 KW = ["--keyword", "review", "--keyword", "rating", "--keyword", "stars",
@@ -67,12 +69,23 @@ class CreateTest(unittest.TestCase):
         self.assertIn("unknown answer key(s): owner", err)
 
     def test_name_and_existence_refusals(self):
+        preexisting = {"catalog", "legacy-search"}
         for name, needle in [("Reviews", "use lowercase words"), ("user_reviews", "lowercase"),
-                             ("catalog", "already exists"), ("legacy-search", "already exists")]:
+                             ("catalog", "already exists"), ("legacy-search", "already exists"),
+                             ("reviews\n", "use lowercase words"),
+                             ("catalog\n", "use lowercase words")]:
             with self.subTest(name=name):
                 code, _, err = run("create", name, *DESC, *KW, *self.R)
                 self.assertEqual(code, 2)
                 self.assertIn(needle, err)
+                if name not in preexisting:
+                    self.assertFalse((self.root / "modules" / name).exists())
+
+    def test_parent_name_must_match_pattern(self):
+        code, _, err = run("create", "x", "--parent", "payments\n", *DESC, *KW, *self.R)
+        self.assertEqual(code, 2)
+        self.assertIn("use lowercase words", err)
+        self.assertFalse((self.root / "modules/x").exists())
 
     def test_roles_by_tag_and_by_name(self):
         self.team('[roles.designer]\napplies_when = "ui"\n')
@@ -139,6 +152,22 @@ class CreateTest(unittest.TestCase):
             code, _, _ = run("create", "reviews", *self.R)
         self.assertEqual(code, 0)
         self.assertEqual(self.reg()["reviews"]["keywords"][0], "review")
+
+    def test_apply_create_rechecks_existence_under_the_lock(self):
+        # A plans a create first (stale plan)…
+        ws = Workspace.load(self.root)
+        plan = creator.plan_create(ws, "reviews", None,
+                                   {"description": DESC[1], "keywords": KW[1::2]})
+        # …but B's full create of the same module lands first, while A still holds the plan.
+        code, _, _ = run("create", "reviews", *DESC, *KW, *self.R)
+        self.assertEqual(code, 0)
+        before_doc = (self.root / "modules/reviews/MODULE.md").read_bytes()
+        before_entry = self.reg()["reviews"]
+        with self.assertRaises(UsageError) as ctx:
+            creator.apply_create(ws, plan)
+        self.assertIn("already exists", str(ctx.exception))
+        self.assertEqual((self.root / "modules/reviews/MODULE.md").read_bytes(), before_doc)
+        self.assertEqual(self.reg()["reviews"], before_entry)
 
     def test_registry_failure_rolls_back_docs(self):
         with mock.patch("modsys.store.RegistryStore.save",
