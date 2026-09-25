@@ -98,6 +98,25 @@ class HooksTest(unittest.TestCase):
                 self.assertIn("config.toml", err)
                 self.assertIn(needle, err)
 
+    def test_hook_without_run_fails_alone_the_rest_still_run(self):
+        pack = ('id = "notify"\npriority = 30\n'
+                '[[hooks.post_sync]]\nid = "norun"\n'
+                '[[hooks.post_sync]]\nid = "tag"\n'
+                f'run = [{json.dumps(sys.executable)}, "./hooks/ok.py"]\n')
+        (self.pack / "pack.toml").write_text(pack, encoding="utf-8")
+        report = self.fire(Workspace.load(self.root))
+        results = {h["id"]: h for h in report["hooks"]}
+        self.assertEqual(results["norun"]["status"], "failed")
+        self.assertIn("no run command", results["norun"]["error"])
+        self.assertEqual(results["tag"]["status"], "ok")
+        self.assertFalse(report["failed_required"])
+
+    def test_hook_without_run_required_flags_the_run(self):
+        pack = ('id = "notify"\npriority = 30\n'
+                '[[hooks.post_sync]]\nid = "norun"\nrequired = true\n')
+        (self.pack / "pack.toml").write_text(pack, encoding="utf-8")
+        self.assertTrue(self.fire(Workspace.load(self.root))["failed_required"])
+
 
 if __name__ == "__main__":
     unittest.main()

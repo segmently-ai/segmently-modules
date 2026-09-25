@@ -79,11 +79,16 @@ def run_hooks(ws, event: str, payload: dict, run_id: str) -> dict:
         if not hook.get("enabled", True):
             results.append({**result, "status": "skipped"})
             continue
+        try:
+            argv = _argv(ws, hook)
+        except UsageError as e:
+            results.append({**result, "status": "failed", "error": str(e)})
+            continue
         timeout = hook.get("timeout_s", DEFAULT_TIMEOUT_S)
         env = {**os.environ, "MODSYS_ROOT": str(ws.root), "MODSYS_EVENT": event,
                "MODSYS_HOOK_ID": hook["id"], "MODSYS_RUN_ID": run_id}
         try:
-            proc = subprocess.run(_argv(ws, hook), input=json.dumps(payload), cwd=ws.root,
+            proc = subprocess.run(argv, input=json.dumps(payload), cwd=ws.root,
                                   env=env, capture_output=True, text=True, timeout=timeout)
         except subprocess.TimeoutExpired:
             results.append({**result, "status": "failed", "error": f"timed out after {timeout}s"})
