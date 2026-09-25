@@ -1,10 +1,13 @@
 """Registry lint. Codes: MS001-MS004, MS006-MS015 registry/field checks · MS020-MS022
-keyword budgets and hygiene · MS030-MS032 doc budgets · MS040 component paths."""
+keyword budgets and hygiene · MS030-MS032 doc budgets · MS040 component paths ·
+with --changed: MS050 code changed but no doc of its module · MS051 frozen legacy snapshot
+modified or deleted (report narrowed to the changed modules)."""
 import re
 from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from modsys.changes import changed_files, git, map_files
 from modsys.fields import value_matches
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.query import role_paths
@@ -206,10 +209,36 @@ def lint_registry(ws) -> list[Finding]:
     return out
 
 
+def drift_findings(ws, files: list[str], frozen_touched: list[str]) -> tuple[list, set]:
+    """MS050/MS051 for a change set; returns (findings, changed top-level modules)."""
+    mapping = map_files(ws, files)["modules"]
+    mdir = ws.config["paths"]["modules_dir"].rstrip("/") + "/"
+
+    def is_doc(f):  # a frozen snapshot never counts as a doc update
+        return f.startswith(mdir) and not f.endswith(".legacy.md")
+
+    docs_changed = {t for t, m in mapping.items() if any(is_doc(f) for f in m["files"])}
+    out = []
+    for target, m in mapping.items():
+        code = [f for f in m["files"] if not f.startswith(mdir)]
+        if code and target not in docs_changed and target.partition("/")[0] not in docs_changed:
+            out.append(Finding("MS050", ws.config["lint"]["drift_severity"], target,
+                               f"code changed ({len(code)} file(s)) but none of its docs"))
+    for f in frozen_touched:
+        module = f[len(mdir):].split("/")[0] if f.startswith(mdir) else "*"
+        out.append(Finding("MS051", "error", module,
+                           "frozen legacy snapshot modified or deleted", f))
+    return out, {t.partition("/")[0] for t in mapping}
+
+
 def register(sub, common) -> None:
     p = sub.add_parser("lint", parents=[common],
                        help="check registry, fields, doc budgets and component paths")
     p.add_argument("--fail-on", choices=sorted(FAIL_ON))
+    p.add_argument("--changed", action="store_true",
+                   help="drift check for a change set; report only the changed modules")
+    p.add_argument("--base", default="HEAD",
+                   help="--changed: compare the working tree (+ untracked) with this ref")
     p.set_defaults(func=run)
 
 
@@ -219,11 +248,21 @@ def run(args) -> int:
     if fail_on not in FAIL_ON:
         raise UsageError(f"[lint].fail_on must be one of {sorted(FAIL_ON)}, got {fail_on!r}")
     findings = lint_registry(ws)
+    changed = None
+    if args.changed:
+        files = changed_files(ws.root, base=args.base)
+        frozen = [f for f in git(ws.root, "diff", "--name-only", "--diff-filter=MD",
+                                 args.base).splitlines() if f.endswith(".legacy.md")]
+        drift, touched = drift_findings(ws, files, frozen)
+        findings = [f for f in findings if f.module.partition("/")[0] in touched] + drift
+        changed = {"base": args.base, "files": files, "modules": sorted(touched)}
     failed = any(SEVERITY_RANK[f.severity] >= FAIL_ON[fail_on] for f in findings)
     counts = Counter(f.severity for f in findings)
     data = {"findings": [asdict(f) for f in findings],
             "summary": {s: counts.get(s, 0) for s in ("error", "warning", "info")},
             "failed": failed}
+    if changed is not None:
+        data["changed"] = changed
     emit("lint", data, args.json, _render)
     return EXIT_FINDINGS if failed else EXIT_OK
 

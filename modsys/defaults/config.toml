@@ -33,6 +33,7 @@ top = 8
 [lint]
 fail_on = "error"
 component_table_heading = "EXISTING Components"
+drift_severity = "warning"     # MS050 (lint --changed): code changed, no doc of its module
 
 [roles.developer]
 order = 10

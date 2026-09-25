@@ -34,7 +34,7 @@ LAYER_SCHEMA = {
                                    "role_doc_max", "keywords_soft", "keyword_shared_warn")},
     "match": {k: "int" for k in ("keyword_weight", "combination_weight", "negative_weight",
                                  "min_score", "top")},
-    "lint": {"fail_on": "str", "component_table_heading": "str"},
+    "lint": {"fail_on": "str", "component_table_heading": "str", "drift_severity": "str"},
 }
 ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str"}
 
@@ -67,6 +67,10 @@ def validate_layer(layer: dict, source) -> None:
         except re.error as e:
             raise UsageError(f"{source}: [registry] stub_pattern: invalid regular expression: "
                              f"{e}") from None
+    drift = layer.get("lint", {}).get("drift_severity")
+    if drift is not None and drift not in ("info", "warning", "error"):
+        raise UsageError(f"{source}: [lint] drift_severity: expected info, warning or error, "
+                         f"got {drift!r}")
     layout = layer.get("paths", {}).get("registry_layout")
     if layout is not None and layout not in REGISTRY_LAYOUTS:
         raise UsageError(f"{source}: [paths] registry_layout: expected one of "
