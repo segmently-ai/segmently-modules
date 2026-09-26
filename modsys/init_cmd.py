@@ -210,6 +210,6 @@ def _render(d) -> None:
     for f in d["files"]:
         print(f"{_VERBS[f['status']][d['dry_run']]:<13} {f['path']}")
     print(f"layout: {d['layout']}")
-    print(f"next: modsys create NAME --description \"…\" --keyword … (5 or more); then wire "
-          f"code with modsys code-map add ID --pattern 'src/{{module}}/**' (rules land in "
-          f"{d['files'][0]['path']}) and check it with: modsys coverage")
+    print(f"next: modsys create NAME --description \"…\" --keywords \"a, b, c, d, e\" (5 or "
+          f"more); then wire code with modsys code-map add ID --pattern 'src/{{module}}/**' "
+          f"(rules land in {d['files'][0]['path']}) and check it with: modsys coverage")

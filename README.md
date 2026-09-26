@@ -37,14 +37,17 @@ and at least 5 distinct keywords — the terms that route a task to it:
 ```bash
 modsys create tasks --non-interactive \
   --description "Task items: create, complete, reorder; the home of a single task." \
-  --keyword task --keyword todo --keyword complete --keyword due --keyword priority
+  --keywords "task, todo, complete, due, priority"
 modsys create lists --non-interactive \
   --description "Task lists: group, share and order tasks in named lists." \
-  --keyword list --keyword group --keyword share --keyword board --keyword folder
+  --keywords "list, group, share, board, folder"
 modsys create reminders --non-interactive \
   --description "Reminders: schedule and send notifications before a task is due." \
-  --keyword reminder --keyword notify --keyword schedule --keyword alarm --keyword snooze
+  --keywords "reminder, notify, schedule, alarm, snooze"
 ```
+
+`--keywords` takes a comma-separated list (repeatable); `--keyword` (repeatable) adds one
+keyword at a time — use it for a keyword that itself contains a comma.
 
 Matching (`match`, `context`, `discover --task`) is exact-token: a keyword matches a whole word
 in the task text, case-insensitive, with no stemming or plural handling — the keyword `todo`

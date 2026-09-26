@@ -23,6 +23,10 @@ def register(sub, common) -> None:
                                           "(default limits: 20–200 characters)")
     p.add_argument("--keyword", action="append", dest="keywords",
                    help="repeatable (default: 5 or more for a module, 1 or more for a child)")
+    p.add_argument("--keywords", action="append", dest="keyword_lists", metavar="A,B,C",
+                   help="comma-separated keywords, repeatable, e.g. --keywords \"book, isbn, "
+                        "author\"; merged after the --keyword values, duplicates dropped; a "
+                        "keyword that contains a comma needs --keyword")
     p.add_argument("--status")
     p.add_argument("--tag", action="append", dest="tags", help="repeatable (applies_when roles)")
     p.add_argument("--role", action="append", dest="roles", help="repeatable (optional roles)")
@@ -43,6 +47,11 @@ def _answers(args) -> dict:
     for key in ("description", "keywords", "status", "tags", "roles"):
         if getattr(args, key) is not None:
             answers[key] = getattr(args, key)
+    if args.keyword_lists:  # stripped, empties dropped, after --keyword, de-duplicated
+        merged = list(args.keywords or []) + [k.strip() for value in args.keyword_lists
+                                              for k in value.split(",") if k.strip()]
+        if merged:
+            answers["keywords"] = list(dict.fromkeys(merged))
     return answers
 
 
