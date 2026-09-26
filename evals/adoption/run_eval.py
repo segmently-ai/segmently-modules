@@ -2,12 +2,15 @@
 """E-A — deterministic adoption eval. Builds two repositories from nothing in temp dirs and
 drives the modsys CLI of THIS checkout (`python -m modsys`, the checkout on PYTHONPATH):
 
-  greenfield  git init -> init -> 3 modules -> code_map -> a relation -> lint -> coverage ->
-              context -> the agent loop (code change -> lint --changed gate fails -> propose ->
-              sync --apply-proposals -> gate passes) -> a child module with its own rule
+  greenfield  git init -> init -> 3 modules -> code-map add -> a relation -> lint -> coverage
+              -> context -> the agent loop (code change -> lint --changed gate fails -> propose
+              -> sync --apply-proposals -> gate passes) -> ci --base <first commit> passes ->
+              a code-only change fails ci (drift) -> a docs follow-up passes ci -> a child
+              module with its own rule (code-map add --exclusive)
   brownfield  a synthetic layered app (routes / repositories / models / sql / tests + a db
-              layer) -> init -> a module per feature + db -> layered code_map rules with
-              exclusive -> coverage >= 0.8 -> a feature change drifts only the feature ->
+              layer) -> init -> a module per feature + db -> layered code_map rules: MS053
+              until the per-feature rules are exclusive -> coverage >= 0.8 -> code-map files
+              lists a feature's repository file -> a feature change drifts only the feature ->
               the per-module layout keeps list / match
 
 Every step asserts an exit code and a data check. Prints the scorecard JSON
@@ -116,10 +119,11 @@ GREEN_MODULES = {
     "reminders": ("Reminders: schedule and send notifications before a task is due.",
                   ["reminder", "notify", "schedule", "alarm", "snooze"]),
 }
-SRC_RULE = '\n[[code_map]]\nid = "src"\npattern = "src/{module}/**"\n'
-SEARCH_RULE = ('\n[[code_map]]\nid = "task-search"\nmodule = "tasks/search"\n'
-               'globs = ["src/tasks/search/**"]\nexclusive = true\n')
 TRACKED = (".gitignore", ".modsys", "modules", "src")
+
+
+def ci_statuses(data: dict) -> list[str]:
+    return [s["status"] for s in data["steps"]]
 
 
 def greenfield(sc: Scenario) -> None:
@@ -152,7 +156,9 @@ def greenfield(sc: Scenario) -> None:
         for rel in ("src/tasks/service.py", "src/lists/service.py", "src/reminders/service.py",
                     "src/reminders/scheduler.py"):
             sc.write(rel, "VALUE = 1\n")
-        sc.append(".modsys/config.toml", SRC_RULE)
+        data, _ = sc.modsys("code-map", "add", "src", "--pattern", "src/{module}/**")
+        check(data["block"] == '[[code_map]]\nid = "src"\npattern = "src/{module}/**"\n',
+              f"block {data['block']!r}")
         data, _ = sc.modsys("sync", "--files", "src/reminders/scheduler.py", "--dry-run")
         check(modules_of(data) == {"reminders": ["code_map:src"]}, f"mapped {modules_of(data)}")
 
@@ -212,10 +218,29 @@ def greenfield(sc: Scenario) -> None:
         data, _ = sc.modsys("lint", "--changed", "--base", base["sha"], "--fail-on", "warning")
         check(findings(data) == [], f"findings {findings(data)}")
 
+    def ci_passes():
+        data, _ = sc.modsys("ci", "--base", base["sha"], "--fail-under", "100")
+        check(ci_statuses(data) == ["passed", "passed", "passed"], f"ci {ci_statuses(data)}")
+
+    def ci_fails_on_drift():
+        sc.append("src/lists/service.py", "MAX_ITEMS = 100\n")
+        sc.commit("lists: cap", "src")
+        data, _ = sc.modsys("ci", "--base", base["sha"], expect=1)
+        check(ci_statuses(data) == ["passed", "failed", "report-only"], f"ci {ci_statuses(data)}")
+        drift = [(f["code"], f["module"]) for f in data["steps"][1]["findings"]]
+        check(drift == [("MS050", "lists")], f"drift {drift}")
+
+    def ci_passes_after_docs():
+        sc.append("modules/lists/roles/developer.md", "\n## Limits\n\nA list holds 100 tasks.\n")
+        sc.commit("docs: lists cap", "modules")
+        data, _ = sc.modsys("ci", "--base", base["sha"])
+        check(ci_statuses(data) == ["passed", "passed", "report-only"], f"ci {ci_statuses(data)}")
+
     def child_module():
         sc.create("search", "Full-text search over task titles and notes.", ["search"],
                   parent="tasks")
-        sc.append(".modsys/config.toml", SEARCH_RULE)
+        sc.modsys("code-map", "add", "task-search", "--glob", "src/tasks/search/**",
+                  "--module", "tasks/search", "--exclusive")
         sc.write("src/tasks/search/index.py", "INDEX = {}\n")
         data, _ = sc.modsys("sync", "--files", "src/tasks/search/index.py", "--dry-run")
         check(modules_of(data) == {"tasks/search": ["code_map:task-search"]},
@@ -229,7 +254,7 @@ def greenfield(sc: Scenario) -> None:
                      ("no registry: the error names modsys init", no_registry_names_init),
                      ("init", init), ("init again changes nothing", init_again),
                      ("create tasks, lists, reminders", add_modules),
-                     ("wire code with [[code_map]]", wire_code),
+                     ("wire code with code-map add", wire_code),
                      ("relation via registry append", relation),
                      ("writer refuses an edge lint would reject", writer_refuses_bad_edge),
                      ("lint clean", lint_clean), ("coverage 100 %", coverage_full),
@@ -239,6 +264,9 @@ def greenfield(sc: Scenario) -> None:
                      ("propose the doc update", propose_doc),
                      ("sync --from-diff --apply-proposals", sync_applies),
                      ("commit the docs: gate passes", gate_passes),
+                     ("ci --base <first commit> passes", ci_passes),
+                     ("a code-only change fails ci (drift step)", ci_fails_on_drift),
+                     ("a docs follow-up passes ci", ci_passes_after_docs),
                      ("child module mapped by its own exclusive rule", child_module)]:
         sc.step(name, fn)
 
@@ -333,11 +361,31 @@ def brownfield(sc: Scenario) -> None:
             sc.create(name, description, keywords)
         sc.create(*DB)
 
-    def rules():
-        sc.append(".modsys/config.toml", LAYERED_RULES)
+    def rules_overlap():
+        sc.append(".modsys/config.toml", LAYERED_RULES.replace("exclusive = true\n", ""))
         data, _ = sc.modsys("lint")
-        check(data["summary"]["error"] == 0 and not findings(data, "MS052"),
-              f"lint {findings(data)}")
+        overlaps = [f["message"] for f in data["findings"] if f["code"] == "MS053"]
+        check(len(overlaps) == 2 and "'db' (-> db) and 'repositories'" in overlaps[0]
+              and "'db' (-> db) and 'sql'" in overlaps[1], f"MS053 {overlaps}")
+        return overlaps[0]
+
+    def rules_exclusive():  # the hand edit a user makes: rules are edited by hand
+        config = sc.root / ".modsys" / "config.toml"
+        text = config.read_text(encoding="utf-8")
+        for line in ('pattern = "app/repositories/{module}.py"\n',
+                     'pattern = "app/sql/{module}.sql"\n'):
+            text = text.replace(line, line + "exclusive = true\n")
+        config.write_text(text, encoding="utf-8")
+        data, _ = sc.modsys("lint")
+        check(data["summary"]["error"] == 0 and not findings(data, "MS052")
+              and not findings(data, "MS053"), f"lint {findings(data)}")
+
+    def feature_files():
+        data, _ = sc.modsys("code-map", "files", "orders")
+        via = {f["path"]: f["via"] for f in data["files"]}
+        check(via.get("app/repositories/orders.py") == ["code_map:repositories"],
+              f"orders files {sorted(via)}")
+        return f"{data['total']} files map to orders"
 
     def coverage_target():
         data, _ = sc.modsys("coverage", "--fail-under", "80")
@@ -387,8 +435,10 @@ def brownfield(sc: Scenario) -> None:
                      ("init keeps the existing .gitignore", init),
                      ("baseline coverage", baseline),
                      ("a module per feature + db", add_modules),
-                     ("layered [[code_map]] rules, lint clean", rules),
+                     ("layered rules without exclusive: MS053", rules_overlap),
+                     ("per-feature rules exclusive: lint clean", rules_exclusive),
                      ("coverage >= 80 %", coverage_target),
+                     ("code-map files lists the feature's repository file", feature_files),
                      ("a feature repository maps only to its feature", exclusive_repository),
                      ("commit", commit),
                      ("a feature change drifts only the feature", feature_drift),

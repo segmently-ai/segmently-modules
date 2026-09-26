@@ -14,14 +14,14 @@ It builds two repositories from nothing in temp dirs and drives this checkout's 
 
 | Scenario | Steps |
 |---|---|
-| greenfield | `git init` → a missing registry names `modsys init` → `init` (and again: nothing changes) → 3 modules → `[[code_map]]` → a relation via `registry append` (a bad edge is refused) → lint clean → coverage 100 % → `context` returns `code_globs` → commit → code-only change: `lint --changed --fail-on warning` exits 1 with MS050 → `propose` a `doc_append` → `sync --from-diff --apply-proposals` → commit: gate exits 0 → a child module mapped by its own exclusive rule |
-| brownfield | a generated layered app (`app/routes/<f>/`, `app/repositories/<f>.py`, `app/models/<f>.py`, `app/sql/<f>.sql`, `tests/test_<f>.py`, an `app/db/` layer) → `init` keeps `.gitignore` → baseline coverage → a module per feature + `db` → layered rules with `exclusive` → coverage ≥ 80 % → a feature repository maps only to its feature → a feature change drifts only the feature (MS050, `discover`) → `index split` + per-module layout keep `list` / `match` |
+| greenfield | `git init` → a missing registry names `modsys init` → `init` (and again: nothing changes) → 3 modules → `code-map add` (no hand edit) → a relation via `registry append` (a bad edge is refused) → lint clean → coverage 100 % → `context` returns `code_globs` → commit → code-only change: `lint --changed --fail-on warning` exits 1 with MS050 → `propose` a `doc_append` → `sync --from-diff --apply-proposals` → commit: gate exits 0 → `ci --base <first commit>` exits 0 → a code-only change: `ci` exits 1 (drift step failed) → a docs follow-up: `ci` exits 0 → a child module mapped by its own exclusive rule (`code-map add --exclusive`) |
+| brownfield | a generated layered app (`app/routes/<f>/`, `app/repositories/<f>.py`, `app/models/<f>.py`, `app/sql/<f>.sql`, `tests/test_<f>.py`, an `app/db/` layer) → `init` keeps `.gitignore` → baseline coverage → a module per feature + `db` → layered rules: lint reports MS053 until the per-feature `repositories` / `sql` rules are `exclusive` (a hand edit), then lint is clean → coverage ≥ 80 % → `code-map files orders` lists `app/repositories/orders.py` → a feature repository maps only to its feature → a feature change drifts only the feature (MS050, `discover`) → `index split` + per-module layout keep `list` / `match` |
 
 Every step checks an exit code and the data. The scorecard on stdout:
 
 ```json
-{"greenfield": {"steps": [{"name": "init", "ok": true, "detail": "…"}], "commands": 21, "ok": true},
- "brownfield": {"steps": ["…"], "commands": 18, "ok": true}}
+{"greenfield": {"steps": [{"name": "init", "ok": true, "detail": "…"}], "commands": 26, "ok": true},
+ "brownfield": {"steps": ["…"], "commands": 20, "ok": true}}
 ```
 
 `commands` counts modsys invocations. A scenario stops at its first failed step; the other

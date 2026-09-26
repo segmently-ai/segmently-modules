@@ -14,6 +14,11 @@ compare runs of the same persona across phases.
 **PASS** = all goal steps done, 0 source peeks, 0 blockers, commands ≤ 40 (greenfield) or
 ≤ 45 (brownfield), and — brownfield — the coverage reported and ≥ 0.8.
 
+A run that wires code with `modsys code-map add` instead of editing `.modsys/config.toml` by
+hand, or gates with `modsys ci` instead of separate `lint` / `lint --changed` / `coverage`
+calls, is scored exactly the same: every metric above counts what the run did, not which of
+the documented paths it took.
+
 Scorecard (one row per run):
 
 | Run | Persona | Goal steps | Commands | Source peeks | Blockers | Majors | Minors | Coverage | PASS |
