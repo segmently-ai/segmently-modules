@@ -1,9 +1,9 @@
 """`modsys init`: set modsys up in a repository — a starter `<config_dir>/config.toml` (every
 key commented out, with worked examples), an empty registry (the single file, or the
 per-module index) and the `.gitignore` lines for the files the engine creates. Only what is
-missing is created (an existing `.gitignore` gets only its missing lines); a second run
-changes nothing. Root: `--root`, else the git top-level of the current directory, else the
-current directory."""
+missing is created (an existing `.gitignore` gets only its missing lines, appended in the
+file's own newline style and through a symlink to its target); a second run changes nothing.
+Root: `--root`, else the git top-level of the current directory, else the current directory."""
 import subprocess
 from pathlib import Path
 
@@ -12,7 +12,7 @@ from modsys.config import REGISTRY_LAYOUTS, load_config
 from modsys.layout import build_index
 from modsys.merge import merge
 from modsys.output import EXIT_OK, UsageError, emit
-from modsys.store import atomic_write, serialize
+from modsys.store import serialize
 
 _HEADER = '''\
 ## modsys team config — commit it. Every key is optional: uncomment what you need.
@@ -142,9 +142,16 @@ def plan_init(root: Path, config_dir: Path, requested: str | None) -> tuple[str,
     registry = root / config["paths"]["registry"]  # path is the same in either layout
     if layout != current:
         if config_path.exists() or layout == "single" or registry.exists():
+            if layout == "per-module":
+                how = (f"to convert the existing registry run `modsys index split`, then set "
+                       f"[paths] registry_layout = \"per-module\" in {config_path}")
+            else:  # the per-module index already holds every entry: it becomes the registry
+                how = (f"to go back to one registry file run `modsys index build` (the index "
+                       f"then holds every module entry), then set [paths] registry_layout = "
+                       f"\"single\" in {config_path}; the <module>/"
+                       f"{config['paths']['module_entry']} files are no longer read")
             raise UsageError(f"--layout {layout} conflicts with the configured registry_layout "
-                             f"{current!r}; to convert an existing registry run `modsys index "
-                             f"split` and set [paths] registry_layout in {config_path}")
+                             f"{current!r}; {how}")
         config = merge(config, {"paths": {"registry_layout": layout}})
     files = [(config_path, "exists", None) if config_path.exists()
              else (config_path, "created", starter_config(layout))]
@@ -160,12 +167,13 @@ def plan_init(root: Path, config_dir: Path, requested: str | None) -> tuple[str,
     if not gitignore.exists():
         files.append((gitignore, "created", "\n".join(wanted) + "\n"))
     else:
-        text = gitignore.read_text(encoding="utf-8")
+        text = gitignore.read_bytes().decode("utf-8")
         have = {line.strip() for line in text.splitlines()}
         missing = [line for line in wanted if line not in have]
-        if missing:
-            sep = "" if not text or text.endswith("\n") else "\n"
-            files.append((gitignore, "updated", text + sep + "\n".join(missing) + "\n"))
+        if missing:  # "updated" carries only the text to APPEND, in the file's newline style
+            nl = "\r\n" if "\r\n" in text else "\n"
+            sep = "" if not text or text.endswith("\n") else nl
+            files.append((gitignore, "updated", sep + nl.join(missing) + nl))
         else:
             files.append((gitignore, "exists", None))
     return layout, files
@@ -197,7 +205,8 @@ def run(args) -> int:
             if status == "created":
                 _create(path, text)
             elif status == "updated":
-                atomic_write(path, text)
+                with open(path, "ab") as fh:  # append: keeps the bytes, mode and a symlink
+                    fh.write(text.encode("utf-8"))
     data = {"root": str(root), "layout": layout,
             "files": [{"path": _rel(root, p), "status": s} for p, s, _ in files],
             "dry_run": args.dry_run}

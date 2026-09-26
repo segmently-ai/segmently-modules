@@ -1,12 +1,20 @@
 import contextlib
 import io
 import json
+import os
 import shutil
+import tempfile
 from pathlib import Path
 
 from modsys.cli import main
 
 FIXTURE = Path(__file__).parent / "fixtures" / "bookshop"
+
+# Every git call of the suite — the helpers' and the engine's own, which runs in-process —
+# ignores the developer's global and system git config (e.g. a core.excludesFile hiding *.py)
+# and never finds a repository above the temp dir (a TMPDIR inside a work tree).
+os.environ.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1",
+                  GIT_CEILING_DIRECTORIES=os.path.realpath(tempfile.gettempdir()))
 
 
 def run(*argv):
@@ -69,11 +77,12 @@ def mutate_registry(root: Path, fn) -> None:
 
 def git(root: Path, *args: str) -> str:
     """Run git in a test repo, isolated from the caller's git environment and identity."""
-    import os
     import subprocess
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     env.update(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.com",
-               GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.com")
+               GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.com",
+               GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1",
+               GIT_CEILING_DIRECTORIES=os.environ["GIT_CEILING_DIRECTORIES"])
     return subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True,
                           text=True, env=env).stdout
 

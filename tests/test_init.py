@@ -1,5 +1,4 @@
 """`modsys init`: starter config, empty registry, .gitignore lines — idempotent."""
-import json
 import os
 import tempfile
 import tomllib

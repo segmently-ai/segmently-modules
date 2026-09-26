@@ -25,6 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ENGINE = Path(__file__).resolve().parents[2]
+FAIL_STEP = "MODSYS_EVAL_FAIL_STEP"  # test seam: "<scenario>:<step name>" forces that step to fail
 GIT_IDENTITY = {"GIT_AUTHOR_NAME": "eval", "GIT_AUTHOR_EMAIL": "eval@example.invalid",
                 "GIT_COMMITTER_NAME": "eval", "GIT_COMMITTER_EMAIL": "eval@example.invalid",
                 "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
@@ -82,6 +83,8 @@ class Scenario:
 
     def step(self, name: str, fn) -> None:
         try:
+            if os.environ.get(FAIL_STEP) == f"{self.name}:{name}":
+                raise StepFailed(f"forced by {FAIL_STEP} (test seam)")
             detail, ok = fn() or "", True
         except StepFailed as e:
             detail, ok = str(e), False

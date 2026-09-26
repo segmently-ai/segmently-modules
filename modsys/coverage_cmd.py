@@ -1,9 +1,12 @@
 """`modsys coverage`: how much of the repository maps to a module. The file set is every
 git-tracked file plus every new file git does not ignore (root-relative, limited to the root),
 narrowed by `[coverage] include` (default `["**"]`) and `exclude` globs. The modules dir, the
-config dir and dotfiles / dot-directories at any level never count. Mapping = `sync`'s mapping
-(docs, code_pointer fields, `[[code_map]]` rules)."""
-from modsys.changes import git, glob_to_regex, map_files, repo_files
+config dir, the registry file and its `.lock`, the proposals dir and dotfiles / dot-directories
+at any level never count. Mapping = `sync`'s mapping (docs, code_pointer fields, `[[code_map]]`
+rules)."""
+from pathlib import PurePosixPath
+
+from modsys.changes import glob_to_regex, map_files, repo_files, require_work_tree
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.workspace import Workspace
 
@@ -21,7 +24,10 @@ def counted_files(ws, files: list[str]) -> list[str]:
     cfg = ws.config.get("coverage") or {}
     include = [glob_to_regex(g) for g in cfg.get("include") or DEFAULT_INCLUDE]
     exclude = [glob_to_regex(g) for g in cfg.get("exclude") or []]
-    skip = [ws.config["paths"]["modules_dir"].strip("/") + "/"]
+    paths = ws.config["paths"]
+    skip = [PurePosixPath(paths[k]).as_posix() + "/" for k in ("modules_dir", "proposals_dir")]
+    registry = PurePosixPath(paths["registry"]).as_posix()
+    engine_files = {registry, registry + ".lock"}
     try:
         config_rel = ws.config_dir.relative_to(ws.root).as_posix()
         if config_rel != ".":
@@ -30,7 +36,8 @@ def counted_files(ws, files: list[str]) -> list[str]:
         pass
 
     def counts(path: str) -> bool:
-        if any(part.startswith(".") for part in path.split("/")) or path.startswith(tuple(skip)):
+        if (any(part.startswith(".") for part in path.split("/")) or path.startswith(tuple(skip))
+                or path in engine_files):
             return False
         return any(rx.match(path) for rx in include) and not any(rx.match(path) for rx in exclude)
 
@@ -62,12 +69,7 @@ def run(args) -> int:
     if args.fail_under is not None and not 0 <= args.fail_under <= 100:
         raise UsageError("--fail-under must be between 0 and 100")
     ws = Workspace.from_args(args)
-    try:
-        inside = git(ws.root, "rev-parse", "--is-inside-work-tree").strip() == "true"
-    except (UsageError, OSError):
-        inside = False
-    if not inside:
-        raise UsageError(f"coverage needs a git repository ({ws.root} is not inside a work tree)")
+    require_work_tree(ws.root, "coverage")
     data = coverage_report(ws, repo_files(ws.root))
     failed = args.fail_under is not None and percent(data["share"]) < args.fail_under
     emit("coverage", data, args.json, lambda d: _render(d, args.fail_under, failed))

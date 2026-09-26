@@ -80,6 +80,9 @@ def validate_layer(layer: dict, source) -> None:
         if severity is not None and severity not in ("info", "warning", "error"):
             raise UsageError(f"{source}: [lint] {key}: expected info, warning or error, "
                              f"got {severity!r}")
+    if layer.get("coverage", {}).get("include") == []:
+        raise UsageError(f"{source}: [coverage] include: an empty list counts no file — omit "
+                         f"include to count every file")
     ci = layer.get("ci", {})
     if "fail_on" in ci and ci["fail_on"] not in CI_FAIL_ON:
         raise UsageError(f"{source}: [ci] fail_on: expected one of {', '.join(CI_FAIL_ON)}, "

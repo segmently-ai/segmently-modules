@@ -119,13 +119,13 @@ show <module>`; `modsys show <module>` prints the module's keywords on its `keys
 ## `[coverage]`
 
 `modsys coverage` counts every git-tracked file plus every new file git does not ignore,
-relative to the root. The modules dir, the config dir and dotfiles or dot-directories at any
-level never count. `share` is mapped / total rounded down to 3 decimals, so it never overstates;
+relative to the root. The modules dir, the config dir, the registry file and its `.lock`, the
+proposals dir (`[paths]`) and dotfiles or dot-directories at any level never count. `share` is mapped / total rounded down to 3 decimals, so it never overstates;
 `--fail-under PCT` compares the reported percent (`share` × 100, one decimal).
 
 | Key | Default | Meaning |
 |---|---|---|
-| `include` | `["**"]` (built in) | globs a file must match to count; a team `include` replaces the built-in `**` |
+| `include` | `["**"]` (built in) | globs a file must match to count; a team `include` replaces the built-in `**`; `include = []` is refused (it would count no file — omit `include` to count every file) |
 | `exclude` | `[]` | globs that never count (generated code, vendored files, docs) |
 
 ## `[ci]`

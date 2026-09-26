@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -10,9 +11,14 @@ ROOT_MARKERS = (".modsys", "modules/registry.json")
 
 
 def find_root(start: Path) -> Path:
-    """Nearest directory holding a root marker; the nearest `.git` ends the search."""
+    """Nearest directory holding a root marker; the nearest `.git` ends the search, and so does
+    a directory listed in GIT_CEILING_DIRECTORIES — never entered, as git's own search does."""
     start = start.resolve()
+    ceilings = {Path(p).resolve() for p in
+                os.environ.get("GIT_CEILING_DIRECTORIES", "").split(os.pathsep) if p}
     for d in (start, *start.parents):
+        if d != start and d in ceilings:
+            break
         if any((d / marker).exists() for marker in ROOT_MARKERS):
             return d
         if (d / ".git").exists():

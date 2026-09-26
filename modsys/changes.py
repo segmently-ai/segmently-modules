@@ -4,8 +4,10 @@
   code_map      — a `[[code_map]]` rule: `globs` for one `module` (a top-level module or a
                   `parent/child`), or a `pattern` whose `{module}` segment names a top-level
                   module (e.g. "src/{module}/**"; `{module}` captures exactly ONE path segment).
-                  A file matched by an `exclusive = true` rule is mapped ONLY by the exclusive
-                  rules that match it; docs and code_pointer mapping are unaffected.
+                  A file matched AND routed (to a registry target) by an `exclusive = true`
+                  rule is mapped ONLY by the exclusive rules that route it; an exclusive rule
+                  whose `{module}` capture names no module takes nothing. Docs and
+                  code_pointer mapping are unaffected.
 Glob syntax: `**` any path, `*` one segment, `?` one character."""
 import json
 import os

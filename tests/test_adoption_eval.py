@@ -2,6 +2,7 @@
 step is reported in the scorecard, never as a traceback."""
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import unittest
@@ -43,6 +44,19 @@ class AdoptionEvalTest(unittest.TestCase):
             {"name": "passes", "ok": True, "detail": "fine"},
             {"name": "fails", "ok": False, "detail": "expected failure"}],
             "commands": 0, "ok": False})
+
+    def test_a_failing_scenario_is_reported_and_the_other_still_runs(self):  # P32-AC-029
+        env = {**os.environ, "MODSYS_EVAL_FAIL_STEP": "greenfield:init"}  # the test seam
+        proc = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True,
+                              timeout=300, env=env)
+        card = json.loads(proc.stdout)
+        self.assertEqual(proc.returncode, 1)
+        self.assertEqual(card["greenfield"]["steps"][-1],
+                         {"name": "init", "ok": False,
+                          "detail": "forced by MODSYS_EVAL_FAIL_STEP (test seam)"})
+        self.assertFalse(card["greenfield"]["ok"])
+        self.assertTrue(card["brownfield"]["ok"])
+        self.assertGreater(len(card["brownfield"]["steps"]), 5)
 
     def test_an_unexpected_error_is_a_failed_step(self):
         run_eval = load_eval()

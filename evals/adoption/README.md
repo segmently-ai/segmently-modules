@@ -24,8 +24,10 @@ Every step checks an exit code and the data. The scorecard on stdout:
  "brownfield": {"steps": ["…"], "commands": 18, "ok": true}}
 ```
 
-`commands` counts modsys invocations. A scenario stops at its first failed step; the script
-exits 1. `tests/test_adoption_eval.py` runs it with the unit tests.
+`commands` counts modsys invocations. A scenario stops at its first failed step; the other
+scenario still runs, and the script exits 1. `tests/test_adoption_eval.py` runs it with the
+unit tests; its failure-path test sets `MODSYS_EVAL_FAIL_STEP=<scenario>:<step name>`, a test
+seam that forces that one step to fail.
 
 ## E-B — blind agents (`agents/`)
 
