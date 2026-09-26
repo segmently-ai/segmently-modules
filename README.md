@@ -163,3 +163,5 @@ modsys coverage                  # everything unmapped: the baseline
 - [docs/cli-contract.md](docs/cli-contract.md) — every verb's JSON `data`, exit codes, the files
   the engine creates, pipeline stages.
 - `modsys <verb> --help` — flags and limits of one verb.
+- [evals/adoption/](evals/adoption/README.md) — the adoption evals (a deterministic script and
+  blind-agent prompts).
