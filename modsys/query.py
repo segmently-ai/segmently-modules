@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from modsys.changes import code_globs
 from modsys.config import enabled_roles
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.registry import as_dict, as_list, resolve_module_arg, stub_head
@@ -66,7 +67,7 @@ def show_target(ws, target: str, role: str | None, all_roles: bool) -> tuple[int
     sub = _object(subs[child], f"{parent}/{child}") if child else {}
     result = {"module": f"{parent}/{child}" if child else parent,
               "status": entry.get("status"), "description": entry.get("description"),
-              "read": [], "code": []}
+              "read": [], "code": [], "code_globs": []}
 
     def add(label, path):
         if isinstance(path, str) and path:  # malformed paths are lint's job (MS004)
@@ -99,6 +100,7 @@ def show_target(ws, target: str, role: str | None, all_roles: bool) -> tuple[int
         if fdef.kind == "code_pointer" and entry.get(name):
             val = entry[name]
             result["code"].extend(val if isinstance(val, list) else [val])
+    result["code_globs"] = code_globs(ws.config, result["module"])
     return EXIT_OK, result
 
 
@@ -188,7 +190,7 @@ def _render_show(d) -> None:
     for r in d["read"]:
         mark = "" if r["exists"] else "  (MISSING ON DISK)"
         print(f"  read  {r['label']:<32} {r['path']}{mark}")
-    for c in d["code"]:
+    for c in d["code"] + d["code_globs"]:
         print(f"  code  {c}")
     for c, desc in (d.get("submodules") or {}).items():
         print(f"  child {d['module']}/{c:<30} {desc}")

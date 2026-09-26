@@ -41,7 +41,8 @@ def build_context(ws, text: str, role: str | None, all_roles: bool, top: int | N
     modules, read, seen = [], [], set()
     for row in _rows(ws, text, top):
         _, shown = show_target(ws, row["module"], role, all_roles)
-        modules.append({**row, "read": shown["read"], "code": shown["code"]})
+        modules.append({**row, "read": shown["read"], "code": shown["code"],
+                        "code_globs": shown["code_globs"]})
         for r in shown["read"]:
             if r["path"] not in seen:
                 seen.add(r["path"])
@@ -163,6 +164,9 @@ def _render_context(d) -> None:
     for r in d["read"]:
         mark = "" if r["exists"] else "  (MISSING ON DISK)"
         print(f"{r['module']:<28} {r['label']:<30} {r['path']}{mark}")
+    for m in d["modules"]:
+        for c in m["code"] + m["code_globs"]:
+            print(f"{m['module']:<28} {'code':<30} {c}")
 
 
 def _render_discover(d) -> None:

@@ -15,7 +15,7 @@ KW = [a for k in ("review", "rating", "stars", "comment", "moderation") for a in
 GOLDEN = [
     (("schema",), {"$schema", "title", "type", "required", "properties"}),
     (("match", "book"), None),
-    (("show", "catalog"), {"module", "status", "description", "read", "code"}),
+    (("show", "catalog"), {"module", "status", "description", "read", "code", "code_globs"}),
     (("related", "catalog"), {"module", "edges", "reverse"}),
     (("list",), None),
     (("lint", "--fail-on", "never"), {"findings", "summary", "failed"}),

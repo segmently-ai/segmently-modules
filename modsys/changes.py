@@ -145,6 +145,24 @@ def target_names(modules: dict) -> set[str]:
     return {target for target, _ in _targets(modules)}
 
 
+def code_globs(config: dict, target: str) -> list[str]:
+    """The `[[code_map]]` globs that route files to `target` — where its code lives, for agents
+    (`show` / `context`). A `pattern` rule without a `module` contributes its pattern with
+    `{module}` = the target (top-level targets only: `{module}` is one path segment); a rule
+    whose `module` is the target contributes its globs or pattern (`{module}` read as `*`).
+    These are routing rules, not a file list: an `exclusive` rule elsewhere may take files."""
+    out = []
+    for rule in as_list(config.get("code_map")):
+        if not isinstance(rule, dict) or "id" not in rule:
+            continue
+        globs = [rule["pattern"]] if "pattern" in rule else as_list(rule.get("globs"))
+        if rule.get("module") == target:
+            out += [g.replace("{module}", "*") for g in globs if isinstance(g, str)]
+        elif "module" not in rule and "/" not in target:
+            out += [g.replace("{module}", target) for g in globs if isinstance(g, str)]
+    return list(dict.fromkeys(out))
+
+
 def map_files(ws, files: list[str]) -> dict:
     """{"modules": {target: {"files": […], "via": […]}}, "unmapped": […]}"""
     modules = ws.registry.modules

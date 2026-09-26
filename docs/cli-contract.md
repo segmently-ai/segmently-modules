@@ -39,7 +39,7 @@ modules/registry.json.lock
 |---|---|
 | `schema` | JSON Schema (draft 2020-12) of the registry, including declared fields |
 | `match TEXT` | `[{module, score, keywords, negative}]` best first |
-| `show MODULE` | `{module, status, description, read: [{label, path, exists}], code: [path], submodules?}`; a pointer stub: `{module, stub}` (exit 1) |
+| `show MODULE` | `{module, status, description, read: [{label, path, exists}], code: [path], code_globs: [glob], submodules?}`; a pointer stub: `{module, stub}` (exit 1). `code` = values of `code_pointer` fields; `code_globs` = the `[[code_map]]` globs that route files to the module (a pattern's `{module}` filled in) |
 | `related MODULE` | `{module, edges: [edge], reverse: [{from, …edge}]}` |
 | `list` | `[{module, status, description, children}]` |
 | `lint` | `{findings: [{code, severity, module, message, path}], summary: {error, warning, info}, failed, changed?: {base, files, modules}}` |
@@ -51,7 +51,7 @@ modules/registry.json.lock
 | `sync` | `{run_id, diff_range, changed_files, modules: [{module, files, via}], unmapped, hooks: {hooks: [{id, owner, required, status, messages, queued, error?}], failed_required} \| null, proposals: <apply data> \| null, dry_run}` |
 | `create NAME` | `{module, files, entry, dry_run}` |
 | `migrate` | `{applied: [{id, description, notes}], dry_run, diff?}` |
-| `context` | `{task, role, all_roles, modules: [{module, score, keywords, negative, read, code}], read: [{module, label, path, exists}]}` |
+| `context` | `{task, role, all_roles, modules: [{module, score, keywords, negative, read, code, code_globs}], read: [{module, label, path, exists}]}` |
 | `discover` | `{task, modules: [{module, score, keywords, sources, touched_files, usage, docs_to_read, docs_to_update}], files_outside_modules, summary: {total_modules, by_usage: {modify, reference}}}` |
 
 ## Pipeline stages
