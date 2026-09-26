@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from modsys.cli import build_parser
-from tests.helpers import copy_fixture, run_json
+from tests.helpers import copy_fixture, init_git, run_json
 
 DOC = Path(__file__).resolve().parents[1] / "docs" / "cli-contract.md"
 DESC = "Customer reviews of books: ratings, comments and moderation."
@@ -34,6 +34,7 @@ GOLDEN = [
     (("migrate", "--dry-run"), {"applied", "dry_run", "diff"}),
     (("context", "--task", "isbn"), {"task", "role", "all_roles", "modules", "read"}),
     (("discover", "--task", "isbn"), {"task", "modules", "files_outside_modules", "summary"}),
+    (("coverage",), {"total", "mapped", "share", "modules", "unmapped"}),
 ]
 
 
@@ -41,6 +42,7 @@ class CliContractTest(unittest.TestCase):
     def test_every_verb_envelope(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(tmp)
+            init_git(root)  # coverage lists files through git
             for argv, keys in GOLDEN:
                 with self.subTest(verb=argv[0]):
                     code, env, err = run_json(*argv, "--root", str(root))

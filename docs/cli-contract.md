@@ -53,6 +53,7 @@ modules/registry.json.lock
 | `migrate` | `{applied: [{id, description, notes}], dry_run, diff?}` |
 | `context` | `{task, role, all_roles, modules: [{module, score, keywords, negative, read, code, code_globs}], read: [{module, label, path, exists}]}` |
 | `discover` | `{task, modules: [{module, score, keywords, sources, touched_files, usage, docs_to_read, docs_to_update}], files_outside_modules, summary: {total_modules, by_usage: {modify, reference}}}` |
+| `coverage` | `{total, mapped, share, modules: {target: n}, unmapped: [path]}` — files = git-tracked + new not ignored, filtered by `[coverage] include`/`exclude`, never the modules dir, the config dir or dotfiles; `share` = mapped / total (3 decimals, `1.0` when no file counts); exit 1 when `--fail-under PCT` is above `share` × 100; exit 2 outside a git repository |
 
 ## Pipeline stages
 

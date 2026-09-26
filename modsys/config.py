@@ -37,6 +37,7 @@ LAYER_SCHEMA = {
     "lint": {"fail_on": "str", "component_table_heading": "str", "drift_severity": "str"},
     "create": {"min_keywords": "int", "description_min": "int", "description_max": "int",
                "default_status": "str"},
+    "coverage": {"include": "list[str]", "exclude": "list[str]"},
 }
 ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str",
                "applies_when": "str", "template": "str"}

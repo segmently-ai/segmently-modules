@@ -86,6 +86,14 @@ def changed_files(root: Path, diff_range: str | None = None, files=None,
     raise UsageError("give changed files: --from-diff A..B, --files …, or --base REF")
 
 
+def repo_files(root: Path) -> list[str]:
+    """Every git-tracked file plus every new file git does not ignore: relative to `root` and
+    limited to it (`git ls-files` lists from `-C <root>` downwards), raw names (-z). Sorted."""
+    tracked = _paths(git(root, "ls-files", "-z"))
+    new = _paths(git(root, "ls-files", "-z", "--others", "--exclude-standard"))
+    return sorted(set(tracked + new))
+
+
 def glob_to_regex(pattern: str) -> re.Pattern:
     out, i = [], 0
     while i < len(pattern):

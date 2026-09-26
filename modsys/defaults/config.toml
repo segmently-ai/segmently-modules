@@ -41,6 +41,11 @@ description_min = 20
 description_max = 200
 default_status = "planned"
 
+[coverage]
+# include = ["**"] is the built-in default (not set here: arrays merge by appending, so a
+# default "**" could never be narrowed); a team `include` replaces it.
+exclude = []                  # globs; the modules dir, the config dir and dotfiles never count
+
 [roles.developer]
 order = 10
 standard = true
