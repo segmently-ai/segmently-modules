@@ -138,15 +138,15 @@ def plan_init(root: Path, config_dir: Path, requested: str | None) -> tuple[str,
     config = load_config(config_dir)
     current = config["paths"]["registry_layout"]
     layout = requested or current
+    registry = root / config["paths"]["registry"]  # path is the same in either layout
     if layout != current:
-        if config_path.exists() or layout == "single":
+        if config_path.exists() or layout == "single" or registry.exists():
             raise UsageError(f"--layout {layout} conflicts with the configured registry_layout "
                              f"{current!r}; to convert an existing registry run `modsys index "
                              f"split` and set [paths] registry_layout in {config_path}")
         config = merge(config, {"paths": {"registry_layout": layout}})
     files = [(config_path, "exists", None) if config_path.exists()
              else (config_path, "created", starter_config(layout))]
-    registry = root / config["paths"]["registry"]
     if registry.exists():
         files.append((registry, "exists", None))
     else:

@@ -106,6 +106,18 @@ class InitTest(unittest.TestCase):
         self.assertIn("conflicts with the configured registry_layout 'single'", err)
         self.assertEqual(snapshot(self.root), before)
 
+    def test_layout_over_an_existing_registry_is_refused(self):
+        reg = self.root / "modules/registry.json"
+        reg.parent.mkdir()
+        reg.write_text('{"modules": {"x": {}}}\n')
+        before = snapshot(self.root)
+        code, out, err = run("init", "--layout", "per-module", *self.R)
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("conflicts with the configured registry_layout 'single'", err)
+        self.assertEqual(snapshot(self.root), before)
+        self.assertFalse((self.root / ".modsys/config.toml").exists())
+        self.assertEqual(reg.read_text(), '{"modules": {"x": {}}}\n')
+
     def test_root_defaults_to_the_git_top_level_else_cwd(self):
         sub = self.root / "a" / "b"
         sub.mkdir(parents=True)
