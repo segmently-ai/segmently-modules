@@ -71,18 +71,19 @@ def _mentioned_paths(ws, text: str) -> list[str]:
     return sorted(paths)
 
 
-def build_discover(ws, text: str, files: list[str], top: int | None) -> dict:
+def build_discover(ws, text: str | None, files: list[str], top: int | None) -> dict:
+    """`text` None = no task: the change alone decides (no keyword scoring)."""
     by_module: dict[str, dict] = {}
 
     def slot(module: str) -> dict:
         return by_module.setdefault(module, {"module": module, "score": 0, "keywords": [],
                                              "sources": [], "touched_files": []})
 
-    for row in _rows(ws, text, top):
+    for row in _rows(ws, text, top) if text is not None else []:
         s = slot(row["module"])
         s.update(score=row["score"], keywords=row["keywords"])
         s["sources"].append("keyword")
-    mentioned = _mentioned_paths(ws, text)
+    mentioned = _mentioned_paths(ws, text) if text is not None else []
     touched = map_files(ws, files)
     in_text = map_files(ws, mentioned)
     for source, mapping in (("diff", touched), ("path", in_text)):
@@ -120,8 +121,11 @@ def register(sub, common) -> None:
     c.add_argument("--top", type=int)
     c.set_defaults(func=run_context)
     d = sub.add_parser("discover", parents=[common],
-                       help="modules a change touches (modify/reference) and their docs")
-    _task_args(d)
+                       help="modules a change touches (modify/reference) and their docs",
+                       description="Modules a change touches (modify/reference) and the docs "
+                                   "to read and update. Give --task and/or --from-diff / "
+                                   "--files; without a task there is no keyword scoring.")
+    _task_args(d, required=False)
     src = d.add_mutually_exclusive_group()
     src.add_argument("--from-diff", metavar="A..B")
     src.add_argument("--files", nargs="+", metavar="PATH")
@@ -129,8 +133,8 @@ def register(sub, common) -> None:
     d.set_defaults(func=run_discover)
 
 
-def _task_args(p) -> None:
-    g = p.add_mutually_exclusive_group(required=True)
+def _task_args(p, required: bool = True) -> None:
+    g = p.add_mutually_exclusive_group(required=required)
     g.add_argument("--task")
     g.add_argument("--task-file", type=Path)
 
@@ -150,10 +154,14 @@ def run_context(args) -> int:
 def run_discover(args) -> int:
     if args.top is not None and args.top < 0:
         raise UsageError("--top must be >= 0")
+    has_task = args.task is not None or args.task_file is not None
+    if not has_task and not (args.from_diff or args.files):
+        raise UsageError("give the task (--task TEXT or --task-file FILE), the change "
+                         "(--from-diff A..B or --files PATH …), or both")
     ws = Workspace.from_args(args)
     files = changed_files(ws.root, diff_range=args.from_diff, files=args.files) \
         if (args.from_diff or args.files) else []
-    data = build_discover(ws, task_text(args), files, args.top)
+    data = build_discover(ws, task_text(args) if has_task else None, files, args.top)
     emit("discover", data, args.json, _render_discover)
     return EXIT_OK
 

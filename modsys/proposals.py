@@ -88,6 +88,19 @@ def check_doc_path(ws, module: str, doc: str) -> Path:
     return path
 
 
+def join_blocks(current: str, text: str) -> str:
+    """doc_append: `text` after the existing content, separated by exactly one blank line
+    (trailing blank lines of the doc and leading blank lines of the block collapse)."""
+    lines = current.split("\n")
+    while lines and not lines[-1].strip():
+        lines.pop()
+    block = text.split("\n")
+    while block and not block[0].strip():
+        block.pop(0)
+    body = "\n".join(block)
+    return "\n".join(lines) + "\n\n" + body if lines else body
+
+
 def make_item(ws, op: str, module: str, reason: str, field: str | None = None,
               doc: str | None = None, value=None) -> dict:
     """Validate one proposal item against the CURRENT state and stamp its base hash."""
@@ -196,8 +209,7 @@ def _apply_item(ws, raw: dict, start_raw: dict, docs: dict, touched: dict, file_
             text = item["value"]
             if current is not None and text.strip() and text.strip() in current:
                 return {**result, "status": "noop"}
-            base = current or ""
-            new = base + ("" if not base or base.endswith("\n") else "\n") + text
+            new = join_blocks(current or "", text)
         else:
             raise UsageError(f"unknown op '{op}'")
         if not new.endswith("\n"):

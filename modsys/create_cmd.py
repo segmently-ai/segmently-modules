@@ -8,13 +8,21 @@ from modsys.workspace import Workspace
 
 def register(sub, common) -> None:
     p = sub.add_parser("create", parents=[common],
-                       help="scaffold a module (or --parent child): docs + registry entry")
+                       help="scaffold a module (or --parent child): docs + registry entry",
+                       description="Scaffold a module (or a --parent child): docs from templates "
+                                   "plus its registry entry. Answer limits ([create] config): a "
+                                   "description of description_min–description_max characters "
+                                   "(default 20–200); at least [create] min_keywords distinct "
+                                   "keywords (default 5) for a top-level module, a child module "
+                                   "at least 1.")
     p.add_argument("name")
     p.add_argument("--parent", help="create a child of this module")
     p.add_argument("--answers", type=Path, help="JSON object: description, keywords, status, "
                                                 "tags, roles, and ask_on_create fields")
-    p.add_argument("--description")
-    p.add_argument("--keyword", action="append", dest="keywords", help="repeatable")
+    p.add_argument("--description", help="one sentence: what it does, why, when to use it "
+                                          "(default limits: 20–200 characters)")
+    p.add_argument("--keyword", action="append", dest="keywords",
+                   help="repeatable (default: 5 or more for a module, 1 or more for a child)")
     p.add_argument("--status")
     p.add_argument("--tag", action="append", dest="tags", help="repeatable (applies_when roles)")
     p.add_argument("--role", action="append", dest="roles", help="repeatable (optional roles)")

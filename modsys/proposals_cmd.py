@@ -17,7 +17,8 @@ def register(sub, common) -> None:
     p.add_argument("--module", required=True, help="module or module/child")
     p.add_argument("--op", required=True, choices=FIELD_OPS + DOC_OPS)
     p.add_argument("--field", help="field ops: the registry field")
-    p.add_argument("--doc", help="doc ops: repo-relative path inside the module directory")
+    p.add_argument("--doc", help="doc ops: repo-relative path of a .md doc inside the module's "
+                                  "own directory (e.g. modules/<m>/roles/developer.md)")
     p.add_argument("--value", help="field ops: JSON value; doc ops: text")
     p.add_argument("--value-file", type=Path, help="doc ops: read the text from a file ('-' = stdin)")
     p.add_argument("--reason", required=True)

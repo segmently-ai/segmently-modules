@@ -267,5 +267,7 @@ def _render(d) -> None:
     for f in d["findings"]:
         where = f"  ({f['path']})" if f["path"] else ""
         print(f"{f['severity'].upper():<7} {f['code']} {f['module']}: {f['message']}{where}")
+    if d["findings"]:
+        print()
     s = d["summary"]
-    print(f"\n{s['error']} error(s), {s['warning']} warning(s), {s['info']} info")
+    print(f"{s['error']} error(s), {s['warning']} warning(s), {s['info']} info")
