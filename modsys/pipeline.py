@@ -8,7 +8,7 @@ from pathlib import Path
 
 from modsys.changes import changed_files, map_files
 from modsys.config import enabled_roles
-from modsys.match import match_modules
+from modsys.match import match_modules, near_lines, near_misses
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.query import show_target
 from modsys.workspace import Workspace
@@ -47,7 +47,11 @@ def build_context(ws, text: str, role: str | None, all_roles: bool, top: int | N
             if r["path"] not in seen:
                 seen.add(r["path"])
                 read.append({"module": row["module"], **r})
-    return {"task": text, "role": role, "all_roles": all_roles, "modules": modules, "read": read}
+    cfg = ws.config["match"]
+    near = near_misses(ws.registry.modules, text, cfg, cfg["top"] if top is None else top,
+                       cfg["min_score"])
+    return {"task": text, "role": role, "all_roles": all_roles, "modules": modules, "read": read,
+            "near_misses": near}
 
 
 def _mentioned_paths(ws, text: str) -> list[str]:
@@ -169,6 +173,8 @@ def run_discover(args) -> int:
 def _render_context(d) -> None:
     if not d["modules"]:
         print("no module matched (try domain terms, or: modsys list)")
+        for line in near_lines(d["near_misses"]):
+            print(line)
     for r in d["read"]:
         mark = "" if r["exists"] else "  (MISSING ON DISK)"
         print(f"{r['module']:<28} {r['label']:<30} {r['path']}{mark}")

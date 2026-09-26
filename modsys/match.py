@@ -70,6 +70,77 @@ def match_modules(modules: dict, text: str, weights: dict, top: int,
     return rows[:top]
 
 
+_TOKEN = re.compile(r"\w+")
+LOOSE_MIN = 4  # words shorter than this never match loosely (too many false hints)
+
+
+def _loose_words(text: str) -> list[str]:
+    """Distinct `\\w+` words of at least LOOSE_MIN characters, lowercased, in text order."""
+    return list(dict.fromkeys(w for w in _TOKEN.findall(text.lower()) if len(w) >= LOOSE_MIN))
+
+
+def _shares_prefix(a: str, b: str) -> bool:
+    p = min(5, len(a), len(b))
+    return a[:p] == b[:p]
+
+
+def _near(keywords, hits: list, words: list[str]) -> list[dict]:
+    """{keyword, task_word} for every keyword that is not an exact hit and has a word sharing
+    its first min(5, len(a), len(b)) characters with a task word (both at least LOOSE_MIN)."""
+    out = []
+    for kw in as_list(keywords):
+        if not isinstance(kw, str) or kw in hits:
+            continue
+        for a in _loose_words(kw):
+            match = next((b for b in words if _shares_prefix(a, b)), None)
+            if match:
+                out.append({"keyword": kw, "task_word": match})
+                break
+    return out
+
+
+def near_misses(modules: dict, text: str, weights: dict, top: int, min_score: int) -> list[dict]:
+    """When no target reaches `min_score`: the targets with a keyword that loosely matches a
+    task word, or with exact hits whose score stays below `min_score` (negative keywords).
+    Rows {module, score, keywords: [exact hits], near: [{keyword, task_word}]}, most hints
+    first, at most `top`. `[]` whenever a target matched."""
+    if match_modules(modules, text, weights, 1, min_score):
+        return []
+    text_lower, words = text.lower(), _loose_words(text)
+    rows = []
+    for name, entry in modules.items():
+        if not isinstance(entry, dict):
+            continue
+        score, hits, _ = score_entry(text_lower, entry, weights)
+        targets = [(name, entry, score, hits)]
+        for child, sub in as_dict(entry.get("submodules")).items():
+            if isinstance(sub, dict):
+                c_hits = matched_terms(text_lower, sub.get("keywords"))
+                targets.append((f"{name}/{child}", sub, weights["keyword_weight"] * len(c_hits),
+                                c_hits))
+        for target, holder, t_score, t_hits in targets:
+            near = _near(holder.get("keywords"), t_hits, words)
+            if near or t_hits:
+                rows.append({"module": target, "score": t_score, "keywords": t_hits,
+                             "near": near})
+    rows.sort(key=lambda r: (-(len(r["near"]) + len(r["keywords"])), r["module"]))
+    return rows[:top]
+
+
+def near_lines(rows: list[dict]) -> list[str]:
+    """Text lines for near misses, closed by the hint that names `modsys show`."""
+    out = []
+    for r in rows:
+        items = [f"{n['keyword']} ~ {n['task_word']}" for n in r["near"]]
+        items += [f"{k} (exact)" for k in r["keywords"]]
+        below = f"  (score {r['score']}, below min_score)" if r["keywords"] else ""
+        out.append(f"near  {r['module']:<28} {', '.join(items)}{below}")
+    if rows:
+        out.append(f"re-run with the module's own keyword in the task text, or read it "
+                   f"directly: modsys show {rows[0]['module']}")
+    return out
+
+
 def register(sub, common) -> None:
     p = sub.add_parser("match", parents=[common],
                        help="rank modules by keyword match against task text")
@@ -84,16 +155,20 @@ def run(args) -> int:
         raise UsageError("--top must be >= 0")
     ws = Workspace.from_args(args)
     cfg = ws.config["match"]
-    rows = match_modules(ws.registry.modules, args.text, cfg,
-                         cfg["top"] if args.top is None else args.top,
-                         cfg["min_score"] if args.min_score is None else args.min_score)
-    emit("match", rows, args.json, _render)
+    top = cfg["top"] if args.top is None else args.top
+    min_score = cfg["min_score"] if args.min_score is None else args.min_score
+    rows = match_modules(ws.registry.modules, args.text, cfg, top, min_score)
+    near = [] if rows or args.json else near_misses(ws.registry.modules, args.text, cfg, top,
+                                                    min_score)
+    emit("match", rows, args.json, lambda r: _render(r, near))  # --json: the plain list
     return EXIT_OK
 
 
-def _render(rows) -> None:
+def _render(rows, near) -> None:
     if not rows:
         print("no keyword matches (try rephrasing with domain terms, or use: list)")
+        for line in near_lines(near):
+            print(line)
         return
     for r in rows:
         neg = f"  NEGATIVE:{','.join(r['negative'])}" if r["negative"] else ""

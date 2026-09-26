@@ -51,20 +51,20 @@ they are missing.
 |---|---|
 | `init` | `{root, layout, files: [{path, status}], dry_run}` — root: `--root`, else the git top-level of the current directory, else the current directory; `status`: `created` · `updated` (`.gitignore` got its missing lines) · `exists`; creates only missing files, a second run changes nothing |
 | `schema` | JSON Schema (draft 2020-12) of the registry, including declared fields |
-| `match TEXT` | `[{module, score, keywords, negative}]` best first |
-| `show MODULE` | `{module, status, description, read: [{label, path, exists}], code: [path], code_globs: [glob], submodules?}`; a pointer stub: `{module, stub}` (exit 1). `code` = values of `code_pointer` fields; `code_globs` = the `[[code_map]]` globs that route files to the module (a pattern's `{module}` filled in) — both are routing rules, not a file list; for the files a given change actually touches use `discover --files` / `sync --dry-run --files` |
+| `match TEXT` | `[{module, score, keywords, negative}]` best first — always this plain list; the near-miss hint (below, `context`) appears only in the text output |
+| `show MODULE` | `{module, status, description, keywords, read: [{label, path, exists}], code: [path], code_globs: [glob], submodules?}`; a pointer stub: `{module, stub}` (exit 1). `keywords` = the target's own routing keywords (a child: the child's list); `code` = values of `code_pointer` fields; `code_globs` = the `[[code_map]]` globs that route files to the module (a pattern's `{module}` filled in) — both are routing rules, not a file list; for the files a given change actually touches use `discover --files` / `sync --dry-run --files` |
 | `related MODULE` | `{module, edges: [edge], reverse: [{from, …edge}]}` |
 | `list` | `[{module, status, description, children}]` |
 | `lint` | `{findings: [{code, severity, module, message, path}], summary: {error, warning, info}, failed, changed?: {base, files, modules}}` |
 | `registry OP TARGET FIELD [VALUE]` | `{op, target, field, dry_run, changed, diff?}` |
 | `index build\|split` | build: `{index, stale, written, check}` · split: `{files, dry_run, next}` |
-| `propose` | `{file, run_id, agent, item}` |
+| `propose` | `{file, run_id, agent, item}` — `--agent` defaults to `$MODSYS_AGENT`, else `cli` |
 | `proposals list\|apply\|reject` | list: `[{file, run_id, agent, created_at, items}]` · apply: `{files: [{file, run_id, agent, results: [{id, op, module, status, reason?}]}], summary: {applied, noop, rejected}, dry_run}` · reject: `{rejected_files}` |
 | `hooks list` | `[{event, id, owner, enabled, required, run}]` |
 | `sync` | `{run_id, diff_range, changed_files, modules: [{module, files, via}], unmapped, hooks: {hooks: [{id, owner, required, status, messages, queued, error?}], failed_required} \| null, proposals: <apply data> \| null, dry_run}` |
 | `create NAME` | `{module, files, entry, dry_run}` |
 | `migrate` | `{applied: [{id, description, notes}], dry_run, diff?}` |
-| `context` | `{task, role, all_roles, modules: [{module, score, keywords, negative, read, code, code_globs}], read: [{module, label, path, exists}]}` |
+| `context` | `{task, role, all_roles, modules: [{module, score, keywords, negative, read, code, code_globs}], read: [{module, label, path, exists}], near_misses: [{module, score, keywords, near: [{keyword, task_word}]}]}` — `near_misses` is `[]` whenever a module matched; when none reaches `[match] min_score` it lists the targets with a keyword that loosely matches a task word (`near`) or with exact hits below `min_score` (`keywords`, `score`), at most `top` |
 | `discover` | `{task, modules: [{module, score, keywords, sources, touched_files, usage, docs_to_read, docs_to_update}], files_outside_modules, summary: {total_modules, by_usage: {modify, reference}}}` — `task` is `null` when only `--from-diff` / `--files` is given (then no keyword scoring) |
 | `coverage` | `{total, mapped, share, modules: {target: n}, unmapped: [path]}` — files = git-tracked + new not ignored, filtered by `[coverage] include`/`exclude`, never the modules dir, the config dir or dotfiles; `share` = mapped / total, rounded down to 3 decimals (`1.0` when no file counts, so it never overstates); `--fail-under PCT` must be `0`–`100` (else exit 2) and is compared against the reported percent (`share` × 100, rounded to one decimal) — exit 1 when that percent is below `PCT`; exit 2 outside a git repository |
 

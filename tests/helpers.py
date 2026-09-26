@@ -30,6 +30,36 @@ def copy_fixture(tmp: Path) -> Path:
     return dst
 
 
+def make_repo(tmp, modules: dict, config: str = "", files=()) -> Path:
+    """A small synthetic repository `<tmp>/repo`: `modules` maps a module name (or
+    "parent/child", listed after its parent) to its keyword list; each gets a registry entry
+    and its MODULE.md. `config` becomes `.modsys/config.toml`; every path in `files` is created
+    with one line of code."""
+    root = Path(tmp) / "repo"
+    registry: dict = {"modules": {}}
+    for name, keywords in modules.items():
+        parent, _, child = name.partition("/")
+        doc = (f"modules/{parent}/submodules/{child}/MODULE.md" if child
+               else f"modules/{name}/MODULE.md")
+        (root / doc).parent.mkdir(parents=True, exist_ok=True)
+        (root / doc).write_text(f"# {name}\n", encoding="utf-8")
+        entry = {"description": f"The {name} module.", "keywords": list(keywords),
+                 "context_files": {"universal": doc}}
+        if child:
+            registry["modules"][parent].setdefault("submodules", {})[child] = entry
+        else:
+            registry["modules"][name] = {"name": name, "status": "active", **entry}
+    (root / "modules" / "registry.json").write_text(
+        json.dumps(registry, indent=2) + "\n", encoding="utf-8")
+    (root / ".modsys").mkdir()
+    if config:
+        (root / ".modsys" / "config.toml").write_text(config, encoding="utf-8")
+    for rel in files:
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text("x = 1\n", encoding="utf-8")
+    return root
+
+
 def mutate_registry(root: Path, fn) -> None:
     p = root / "modules" / "registry.json"
     data = json.loads(p.read_text(encoding="utf-8"))

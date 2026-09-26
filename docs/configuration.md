@@ -89,6 +89,15 @@ score; a row below `min_score` is dropped even with matched keywords. When nothi
 no match simply omits the module (no message). Register every form a task is likely to use
 (singular AND plural, synonyms) rather than relying on this to generalize.
 
+Near misses: when nothing reaches `min_score`, `context` (JSON key `near_misses`, and its text)
+and `match` (text only; `match --json` stays the plain row list) list the modules and children
+that almost matched — a keyword that is not an exact hit but has a word sharing its first
+letters with a word of the task (`reminder` ~ `reminders`, `schedule` ~ `scheduling`: the first
+5 letters, or all of the shorter word; both words at least 4 letters, so `api` and `tag` match
+exactly only), or exact hits whose score a negative keyword pulled below `min_score`. The text
+ends with `re-run with the module's own keyword in the task text, or read it directly: modsys
+show <module>`; `modsys show <module>` prints the module's keywords on its `keys` line.
+
 ## `[lint]`
 
 | Key | Default | Meaning |

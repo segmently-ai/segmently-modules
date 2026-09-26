@@ -65,8 +65,11 @@ def show_target(ws, target: str, role: str | None, all_roles: bool) -> tuple[int
         raise UsageError(f"'{child}' is not a submodule of '{parent}' "
                          f"(children: {', '.join(subs) or 'none'})")
     sub = _object(subs[child], f"{parent}/{child}") if child else {}
+    keywords = (sub if child else entry).get("keywords")  # the target's OWN list
     result = {"module": f"{parent}/{child}" if child else parent,
               "status": entry.get("status"), "description": entry.get("description"),
+              "keywords": [k for k in keywords if isinstance(k, str)]
+              if isinstance(keywords, list) else [],  # garbage values are lint's job
               "read": [], "code": [], "code_globs": []}
 
     def add(label, path):
@@ -187,6 +190,8 @@ def _render_show(d) -> None:
         print(f"'{d['module']}' is a POINTER STUB (not in registry). Stub says:\n{d['stub']}")
         return
     print(f"{d['module']}  [{d['status']}]\n  {d['description']}")
+    if d["keywords"]:
+        print(f"  keys  {', '.join(d['keywords'])}")
     for r in d["read"]:
         mark = "" if r["exists"] else "  (MISSING ON DISK)"
         print(f"  read  {r['label']:<32} {r['path']}{mark}")

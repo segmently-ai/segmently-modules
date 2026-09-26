@@ -54,13 +54,20 @@ starting or ending with punctuation, e.g. `.epub` or `c++`, can still match insi
 token on that side.) Register the forms your team actually types (singular AND plural,
 synonyms). If nothing reaches `[match] min_score`, `context`/`match` say so (`no module matched
 (try domain terms, or: modsys list)` / `no keyword matches (try rephrasing with domain terms, or
-use: list)`) and plain `discover --task` with no match just omits the module — there is no
-module-name argument to fall back to (`context` takes only `--task`/`--task-file`, never a
-module). Re-run with a word that IS one of the module's registered keywords (they live in the
-registry — `modules/registry.json`, or `modules/<name>/module.json` in the per-module layout;
-neither `show` nor `list` prints them), add the missing one (`modsys registry append tasks
-keywords '"todos"'`, JSON value — quote a string), or skip matching and read the module
-directly: `modsys show tasks --role developer`.
+use: list)`) and list the near misses — modules with a keyword that almost matches a task word:
+
+```text
+no module matched (try domain terms, or: modsys list)
+near  reminders                    reminder ~ reminders
+re-run with the module's own keyword in the task text, or read it directly: modsys show reminders
+```
+
+(`context --json` carries the same rows as `near_misses`.) Plain `discover --task` with no
+match just omits the module — there is no module-name argument to fall back to (`context`
+takes only `--task`/`--task-file`, never a module). Re-run with a word that IS one of the
+module's registered keywords (`modsys show <module>` prints them on its `keys` line), add the
+missing one (`modsys registry append tasks keywords '"todos"'`, JSON value — quote a string),
+or skip matching and read the module directly: `modsys show tasks --role developer`.
 
 Each gets `modules/<name>/MODULE.md`, one doc per standard role and a registry entry. Now wire
 the code: modules know nothing about code until a `[[code_map]]` rule (or a `code_pointer`
