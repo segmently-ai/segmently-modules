@@ -26,3 +26,11 @@ Every step checks an exit code and the data. The scorecard on stdout:
 
 `commands` counts modsys invocations. A scenario stops at its first failed step; the script
 exits 1. `tests/test_adoption_eval.py` runs it with the unit tests.
+
+## E-B — blind agents (`agents/`)
+
+`agents/greenfield.md` and `agents/brownfield.md` are prompts for an LLM agent that gets only
+this repository's `README.md` and `docs/` plus `--help` — no source reading. Fill the
+placeholders (`{WORKDIR}` an empty work directory, `{VENV}` a venv with modsys installed,
+`{DOCS}` a directory with copies of `README.md` and `docs/`), run each prompt 2–3 times per
+phase, and score the friction logs with `agents/rubric.md`.
