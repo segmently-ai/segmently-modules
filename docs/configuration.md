@@ -187,14 +187,20 @@ to their own module, and `code_pointer` fields).
 | `id` | required, unique; a higher layer with the same id deep-merges into the rule |
 | `pattern` | a glob with a `{module}` segment: `{module}` captures ONE path segment and must name a top-level module (`src/{module}/**`, `app/repositories/{module}.py`) |
 | `globs` | a list of globs routed to `module` |
-| `module` | required with `globs`: a top-level module or a child (`parent/child`); with a `pattern` it overrides the capture |
+| `module` | required with `globs`: a top-level module or a child (`parent/child`), never empty; with a `pattern` it overrides the capture |
 | `exclusive` | `true`: a file this rule matches is mapped ONLY by the exclusive rules that match it — other rules skip the file (docs and `code_pointer` mapping are unaffected) |
 
 A `pattern` MUST contain a literal `{module}` segment — even when `module` is also set (which
 then overrides the value the segment would have captured, per the row above). `pattern =
-"docs/**"` with `module = "tasks"` is refused (exit `2`, `pattern needs a {module} segment`),
-not silently accepted with `tasks` as a fixed target. For a fixed target with nothing to
-capture, use `globs = [...]` + `module = "<name>"` instead of `pattern`.
+"docs/**"` with `module = "tasks"` is refused (exit `2`) with the fix spelled out:
+`code_map.<id>: pattern "docs/**" has no {module} segment — for a fixed module use globs =
+["docs/**"] and module = "tasks"` (`module = "NAME"` when the rule has none). An empty
+`module = ""` is refused too (`module must be a non-empty module or parent/child name`).
+
+`modsys code-map list` prints the effective rules (every layer merged; `--module TARGET` keeps
+the ones that route files to TARGET) and `modsys code-map files TARGET` every repository file
+that maps to TARGET with how it maps (`docs`, `code_pointer:<field>`, `code_map:<id>`) — the
+resolved file list that `code_globs` is not.
 
 The `id` deep-merge is checked per layer, not after merging: each layer is validated on its own,
 so an override that repeats only `id` (or `id` + `exclusive`) is refused with "needs a pattern or

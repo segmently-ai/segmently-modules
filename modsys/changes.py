@@ -7,6 +7,7 @@
                   A file matched by an `exclusive = true` rule is mapped ONLY by the exclusive
                   rules that match it; docs and code_pointer mapping are unaffected.
 Glob syntax: `**` any path, `*` one segment, `?` one character."""
+import json
 import os
 import re
 import subprocess
@@ -33,6 +34,30 @@ def git(root: Path, *args: str, label: str | None = None) -> str:
     if proc.returncode != 0:
         raise UsageError(f"git {label or ' '.join(args)} failed: {proc.stderr.strip()[:300]}")
     return proc.stdout
+
+
+def work_tree_error(root: Path) -> str | None:
+    """None when `root` is inside a git work tree; otherwise why not: "not inside a work tree"
+    only when git says so, else git's own error (or that git cannot run)."""
+    try:
+        proc = subprocess.run(["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
+                              capture_output=True, encoding="utf-8", errors="replace",
+                              env={**git_env(), "LC_ALL": "C"})
+    except OSError as e:
+        return f"git is not installed or cannot run: {e}"
+    if proc.returncode == 0:
+        return None if proc.stdout.strip() == "true" else f"{root} is not inside a work tree"
+    err = proc.stderr.strip()
+    if err.startswith("fatal: not a git repository (or any of the parent directories)"):
+        return f"{root} is not inside a work tree"
+    return f"git rev-parse --is-inside-work-tree failed: {err[:300]}"
+
+
+def require_work_tree(root: Path, what: str) -> None:
+    """Exit 2 (`<what> needs a git repository (…)`) unless `root` is inside a git work tree."""
+    error = work_tree_error(root)
+    if error:
+        raise UsageError(f"{what} needs a git repository ({error})")
 
 
 def _rev(value: str) -> str:
@@ -139,10 +164,17 @@ def validate_code_map(layer: dict, source, check_table) -> None:
         check_table(rule, CODE_MAP_SCHEMA, f"code_map.{rule['id']}", source)
         if "pattern" not in rule and "globs" not in rule:
             raise UsageError(f"{source}: code_map.{rule['id']}: needs a pattern or globs")
+        if "module" in rule and not rule["module"]:
+            raise UsageError(f"{source}: code_map.{rule['id']}: module must be a non-empty module "
+                             f"or parent/child name")
         if "globs" in rule and "module" not in rule:
             raise UsageError(f"{source}: code_map.{rule['id']}: globs need a module")
         if "pattern" in rule and "{module}" not in rule["pattern"]:
-            raise UsageError(f"{source}: code_map.{rule['id']}: pattern needs a {{module}} segment")
+            fixed = json.dumps(rule["pattern"], ensure_ascii=False)
+            module = json.dumps(rule.get("module", "NAME"), ensure_ascii=False)
+            raise UsageError(f"{source}: code_map.{rule['id']}: pattern {fixed} has no {{module}} "
+                             f"segment — for a fixed module use globs = [{fixed}] and "
+                             f"module = {module}")
 
 
 def _pointer_paths(value) -> list[str]:
@@ -165,6 +197,12 @@ def target_names(modules: dict) -> set[str]:
     return {target for target, _ in _targets(modules)}
 
 
+def rule_routes_to(rule: dict, target: str) -> bool:
+    """A rule routes files to `target` when its `module` is the target, or when it is a
+    `pattern` rule without a `module` and the target is top-level (`{module}` = one segment)."""
+    return rule.get("module") == target or ("module" not in rule and "/" not in target)
+
+
 def code_globs(config: dict, target: str) -> list[str]:
     """The `[[code_map]]` globs that route files to `target` — where its code lives, for agents
     (`show` / `context`). A `pattern` rule without a `module` contributes its pattern with
@@ -173,18 +211,18 @@ def code_globs(config: dict, target: str) -> list[str]:
     These are routing rules, not a file list: an `exclusive` rule elsewhere may take files."""
     out = []
     for rule in as_list(config.get("code_map")):
-        if not isinstance(rule, dict) or "id" not in rule:
+        if not isinstance(rule, dict) or "id" not in rule or not rule_routes_to(rule, target):
             continue
         globs = [rule["pattern"]] if "pattern" in rule else as_list(rule.get("globs"))
-        if rule.get("module") == target:
-            out += [g.replace("{module}", "*") for g in globs if isinstance(g, str)]
-        elif "module" not in rule and "/" not in target:
-            out += [g.replace("{module}", target) for g in globs if isinstance(g, str)]
+        fill = "*" if rule.get("module") == target else target
+        out += [g.replace("{module}", fill) for g in globs if isinstance(g, str)]
     return list(dict.fromkeys(out))
 
 
-def map_files(ws, files: list[str]) -> dict:
-    """{"modules": {target: {"files": […], "via": […]}}, "unmapped": […]}"""
+def routes(ws, files: list[str]):
+    """Yield (path, target, via) for every way each file maps to a module, file by file in
+    the given order: docs, then code_pointer fields, then `[[code_map]]` rules after
+    `exclusive` precedence. A file that yields nothing is unmapped."""
     modules = ws.registry.modules
     targets = target_names(modules)
     mdir = ws.config["paths"]["modules_dir"].rstrip("/") + "/"
@@ -195,21 +233,6 @@ def map_files(ws, files: list[str]) -> dict:
                                          ([r["pattern"]] if "pattern" in r else r["globs"])],
               r.get("exclusive") is True)
              for r in as_list(ws.config.get("code_map")) if isinstance(r, dict) and "id" in r]
-    hits: dict[str, dict] = {}
-    seen_files: dict[str, set] = {}  # per-target seen-set, kept OUT of the slot dict that is
-                                     # serialized to JSON: a list scan there would be quadratic
-
-    def hit(target, path, via):
-        slot = hits.setdefault(target, {"files": [], "via": []})
-        target_seen = seen_files.setdefault(target, set())
-        if path not in target_seen:
-            target_seen.add(path)
-            slot["files"].append(path)
-        if via not in slot["via"]:
-            slot["via"].append(via)
-        mapped.add(path)
-
-    mapped: set = set()
     for path in files:
         if path.startswith(mdir):
             parts = path[len(mdir):].split("/")
@@ -217,10 +240,10 @@ def map_files(ws, files: list[str]) -> dict:
                 child = parts[2] if len(parts) > 3 and parts[1] == "submodules" else None
                 target = f"{parts[0]}/{child}" if child and child in as_dict(
                     as_dict(modules[parts[0]]).get("submodules")) else parts[0]
-                hit(target, path, "docs")
+                yield path, target, "docs"
         for target, field, pointer in pointers:
             if path == pointer or path.startswith(pointer + "/"):
-                hit(target, path, f"code_pointer:{field}")
+                yield path, target, f"code_pointer:{field}"
         routed = []  # (target, rule id, exclusive) of every code_map rule that routes the file
         for rule_id, module, regexes, exclusive in rules:
             for rx in regexes:
@@ -233,6 +256,23 @@ def map_files(ws, files: list[str]) -> dict:
         if any(exclusive for _, _, exclusive in routed):
             routed = [r for r in routed if r[2]]  # exclusive rules win the file
         for name, rule_id, _ in routed:
-            hit(name, path, f"code_map:{rule_id}")
+            yield path, name, f"code_map:{rule_id}"
+
+
+def map_files(ws, files: list[str]) -> dict:
+    """{"modules": {target: {"files": […], "via": […]}}, "unmapped": […]}"""
+    hits: dict[str, dict] = {}
+    seen_files: dict[str, set] = {}  # per-target seen-set, kept OUT of the slot dict that is
+                                     # serialized to JSON: a list scan there would be quadratic
+    mapped: set = set()
+    for path, target, via in routes(ws, files):
+        slot = hits.setdefault(target, {"files": [], "via": []})
+        target_seen = seen_files.setdefault(target, set())
+        if path not in target_seen:
+            target_seen.add(path)
+            slot["files"].append(path)
+        if via not in slot["via"]:
+            slot["via"].append(via)
+        mapped.add(path)
     return {"modules": dict(sorted(hits.items())),
             "unmapped": [f for f in files if f not in mapped]}

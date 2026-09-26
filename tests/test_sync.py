@@ -70,7 +70,7 @@ class SyncMappingTest(unittest.TestCase):
             '[[code_map]]\nid = "x"\npattern = "apps/**"\n', encoding="utf-8")
         code, _, err = run("sync", "--files", "a.py", *self.R)
         self.assertEqual(code, 2)
-        self.assertIn("pattern needs a {module} segment", err)
+        self.assertIn('pattern "apps/**" has no {module} segment', err)  # D5 wording
 
     def test_code_map_rule_needs_a_pattern_or_globs(self):
         (self.root / ".modsys" / "config.toml").write_text(

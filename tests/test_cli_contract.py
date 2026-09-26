@@ -39,6 +39,8 @@ GOLDEN = [
     (("discover", "--task", "isbn"), {"task", "modules", "files", "files_outside_modules",
                                       "missing_files", "summary"}),
     (("coverage",), {"total", "mapped", "share", "modules", "unmapped"}),
+    (("code-map", "list"), None),
+    (("code-map", "files", "catalog"), {"target", "files", "total"}),
 ]
 
 
@@ -60,7 +62,7 @@ class CliContractTest(unittest.TestCase):
 
     def test_every_verb_is_documented_and_covered(self):
         verbs = set(build_parser()._subparsers._group_actions[0].choices)
-        documented = set(re.findall(r"^\| `([a-z]+)", DOC.read_text(encoding="utf-8"), re.M))
+        documented = set(re.findall(r"^\| `([a-z-]+)", DOC.read_text(encoding="utf-8"), re.M))
         self.assertEqual(verbs, documented)
         self.assertEqual(verbs, {argv[0] for argv, _ in GOLDEN})
 

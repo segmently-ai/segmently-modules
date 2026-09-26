@@ -205,7 +205,8 @@ modsys coverage                  # everything unmapped: the baseline
 3. **Iterate on `modsys coverage`** until the unmapped list is only what belongs to no module
    (exclude it with `[coverage] exclude = [...]`), then look at `modsys coverage --json`'s
    per-module counts: a shared/catch-all module with a suspiciously large file count is the
-   smell of a missing per-feature rule (see the SQL example above). Then gate CI on all three:
+   smell of a missing per-feature rule (see the SQL example above) — `modsys code-map files db`
+   lists exactly which files it holds and through which rule. Then gate CI on all three:
    `modsys lint --fail-on warning` (config-level findings such as a typo'd `[[code_map]]` rule
    appear only here, never under `--changed`; the default `fail_on = "error"` misses MS052, a
    warning), `modsys lint --changed --base origin/main --fail-on warning` (name a real base —
