@@ -47,6 +47,11 @@ default_status = "planned"
 # default "**" could never be narrowed); a team `include` replaces it.
 exclude = []                  # globs; the modules dir, the config dir and dotfiles never count
 
+[ci]
+fail_on = "warning"           # modsys ci: lint and drift fail at this severity (--fail-on)
+base = "HEAD"                 # drift is measured against this ref; in CI pass the target branch
+# coverage_fail_under = 80    # unset: the coverage step only reports (--fail-under)
+
 [roles.developer]
 order = 10
 standard = true

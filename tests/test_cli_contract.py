@@ -41,6 +41,7 @@ GOLDEN = [
     (("coverage",), {"total", "mapped", "share", "modules", "unmapped"}),
     (("code-map", "list"), None),
     (("code-map", "files", "catalog"), {"target", "files", "total"}),
+    (("ci", "--fail-on", "never"), {"base", "fail_on", "steps", "failed", "notes"}),
 ]
 
 

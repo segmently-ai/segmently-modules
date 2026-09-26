@@ -128,6 +128,18 @@ level never count. `share` is mapped / total rounded down to 3 decimals, so it n
 | `include` | `["**"]` (built in) | globs a file must match to count; a team `include` replaces the built-in `**` |
 | `exclude` | `[]` | globs that never count (generated code, vendored files, docs) |
 
+## `[ci]`
+
+`modsys ci` — one gate: `lint` (plain), `drift` (`lint --changed` against `base`) and
+`coverage`; every step always runs and the command exits 1 when any step failed. A flag
+overrides each key (`--fail-on`, `--base`, `--fail-under`).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `fail_on` | `"warning"` | `error` · `warning` · `never`: the lowest severity that fails the lint and drift steps |
+| `base` | `"HEAD"` | the ref drift is measured against — in CI the target branch; against `HEAD` a clean checkout has nothing to compare (`ci` says so in `notes`) |
+| `coverage_fail_under` | unset | a number `0`–`100`: the coverage step fails below this percent (compared like `coverage --fail-under`); unset = the step only reports |
+
 ## `[roles.<name>]`
 
 Roles are the audiences of per-module docs (`roles/<role>.md`). Defaults: `developer` (10),

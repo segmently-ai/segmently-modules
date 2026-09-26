@@ -261,6 +261,26 @@ def drift_findings(ws, files: list[str], frozen_touched: list[str]) -> tuple[lis
     return out, {t.partition("/")[0] for t in mapping}
 
 
+def drift_report(ws, base: str, findings: list[Finding]) -> tuple[list[Finding], dict]:
+    """`lint --changed`: `findings` narrowed to the top-level modules the change since `base`
+    touches, plus MS050/MS051; and the change as {base, files, modules}."""
+    files = changed_files(ws.root, base=base)
+    frozen = [f for f in diff_names(ws.root, base, "--diff-filter=MD")
+              if f.endswith(".legacy.md")]  # a renamed snapshot shows as D (--no-renames)
+    drift, touched = drift_findings(ws, files, frozen)
+    narrowed = [f for f in findings if f.module.partition("/")[0] in touched] + drift
+    return narrowed, {"base": base, "files": files, "modules": sorted(touched)}
+
+
+def failing(findings: list[Finding], fail_on: str) -> bool:
+    return any(SEVERITY_RANK[f.severity] >= FAIL_ON[fail_on] for f in findings)
+
+
+def severity_counts(findings: list[Finding]) -> dict:
+    counts = Counter(f.severity for f in findings)
+    return {s: counts.get(s, 0) for s in ("error", "warning", "info")}
+
+
 def register(sub, common) -> None:
     p = sub.add_parser("lint", parents=[common],
                        help="check registry, fields, doc budgets and component paths")
@@ -280,16 +300,9 @@ def run(args) -> int:
     findings = lint_registry(ws)
     changed = None
     if args.changed:
-        files = changed_files(ws.root, base=args.base)
-        frozen = [f for f in diff_names(ws.root, args.base, "--diff-filter=MD")
-                  if f.endswith(".legacy.md")]  # a renamed snapshot shows as D (--no-renames)
-        drift, touched = drift_findings(ws, files, frozen)
-        findings = [f for f in findings if f.module.partition("/")[0] in touched] + drift
-        changed = {"base": args.base, "files": files, "modules": sorted(touched)}
-    failed = any(SEVERITY_RANK[f.severity] >= FAIL_ON[fail_on] for f in findings)
-    counts = Counter(f.severity for f in findings)
-    data = {"findings": [asdict(f) for f in findings],
-            "summary": {s: counts.get(s, 0) for s in ("error", "warning", "info")},
+        findings, changed = drift_report(ws, args.base, findings)
+    failed = failing(findings, fail_on)
+    data = {"findings": [asdict(f) for f in findings], "summary": severity_counts(findings),
             "failed": failed}
     if changed is not None:
         data["changed"] = changed

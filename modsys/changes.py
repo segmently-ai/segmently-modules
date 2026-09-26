@@ -68,6 +68,19 @@ def _rev(value: str) -> str:
     return value
 
 
+def commit_ref(root: Path, ref: str) -> str:
+    """`ref` when it names a commit in the repository at `root`; else exit 2 (a ref starting
+    with '-' is refused before git sees it)."""
+    ref = _rev(ref)
+    proc = subprocess.run(["git", "-C", str(root), "rev-parse", "--verify", "--quiet",
+                           f"{ref}^{{commit}}"], capture_output=True, encoding="utf-8",
+                          errors="replace", env=git_env())
+    if proc.returncode != 0:
+        raise UsageError(f"--base {ref!r} is not a commit in this repository (in CI, fetch the "
+                         f"target branch first, e.g. git fetch origin main)")
+    return ref
+
+
 def _paths(output: str) -> list[str]:
     return [p for p in output.split("\0") if p]
 

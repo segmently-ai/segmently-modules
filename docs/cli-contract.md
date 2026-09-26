@@ -10,7 +10,7 @@ directory, else the current directory), `--config-dir DIR` (default `<root>/.mod
 
 - **stdout with `--json`:** exactly one JSON document `{"schema": "modsys.<verb>/1", "data": …}`.
 - **Exit codes:** `0` ok · `1` findings (lint at/above `--fail-on`, coverage below
-  `--fail-under`, rejected proposals, a failed required hook, a stale index with `--check`, a
+  `--fail-under`, a failed `ci` step, rejected proposals, a failed required hook, a stale index with `--check`, a
   pointer stub) · `2` usage, config or registry error (a missing registry says to run
   `modsys init`) — stdout is empty, stderr carries `modsys: error: …`. The one extra code is `130`:
   interrupted by Ctrl-C (SIGINT, e.g. during a lock wait or at a `create` prompt), stderr
@@ -29,7 +29,8 @@ directory, else the current directory), `--config-dir DIR` (default `<root>/.mod
   deleted file is a real change) and listed in `missing_files` (`[]` for `--from-diff`, which
   lists real changes only); a directory is refused (exit `2`, nothing mapped, no hook runs) —
   list its files instead, e.g. `git ls-files <dir>`.
-- **Git refs** (`--from-diff A..B` of `sync` / `discover`, `--base REF` of `lint --changed`): a
+- **Git refs** (`--from-diff A..B` of `sync` / `discover`, `--base REF` of `lint --changed` and
+  `ci`): a
   value starting with `-` is refused (exit `2`) — it would be read as a git option. Changed paths
   are relative to the root and limited to it, also when the root is a subdirectory of the git
   repository; a rename counts as a delete plus an add.
@@ -74,6 +75,7 @@ they are missing.
 | `coverage` | `{total, mapped, share, modules: {target: n}, unmapped: [path]}` — files = git-tracked + new not ignored, filtered by `[coverage] include`/`exclude`, never the modules dir, the config dir or dotfiles; `share` = mapped / total, rounded down to 3 decimals (`1.0` when no file counts, so it never overstates); `--fail-under PCT` must be `0`–`100` (else exit 2) and is compared against the reported percent (`share` × 100, rounded to one decimal) — exit 1 when that percent is below `PCT`; exit 2 outside a git repository |
 
 | `code-map list\|add\|files` | list: `[{id, module, pattern, globs, exclusive}]` — the effective `[[code_map]]` rules (every layer merged; `module` / `pattern` / `globs` are `null` when the rule has none); `--module TARGET` keeps the rules that route files to TARGET (a rule naming it, or a `pattern` rule for a top-level TARGET) · add `ID (--pattern P \| --glob G … --module M) [--module M] [--exclusive] [--dry-run]`: `{id, file, block, dry_run}` — `block` = the appended `[[code_map]]` text; refused (exit 2, nothing written) without `config.toml`, for an id defined in any layer, an unknown `--module`, a pattern without `{module}` · files `TARGET`: `{target, files: [{path, via: [source]}], total}` — every repository file (git-tracked + new, not ignored; `[coverage]` filters do not apply) that maps to TARGET, `via` = `docs` · `code_pointer:<field>` · `code_map:<id>`; exit 2 outside a git repository; an unknown TARGET is exit 2 |
+| `ci` | `{base, fail_on, steps: [{name, status, summary, findings?}], failed, notes}` — `steps` always `lint`, `drift`, `coverage`, in that order, all run; `status`: `passed` · `failed` · `report-only` (coverage without a threshold) · `no-changes` (drift found no changed file); lint/drift `summary` = `{error, warning, info}` (drift adds `base`, `files`, `modules`) and `findings` as in `lint`; coverage `summary` = `{share, mapped, total, unmapped, fail_under}` (`unmapped` = a count); `notes` explains a drift step with nothing to compare against `HEAD`. Exit 1 when a step failed; exit 2 (stdout empty, no step ran) for an unknown or option-like `--base`, a threshold outside 0–100, a root outside git. Settings: flag, else `[ci]`, else `fail_on` `warning`, base `HEAD`, no threshold |
 
 ## Pipeline stages
 
@@ -84,4 +86,4 @@ they are missing.
 | CI, no task text | `modsys discover --from-diff $BASE..HEAD --json` |
 | during build | `modsys propose --run-id $RUN --agent builder --module M --op … --reason "…"` |
 | after build | `modsys sync --from-diff $BASE..HEAD --apply-proposals --run-id $RUN --json` |
-| CI gate | `modsys lint --fail-on warning --json` (config-level findings: MS021, MS052 — dropped by `--changed`; the default `fail_on = "error"` would miss MS052, a warning) then `modsys lint --changed --base $BASE --fail-on warning --json` (`$BASE` must be a real ref, e.g. the PR's target branch or a captured pre-change commit — `--base` defaults to `HEAD`, so an omitted `--base` diffs HEAD against itself and never finds drift) then `modsys coverage --fail-under 80 --json` |
+| CI gate | `modsys ci --base $BASE --fail-under 80 --json` — lint (plain: config-level findings MS021, MS052, MS053 appear only here), drift against `$BASE` (a real ref: the PR's target branch or a captured pre-change commit) and coverage, always all three |

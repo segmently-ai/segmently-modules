@@ -102,15 +102,14 @@ modsys show reminders                # docs to read, and `code  src/reminders/**
 git add .gitignore .modsys modules src && git commit -m "modules"
 ```
 
-The agent loop — before planning, after the change, and the drift half of the CI gate (the
-other half, plain `modsys lint --fail-on warning` plus `modsys coverage --fail-under …`, is not
-shown here — see the CI gate row in [docs/cli-contract.md](docs/cli-contract.md)):
+The agent loop — before planning, after the change, and the gate (`modsys ci`, see
+[CI gate](#ci-gate)):
 
 ```bash
 modsys context --task "snooze a reminder" --role developer   # what to read, where the code is
 BASE=$(git rev-parse HEAD)   # the commit the change starts from — capture BEFORE editing/committing
 # … the agent changes src/reminders/snooze.py and commits …
-modsys lint --changed --base "$BASE" --fail-on warning      # exit 1: MS050, code changed, docs did not
+modsys ci --base "$BASE"     # exit 1: step drift failed — MS050, code changed, docs did not
 modsys propose --run-id r1 --module reminders --op doc_append \
   --doc modules/reminders/roles/developer.md --reason "document snooze" --value-file - <<'EOF'
 ## Snooze
@@ -119,7 +118,7 @@ modsys propose --run-id r1 --module reminders --op doc_append \
 EOF
 modsys sync --from-diff "$BASE..HEAD" --apply-proposals     # maps the change, runs hooks, applies proposals
 git add modules/reminders && git commit -m "docs: snooze"
-modsys lint --changed --base "$BASE" --fail-on warning      # exit 0
+modsys ci --base "$BASE"     # exit 0: lint passed, drift passed, coverage report-only
 ```
 
 Agents never edit the registry or module docs mid-run: they `propose`, and one
@@ -197,14 +196,9 @@ modsys coverage                  # everything unmapped: the baseline
    (exclude it with `[coverage] exclude = [...]`), then look at `modsys coverage --json`'s
    per-module counts: a shared/catch-all module with a suspiciously large file count is the
    smell of a missing per-feature rule (see the SQL example above) — `modsys code-map files db`
-   lists exactly which files it holds and through which rule. Then gate CI on all three:
-   `modsys lint --fail-on warning` (config-level findings such as a typo'd `[[code_map]]` rule
-   appear only here, never under `--changed`; the default `fail_on = "error"` misses MS052, a
-   warning), `modsys lint --changed --base origin/main --fail-on warning` (name a real base —
-   `--base` defaults to `HEAD`, so a bare `--changed` on a clean CI checkout diffs HEAD against
-   itself and can never find drift; in CI use the PR's target ref, e.g. `origin/main`, or the
-   `"$BASE"` captured before the change, as in the agent loop above) and `modsys coverage
-   --fail-under 80` (your target).
+   lists exactly which files it holds and through which rule; plain `modsys lint` reports two
+   rules that route one file to two modules as MS053. Then gate CI with `modsys ci` (next
+   section) and your coverage target.
 4. **Optional per-module layout** — one `modules/<name>/module.json` per module instead of one
    shared file (fewer merge conflicts in big teams):
 
@@ -214,6 +208,23 @@ modsys coverage                  # everything unmapped: the baseline
    modsys list                      # same modules, now read from the module files
    modsys index build --check       # in CI: exit 1 when the generated index is stale
    ```
+
+## CI gate
+
+```bash
+modsys ci --base origin/main --fail-under 80
+```
+
+One command, three steps that always all run, so one failure never hides another: `lint`
+(plain — config-level findings such as a typo'd `[[code_map]]` module, MS052, or two rules
+routing one file to two modules, MS053, appear only here), `drift` (`lint --changed` against
+`--base`: code changed without its module's docs, MS050) and `coverage` (fails below
+`--fail-under`; without a threshold it only reports). Exit 1 when a step failed, 2 for a usage
+error. `--base` must be a real ref — in CI the pull request's target branch (fetch it first),
+or the `"$BASE"` captured before a change; against the default `HEAD` a clean checkout has
+nothing to compare, and `ci` says so in its notes. Put the team's defaults in `[ci]` of
+`.modsys/config.toml` (`fail_on`, `base`, `coverage_fail_under`), then CI runs a bare
+`modsys ci`.
 
 ## Reference
 

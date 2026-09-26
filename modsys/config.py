@@ -23,6 +23,7 @@ _TYPES = {
     "bool": (lambda v: isinstance(v, bool), "a boolean"),
     "list[str]": (lambda v: isinstance(v, list) and all(isinstance(i, str) for i in v),
                   "a list of strings"),
+    "number": (lambda v: isinstance(v, (int, float)) and not isinstance(v, bool), "a number"),
 }
 # Only KNOWN keys are checked; unknown keys and sections pass (forward compatibility).
 LAYER_SCHEMA = {
@@ -39,7 +40,9 @@ LAYER_SCHEMA = {
     "create": {"min_keywords": "int", "description_min": "int", "description_max": "int",
                "default_status": "str"},
     "coverage": {"include": "list[str]", "exclude": "list[str]"},
+    "ci": {"fail_on": "str", "base": "str", "coverage_fail_under": "number"},
 }
+CI_FAIL_ON = ("error", "never", "warning")
 ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str",
                "applies_when": "str", "template": "str"}
 
@@ -77,6 +80,13 @@ def validate_layer(layer: dict, source) -> None:
         if severity is not None and severity not in ("info", "warning", "error"):
             raise UsageError(f"{source}: [lint] {key}: expected info, warning or error, "
                              f"got {severity!r}")
+    ci = layer.get("ci", {})
+    if "fail_on" in ci and ci["fail_on"] not in CI_FAIL_ON:
+        raise UsageError(f"{source}: [ci] fail_on: expected one of {', '.join(CI_FAIL_ON)}, "
+                         f"got {ci['fail_on']!r}")
+    if "coverage_fail_under" in ci and not 0 <= ci["coverage_fail_under"] <= 100:
+        raise UsageError(f"{source}: [ci] coverage_fail_under: expected a number 0–100, "
+                         f"got {ci['coverage_fail_under']!r}")
     layout = layer.get("paths", {}).get("registry_layout")
     if layout is not None and layout not in REGISTRY_LAYOUTS:
         raise UsageError(f"{source}: [paths] registry_layout: expected one of "
