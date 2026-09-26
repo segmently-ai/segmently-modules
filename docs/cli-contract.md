@@ -19,7 +19,8 @@ directory, else the current directory), `--config-dir DIR` (default `<root>/.mod
   set `MODSYS_DEBUG=1` to see the traceback.
 - **Writers** (`registry`, `index`, `proposals apply`, `sync --apply-proposals`, `create`,
   `migrate`) take the registry lock (`<registry>.lock`), write atomically, and refuse a file that
-  changed since it was read. `--dry-run` writes nothing. Field writes (`registry`, `propose`,
+  changed since it was read. `code-map add` appends one rule to `<config_dir>/config.toml` (one
+  append-mode write, validated first; never a rewrite). `--dry-run` writes nothing. Field writes (`registry`, `propose`,
   proposals from hooks) refuse a value lint would report as an error for that field: a `status`
   outside `[registry] statuses`, a `related_modules` edge without `module` / `relation` /
   `description`, with an unknown relation, or to an unknown module or child. `init` only
@@ -72,7 +73,7 @@ they are missing.
 | `discover` | `{task, modules: [{module, score, keywords, sources, touched_files, usage, docs_to_read, docs_to_update}], files: [{path, modules: [target]}], files_outside_modules, missing_files, summary: {total_modules, by_usage: {modify, reference}}}` — `task` and every `score` are `null` when only `--from-diff` / `--files` is given (no keyword scoring ran); with a task, a module found only through the change has `score` `0`. `files` = every changed file with the targets it maps to (`[]` = unmapped), sorted by path |
 | `coverage` | `{total, mapped, share, modules: {target: n}, unmapped: [path]}` — files = git-tracked + new not ignored, filtered by `[coverage] include`/`exclude`, never the modules dir, the config dir or dotfiles; `share` = mapped / total, rounded down to 3 decimals (`1.0` when no file counts, so it never overstates); `--fail-under PCT` must be `0`–`100` (else exit 2) and is compared against the reported percent (`share` × 100, rounded to one decimal) — exit 1 when that percent is below `PCT`; exit 2 outside a git repository |
 
-| `code-map list\|files` | list: `[{id, module, pattern, globs, exclusive}]` — the effective `[[code_map]]` rules (every layer merged; `module` / `pattern` / `globs` are `null` when the rule has none); `--module TARGET` keeps the rules that route files to TARGET (a rule naming it, or a `pattern` rule for a top-level TARGET) · files `TARGET`: `{target, files: [{path, via: [source]}], total}` — every repository file (git-tracked + new, not ignored; `[coverage]` filters do not apply) that maps to TARGET, `via` = `docs` · `code_pointer:<field>` · `code_map:<id>`; exit 2 outside a git repository; an unknown TARGET is exit 2 |
+| `code-map list\|add\|files` | list: `[{id, module, pattern, globs, exclusive}]` — the effective `[[code_map]]` rules (every layer merged; `module` / `pattern` / `globs` are `null` when the rule has none); `--module TARGET` keeps the rules that route files to TARGET (a rule naming it, or a `pattern` rule for a top-level TARGET) · add `ID (--pattern P \| --glob G … --module M) [--module M] [--exclusive] [--dry-run]`: `{id, file, block, dry_run}` — `block` = the appended `[[code_map]]` text; refused (exit 2, nothing written) without `config.toml`, for an id defined in any layer, an unknown `--module`, a pattern without `{module}` · files `TARGET`: `{target, files: [{path, via: [source]}], total}` — every repository file (git-tracked + new, not ignored; `[coverage]` filters do not apply) that maps to TARGET, `via` = `docs` · `code_pointer:<field>` · `code_map:<id>`; exit 2 outside a git repository; an unknown TARGET is exit 2 |
 
 ## Pipeline stages
 

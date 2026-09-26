@@ -76,14 +76,16 @@ field) says which files belong to which module.
 ```bash
 mkdir -p src/tasks src/lists src/reminders
 touch src/tasks/__init__.py src/lists/__init__.py src/reminders/__init__.py
+modsys code-map add src --pattern "src/{module}/**"   # {module} = one path segment: src/tasks/x.py -> tasks
 ```
 
-Append to `.modsys/config.toml`:
+`code-map add` appends the rule to `.modsys/config.toml` — it never rewrites the file, and
+refuses an id that already exists in any layer; edit or remove rules there by hand:
 
 ```toml
 [[code_map]]
 id = "src"
-pattern = "src/{module}/**"     # {module} = one path segment naming a module: src/tasks/x.py -> tasks
+pattern = "src/{module}/**"
 ```
 
 Record a typed relation, then check everything:
@@ -127,15 +129,11 @@ A child module for a sub-area, with its own code rule:
 ```bash
 modsys create search --parent tasks --non-interactive \
   --description "Full-text search over task titles and notes." --keyword search
+modsys code-map add task-search --glob "src/tasks/search/**" --module tasks/search --exclusive
 ```
 
-```toml
-[[code_map]]
-id = "task-search"
-module = "tasks/search"          # a globs rule may name a child
-globs = ["src/tasks/search/**"]
-exclusive = true                 # otherwise rule "src" maps these files to tasks as well
-```
+A `--glob` rule may name a child (`--module tasks/search`); `--exclusive` keeps rule `src` from
+mapping these files to `tasks` as well.
 
 `modsys show tasks` still lists `code  src/tasks/**` — `[[code_map]]` rules are routing globs,
 not resolved per-file ownership, so the parent's rule still textually covers
@@ -177,27 +175,17 @@ modsys coverage                  # everything unmapped: the baseline
    layer's directory, so a feature change does not silently also count as a change to the
    shared module:
 
-   ```toml
-   [[code_map]]
-   id = "routes"
-   pattern = "app/routes/{module}/**"
-
-   [[code_map]]
-   id = "repositories"
-   pattern = "app/repositories/{module}.py"
-   exclusive = true              # app/repositories/orders.py -> orders only, not db
-
-   [[code_map]]
-   id = "queries-sql"
-   pattern = "app/db/queries/sql/{module}.sql"
-   exclusive = true              # a per-feature file living INSIDE the shared db/ tree —
-                                  # without this rule it silently maps to db, not orders
-
-   [[code_map]]
-   id = "db"
-   module = "db"
-   globs = ["app/db/**", "app/repositories/**"]   # base classes, sessions, the rest
+   ```bash
+   modsys code-map add routes --pattern "app/routes/{module}/**"
+   modsys code-map add repositories --pattern "app/repositories/{module}.py" --exclusive
+   modsys code-map add queries-sql --pattern "app/db/queries/sql/{module}.sql" --exclusive
+   modsys code-map add db --module db --glob "app/db/**" --glob "app/repositories/**"
    ```
+
+   `repositories` is exclusive so `app/repositories/orders.py` maps to `orders` only, not also
+   to `db`; `queries-sql` is exclusive because its per-feature files live INSIDE the shared
+   `app/db/` tree — without that rule they silently map to `db`, not `orders`. `db` keeps the
+   base classes, sessions and the rest.
 
    Check the rules against real files, one per layer: `modsys discover --files
    app/db/queries/sql/orders.sql` (its `file` line should read `-> orders`, not `-> db`) — the

@@ -53,6 +53,7 @@ _BODY = '''
 
 ## Wire code to modules. sync, discover, lint --changed (MS050), coverage and the code_globs of
 ## show / context all use these rules. Globs: ** any path, * one segment, ? one character.
+## Add a rule with `modsys code-map add` (it appends to this file), or write it by hand.
 ##
 ## A pattern's {module} is ONE path segment naming a top-level module: src/catalog/x.py -> catalog.
 # [[code_map]]
@@ -210,4 +211,5 @@ def _render(d) -> None:
         print(f"{_VERBS[f['status']][d['dry_run']]:<13} {f['path']}")
     print(f"layout: {d['layout']}")
     print(f"next: modsys create NAME --description \"…\" --keyword … (5 or more); then wire "
-          f"code with [[code_map]] in {d['files'][0]['path']} and check it with: modsys coverage")
+          f"code with modsys code-map add ID --pattern 'src/{{module}}/**' (rules land in "
+          f"{d['files'][0]['path']}) and check it with: modsys coverage")

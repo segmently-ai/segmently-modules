@@ -182,6 +182,19 @@ Rules that map code files to modules. `sync`, `discover`, `lint --changed` (MS05
 and the `code_globs` of `show` / `context` all use them (together with module docs, which map
 to their own module, and `code_pointer` fields).
 
+Add rules with `modsys code-map add` (the preferred way): it APPENDS one rule to the team
+config `.modsys/config.toml` — one write, never a rewrite, so comments, the file mode, a
+symlink and the file's `\n` / `\r\n` style stay — after re-parsing and validating the
+combined text; `--dry-run` shows the block. It refuses (exit `2`, nothing written) when
+`config.toml` does not exist (run `modsys init`), when the id already exists in any layer (a
+repeated id would deep-merge into that rule), when `--module` names no registry module or
+child, and a `--pattern` without `{module}`. Editing or removing a rule is done by hand.
+
+```bash
+modsys code-map add src --pattern "src/{module}/**"
+modsys code-map add catalog-search --glob "src/catalog/search/**" --module catalog/search --exclusive
+```
+
 | Key | Meaning |
 |---|---|
 | `id` | required, unique; a higher layer with the same id deep-merges into the rule |
