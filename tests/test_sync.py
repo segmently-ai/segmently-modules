@@ -42,6 +42,17 @@ class SyncMappingTest(unittest.TestCase):
                                              "payments": ["code_map:billing"]})
         self.assertEqual(env["data"]["unmapped"], ["README.md", "apps/unknown/x.py"])
 
+    def test_file_matched_twice_for_the_same_target_is_listed_once(self):
+        (self.root / ".modsys" / "config.toml").write_text(
+            '[[code_map]]\nid = "src"\npattern = "src/{module}/**"\n', encoding="utf-8")
+        # src/catalog/service.py is already catalog's code_pointer (file_paths); the code_map
+        # pattern routes it to "catalog" too — same target, two `via` sources, one file entry.
+        _, env, _ = run_json("sync", "--files", "src/catalog/service.py", *self.R)
+        modules = {m["module"]: m for m in env["data"]["modules"]}
+        self.assertEqual(modules["catalog"]["files"], ["src/catalog/service.py"])
+        self.assertEqual(sorted(modules["catalog"]["via"]),
+                         ["code_map:src", "code_pointer:file_paths"])
+
     def test_docs_map_to_module_or_child(self):
         _, env, _ = run_json("sync", "--files", "modules/payments/submodules/refunds/MODULE.md",
                              "./modules/catalog/roles/qa.md", *self.R)

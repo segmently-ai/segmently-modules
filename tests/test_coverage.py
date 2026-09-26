@@ -74,6 +74,19 @@ class CoverageTest(unittest.TestCase):
         self.assertEqual((code, data["total"], data["mapped"], data["share"]), (0, 100, 29, 0.29))
         self.assertEqual(self.coverage("--fail-under", "29.1")[0], 1)
 
+    def test_share_rounds_down_and_never_overstates(self):
+        # 1999 of 2000 mapped: round(1999 / 2000, 3) would report 1.0 / 100 % even though one
+        # file is still unmapped — the share must round DOWN and --fail-under 100 must still
+        # catch it.
+        self.config('[[code_map]]\nid = "m"\nmodule = "catalog"\nglobs = ["many/mapped/**"]\n'
+                    '[coverage]\ninclude = ["many/**"]\n')
+        for i in range(1999):
+            write(self.root / "many/mapped" / f"f{i:04}.py")
+        write(self.root / "many" / "unmapped.py")
+        code, data = self.coverage("--fail-under", "100")
+        self.assertEqual((data["total"], data["mapped"], data["share"]), (2000, 1999, 0.999))
+        self.assertEqual(code, 1)
+
     def test_no_counted_files_is_full_coverage(self):
         self.config('[coverage]\ninclude = ["nothing/**"]\n')
         self.assertEqual(self.coverage("--fail-under", "100"),

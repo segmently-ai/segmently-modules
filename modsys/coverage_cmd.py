@@ -41,8 +41,10 @@ def coverage_report(ws, files: list[str]) -> dict:
     counted = counted_files(ws, files)
     mapping = map_files(ws, counted)
     total, mapped = len(counted), len(counted) - len(mapping["unmapped"])
-    return {"total": total, "mapped": mapped,
-            "share": round(mapped / total, 3) if total else 1.0,
+    # rounded DOWN to 3 decimals, so the share never overstates (round() would turn 1999 of
+    # 2000 mapped into 1.0 / 100 % while one file is still unmapped)
+    share = mapped * 1000 // total / 1000 if total else 1.0
+    return {"total": total, "mapped": mapped, "share": share,
             "modules": {t: len(m["files"]) for t, m in mapping["modules"].items()},
             "unmapped": mapping["unmapped"]}
 

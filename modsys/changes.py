@@ -184,10 +184,14 @@ def map_files(ws, files: list[str]) -> dict:
               r.get("exclusive") is True)
              for r in as_list(ws.config.get("code_map")) if isinstance(r, dict) and "id" in r]
     hits: dict[str, dict] = {}
+    seen_files: dict[str, set] = {}  # per-target seen-set, kept OUT of the slot dict that is
+                                     # serialized to JSON: a list scan there would be quadratic
 
     def hit(target, path, via):
         slot = hits.setdefault(target, {"files": [], "via": []})
-        if path not in slot["files"]:
+        target_seen = seen_files.setdefault(target, set())
+        if path not in target_seen:
+            target_seen.add(path)
             slot["files"].append(path)
         if via not in slot["via"]:
             slot["via"].append(via)
