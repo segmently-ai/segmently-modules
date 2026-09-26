@@ -34,7 +34,8 @@ def load_registry(path: Path) -> Registry:
         data = path.read_bytes()
         raw = json.loads(data.decode("utf-8"))
     except FileNotFoundError:
-        raise UsageError(f"registry not found: {path}") from None
+        raise UsageError(f"registry not found: {path} — run `modsys init` to set up modsys "
+                         f"here") from None
     except UnicodeDecodeError as e:
         raise UsageError(f"{path}: not valid UTF-8: {e}") from None
     except OSError as e:

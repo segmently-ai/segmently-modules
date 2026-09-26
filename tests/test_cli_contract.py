@@ -13,6 +13,7 @@ KW = [a for k in ("review", "rating", "stars", "comment", "moderation") for a in
 
 # (argv, expected top-level keys of data, or None when data is a list)
 GOLDEN = [
+    (("init", "--dry-run"), {"root", "layout", "files", "dry_run"}),
     (("schema",), {"$schema", "title", "type", "required", "properties"}),
     (("match", "book"), None),
     (("show", "catalog"), {"module", "status", "description", "read", "code", "code_globs"}),

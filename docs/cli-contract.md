@@ -37,6 +37,7 @@ modules/registry.json.lock
 
 | Verb | `data` |
 |---|---|
+| `init` | `{root, layout, files: [{path, status}], dry_run}` — root: `--root`, else the git top-level of the current directory, else the current directory; `status`: `created` · `updated` (`.gitignore` got its missing lines) · `exists`; creates only missing files, a second run changes nothing |
 | `schema` | JSON Schema (draft 2020-12) of the registry, including declared fields |
 | `match TEXT` | `[{module, score, keywords, negative}]` best first |
 | `show MODULE` | `{module, status, description, read: [{label, path, exists}], code: [path], code_globs: [glob], submodules?}`; a pointer stub: `{module, stub}` (exit 1). `code` = values of `code_pointer` fields; `code_globs` = the `[[code_map]]` globs that route files to the module (a pattern's `{module}` filled in) |
