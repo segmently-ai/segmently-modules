@@ -48,8 +48,7 @@ the `[fields.<name>]` section below.
 | `dir_whitelist` | `[]` | directories under `modules_dir` that are not modules (no MS014) |
 | `updated_at_path` | `""` | e.g. `"metadata.last_updated"`: stamped with the UTC time on every registry write; empty = off |
 
-The default `stub_pattern`, exactly as it must be written in TOML (the table above escapes its
-`|` as `\|` for markdown; copied literally that regex never matches — copy it from here instead):
+The default `stub_pattern`, exactly as it must be written in TOML:
 
 ```toml
 stub_pattern = 'status:?\**\s*\**(retired|merged|migrated|superseded)'
@@ -76,6 +75,16 @@ Keyword routing used by `match`, `context` and `discover`.
 | `negative_weight` | `-5` | score per matched `negative_keywords` phrase |
 | `min_score` | `3` | rows below this are dropped |
 | `top` | `8` | at most this many rows (`--top` overrides) |
+
+Matching is exact-token: a keyword or `negative_keywords` phrase must occur as a whole word (or
+whole phrase) in the task text — case-insensitive, but with no stemming, no plural/singular
+normalization and no substring matching (`todo` does not match `todos` or `to-do`). A module
+with no matched keyword never gets a row, no matter what `negative_weight` alone would score;
+a row below `min_score` is dropped even with matched keywords. When nothing reaches `min_score`,
+`match` prints `no keyword matches (try rephrasing with domain terms, or use: list)` and
+`context` prints `no module matched (try domain terms, or: modsys list)`; `discover --task` with
+no match simply omits the module (no message). Register every form a task is likely to use
+(singular AND plural, synonyms) rather than relying on this to generalize.
 
 ## `[lint]`
 
@@ -169,6 +178,12 @@ to their own module, and `code_pointer` fields).
 | `module` | required with `globs`: a top-level module or a child (`parent/child`); with a `pattern` it overrides the capture |
 | `exclusive` | `true`: a file this rule matches is mapped ONLY by the exclusive rules that match it — other rules skip the file (docs and `code_pointer` mapping are unaffected) |
 
+A `pattern` MUST contain a literal `{module}` segment — even when `module` is also set (which
+then overrides the value the segment would have captured, per the row above). `pattern =
+"docs/**"` with `module = "tasks"` is refused (exit `2`, `pattern needs a {module} segment`),
+not silently accepted with `tasks` as a fixed target. For a fixed target with nothing to
+capture, use `globs = [...]` + `module = "<name>"` instead of `pattern`.
+
 The `id` deep-merge is checked per layer, not after merging: each layer is validated on its own,
 so an override that repeats only `id` (or `id` + `exclusive`) is refused with "needs a pattern or
 globs" — a higher layer overriding an existing rule must repeat `pattern` or `globs` (and
@@ -180,8 +195,11 @@ characters within one segment, `?` one character. `**/` needs at least one direc
 files too, list both (`*.md` and `**/*.md`). A rule whose `module` names no registry module or
 child maps nothing and is reported as MS052 — a config-level finding (module `*`, like MS021)
 that only plain `modsys lint` shows; `lint --changed` narrows to the changed modules and drops
-it, so a CI gate must also run plain `modsys lint`. `show` / `context` list each target's rules
-as `code_globs` (a pattern's `{module}` filled in) — routing rules, not a file list.
+it, so a CI gate must also run plain `modsys lint --fail-on warning` (MS052 is severity
+`warning`; the default `[lint] fail_on = "error"` exits 0 on it — `--fail-on warning` is what
+actually fails the gate). `show` / `context` list each target's rules as `code_globs` (a
+pattern's `{module}` filled in) — routing rules, not a file list; for the files a real change
+touches, use `discover --files` / `sync --dry-run --files` instead.
 
 ## `[[hooks.post_sync]]`
 
@@ -219,7 +237,11 @@ templates under `templates/` (`MODULE.md`, `roles/<role>.md`) and hook scripts n
 modules a change touches and adds the drift checks. Config-level findings carry module `*`
 (MS021, MS052) — `lint --changed` drops them along with every other finding outside the touched
 modules, so they show up ONLY in plain `modsys lint`. A CI gate built only on `lint --changed`
-never sees a shared-keyword warning or a typo'd `[[code_map]]` rule; run plain `modsys lint` too.
+never sees a shared-keyword note (MS021, severity `info` — report-only, it never fails a gate at
+any `--fail-on` setting) or a typo'd `[[code_map]]` rule (MS052, severity `warning`); run plain
+`modsys lint --fail-on warning` too — the default `fail_on = "error"` exits 0 on a warning-level
+finding like MS052, so a gate that runs plain `modsys lint` with no `--fail-on` override never
+actually fails on it.
 
 | Code | Severity | Finding |
 |---|---|---|

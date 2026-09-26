@@ -46,6 +46,15 @@ modsys create reminders --non-interactive \
   --keyword reminder --keyword notify --keyword schedule --keyword alarm --keyword snooze
 ```
 
+Matching (`match`, `context`, `discover --task`) is exact-token: a keyword matches a whole word
+in the task text, case-insensitive, with no stemming or plural handling — the keyword `todo`
+does not match a task that says "todos", `complete` does not match "completed". Register the
+forms your team actually types (singular AND plural, synonyms). If nothing reaches `[match]
+min_score`, `context`/`match` say so (`no module matched (try domain terms, or: modsys list)` /
+`no keyword matches (try rephrasing with domain terms, or use: list)`) and plain `discover
+--task` with no match just omits the module; re-run naming the module directly, or add a
+keyword: `modsys registry append tasks keywords '"todos"'` (JSON value — quote a string).
+
 Each gets `modules/<name>/MODULE.md`, one doc per standard role and a registry entry. Now wire
 the code: modules know nothing about code until a `[[code_map]]` rule (or a `code_pointer`
 field) says which files belong to which module.
@@ -74,11 +83,13 @@ modsys show reminders                # docs to read, and `code  src/reminders/**
 git add .gitignore .modsys modules src && git commit -m "modules"
 ```
 
-The agent loop — before planning, after the change, and the CI gate:
+The agent loop — before planning, after the change, and the drift half of the CI gate (the
+other half, plain `modsys lint --fail-on warning` plus `modsys coverage --fail-under …`, is not
+shown here — see the CI gate row in [docs/cli-contract.md](docs/cli-contract.md)):
 
 ```bash
 modsys context --task "snooze a reminder" --role developer   # what to read, where the code is
-BASE=$(git rev-parse HEAD)
+BASE=$(git rev-parse HEAD)   # the commit the change starts from — capture BEFORE editing/committing
 # … the agent changes src/reminders/snooze.py and commits …
 modsys lint --changed --base "$BASE" --fail-on warning      # exit 1: MS050, code changed, docs did not
 modsys propose --run-id r1 --module reminders --op doc_append \
@@ -112,6 +123,25 @@ globs = ["src/tasks/search/**"]
 exclusive = true                 # otherwise rule "src" maps these files to tasks as well
 ```
 
+`modsys show tasks` still lists `code  src/tasks/**` — `[[code_map]]` rules are routing globs,
+not resolved per-file ownership, so the parent's rule still textually covers
+`src/tasks/search/` too. Prove the split against a real file instead:
+
+```bash
+modsys discover --files src/tasks/search/index.py
+# modify    tasks/search                   score 0   via diff
+#           update modules/tasks/MODULE.md
+#           update modules/tasks/submodules/search/MODULE.md
+#           update modules/tasks/submodules/search/roles/developer.md
+#           update modules/tasks/roles/developer.md
+#           update modules/tasks/submodules/search/roles/qa.md
+#           update modules/tasks/roles/qa.md
+```
+
+Only `tasks/search` is listed — the file maps there and nowhere else. `discover --files`
+(space-separated paths; `sync --dry-run --files` works the same way) is the file-level truth;
+`show`'s / `context`'s `code` and `code_globs` lines are routing rules, not a file list.
+
 ## Brownfield: an existing, layered codebase
 
 ```bash
@@ -122,10 +152,12 @@ modsys coverage                  # everything unmapped: the baseline
 
 1. **One module per feature** (`modsys create orders …`, `modsys create invoices …`), plus one
    per shared layer that has its own rules (`modsys create db …`).
-2. **Map the layers.** Layered repos keep a feature's code in several places
-   (`app/routes/orders/`, `app/repositories/orders.py`, `app/models/orders.py`). One `pattern`
-   rule per layer does it; mark the rules whose files would ALSO match a shared layer's broader
-   rule `exclusive`, so a feature change does not drift the layer module too:
+2. **Map the layers — one per feature.** Layered repos keep a feature's code in several places
+   (`app/routes/orders/`, `app/repositories/orders.py`, `app/models/orders.py`, per-feature SQL
+   under a shared directory like `app/db/queries/sql/orders.sql`, schemas, tests…). Give EVERY
+   per-feature layer its own `{module}` `pattern` rule — not just the obvious ones — and mark
+   `exclusive` any per-feature rule whose files sit inside a shared layer's directory, so a
+   feature change does not silently also count as a change to the shared module:
 
    ```toml
    [[code_map]]
@@ -138,15 +170,28 @@ modsys coverage                  # everything unmapped: the baseline
    exclusive = true              # app/repositories/orders.py -> orders only, not db
 
    [[code_map]]
+   id = "queries-sql"
+   pattern = "app/db/queries/sql/{module}.sql"
+   exclusive = true              # a per-feature file living INSIDE the shared db/ tree —
+                                  # without this rule it silently maps to db, not orders
+
+   [[code_map]]
    id = "db"
    module = "db"
    globs = ["app/db/**", "app/repositories/**"]   # base classes, sessions, the rest
    ```
 
+   Check the rules against real files, one per layer: `modsys discover --files
+   app/db/queries/sql/orders.sql` (should print `orders`, not `db`) — the same command used to
+   verify the child-module split above.
 3. **Iterate on `modsys coverage`** until the unmapped list is only what belongs to no module
-   (exclude it with `[coverage] exclude = [...]`), then gate CI on all three: plain `modsys lint`
-   (config-level findings such as a typo'd `[[code_map]]` rule appear only here, never under
-   `--changed`), `modsys lint --changed` and `modsys coverage --fail-under 80` (your target).
+   (exclude it with `[coverage] exclude = [...]`), then look at `modsys coverage --json`'s
+   per-module counts: a shared/catch-all module with a suspiciously large file count is the
+   smell of a missing per-feature rule (see the SQL example above). Then gate CI on all three:
+   `modsys lint --fail-on warning` (config-level findings such as a typo'd `[[code_map]]` rule
+   appear only here, never under `--changed`; the default `fail_on = "error"` misses MS052, a
+   warning), `modsys lint --changed --fail-on warning` and `modsys coverage --fail-under 80`
+   (your target).
 4. **Optional per-module layout** — one `modules/<name>/module.json` per module instead of one
    shared file (fewer merge conflicts in big teams):
 

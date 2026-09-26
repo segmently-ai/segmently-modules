@@ -52,7 +52,7 @@ they are missing.
 | `init` | `{root, layout, files: [{path, status}], dry_run}` — root: `--root`, else the git top-level of the current directory, else the current directory; `status`: `created` · `updated` (`.gitignore` got its missing lines) · `exists`; creates only missing files, a second run changes nothing |
 | `schema` | JSON Schema (draft 2020-12) of the registry, including declared fields |
 | `match TEXT` | `[{module, score, keywords, negative}]` best first |
-| `show MODULE` | `{module, status, description, read: [{label, path, exists}], code: [path], code_globs: [glob], submodules?}`; a pointer stub: `{module, stub}` (exit 1). `code` = values of `code_pointer` fields; `code_globs` = the `[[code_map]]` globs that route files to the module (a pattern's `{module}` filled in) |
+| `show MODULE` | `{module, status, description, read: [{label, path, exists}], code: [path], code_globs: [glob], submodules?}`; a pointer stub: `{module, stub}` (exit 1). `code` = values of `code_pointer` fields; `code_globs` = the `[[code_map]]` globs that route files to the module (a pattern's `{module}` filled in) — both are routing rules, not a file list; for the files a given change actually touches use `discover --files` / `sync --dry-run --files` |
 | `related MODULE` | `{module, edges: [edge], reverse: [{from, …edge}]}` |
 | `list` | `[{module, status, description, children}]` |
 | `lint` | `{findings: [{code, severity, module, message, path}], summary: {error, warning, info}, failed, changed?: {base, files, modules}}` |
@@ -77,4 +77,4 @@ they are missing.
 | CI, no task text | `modsys discover --from-diff $BASE..HEAD --json` |
 | during build | `modsys propose --run-id $RUN --agent builder --module M --op … --reason "…"` |
 | after build | `modsys sync --from-diff $BASE..HEAD --apply-proposals --run-id $RUN --json` |
-| CI gate | `modsys lint --json` (config-level findings: MS021, MS052 — dropped by `--changed`) then `modsys lint --changed --base $BASE --fail-on warning --json` |
+| CI gate | `modsys lint --fail-on warning --json` (config-level findings: MS021, MS052 — dropped by `--changed`; the default `fail_on = "error"` would miss MS052, a warning) then `modsys lint --changed --base $BASE --fail-on warning --json` |

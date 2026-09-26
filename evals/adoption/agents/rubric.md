@@ -6,10 +6,10 @@ compare runs of the same persona across phases.
 | Metric | How to count |
 |---|---|
 | Goal steps done | goal steps the log shows as done AND verified by a command (greenfield: 5, brownfield: 4) |
-| Commands | every shell command the agent ran — modsys, git, edits through the shell, `ls` / `cat` |
+| Commands | ONE shell invocation the agent issued (one tool call / one prompt line) counts as one command — even when it chains several statements with `&&`, `;` or a pipe. A read through a dedicated read tool (not the shell) is a source peek or a doc read, not a command: count and report it separately, do not add it to this total. |
 | Source peeks | reads of modsys's source (package, site-packages, a checkout); the target is 0 |
 | Blockers / majors / minors | the log's own severities, re-checked by the scorer: a blocker is anything the agent could not get past without a source peek or outside help |
-| Coverage (brownfield) | the mapped share the agent reported, re-checked with `modsys coverage --json` in the final repository |
+| Coverage (brownfield) | the mapped share the agent reported, re-checked with `modsys coverage --json` in the final repository; also record that command's per-module counts and flag in the run's notes any module — especially a shared/catch-all one — holding a large share of the total (e.g. more than 30 %). Coverage met through a catch-all module is reported in the notes, not hidden; it does not change the PASS rule below. |
 
 **PASS** = all goal steps done, 0 source peeks, 0 blockers, commands ≤ 40 (greenfield) or
 ≤ 45 (brownfield), and — brownfield — the coverage reported and ≥ 0.8.
