@@ -77,4 +77,4 @@ they are missing.
 | CI, no task text | `modsys discover --from-diff $BASE..HEAD --json` |
 | during build | `modsys propose --run-id $RUN --agent builder --module M --op … --reason "…"` |
 | after build | `modsys sync --from-diff $BASE..HEAD --apply-proposals --run-id $RUN --json` |
-| CI gate | `modsys lint --fail-on warning --json` (config-level findings: MS021, MS052 — dropped by `--changed`; the default `fail_on = "error"` would miss MS052, a warning) then `modsys lint --changed --base $BASE --fail-on warning --json` |
+| CI gate | `modsys lint --fail-on warning --json` (config-level findings: MS021, MS052 — dropped by `--changed`; the default `fail_on = "error"` would miss MS052, a warning) then `modsys lint --changed --base $BASE --fail-on warning --json` (`$BASE` must be a real ref, e.g. the PR's target branch or a captured pre-change commit — `--base` defaults to `HEAD`, so an omitted `--base` diffs HEAD against itself and never finds drift) then `modsys coverage --fail-under 80 --json` |

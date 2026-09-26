@@ -21,7 +21,8 @@ stubs are enough (a file or two per feature); no framework, no tests needed.
 - Do NOT read modsys's source code (the installed package, site-packages or any checkout). If
   you are truly blocked, you may look at the source ONCE: log it as a **source peek** (the file
   and what you needed from it), then continue.
-- Time box: about 40 commands (every shell command counts).
+- Time box: about 40 commands — one shell invocation is one command, even chained with `&&`,
+  `;` or a pipe; a read through a dedicated read tool is not a command (log it separately).
 
 **Goal steps**
 

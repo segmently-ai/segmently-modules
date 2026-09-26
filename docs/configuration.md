@@ -77,11 +77,14 @@ Keyword routing used by `match`, `context` and `discover`.
 | `top` | `8` | at most this many rows (`--top` overrides) |
 
 Matching is exact-token: a keyword or `negative_keywords` phrase must occur as a whole word (or
-whole phrase) in the task text — case-insensitive, but with no stemming, no plural/singular
-normalization and no substring matching (`todo` does not match `todos` or `to-do`). A module
-with no matched keyword never gets a row, no matter what `negative_weight` alone would score;
-a row below `min_score` is dropped even with matched keywords. When nothing reaches `min_score`,
-`match` prints `no keyword matches (try rephrasing with domain terms, or use: list)` and
+whole phrase) in the task text — case-insensitive, with no stemming and no plural/singular
+normalization (`todo` does not match `todos` or `to-do`). Precisely: a boundary is enforced only
+on an edge of the keyword that is itself a word character (letter, digit, `_`); a keyword that
+starts or ends with a non-word character has NO boundary on that side and can still match inside
+a longer token there — `.epub` matches inside `notebook.epub`, `c++` matches inside `c++17`. A
+module with no matched keyword never gets a row, no matter what `negative_weight` alone would
+score; a row below `min_score` is dropped even with matched keywords. When nothing reaches
+`min_score`, `match` prints `no keyword matches (try rephrasing with domain terms, or use: list)` and
 `context` prints `no module matched (try domain terms, or: modsys list)`; `discover --task` with
 no match simply omits the module (no message). Register every form a task is likely to use
 (singular AND plural, synonyms) rather than relying on this to generalize.

@@ -48,12 +48,19 @@ modsys create reminders --non-interactive \
 
 Matching (`match`, `context`, `discover --task`) is exact-token: a keyword matches a whole word
 in the task text, case-insensitive, with no stemming or plural handling — the keyword `todo`
-does not match a task that says "todos", `complete` does not match "completed". Register the
-forms your team actually types (singular AND plural, synonyms). If nothing reaches `[match]
-min_score`, `context`/`match` say so (`no module matched (try domain terms, or: modsys list)` /
-`no keyword matches (try rephrasing with domain terms, or use: list)`) and plain `discover
---task` with no match just omits the module; re-run naming the module directly, or add a
-keyword: `modsys registry append tasks keywords '"todos"'` (JSON value — quote a string).
+does not match a task that says "todos", `complete` does not match "completed". (The word
+boundary only applies on an edge of the keyword that is itself a letter/digit/`_`; a keyword
+starting or ending with punctuation, e.g. `.epub` or `c++`, can still match inside a longer
+token on that side.) Register the forms your team actually types (singular AND plural,
+synonyms). If nothing reaches `[match] min_score`, `context`/`match` say so (`no module matched
+(try domain terms, or: modsys list)` / `no keyword matches (try rephrasing with domain terms, or
+use: list)`) and plain `discover --task` with no match just omits the module — there is no
+module-name argument to fall back to (`context` takes only `--task`/`--task-file`, never a
+module). Re-run with a word that IS one of the module's registered keywords (they live in the
+registry — `modules/registry.json`, or `modules/<name>/module.json` in the per-module layout;
+neither `show` nor `list` prints them), add the missing one (`modsys registry append tasks
+keywords '"todos"'`, JSON value — quote a string), or skip matching and read the module
+directly: `modsys show tasks --role developer`.
 
 Each gets `modules/<name>/MODULE.md`, one doc per standard role and a registry entry. Now wire
 the code: modules know nothing about code until a `[[code_map]]` rule (or a `code_pointer`
@@ -152,12 +159,13 @@ modsys coverage                  # everything unmapped: the baseline
 
 1. **One module per feature** (`modsys create orders …`, `modsys create invoices …`), plus one
    per shared layer that has its own rules (`modsys create db …`).
-2. **Map the layers — one per feature.** Layered repos keep a feature's code in several places
-   (`app/routes/orders/`, `app/repositories/orders.py`, `app/models/orders.py`, per-feature SQL
-   under a shared directory like `app/db/queries/sql/orders.sql`, schemas, tests…). Give EVERY
-   per-feature layer its own `{module}` `pattern` rule — not just the obvious ones — and mark
-   `exclusive` any per-feature rule whose files sit inside a shared layer's directory, so a
-   feature change does not silently also count as a change to the shared module:
+2. **Map the layers — one rule per per-feature layer.** Layered repos keep a feature's code in
+   several places (`app/routes/orders/`, `app/repositories/orders.py`, `app/models/orders.py`,
+   per-feature SQL under a shared directory like `app/db/queries/sql/orders.sql`, schemas,
+   tests…). Give EVERY per-feature layer its own `{module}` `pattern` rule — not just the
+   obvious ones — and mark `exclusive` any per-feature rule whose files sit inside a shared
+   layer's directory, so a feature change does not silently also count as a change to the
+   shared module:
 
    ```toml
    [[code_map]]
@@ -190,8 +198,11 @@ modsys coverage                  # everything unmapped: the baseline
    smell of a missing per-feature rule (see the SQL example above). Then gate CI on all three:
    `modsys lint --fail-on warning` (config-level findings such as a typo'd `[[code_map]]` rule
    appear only here, never under `--changed`; the default `fail_on = "error"` misses MS052, a
-   warning), `modsys lint --changed --fail-on warning` and `modsys coverage --fail-under 80`
-   (your target).
+   warning), `modsys lint --changed --base origin/main --fail-on warning` (name a real base —
+   `--base` defaults to `HEAD`, so a bare `--changed` on a clean CI checkout diffs HEAD against
+   itself and can never find drift; in CI use the PR's target ref, e.g. `origin/main`, or the
+   `"$BASE"` captured before the change, as in the agent loop above) and `modsys coverage
+   --fail-under 80` (your target).
 4. **Optional per-module layout** — one `modules/<name>/module.json` per module instead of one
    shared file (fewer merge conflicts in big teams):
 
