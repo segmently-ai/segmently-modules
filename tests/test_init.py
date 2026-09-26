@@ -83,6 +83,13 @@ class InitTest(unittest.TestCase):
         code, out, _ = run("init", "--dry-run", *self.R)
         self.assertIn("would create  .modsys/config.toml", out)
 
+    def test_text_output_states_the_root_first(self):
+        """A user running `init` from a subdirectory sees where files went (M7): the plain-text
+        render's first line is `root: <path>` (the JSON `data.root` already has it)."""
+        code, out, _ = run("init", *self.R)
+        self.assertEqual(code, 0)
+        self.assertEqual(out.splitlines()[0], f"root: {self.root}")
+
     def test_per_module_layout(self):
         code, env, _ = self.init("--layout", "per-module")
         self.assertEqual((code, env["data"]["layout"]), (0, "per-module"))

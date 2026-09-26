@@ -17,9 +17,9 @@ from modsys.store import atomic_write, serialize
 _HEADER = '''\
 ## modsys team config — commit it. Every key is optional: uncomment what you need.
 ## Layers (later wins): engine defaults -> packs (.modsys/packs/<id>/pack.toml) -> this file
-## -> .modsys/config.user.toml (personal, git-ignored). Tables merge key by key; arrays ADD to
-## the lower layers (an override never removes a default). Every key: docs/configuration.md in
-## the modsys repository.
+## -> .modsys/config.user.toml (personal; add it to .gitignore). Tables merge key by key; arrays
+## ADD to the lower layers (an override never removes a default). Every key:
+## docs/configuration.md in the modsys repository.
 
 '''
 _PATHS = {
@@ -205,6 +205,7 @@ def run(args) -> int:
 
 
 def _render(d) -> None:
+    print(f"root: {d['root']}")
     for f in d["files"]:
         print(f"{_VERBS[f['status']][d['dry_run']]:<13} {f['path']}")
     print(f"layout: {d['layout']}")

@@ -144,8 +144,9 @@ modsys coverage                  # everything unmapped: the baseline
    ```
 
 3. **Iterate on `modsys coverage`** until the unmapped list is only what belongs to no module
-   (exclude it with `[coverage] exclude = [...]`), then gate CI on
-   `modsys coverage --fail-under 80` (your target) next to `modsys lint --changed`.
+   (exclude it with `[coverage] exclude = [...]`), then gate CI on all three: plain `modsys lint`
+   (config-level findings such as a typo'd `[[code_map]]` rule appear only here, never under
+   `--changed`), `modsys lint --changed` and `modsys coverage --fail-under 80` (your target).
 4. **Optional per-module layout** — one `modules/<name>/module.json` per module instead of one
    shared file (fewer merge conflicts in big teams):
 

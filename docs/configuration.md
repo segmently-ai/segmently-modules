@@ -1,7 +1,8 @@
 # modsys configuration
 
 Start with `modsys init`: it writes a commented starter `.modsys/config.toml` with a worked
-example for every section below. This page is the reference for every section and key.
+example for the most-used sections below (it has none for `[budgets]`, `[match]`, `[lint]`,
+`[roles.<name>]` or packs). This page is the reference for every section and key.
 
 ## Layers
 
@@ -16,8 +17,13 @@ Merge rules: scalars — the higher layer wins; tables — merged key by key; ar
 all carry an `id` (`[[code_map]]`, `[[hooks.post_sync]]`) — merged by `id` (the same id
 deep-merges, a new id appends); every other array — the higher layer's items are ADDED to the
 lower layer's (duplicates dropped). An override never removes a lower-layer item: disable it
-(`enabled = false`) instead. Unknown keys and sections are accepted (forward compatibility);
-known keys are type-checked, and a wrong type is an error naming the file.
+(`enabled = false`) instead. Unknown top-level sections are accepted (forward compatibility).
+Known keys are type-checked, and a wrong type is an error naming the file — but an unknown key
+*inside* a known section, a `[[code_map]]` rule, a `[[hooks.post_sync]]` entry or a
+`[roles.<name>]` table is silently accepted and does nothing (e.g. an `exclude = [...]` key on a
+`[[code_map]]` rule has no effect; there is no warning). The one exception is a
+`[fields.<name>]` declaration, where an unknown key is refused (exit 2, `unknown key '…'`) — see
+the `[fields.<name>]` section below.
 
 `--config-dir DIR` points every verb at another config directory (default `<root>/.modsys`).
 
@@ -38,9 +44,16 @@ known keys are type-checked, and a wrong type is an error naming the file.
 |---|---|---|
 | `statuses` | `["active", "draft", "planned", "temporary"]` | allowed module `status` values (lint MS003; the writers refuse others) |
 | `relations` | `["depends-on", "complements", "implemented-in", "shares-contract", "superseded-by"]` | allowed `related_modules[].relation` values (MS006) |
-| `stub_pattern` | `'status:?\**\s*\**(retired\|merged\|migrated\|superseded)'` | a regular expression; a module dir whose `MODULE.md` head matches is a pointer stub of a retired module |
+| `stub_pattern` | see note below | a regular expression; a module dir whose `MODULE.md` head matches is a pointer stub of a retired module |
 | `dir_whitelist` | `[]` | directories under `modules_dir` that are not modules (no MS014) |
 | `updated_at_path` | `""` | e.g. `"metadata.last_updated"`: stamped with the UTC time on every registry write; empty = off |
+
+The default `stub_pattern`, exactly as it must be written in TOML (the table above escapes its
+`|` as `\|` for markdown; copied literally that regex never matches — copy it from here instead):
+
+```toml
+stub_pattern = 'status:?\**\s*\**(retired|merged|migrated|superseded)'
+```
 
 ## `[budgets]`
 
@@ -156,10 +169,19 @@ to their own module, and `code_pointer` fields).
 | `module` | required with `globs`: a top-level module or a child (`parent/child`); with a `pattern` it overrides the capture |
 | `exclusive` | `true`: a file this rule matches is mapped ONLY by the exclusive rules that match it — other rules skip the file (docs and `code_pointer` mapping are unaffected) |
 
+The `id` deep-merge is checked per layer, not after merging: each layer is validated on its own,
+so an override that repeats only `id` (or `id` + `exclusive`) is refused with "needs a pattern or
+globs" — a higher layer overriding an existing rule must repeat `pattern` or `globs` (and
+`module`) too, not just the key it changes.
+
 A rule needs `pattern` or `globs`. Glob syntax: `**` any path (also across `/`), `*` any
-characters within one segment, `?` one character. A rule whose `module` names no registry
-module or child maps nothing and is reported as MS052. `show` / `context` list each target's
-rules as `code_globs` (a pattern's `{module}` filled in) — routing rules, not a file list.
+characters within one segment, `?` one character. `**/` needs at least one directory to match:
+`**/*.md` does not match a root-level `README.md` (there is no `/` before it) — to include root
+files too, list both (`*.md` and `**/*.md`). A rule whose `module` names no registry module or
+child maps nothing and is reported as MS052 — a config-level finding (module `*`, like MS021)
+that only plain `modsys lint` shows; `lint --changed` narrows to the changed modules and drops
+it, so a CI gate must also run plain `modsys lint`. `show` / `context` list each target's rules
+as `code_globs` (a pattern's `{module}` filled in) — routing rules, not a file list.
 
 ## `[[hooks.post_sync]]`
 
@@ -194,7 +216,10 @@ templates under `templates/` (`MODULE.md`, `roles/<role>.md`) and hook scripts n
 ## Lint codes
 
 `lint` checks the registry, fields, docs and config; `lint --changed` narrows the report to the
-modules a change touches and adds the drift checks.
+modules a change touches and adds the drift checks. Config-level findings carry module `*`
+(MS021, MS052) — `lint --changed` drops them along with every other finding outside the touched
+modules, so they show up ONLY in plain `modsys lint`. A CI gate built only on `lint --changed`
+never sees a shared-keyword warning or a typo'd `[[code_map]]` rule; run plain `modsys lint` too.
 
 | Code | Severity | Finding |
 |---|---|---|
@@ -213,7 +238,7 @@ modules a change touches and adds the drift checks.
 | MS014 | error | a directory under `modules_dir` is neither registered nor a pointer stub |
 | MS015 | warning | `context_files.roles` names a role that is not configured |
 | MS020 | info | more keywords than `[budgets] keywords_soft` |
-| MS021 | info | a keyword shared by `[budgets] keyword_shared_warn` modules or more |
+| MS021 | info | a keyword shared by `[budgets] keyword_shared_warn` modules or more (plain `lint` only) |
 | MS022 | warning | an empty keyword (matches every task) |
 | MS030 | warning | `MODULE.md` longer than `module_doc_split_signal` |
 | MS031 | error | `MODULE.md` longer than `module_doc_hard_stop` |
@@ -221,4 +246,4 @@ modules a change touches and adds the drift checks.
 | MS040 | warning | a backticked path in the components table is missing on disk |
 | MS050 | `drift_severity` | `--changed`: a module's code changed but none of its docs |
 | MS051 | error | `--changed`: a frozen `*.legacy.md` snapshot was modified or deleted |
-| MS052 | warning | a `[[code_map]]` rule's `module` is not a registry module or child |
+| MS052 | warning | a `[[code_map]]` rule's `module` is not a registry module or child (plain `lint` only) |

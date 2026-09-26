@@ -66,7 +66,7 @@ they are missing.
 | `migrate` | `{applied: [{id, description, notes}], dry_run, diff?}` |
 | `context` | `{task, role, all_roles, modules: [{module, score, keywords, negative, read, code, code_globs}], read: [{module, label, path, exists}]}` |
 | `discover` | `{task, modules: [{module, score, keywords, sources, touched_files, usage, docs_to_read, docs_to_update}], files_outside_modules, summary: {total_modules, by_usage: {modify, reference}}}` — `task` is `null` when only `--from-diff` / `--files` is given (then no keyword scoring) |
-| `coverage` | `{total, mapped, share, modules: {target: n}, unmapped: [path]}` — files = git-tracked + new not ignored, filtered by `[coverage] include`/`exclude`, never the modules dir, the config dir or dotfiles; `share` = mapped / total (3 decimals, `1.0` when no file counts); exit 1 when `--fail-under PCT` is above `share` × 100; exit 2 outside a git repository |
+| `coverage` | `{total, mapped, share, modules: {target: n}, unmapped: [path]}` — files = git-tracked + new not ignored, filtered by `[coverage] include`/`exclude`, never the modules dir, the config dir or dotfiles; `share` = mapped / total, rounded down to 3 decimals (`1.0` when no file counts, so it never overstates); `--fail-under PCT` must be `0`–`100` (else exit 2) and is compared against the reported percent (`share` × 100, rounded to one decimal) — exit 1 when that percent is below `PCT`; exit 2 outside a git repository |
 
 ## Pipeline stages
 
@@ -77,4 +77,4 @@ they are missing.
 | CI, no task text | `modsys discover --from-diff $BASE..HEAD --json` |
 | during build | `modsys propose --run-id $RUN --agent builder --module M --op … --reason "…"` |
 | after build | `modsys sync --from-diff $BASE..HEAD --apply-proposals --run-id $RUN --json` |
-| CI gate | `modsys lint --changed --base $BASE --fail-on warning --json` |
+| CI gate | `modsys lint --json` (config-level findings: MS021, MS052 — dropped by `--changed`) then `modsys lint --changed --base $BASE --fail-on warning --json` |
