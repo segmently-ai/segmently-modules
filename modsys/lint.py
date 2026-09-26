@@ -1,14 +1,17 @@
 """Registry lint. Codes: MS001-MS004, MS006-MS015 registry/field checks · MS020-MS022
 keyword budgets and hygiene · MS030-MS032 doc budgets · MS040 component paths ·
-MS052 a [[code_map]] rule whose `module` is not in the registry ·
+MS052 a [[code_map]] rule whose `module` is not in the registry · MS053 two [[code_map]] rules
+route one file to two different modules ·
 with --changed: MS050 code changed but no doc of its module · MS051 frozen legacy snapshot
 modified or deleted (report narrowed to the changed modules)."""
 import re
 from collections import Counter
 from dataclasses import asdict, dataclass
+from itertools import combinations
 from pathlib import Path
 
-from modsys.changes import changed_files, diff_names, map_files, target_names
+from modsys.changes import (changed_files, diff_names, map_files, repo_files, routes,
+                            target_names, work_tree_error)
 from modsys.fields import value_matches
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.query import role_paths
@@ -202,7 +205,38 @@ def lint_registry(ws) -> list[Finding]:
         if isinstance(rule, dict) and "module" in rule and rule["module"] not in targets:
             add("MS052", "warning", "*", f"[[code_map]] '{rule.get('id')}': module "
                 f"'{rule['module']}' is not a registry module or child; the rule maps nothing")
+    out += overlap_findings(ws)
     return out
+
+
+def _related(a: str, b: str) -> bool:
+    """The same target, or one is the other's parent (`catalog` and `catalog/search`)."""
+    return a == b or a == b.partition("/")[0] or b == a.partition("/")[0]
+
+
+def overlap_findings(ws) -> list[Finding]:
+    """MS053 (config-level, module `*`): per pair of `[[code_map]]` rules, the repository files
+    (git-tracked + new, no coverage filters) they route — after `exclusive` precedence — to two
+    targets where neither is the other's parent. Skipped silently with fewer than two rules
+    (no pair can overlap) and outside a git work tree."""
+    rules = [r for r in as_list(ws.config.get("code_map")) if isinstance(r, dict) and "id" in r]
+    if len(rules) < 2 or work_tree_error(ws.root):
+        return []
+    per_file: dict[str, dict] = {}  # path -> {rule id: target}; repo_files order = sorted
+    for path, target, via in routes(ws, repo_files(ws.root)):
+        if via.startswith("code_map:"):
+            per_file.setdefault(path, {})[via[len("code_map:"):]] = target
+    pairs: dict[tuple, list] = {}  # (rule a, rule b) -> [files, first path, target a, target b]
+    for path, by_rule in per_file.items():
+        for a, b in combinations(sorted(by_rule), 2):
+            if not _related(by_rule[a], by_rule[b]):
+                pairs.setdefault((a, b), [0, path, by_rule[a], by_rule[b]])[0] += 1
+    severity = ws.config["lint"]["overlap_severity"]
+    return [Finding("MS053", severity, "*",
+                    f"[[code_map]] '{a}' (-> {ta}) and '{b}' (-> {tb}) both map {n} file(s), "
+                    f"e.g. {path} — mark the more specific rule exclusive = true or narrow "
+                    f"its globs")
+            for (a, b), (n, path, ta, tb) in sorted(pairs.items())]
 
 
 def drift_findings(ws, files: list[str], frozen_touched: list[str]) -> tuple[list, set]:

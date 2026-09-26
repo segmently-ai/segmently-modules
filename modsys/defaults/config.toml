@@ -34,6 +34,7 @@ top = 8
 fail_on = "error"
 component_table_heading = "EXISTING Components"
 drift_severity = "warning"     # MS050 (lint --changed): code changed, no doc of its module
+overlap_severity = "warning"   # MS053: two [[code_map]] rules route one file to two modules
 
 [create]
 min_keywords = 5              # top-level modules; a child needs at least 1

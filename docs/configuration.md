@@ -105,6 +105,7 @@ show <module>`; `modsys show <module>` prints the module's keywords on its `keys
 | `fail_on` | `"error"` | `error` · `warning` · `never`: the lowest severity that makes `lint` exit 1 (`--fail-on` overrides) |
 | `component_table_heading` | `"EXISTING Components"` | the `MODULE.md` section whose table rows lint checks for backticked paths (MS040) |
 | `drift_severity` | `"warning"` | severity of MS050 (`info`, `warning` or `error`) |
+| `overlap_severity` | `"warning"` | severity of MS053 (`info`, `warning` or `error`) |
 
 ## `[create]`
 
@@ -272,8 +273,8 @@ templates under `templates/` (`MODULE.md`, `roles/<role>.md`) and hook scripts n
 
 `lint` checks the registry, fields, docs and config; `lint --changed` narrows the report to the
 modules a change touches and adds the drift checks. Config-level findings carry module `*`
-(MS021, MS052) — `lint --changed` drops them along with every other finding outside the touched
-modules, so they show up ONLY in plain `modsys lint`. A CI gate built only on `lint --changed`
+(MS021, MS052, MS053) — `lint --changed` drops them along with every other finding outside the
+touched modules, so they show up ONLY in plain `modsys lint` (and `modsys ci`). A CI gate built only on `lint --changed`
 never sees a shared-keyword note (MS021, severity `info` — report-only, it never fails a gate at
 any `--fail-on` setting) or a typo'd `[[code_map]]` rule (MS052, severity `warning`); run plain
 `modsys lint --fail-on warning` too — the default `fail_on = "error"` exits 0 on a warning-level
@@ -306,3 +307,15 @@ actually fails on it.
 | MS050 | `drift_severity` | `--changed`: a module's code changed but none of its docs |
 | MS051 | error | `--changed`: a frozen `*.legacy.md` snapshot was modified or deleted |
 | MS052 | warning | a `[[code_map]]` rule's `module` is not a registry module or child (plain `lint` only) |
+| MS053 | `overlap_severity` | two `[[code_map]]` rules route the same file to two different modules (plain `lint` only; see below) |
+
+MS053 compares every pair of `[[code_map]]` rules over the repository's files (git-tracked +
+new, not ignored; `[coverage]` filters do not apply) after `exclusive` precedence: a pair is
+reported once when it routes at least one file to two different targets where neither is the
+other's parent (`catalog` + `catalog/search` is fine; `catalog/search` + `catalog/admin`, or
+`orders` + `db`, is an overlap; two rules routing to the same module are not). The message
+names both rules, the target each gives the first such file, the file count and that first
+file (`[[code_map]] 'db' (-> db) and 'repositories' (-> orders) both map 4 file(s), e.g.
+app/repositories/orders.py — mark the more specific rule exclusive = true or narrow its
+globs`). The check runs only with two rules or more and inside a git work tree (otherwise it is
+skipped silently; without rules `lint` runs no git command at all).

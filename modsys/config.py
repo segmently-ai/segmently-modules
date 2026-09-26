@@ -34,7 +34,8 @@ LAYER_SCHEMA = {
                                    "role_doc_max", "keywords_soft", "keyword_shared_warn")},
     "match": {k: "int" for k in ("keyword_weight", "combination_weight", "negative_weight",
                                  "min_score", "top")},
-    "lint": {"fail_on": "str", "component_table_heading": "str", "drift_severity": "str"},
+    "lint": {"fail_on": "str", "component_table_heading": "str", "drift_severity": "str",
+             "overlap_severity": "str"},
     "create": {"min_keywords": "int", "description_min": "int", "description_max": "int",
                "default_status": "str"},
     "coverage": {"include": "list[str]", "exclude": "list[str]"},
@@ -71,10 +72,11 @@ def validate_layer(layer: dict, source) -> None:
         except re.error as e:
             raise UsageError(f"{source}: [registry] stub_pattern: invalid regular expression: "
                              f"{e}") from None
-    drift = layer.get("lint", {}).get("drift_severity")
-    if drift is not None and drift not in ("info", "warning", "error"):
-        raise UsageError(f"{source}: [lint] drift_severity: expected info, warning or error, "
-                         f"got {drift!r}")
+    for key in ("drift_severity", "overlap_severity"):
+        severity = layer.get("lint", {}).get(key)
+        if severity is not None and severity not in ("info", "warning", "error"):
+            raise UsageError(f"{source}: [lint] {key}: expected info, warning or error, "
+                             f"got {severity!r}")
     layout = layer.get("paths", {}).get("registry_layout")
     if layout is not None and layout not in REGISTRY_LAYOUTS:
         raise UsageError(f"{source}: [paths] registry_layout: expected one of "
