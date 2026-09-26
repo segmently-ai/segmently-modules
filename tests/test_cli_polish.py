@@ -30,7 +30,7 @@ class DiscoverWithoutTaskTest(unittest.TestCase):
         self.assertIsNone(env["data"]["task"])
         [row] = env["data"]["modules"]
         self.assertEqual((row["module"], row["usage"], row["sources"], row["score"]),
-                         ("catalog", "modify", ["diff"], 0))
+                         ("catalog", "modify", ["diff"], None))  # D3(c): no task, no score
 
     def test_neither_task_nor_change_is_refused(self):
         for argv, needle in [((), "give the task"), (("--task", " ", "--files", "a.py"),

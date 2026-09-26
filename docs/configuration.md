@@ -213,6 +213,12 @@ actually fails the gate). `show` / `context` list each target's rules as `code_g
 pattern's `{module}` filled in) — routing rules, not a file list; for the files a real change
 touches, use `discover --files` / `sync --dry-run --files` instead.
 
+A `{module}` capture that names no registry module (`app/repositories/base.py` under
+`pattern = "app/repositories/{module}.py"`) routes nothing for that file: the file stays
+unmapped unless another rule, a `code_pointer` field or its docs location maps it — it is not
+"claimed" by the rule, even an `exclusive` one. `coverage` lists it as unmapped and
+`discover --files` prints it as `file      <path> -> (no module)`.
+
 ## `[[hooks.post_sync]]`
 
 Commands `modsys sync` runs after it maps a change (skipped with `--dry-run`).

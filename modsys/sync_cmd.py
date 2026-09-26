@@ -1,6 +1,6 @@
 import os
 
-from modsys.changes import changed_files, map_files
+from modsys.changes import changed_files, map_files, missing_files
 from modsys.hooks import run_hooks
 from modsys.output import EXIT_FINDINGS, EXIT_OK, emit
 from modsys.proposals import apply_proposals, check_safe_id
@@ -34,8 +34,9 @@ def run(args) -> int:
     targets = list(mapping["modules"])
     data = {"run_id": run_id, "diff_range": args.from_diff, "changed_files": files,
             "modules": [{"module": t, **mapping["modules"][t]} for t in targets],
-            "unmapped": mapping["unmapped"], "hooks": None, "proposals": None,
-            "dry_run": args.dry_run}
+            "unmapped": mapping["unmapped"],
+            "missing_files": missing_files(ws.root, files) if args.files else [],
+            "hooks": None, "proposals": None, "dry_run": args.dry_run}
     failed = False
     if not args.dry_run:
         payload = {"changed_modules": targets, "changed_files": files,
@@ -55,6 +56,8 @@ def _render(d) -> None:
         print(f"{m['module']:<32} {', '.join(m['via']):<36} {len(m['files'])} file(s)")
     if d["unmapped"]:
         print(f"unmapped: {len(d['unmapped'])} file(s) — e.g. {d['unmapped'][0]}")
+    for f in d["missing_files"]:
+        print(f"not on disk: {f} (typo? a deleted file still maps)")
     for h in (d["hooks"] or {}).get("hooks", []):
         extra = f" — {h['error']}" if h.get("error") else ""
         print(f"hook {h['id']}: {h['status']}{extra}")

@@ -29,14 +29,15 @@ GOLDEN = [
     (("proposals", "list"), None),
     (("hooks", "list"), None),
     (("sync", "--files", "src/catalog/service.py", "--dry-run"),
-     {"run_id", "diff_range", "changed_files", "modules", "unmapped", "hooks", "proposals",
-      "dry_run"}),
+     {"run_id", "diff_range", "changed_files", "modules", "unmapped", "missing_files", "hooks",
+      "proposals", "dry_run"}),
     (("create", "reviews", "--description", DESC, *KW, "--dry-run"),
      {"module", "files", "entry", "dry_run"}),
     (("migrate", "--dry-run"), {"applied", "dry_run", "diff"}),
     (("context", "--task", "isbn"), {"task", "role", "all_roles", "modules", "read",
                                      "near_misses"}),
-    (("discover", "--task", "isbn"), {"task", "modules", "files_outside_modules", "summary"}),
+    (("discover", "--task", "isbn"), {"task", "modules", "files", "files_outside_modules",
+                                      "missing_files", "summary"}),
     (("coverage",), {"total", "mapped", "share", "modules", "unmapped"}),
 ]
 

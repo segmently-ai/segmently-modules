@@ -24,6 +24,10 @@ directory, else the current directory), `--config-dir DIR` (default `<root>/.mod
   outside `[registry] statuses`, a `related_modules` edge without `module` / `relation` /
   `description`, with an unknown relation, or to an unknown module or child. `init` only
   creates files that do not exist yet (and appends missing `.gitignore` lines).
+- **`--files PATH …`** (`sync`, `discover`): a path that does not exist is still mapped (a
+  deleted file is a real change) and listed in `missing_files` (`[]` for `--from-diff`, which
+  lists real changes only); a directory is refused (exit `2`, nothing mapped, no hook runs) —
+  list its files instead, e.g. `git ls-files <dir>`.
 - **Git refs** (`--from-diff A..B` of `sync` / `discover`, `--base REF` of `lint --changed`): a
   value starting with `-` is refused (exit `2`) — it would be read as a git option. Changed paths
   are relative to the root and limited to it, also when the root is a subdirectory of the git
@@ -61,11 +65,11 @@ they are missing.
 | `propose` | `{file, run_id, agent, item}` — `--agent` defaults to `$MODSYS_AGENT`, else `cli` |
 | `proposals list\|apply\|reject` | list: `[{file, run_id, agent, created_at, items}]` · apply: `{files: [{file, run_id, agent, results: [{id, op, module, status, reason?}]}], summary: {applied, noop, rejected}, dry_run}` · reject: `{rejected_files}` |
 | `hooks list` | `[{event, id, owner, enabled, required, run}]` |
-| `sync` | `{run_id, diff_range, changed_files, modules: [{module, files, via}], unmapped, hooks: {hooks: [{id, owner, required, status, messages, queued, error?}], failed_required} \| null, proposals: <apply data> \| null, dry_run}` |
+| `sync` | `{run_id, diff_range, changed_files, modules: [{module, files, via}], unmapped, missing_files, hooks: {hooks: [{id, owner, required, status, messages, queued, error?}], failed_required} \| null, proposals: <apply data> \| null, dry_run}` |
 | `create NAME` | `{module, files, entry, dry_run}` |
 | `migrate` | `{applied: [{id, description, notes}], dry_run, diff?}` |
 | `context` | `{task, role, all_roles, modules: [{module, score, keywords, negative, read, code, code_globs}], read: [{module, label, path, exists}], near_misses: [{module, score, keywords, near: [{keyword, task_word}]}]}` — `near_misses` is `[]` whenever a module matched; when none reaches `[match] min_score` it lists the targets with a keyword that loosely matches a task word (`near`) or with exact hits below `min_score` (`keywords`, `score`), at most `top` |
-| `discover` | `{task, modules: [{module, score, keywords, sources, touched_files, usage, docs_to_read, docs_to_update}], files_outside_modules, summary: {total_modules, by_usage: {modify, reference}}}` — `task` is `null` when only `--from-diff` / `--files` is given (then no keyword scoring) |
+| `discover` | `{task, modules: [{module, score, keywords, sources, touched_files, usage, docs_to_read, docs_to_update}], files: [{path, modules: [target]}], files_outside_modules, missing_files, summary: {total_modules, by_usage: {modify, reference}}}` — `task` and every `score` are `null` when only `--from-diff` / `--files` is given (no keyword scoring ran); with a task, a module found only through the change has `score` `0`. `files` = every changed file with the targets it maps to (`[]` = unmapped), sorted by path |
 | `coverage` | `{total, mapped, share, modules: {target: n}, unmapped: [path]}` — files = git-tracked + new not ignored, filtered by `[coverage] include`/`exclude`, never the modules dir, the config dir or dotfiles; `share` = mapped / total, rounded down to 3 decimals (`1.0` when no file counts, so it never overstates); `--fail-under PCT` must be `0`–`100` (else exit 2) and is compared against the reported percent (`share` × 100, rounded to one decimal) — exit 1 when that percent is below `PCT`; exit 2 outside a git repository |
 
 ## Pipeline stages

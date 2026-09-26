@@ -6,7 +6,7 @@ import re
 import sys
 from pathlib import Path
 
-from modsys.changes import changed_files, map_files
+from modsys.changes import changed_files, map_files, missing_files
 from modsys.config import enabled_roles
 from modsys.match import match_modules, near_lines, near_misses
 from modsys.output import EXIT_OK, UsageError, emit
@@ -75,13 +75,17 @@ def _mentioned_paths(ws, text: str) -> list[str]:
     return sorted(paths)
 
 
-def build_discover(ws, text: str | None, files: list[str], top: int | None) -> dict:
-    """`text` None = no task: the change alone decides (no keyword scoring)."""
+def build_discover(ws, text: str | None, files: list[str], top: int | None,
+                   missing: list[str] = ()) -> dict:
+    """`text` None = no task: the change alone decides (no keyword scoring, `score` null).
+    `missing` = the listed changed files that are not on disk."""
     by_module: dict[str, dict] = {}
 
     def slot(module: str) -> dict:
-        return by_module.setdefault(module, {"module": module, "score": 0, "keywords": [],
-                                             "sources": [], "touched_files": []})
+        return by_module.setdefault(module, {"module": module,
+                                             "score": 0 if text is not None else None,
+                                             "keywords": [], "sources": [],
+                                             "touched_files": []})
 
     for row in _rows(ws, text, top) if text is not None else []:
         s = slot(row["module"])
@@ -96,9 +100,13 @@ def build_discover(ws, text: str | None, files: list[str], top: int | None) -> d
             if source not in s["sources"]:
                 s["sources"].append(source)
             s["touched_files"] += [f for f in hit["files"] if f not in s["touched_files"]]
+    targets_of: dict[str, list] = {f: [] for f in files}
+    for module, hit in touched["modules"].items():
+        for f in hit["files"]:
+            targets_of[f].append(module)
     roles = [r for r in UPDATE_ROLES if r in enabled_roles(ws.config)]
     out = []
-    for module in sorted(by_module, key=lambda m: (-by_module[m]["score"], m)):
+    for module in sorted(by_module, key=lambda m: (-(by_module[m]["score"] or 0), m)):
         s = by_module[module]
         s["usage"] = "modify" if s["touched_files"] else "reference"
         docs = []
@@ -111,7 +119,9 @@ def build_discover(ws, text: str | None, files: list[str], top: int | None) -> d
     outside = sorted(set(touched["unmapped"]) | {f for f in in_text["unmapped"]
                                                   if (ws.root / f).exists()})
     usage = [m["usage"] for m in out]
-    return {"task": text, "modules": out, "files_outside_modules": outside,
+    return {"task": text, "modules": out,
+            "files": [{"path": f, "modules": sorted(targets_of[f])} for f in sorted(targets_of)],
+            "files_outside_modules": outside, "missing_files": list(missing),
             "summary": {"total_modules": len(out), "by_usage": {
                 "modify": usage.count("modify"), "reference": usage.count("reference")}}}
 
@@ -165,7 +175,8 @@ def run_discover(args) -> int:
     ws = Workspace.from_args(args)
     files = changed_files(ws.root, diff_range=args.from_diff, files=args.files) \
         if (args.from_diff or args.files) else []
-    data = build_discover(ws, task_text(args) if has_task else None, files, args.top)
+    data = build_discover(ws, task_text(args) if has_task else None, files, args.top,
+                          missing_files(ws.root, files) if args.files else [])
     emit("discover", data, args.json, _render_discover)
     return EXIT_OK
 
@@ -185,8 +196,13 @@ def _render_context(d) -> None:
 
 def _render_discover(d) -> None:
     for m in d["modules"]:
-        print(f"{m['usage']:<9} {m['module']:<30} score {m['score']:<3} via {', '.join(m['sources'])}")
+        score = f"score {m['score']:<3} " if m["score"] is not None else ""
+        print(f"{m['usage']:<9} {m['module']:<30} {score}via {', '.join(m['sources'])}")
         for doc in m["docs_to_update"]:
             print(f"          update {doc}")
+    for f in d["files"]:
+        print(f"file      {f['path']} -> {', '.join(f['modules']) or '(no module)'}")
     for f in d["files_outside_modules"]:
         print(f"outside   {f}")
+    for f in d["missing_files"]:
+        print(f"not on disk: {f} (typo? a deleted file still maps)")

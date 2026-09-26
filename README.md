@@ -143,18 +143,21 @@ not resolved per-file ownership, so the parent's rule still textually covers
 
 ```bash
 modsys discover --files src/tasks/search/index.py
-# modify    tasks/search                   score 0   via diff
+# modify    tasks/search                   via diff
 #           update modules/tasks/MODULE.md
 #           update modules/tasks/submodules/search/MODULE.md
 #           update modules/tasks/submodules/search/roles/developer.md
 #           update modules/tasks/roles/developer.md
 #           update modules/tasks/submodules/search/roles/qa.md
 #           update modules/tasks/roles/qa.md
+# file      src/tasks/search/index.py -> tasks/search
 ```
 
-Only `tasks/search` is listed — the file maps there and nowhere else. `discover --files`
-(space-separated paths; `sync --dry-run --files` works the same way) is the file-level truth;
-`show`'s / `context`'s `code` and `code_globs` lines are routing rules, not a file list.
+Only `tasks/search` is listed — the `file` line shows the file maps there and nowhere else.
+`discover --files` (space-separated file paths — a directory is refused; a path not on disk is
+still mapped and reported as `not on disk`, so a typo shows) is the file-level truth, like
+`sync --dry-run --files`; `show`'s / `context`'s `code` and `code_globs` lines are routing
+rules, not a file list.
 
 ## Brownfield: an existing, layered codebase
 
@@ -197,8 +200,8 @@ modsys coverage                  # everything unmapped: the baseline
    ```
 
    Check the rules against real files, one per layer: `modsys discover --files
-   app/db/queries/sql/orders.sql` (should print `orders`, not `db`) — the same command used to
-   verify the child-module split above.
+   app/db/queries/sql/orders.sql` (its `file` line should read `-> orders`, not `-> db`) — the
+   same command used to verify the child-module split above.
 3. **Iterate on `modsys coverage`** until the unmapped list is only what belongs to no module
    (exclude it with `[coverage] exclude = [...]`), then look at `modsys coverage --json`'s
    per-module counts: a shared/catch-all module with a suspiciously large file count is the

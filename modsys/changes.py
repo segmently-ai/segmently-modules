@@ -62,7 +62,9 @@ def changed_files(root: Path, diff_range: str | None = None, files=None,
                   base: str | None = None) -> list[str]:
     """Root-relative changed paths from explicit `files`, a `diff_range` ("A..B"), or `base`
     (base vs the working tree, plus untracked files); git listings keep only files under
-    `root`. Sorted, de-duplicated."""
+    `root`. Sorted, de-duplicated. A listed path may be missing on disk (a deleted file is a
+    real change; see `missing_files`) but never a directory: a directory matches no file rule,
+    so mapping it would silently report it unmapped."""
     if files:
         out = set()
         for f in files:
@@ -75,6 +77,10 @@ def changed_files(root: Path, diff_range: str | None = None, files=None,
             rel = Path(os.path.normpath(p)).as_posix()
             if rel == ".." or rel.startswith("../"):
                 raise UsageError(f"{f} is outside the repository {root}")
+            path = Path(root) / rel
+            if path.is_dir() and not path.is_symlink():
+                raise UsageError(f"{rel}: is a directory — list its files (e.g. git ls-files "
+                                 f"{rel})")
             out.add(rel)
         return sorted(out)
     if diff_range:
@@ -84,6 +90,12 @@ def changed_files(root: Path, diff_range: str | None = None, files=None,
         untracked = _paths(git(root, "ls-files", "-z", "--others", "--exclude-standard"))
         return sorted(set(tracked + untracked))
     raise UsageError("give changed files: --from-diff A..B, --files …, or --base REF")
+
+
+def missing_files(root: Path, files: list[str]) -> list[str]:
+    """The listed root-relative paths that do not exist on disk: a typo, or a deleted file
+    (which still maps to its module — a deletion is a real change)."""
+    return [f for f in files if not os.path.lexists(Path(root) / f)]
 
 
 def repo_files(root: Path) -> list[str]:
