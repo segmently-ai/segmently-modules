@@ -13,6 +13,7 @@ from modsys.fields import value_matches
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.query import role_paths
 from modsys.registry import as_dict, as_list, stub_head
+from modsys.rules import edge_problems, status_problem
 from modsys.workspace import Workspace
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "error": 2}
@@ -117,8 +118,9 @@ def lint_registry(ws) -> list[Finding]:
         check_fields(name, entry, "module")
         if entry.get("name") and entry["name"] != name:
             add("MS002", "error", name, f"'name' field mismatch: {entry['name']!r}")
-        if entry.get("status") is not None and entry["status"] not in statuses:
-            add("MS003", "error", name, f"status {entry['status']!r} not in {statuses}")
+        problem = status_problem(entry.get("status"), statuses)
+        if problem:
+            add(problem[0], "error", name, problem[1])
         check_paths(name, entry.get("context_files"), "context_files")
         check_roles(name, entry.get("context_files"))
         for child, sub in as_dict(entry.get("submodules")).items():
@@ -132,21 +134,8 @@ def lint_registry(ws) -> list[Finding]:
         for i, edge in enumerate(as_list(entry.get("related_modules"))):
             if not isinstance(edge, dict):  # the field type check reports MS013
                 continue
-            where = f"related_modules[{i}]"
-            if edge.get("relation") not in relations:
-                add("MS006", "error", name, f"{where}: relation {edge.get('relation')!r} "
-                                            f"not in {relations}")
-            if not edge.get("description"):
-                add("MS007", "error", name, f"{where}: missing description")
-            target = edge.get("module")
-            if not isinstance(target, str) or not target:
-                add("MS008", "error", name, f"{where}: missing module target")
-                continue
-            parent, _, child = target.partition("/")
-            if parent not in modules:
-                add("MS009", "error", name, f"{where}: target '{parent}' not in registry")
-            elif child and child not in as_dict(as_dict(modules[parent]).get("submodules")):
-                add("MS010", "error", name, f"{where}: '{child}' is not a submodule of '{parent}'")
+            for code, message in edge_problems(edge, modules, relations):
+                add(code, "error", name, f"related_modules[{i}]: {message}")
 
     mdir = root / cfg["paths"]["modules_dir"]
     whitelist = set(cfg["registry"]["dir_whitelist"])

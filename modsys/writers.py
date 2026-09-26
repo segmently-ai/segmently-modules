@@ -6,6 +6,7 @@ import json
 
 from modsys.fields import FieldDef, value_matches
 from modsys.output import UsageError
+from modsys.rules import edge_problems, status_problem
 
 OPS = ("set", "append", "remove", "unset")
 STRUCTURAL = {"name", "submodules"}  # renames and children go through create/split, not field ops
@@ -52,17 +53,37 @@ def _check(fdef: FieldDef, value) -> None:
                          f"{' | '.join(fdef.type)}")
 
 
+def _check_rules(field: str, op: str, value, raw: dict, vocab: dict) -> None:
+    """Refuse a value lint would report as an ERROR for this field (shared rules: modsys.rules).
+    `append` checks the appended item, `set` every item; `remove`/`unset` never refuse."""
+    problems = []
+    if field == "status":
+        problem = status_problem(value, vocab["statuses"])
+        problems = [problem] if problem else []
+    elif field == "related_modules":
+        edges = ([("appended edge", value)] if op == "append" else
+                 [(f"related_modules[{i}]", e) for i, e in enumerate(value)])
+        problems = [(code, f"{where}: {message}") for where, edge in edges
+                    if isinstance(edge, dict)
+                    for code, message in edge_problems(edge, raw["modules"], vocab["relations"])]
+    if problems:
+        raise UsageError(f"field '{field}': "
+                         + "; ".join(f"{message} (lint {code})" for code, message in problems))
+
+
 def apply_field_op(raw: dict, fields: dict[str, FieldDef], op: str, target: str,
-                   field: str, value=None) -> bool:
+                   field: str, value=None, *, vocab: dict) -> bool:
     """Apply one operation in place. Returns True when the document changed.
     set: replace the value · append: add one item to an array (no-op if present) ·
-    remove: drop every equal item from an array · unset: delete the field."""
+    remove: drop every equal item from an array · unset: delete the field.
+    `vocab` = the `[registry]` config (statuses, relations) the value rules check."""
     if op not in OPS:
         raise UsageError(f"unknown op '{op}' (ops: {', '.join(OPS)})")
     entry, scope = entry_for(raw, target)
     fdef = _field_def(fields, field, scope)
     if op == "set":
         _check(fdef, value)
+        _check_rules(field, op, value, raw, vocab)
         if entry.get(field, object()) == value:
             return False
         entry[field] = value
@@ -78,6 +99,7 @@ def apply_field_op(raw: dict, fields: dict[str, FieldDef], op: str, target: str,
     if not isinstance(current, list):
         raise UsageError(f"field '{field}' on '{target}' is not an array; use set")
     if op == "append":
+        _check_rules(field, op, value, raw, vocab)
         if value in current:
             return False
         new = current + [value]

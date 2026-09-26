@@ -88,7 +88,8 @@ class ApplyFieldOpTest(unittest.TestCase):
         raw = json.loads((FIXTURE / "modules" / "registry.json").read_text(encoding="utf-8"))
         fields = load_field_defs({})
         h_catalog, h_checkout = entry_sha256(raw, "catalog"), entry_sha256(raw, "checkout")
-        apply_field_op(raw, fields, "set", "checkout", "status", "draft")
+        apply_field_op(raw, fields, "set", "checkout", "status", "draft",
+                       vocab={"statuses": ["active", "draft"], "relations": []})
         self.assertEqual(entry_sha256(raw, "catalog"), h_catalog)
         self.assertNotEqual(entry_sha256(raw, "checkout"), h_checkout)
 

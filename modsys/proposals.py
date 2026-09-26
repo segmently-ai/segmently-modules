@@ -98,7 +98,8 @@ def make_item(ws, op: str, module: str, reason: str, field: str | None = None,
     if op in FIELD_OPS:
         if not field:
             raise UsageError(f"{op} proposals need --field")
-        apply_field_op(copy.deepcopy(raw), ws.fields, op, module, field, value)  # validates
+        apply_field_op(copy.deepcopy(raw), ws.fields, op, module, field, value,  # validates
+                       vocab=ws.config["registry"])
         return {"op": op, "module": module, "field": field, "value": value, "reason": reason,
                 "base_sha256": entry_sha256(raw, module)}
     if op in DOC_OPS:
@@ -166,7 +167,9 @@ def _apply_item(ws, raw: dict, start_raw: dict, docs: dict, touched: dict, file_
         if op in FIELD_OPS:
             field, value = item["field"], item.get("value")
             key = ("field", module, field)
-            if not apply_field_op(copy.deepcopy(raw), ws.fields, op, module, field, value):
+            vocab = ws.config["registry"]
+            if not apply_field_op(copy.deepcopy(raw), ws.fields, op, module, field, value,
+                                  vocab=vocab):
                 return {**result, "status": "noop"}
             if op in CHECKED_OPS:
                 others = touched.get(key, set()) - {file_name}
@@ -176,7 +179,7 @@ def _apply_item(ws, raw: dict, start_raw: dict, docs: dict, touched: dict, file_
                 if entry_sha256(start_raw, module) != item.get("base_sha256"):
                     return {**result, "status": "rejected",
                             "reason": f"'{module}' changed since the proposal was made"}
-            apply_field_op(raw, ws.fields, op, module, field, value)
+            apply_field_op(raw, ws.fields, op, module, field, value, vocab=vocab)
             touched.setdefault(key, set()).add(file_name)
             return {**result, "status": "applied"}
         path = check_doc_path(ws, module, item["doc"])

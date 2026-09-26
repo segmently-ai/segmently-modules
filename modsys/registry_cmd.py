@@ -40,12 +40,13 @@ def run(args) -> int:
     if args.dry_run:
         before = store.load().raw
         after = copy.deepcopy(before)
-        data["changed"] = apply_field_op(after, ws.fields, args.op, args.target, args.field, value)
+        data["changed"] = apply_field_op(after, ws.fields, args.op, args.target, args.field, value,
+                                         vocab=ws.config["registry"])
         data["diff"] = unified_diff(serialize(before), serialize(after), ws.config["paths"]["registry"])
     else:
         with store.edit() as reg:
             data["changed"] = apply_field_op(reg.raw, ws.fields, args.op, args.target,
-                                             args.field, value)
+                                             args.field, value, vocab=ws.config["registry"])
     emit("registry", data, args.json, _render)
     return EXIT_OK
 
