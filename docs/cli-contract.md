@@ -1,20 +1,29 @@
 # modsys CLI contract (for pipelines)
 
+> Start here: [README](../README.md) — install, a 5-minute walkthrough, brownfield adoption.
+> Every config section and key, packs and the lint codes: [configuration.md](configuration.md).
+
 Every verb accepts `--root DIR` (default: nearest directory with `.modsys/` or
-`modules/registry.json`, else the nearest `.git`), `--config-dir DIR` (default `<root>/.modsys`)
-and `--json`.
+`modules/registry.json`, else the nearest `.git`; `init`: the git top-level of the current
+directory, else the current directory), `--config-dir DIR` (default `<root>/.modsys`) and
+`--json`.
 
 - **stdout with `--json`:** exactly one JSON document `{"schema": "modsys.<verb>/1", "data": …}`.
-- **Exit codes:** `0` ok · `1` findings (lint at/above `--fail-on`, rejected proposals, a failed
-  required hook, a stale index with `--check`, a pointer stub) · `2` usage, config or registry
-  error — stdout is empty, stderr carries `modsys: error: …`. The one extra code is `130`:
+- **Exit codes:** `0` ok · `1` findings (lint at/above `--fail-on`, coverage below
+  `--fail-under`, rejected proposals, a failed required hook, a stale index with `--check`, a
+  pointer stub) · `2` usage, config or registry error (a missing registry says to run
+  `modsys init`) — stdout is empty, stderr carries `modsys: error: …`. The one extra code is `130`:
   interrupted by Ctrl-C (SIGINT, e.g. during a lock wait or at a `create` prompt), stderr
   `modsys: interrupted`.
 - **Never a traceback:** an unexpected failure is exit `2` with `modsys: internal error: …`;
   set `MODSYS_DEBUG=1` to see the traceback.
 - **Writers** (`registry`, `index`, `proposals apply`, `sync --apply-proposals`, `create`,
   `migrate`) take the registry lock (`<registry>.lock`), write atomically, and refuse a file that
-  changed since it was read. `--dry-run` writes nothing.
+  changed since it was read. `--dry-run` writes nothing. Field writes (`registry`, `propose`,
+  proposals from hooks) refuse a value lint would report as an error for that field: a `status`
+  outside `[registry] statuses`, a `related_modules` edge without `module` / `relation` /
+  `description`, with an unknown relation, or to an unknown module or child. `init` only
+  creates files that do not exist yet (and appends missing `.gitignore` lines).
 - **Git refs** (`--from-diff A..B` of `sync` / `discover`, `--base REF` of `lint --changed`): a
   value starting with `-` is refused (exit `2`) — it would be read as a git option. Changed paths
   are relative to the root and limited to it, also when the root is a subdirectory of the git
@@ -34,6 +43,9 @@ and `--json`.
 modules/registry.json.lock
 .modsys/proposals/
 ```
+
+`modsys init` appends these two lines (for the configured registry and proposals paths) when
+they are missing.
 
 | Verb | `data` |
 |---|---|
