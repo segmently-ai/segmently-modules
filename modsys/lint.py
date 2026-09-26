@@ -1,5 +1,6 @@
 """Registry lint. Codes: MS001-MS004, MS006-MS015 registry/field checks · MS020-MS022
 keyword budgets and hygiene · MS030-MS032 doc budgets · MS040 component paths ·
+MS052 a [[code_map]] rule whose `module` is not in the registry ·
 with --changed: MS050 code changed but no doc of its module · MS051 frozen legacy snapshot
 modified or deleted (report narrowed to the changed modules)."""
 import re
@@ -7,7 +8,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from modsys.changes import changed_files, diff_names, map_files
+from modsys.changes import changed_files, diff_names, map_files, target_names
 from modsys.fields import value_matches
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.query import role_paths
@@ -206,6 +207,12 @@ def lint_registry(ws) -> list[Finding]:
                     if n > budgets["role_doc_max"]:
                         add("MS032", "warning", label,
                             f"{n} lines > role budget {budgets['role_doc_max']}", p)
+
+    targets = target_names(modules)
+    for rule in as_list(cfg.get("code_map")):
+        if isinstance(rule, dict) and "module" in rule and rule["module"] not in targets:
+            add("MS052", "warning", "*", f"[[code_map]] '{rule.get('id')}': module "
+                f"'{rule['module']}' is not a registry module or child; the rule maps nothing")
     return out
 
 

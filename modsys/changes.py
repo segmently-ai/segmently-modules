@@ -1,8 +1,11 @@
 """Changed files -> modules. A file belongs to a module (or `module/child`) through:
   docs          — it lives under `<modules_dir>/<module>/` (children: `…/submodules/<child>/`)
   code_pointer  — a `kind = "code_pointer"` field names the file or a directory above it
-  code_map      — a `[[code_map]]` rule: `globs` for one `module`, or a `pattern` whose
-                  `{module}` segment names the module (e.g. "src/{module}/**")
+  code_map      — a `[[code_map]]` rule: `globs` for one `module` (a top-level module or a
+                  `parent/child`), or a `pattern` whose `{module}` segment names a top-level
+                  module (e.g. "src/{module}/**"; `{module}` captures exactly ONE path segment).
+                  A file matched by an `exclusive = true` rule is mapped ONLY by the exclusive
+                  rules that match it; docs and code_pointer mapping are unaffected.
 Glob syntax: `**` any path, `*` one segment, `?` one character."""
 import os
 import re
@@ -15,7 +18,8 @@ from modsys.registry import as_dict, as_list
 # git location variables a parent git hook may export; they would point git at another repo
 _GIT_LOCATION_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
                       "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_PREFIX")
-CODE_MAP_SCHEMA = {"id": "str", "module": "str", "pattern": "str", "globs": "list[str]"}
+CODE_MAP_SCHEMA = {"id": "str", "module": "str", "pattern": "str", "globs": "list[str]",
+                   "exclusive": "bool"}
 
 
 def git_env() -> dict:
@@ -136,15 +140,22 @@ def _targets(modules: dict):
                     yield f"{name}/{child}", sub
 
 
+def target_names(modules: dict) -> set[str]:
+    """Every module and `parent/child` name a `[[code_map]]` rule may route files to."""
+    return {target for target, _ in _targets(modules)}
+
+
 def map_files(ws, files: list[str]) -> dict:
     """{"modules": {target: {"files": […], "via": […]}}, "unmapped": […]}"""
     modules = ws.registry.modules
+    targets = target_names(modules)
     mdir = ws.config["paths"]["modules_dir"].rstrip("/") + "/"
     pointers = [(t, f, p) for t, e in _targets(modules)
                 for f, d in ws.fields.items() if d.kind == "code_pointer" and f in e
                 for p in _pointer_paths(e[f])]
     rules = [(r["id"], r.get("module"), [glob_to_regex(g) for g in
-                                         ([r["pattern"]] if "pattern" in r else r["globs"])])
+                                         ([r["pattern"]] if "pattern" in r else r["globs"])],
+              r.get("exclusive") is True)
              for r in as_list(ws.config.get("code_map")) if isinstance(r, dict) and "id" in r]
     hits: dict[str, dict] = {}
 
@@ -168,13 +179,18 @@ def map_files(ws, files: list[str]) -> dict:
         for target, field, pointer in pointers:
             if path == pointer or path.startswith(pointer + "/"):
                 hit(target, path, f"code_pointer:{field}")
-        for rule_id, module, regexes in rules:
+        routed = []  # (target, rule id, exclusive) of every code_map rule that routes the file
+        for rule_id, module, regexes, exclusive in rules:
             for rx in regexes:
                 m = rx.match(path)
                 if not m:
                     continue
                 name = module or m.group("module")
-                if name in modules:
-                    hit(name, path, f"code_map:{rule_id}")
+                if name in targets:
+                    routed.append((name, rule_id, exclusive))
+        if any(exclusive for _, _, exclusive in routed):
+            routed = [r for r in routed if r[2]]  # exclusive rules win the file
+        for name, rule_id, _ in routed:
+            hit(name, path, f"code_map:{rule_id}")
     return {"modules": dict(sorted(hits.items())),
             "unmapped": [f for f in files if f not in mapped]}
