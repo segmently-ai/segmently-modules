@@ -75,6 +75,15 @@ class FilesChecksTest(Repo):  # P32-AC-005
                 self.assertEqual((code, out), (2, ""))
                 self.assertIn("is outside the repository", err)
 
+    def test_a_submodule_gitlink_is_a_single_changed_path(self):  # M-8
+        sub = self.root / "vendor" / "lib"
+        sub.mkdir(parents=True)
+        (sub / ".git").write_text("gitdir: ../../.git/modules/vendor/lib\n")
+        code, env, err = run_json("discover", "--files", "vendor/lib", "src/tasks/a.py", *self.R)
+        self.assertEqual((code, err, env["data"]["missing_files"]), (0, "", []))
+        self.assertEqual([f["path"] for f in env["data"]["files"]],
+                         ["src/tasks/a.py", "vendor/lib"])
+
 
 class FileViewTest(Repo):  # P32-AC-006
     def test_every_changed_file_with_its_targets(self):

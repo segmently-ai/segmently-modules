@@ -42,7 +42,7 @@ def run(args) -> int:
     if threshold is not None and not 0 <= threshold <= 100:
         raise UsageError("--fail-under must be between 0 and 100")
     require_work_tree(ws.root, "ci")
-    commit_ref(ws.root, base)
+    base = commit_ref(ws.root, base, origin="flag" if args.base is not None else "config")
 
     findings = lint_registry(ws)
     steps = [{"name": "lint", "status": "failed" if failing(findings, fail_on) else "passed",
@@ -64,7 +64,7 @@ def run(args) -> int:
     notes = [NOTHING_TO_COMPARE] if not changed["files"] and base == "HEAD" else []
     failed = any(s["status"] == "failed" for s in steps)
     data = {"base": base, "fail_on": fail_on, "steps": steps, "failed": failed, "notes": notes}
-    emit("ci", data, args.json, _render)
+    emit("ci", data, args.json, lambda d: _render(d, report["unmapped"]))
     return EXIT_FINDINGS if failed else EXIT_OK
 
 
@@ -81,14 +81,22 @@ def _summary(step: dict) -> str:
     return f"share {s['share']} ({percent(s['share'])} %), {s['unmapped']} unmapped{gate}"
 
 
-def _render(d) -> None:
+UNMAPPED_SHOWN = 5
+
+
+def _render(d, unmapped: list[str]) -> None:
     for step in d["steps"]:
         print(f"{step['name']:<9} {step['status']:<12} {_summary(step)}")
         if step["status"] == "failed":
-            for f in step.get("findings", []):
-                where = f"  ({f['path']})" if f["path"] else ""
-                print(f"  {f['severity'].upper():<7} {f['code']} {f['module']}: "
-                      f"{f['message']}{where}")
+            if step["name"] == "coverage":
+                for f in unmapped[:UNMAPPED_SHOWN]:
+                    print(f"  {f}")
+                print("  run modsys coverage for the full list")
+            else:
+                for f in step.get("findings", []):
+                    where = f"  ({f['path']})" if f["path"] else ""
+                    print(f"  {f['severity'].upper():<7} {f['code']} {f['module']}: "
+                          f"{f['message']}{where}")
     for note in d["notes"]:
         print(f"note: {note}")
     print(f"ci: {'failed' if d['failed'] else 'passed'}")

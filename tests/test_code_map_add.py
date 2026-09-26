@@ -116,9 +116,33 @@ class RefusalTest(unittest.TestCase):  # P32-AC-011
                 (("x",), "give --pattern or --glob"),
                 (("x", "--glob", "a/**"), "--glob needs --module"),
                 (("", "--glob", "a/**", "--module", "tasks"), "id must be a non-empty string"),
-                ((), "code-map add needs an ID")]:
+                ((), "code-map add needs an ID"),
+                (("y1", "--glob", "./src/tasks/**", "--module", "tasks"),
+                 'glob "./src/tasks/**": paths are root-relative and a directory needs /** — '
+                 'e.g. src/tasks/**'),
+                (("y2", "--glob", "/src/tasks/**", "--module", "tasks"),
+                 'glob "/src/tasks/**": paths are root-relative and a directory needs /** — '
+                 'e.g. src/tasks/**'),
+                (("y3", "--glob", "src/tasks/", "--module", "tasks"),
+                 'glob "src/tasks/": paths are root-relative and a directory needs /** — '
+                 'e.g. src/tasks/**'),
+                (("y4", "--pattern", "./src/{module}/**"),
+                 'glob "./src/{module}/**": paths are root-relative and a directory needs /** — '
+                 'e.g. src/tasks/**')]:
             with self.subTest(argv=argv):
                 self.assertIn(needle, self.refused(*argv))
+
+    def test_unwritable_team_config(self):  # M-2
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            self.skipTest("root ignores file permissions")
+        os.chmod(self.team, 0o400)
+        try:
+            err = self.refused("x", "--glob", "a/**", "--module", "tasks")
+        finally:
+            os.chmod(self.team, 0o600)
+        self.assertIn("cannot write", err)
+        self.assertIn(str(self.team.name), err)
+        self.assertIn("nothing written", err)
 
     def test_id_defined_in_any_layer(self):
         pack = self.root / ".modsys" / "packs" / "acme" / "pack.toml"

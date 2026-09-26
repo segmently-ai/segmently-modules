@@ -239,9 +239,10 @@ characters within one segment, `?` one character. `**/` needs at least one direc
 files too, list both (`*.md` and `**/*.md`). A rule whose `module` names no registry module or
 child maps nothing and is reported as MS052 — a config-level finding (module `*`, like MS021)
 that only plain `modsys lint` shows; `lint --changed` narrows to the changed modules and drops
-it, so a CI gate must also run plain `modsys lint --fail-on warning` (MS052 is severity
-`warning`; the default `[lint] fail_on = "error"` exits 0 on it — `--fail-on warning` is what
-actually fails the gate). `show` / `context` list each target's rules as `code_globs` (a
+it — run `modsys ci` (or plain `modsys lint --fail-on warning`) to catch it: `modsys ci`
+already runs plain lint at `[ci] fail_on` (default `warning`), unlike plain `lint`'s own
+default `fail_on = "error"`, which exits 0 on a warning-level finding like MS052. `show` /
+`context` list each target's rules as `code_globs` (a
 pattern's `{module}` filled in) — routing rules, not a file list; for the files a real change
 touches, use `discover --files` / `sync --dry-run --files` instead.
 
@@ -288,10 +289,10 @@ modules a change touches and adds the drift checks. Config-level findings carry 
 (MS021, MS052, MS053) — `lint --changed` drops them along with every other finding outside the
 touched modules, so they show up ONLY in plain `modsys lint` (and `modsys ci`). A CI gate built only on `lint --changed`
 never sees a shared-keyword note (MS021, severity `info` — report-only, it never fails a gate at
-any `--fail-on` setting) or a typo'd `[[code_map]]` rule (MS052, severity `warning`); run plain
-`modsys lint --fail-on warning` too — the default `fail_on = "error"` exits 0 on a warning-level
-finding like MS052, so a gate that runs plain `modsys lint` with no `--fail-on` override never
-actually fails on it.
+any `--fail-on` setting) or a typo'd `[[code_map]]` rule (MS052, severity `warning`); `modsys ci`
+catches both without a separate plain `lint` call, since its default `[ci] fail_on` is
+`warning` — a gate that runs plain `modsys lint` with no `--fail-on` override never actually
+fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 
 | Code | Severity | Finding |
 |---|---|---|

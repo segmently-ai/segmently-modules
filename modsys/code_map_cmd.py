@@ -93,6 +93,10 @@ def add_rule(ws, rule_id, pattern: str | None, globs: list[str] | None, module: 
     if (pattern is None) == (not globs):
         raise UsageError("code-map add: give --pattern or --glob (not both): --pattern P with a "
                          "{module} segment, or --glob G (repeatable) with --module M")
+    for glob in [pattern] if pattern is not None else globs:
+        if glob.startswith(("./", "/")) or glob.endswith("/"):
+            raise UsageError(f'glob "{glob}": paths are root-relative and a directory needs '
+                             f'/** — e.g. src/tasks/**')
     if globs and module is None:
         raise UsageError("code-map add: --glob needs --module (the module the files belong to)")
     team = ws.config_dir / "config.toml"
@@ -136,8 +140,11 @@ def add_rule(ws, rule_id, pattern: str | None, globs: list[str] | None, module: 
         raise UsageError(f"appending the rule would make {team} invalid (it does not read back "
                          f"as written); nothing written")
     if not dry_run:
-        with open(team, "ab") as fh:  # append mode, one write: never a rewrite
-            fh.write(payload)
+        try:
+            with open(team, "ab") as fh:  # append mode, one write: never a rewrite
+                fh.write(payload)
+        except OSError as e:
+            raise UsageError(f"cannot write {team}: {e.strerror}; nothing written") from None
     try:
         shown = team.relative_to(ws.root).as_posix()
     except ValueError:

@@ -179,6 +179,12 @@ class StarterConfigTest(unittest.TestCase):
                 self.assertEqual(config["hooks"]["post_sync"][0]["id"], "notify")
                 self.assertEqual(config["coverage"], {"include": ["**"], "exclude": ["docs/**"]})
                 self.assertEqual(config["paths"]["registry_layout"], layout)
+                self.assertEqual(config["ci"], {"base": "origin/main", "fail_on": "warning",
+                                                "coverage_fail_under": 80})  # M-7
+
+    def test_the_exclusive_comment_says_matched_and_routed(self):  # M-7, P31-R2 wording
+        self.assertIn("matched and routed", starter_config("single"))
+        self.assertNotIn("a file matched by an exclusive rule", starter_config("single"))
 
 
 if __name__ == "__main__":

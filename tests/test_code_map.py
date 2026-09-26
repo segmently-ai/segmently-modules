@@ -2,7 +2,7 @@
 import tempfile
 import unittest
 
-from tests.helpers import copy_fixture, init_git, run, run_json
+from tests.helpers import copy_fixture, init_git, make_repo, run, run_json
 
 # A layered repo: `payments` stands in for a shared persistence layer that owns repo/**,
 # while a feature's own repository file belongs to the feature (exclusive).
@@ -82,6 +82,54 @@ class CodeMapTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual([(f["code"], f["module"]) for f in env["data"]["findings"]],
                          [("MS050", "catalog")])
+
+
+class RepeatedModuleSegmentTest(unittest.TestCase):  # I-1
+    """A `{module}` segment repeated in one pattern (e.g. `tests/{module}/test_{module}.py`,
+    a per-feature test layer) is supported: later occurrences back-reference the first."""
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = make_repo(self._tmp.name, {"todo": ["todo"], "lists": ["list"]},
+                              '[[code_map]]\nid = "tests"\n'
+                              'pattern = "tests/{module}/test_{module}.py"\n')
+        self.R = ("--root", str(self.root))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_same_module_both_places_routes_but_a_mismatch_does_not(self):
+        code, env, err = run_json("sync", "--files", "tests/todo/test_todo.py",
+                                  "tests/todo/test_lists.py", "--dry-run", *self.R)
+        self.assertEqual((code, err), (0, ""))
+        modules = {m["module"]: m["files"] for m in env["data"]["modules"]}
+        self.assertEqual(modules, {"todo": ["tests/todo/test_todo.py"]})
+        self.assertEqual(env["data"]["unmapped"], ["tests/todo/test_lists.py"])
+
+
+class RepeatedModuleAddTest(unittest.TestCase):  # I-1
+    """The engine's own writer (`code-map add`) can append a rule whose pattern repeats
+    `{module}`, and it must not crash plain `lint` / `discover --files` afterwards."""
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = make_repo(self._tmp.name, {"todo": ["todo"], "lists": ["list"]}, "# team\n")
+        self.R = ("--root", str(self.root))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_add_twice_in_one_pattern_then_lint_and_discover_stay_green(self):
+        code, env, err = run_json("code-map", "add", "twice", "--pattern",
+                                  "src/{module}/{module}/**", *self.R)
+        self.assertEqual((code, err, env["data"]["dry_run"]), (0, "", False))
+        (self.root / "src/todo/todo").mkdir(parents=True)
+        (self.root / "src/todo/todo/x.py").write_text("x = 1\n")
+        code, out, err = run("lint", *self.R)
+        self.assertEqual((code, err), (0, ""))
+        self.assertNotIn("internal error", out + err)
+        code, env, err = run_json("discover", "--files", "src/todo/todo/x.py", *self.R)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(env["data"]["files"], [{"path": "src/todo/todo/x.py",
+                                                 "modules": ["todo"]}])
 
 
 class UnknownTargetLintTest(unittest.TestCase):

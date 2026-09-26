@@ -114,6 +114,26 @@ class CiStepsTest(CiRepo):  # P32-AC-018
         self.assertEqual((code, out), (2, ""))
         self.assertIn("ci needs a git repository", err)
 
+    def test_before_the_first_commit(self):  # M-1
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp, {"tasks": ["task"]})
+            git(root, "init", "-q", "-b", "main")
+            code, out, err = run("ci", "--json", "--root", str(root))
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("the repository has no commit yet — commit first", err)
+        self.assertNotIn("fetch", err)
+
+    def test_unknown_base_names_where_it_came_from(self):  # M-1
+        self.touch("src/tasks/a.py")
+        git(self.root, "commit", "-q", "-am", "code only")
+        code, out, err = run("ci", "--base", "nosuch", "--json", *self.R)
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("--base 'nosuch' is not a commit in this repository", err)
+        self.config('[ci]\nbase = "nosuch"\n')
+        code, out, err = run("ci", "--json", *self.R)
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("[ci] base 'nosuch' is not a commit in this repository", err)
+
 
 class CiOptionsTest(CiRepo):  # P32-AC-019
     def test_fail_on_precedence(self):
@@ -160,6 +180,26 @@ class CiOptionsTest(CiRepo):  # P32-AC-019
         self.assertEqual(lines[-1], "ci: failed")
         self.touch("modules/tasks/MODULE.md")
         self.assertEqual(run("ci", *self.R)[1].splitlines()[-1], "ci: passed")
+
+    def test_a_failed_coverage_step_lists_unmapped_paths(self):  # M-5
+        for i in range(6):
+            self.touch(f"extra/e{i:02}.py")
+        out = run("ci", "--fail-under", "100", *self.R)[1]
+        unmapped = sorted(f"extra/e{i:02}.py" for i in range(6))
+        for path in unmapped[:5]:
+            self.assertIn(f"  {path}", out.splitlines())
+        self.assertNotIn(unmapped[5], out)
+        self.assertIn("run modsys coverage for the full list", out)
+
+    def test_text_mode_note_and_no_changes_summary(self):  # M-10
+        code, out, _ = run("ci", *self.R)
+        lines = out.splitlines()
+        self.assertEqual(code, 0)
+        drift_line = next(l for l in lines if l.split()[0] == "drift")
+        self.assertEqual(drift_line.split()[:2], ["drift", "no-changes"])
+        self.assertIn("no changed files since HEAD", drift_line)
+        self.assertIn(f"note: {NOTE}", lines)
+        self.assertEqual(lines[-1], "ci: passed")
 
 
 class CiConfigTest(CiRepo):  # P32-AC-020, P32-AC-022

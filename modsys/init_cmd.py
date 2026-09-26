@@ -66,9 +66,9 @@ _BODY = '''
 # module = "catalog/search"
 # globs = ["src/catalog/search/**", "api/search_*.py"]
 ##
-## exclusive: a file matched by an exclusive rule is mapped ONLY by the exclusive rules that
-## match it. Layered repos: a feature's repository file belongs to the feature, not to the shared
-## persistence module whose broader rule also matches it.
+## exclusive: a file matched and routed by an exclusive rule is mapped ONLY by the exclusive
+## rules that route it. Layered repos: a feature's repository file belongs to the feature, not to
+## the shared persistence module whose broader rule also matches it.
 # [[code_map]]
 # id = "catalog-repository"
 # module = "catalog"
@@ -95,6 +95,13 @@ _BODY = '''
 # [coverage]
 # include = ["**"]
 # exclude = ["docs/**"]
+
+## `modsys ci`: one gate — lint, drift since base, coverage. Put the team's defaults here so CI
+## runs a bare `modsys ci` (a flag still overrides any key).
+# [ci]
+# base = "origin/main"
+# fail_on = "warning"
+# coverage_fail_under = 80
 '''
 _VERBS = {"created": ("created", "would create"), "updated": ("updated", "would update"),
           "exists": ("exists", "exists")}

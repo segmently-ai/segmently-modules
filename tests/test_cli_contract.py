@@ -67,6 +67,15 @@ class CliContractTest(unittest.TestCase):
         self.assertEqual(verbs, documented)
         self.assertEqual(verbs, {argv[0] for argv, _ in GOLDEN})
 
+    def test_the_verb_table_rows_are_contiguous(self):  # I-2
+        """A blank line between two `| \\`<verb>\\` |` rows would split the table in rendered
+        Markdown (GFM ends a table at the first non-row line)."""
+        lines = DOC.read_text(encoding="utf-8").splitlines()
+        rows = [i for i, l in enumerate(lines) if re.match(r"^\| `[a-z-]+", l)]
+        self.assertTrue(rows)
+        for i in range(rows[0], rows[-1] + 1):
+            self.assertTrue(lines[i].startswith("|"), f"line {i + 1} breaks the table: {lines[i]!r}")
+
 
 if __name__ == "__main__":
     unittest.main()

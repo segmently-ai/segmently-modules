@@ -222,9 +222,10 @@ routing one file to two modules, MS053, appear only here), `drift` (`lint --chan
 `--fail-under`; without a threshold it only reports). Exit 1 when a step failed, 2 for a usage
 error. `--base` must be a real ref — in CI the pull request's target branch (fetch it first),
 or the `"$BASE"` captured before a change; against the default `HEAD` a clean checkout has
-nothing to compare, and `ci` says so in its notes. Put the team's defaults in `[ci]` of
-`.modsys/config.toml` (`fail_on`, `base`, `coverage_fail_under`), then CI runs a bare
-`modsys ci`.
+nothing to compare, and `ci` says so in its notes. Outside a merge-ref checkout, pass
+`--base "$(git merge-base origin/main HEAD)"` so the target branch's own later commits are not
+counted as changes. Put the team's defaults in `[ci]` of `.modsys/config.toml` (`fail_on`,
+`base`, `coverage_fail_under`), then CI runs a bare `modsys ci`.
 
 ## Reference
 

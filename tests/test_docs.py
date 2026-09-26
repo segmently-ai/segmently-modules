@@ -52,6 +52,12 @@ class ConfigDocTest(unittest.TestCase):
                                     re.M))
         self.assertEqual(emitted, documented)
 
+    def test_a_ci_gate_is_pointed_to_modsys_ci_not_a_separate_plain_lint(self):  # M-7
+        doc = CONFIG_DOC.read_text(encoding="utf-8")
+        self.assertNotIn("a CI gate must also run plain `modsys lint --fail-on warning`", doc)
+        self.assertNotIn("run plain\n`modsys lint --fail-on warning` too", doc)
+        self.assertIn("modsys ci", doc)
+
 
 class CommandsInDocsTest(unittest.TestCase):
     def test_commands_use_real_verbs_and_flags(self):

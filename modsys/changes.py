@@ -70,15 +70,23 @@ def _rev(value: str) -> str:
     return value
 
 
-def commit_ref(root: Path, ref: str) -> str:
+def commit_ref(root: Path, ref: str, origin: str | None = None) -> str:
     """`ref` when it names a commit in the repository at `root`; else exit 2 (a ref starting
-    with '-' is refused before git sees it)."""
+    with '-' is refused before git sees it). `origin` names where an unresolved `ref` came from
+    for the error: "flag" (`--base` on the command line) or "config" (`[ci] base`, including
+    its default) — the message then leads with `--base '<ref>'` or `[ci] base '<ref>'`
+    (omitted, it reads `--base`). `ref` itself unresolved as literal `HEAD` means there is no
+    commit yet — fetching would not help, so that gets its own message regardless of origin."""
     ref = _rev(ref)
     proc = subprocess.run(["git", "-C", str(root), "rev-parse", "--verify", "--quiet",
                            f"{ref}^{{commit}}"], capture_output=True, encoding="utf-8",
                           errors="replace", env=git_env())
     if proc.returncode != 0:
-        raise UsageError(f"--base {ref!r} is not a commit in this repository (in CI, fetch the "
+        if ref == "HEAD":
+            raise UsageError("the repository has no commit yet — commit first (drift compares "
+                             "against a commit)")
+        where = "[ci] base" if origin == "config" else "--base"
+        raise UsageError(f"{where} {ref!r} is not a commit in this repository (in CI, fetch the "
                          f"target branch first, e.g. git fetch origin main)")
     return ref
 
@@ -118,7 +126,7 @@ def changed_files(root: Path, diff_range: str | None = None, files=None,
             if rel == ".." or rel.startswith("../"):
                 raise UsageError(f"{f} is outside the repository {root}")
             path = Path(root) / rel
-            if path.is_dir() and not path.is_symlink():
+            if (path.is_dir() and not path.is_symlink() and not (path / ".git").exists()):
                 raise UsageError(f"{rel}: is a directory — list its files (e.g. git ls-files "
                                  f"{rel})")
             out.add(rel)
@@ -147,13 +155,20 @@ def repo_files(root: Path) -> list[str]:
 
 
 def glob_to_regex(pattern: str) -> re.Pattern:
-    out, i = [], 0
+    """`{module}` may appear more than once (e.g. `tests/{module}/test_{module}.py`, a
+    per-feature test layer): the first occurrence captures the module, every later one is a
+    backreference to it, so the file must name the same module in both places."""
+    out, i, seen_module = [], 0, False
     while i < len(pattern):
         if pattern.startswith("**", i):
             out.append(".*")
             i += 2
         elif pattern.startswith("{module}", i):
-            out.append("(?P<module>[^/]+)")
+            if seen_module:
+                out.append("(?P=module)")
+            else:
+                out.append("(?P<module>[^/]+)")
+                seen_module = True
             i += len("{module}")
         elif pattern[i] == "*":
             out.append("[^/]*")
@@ -190,6 +205,15 @@ def validate_code_map(layer: dict, source, check_table) -> None:
             raise UsageError(f"{source}: code_map.{rule['id']}: pattern {fixed} has no {{module}} "
                              f"segment — for a fixed module use globs = [{fixed}] and "
                              f"module = {module}")
+        for glob in [rule["pattern"]] if "pattern" in rule else (rule.get("globs") or []):
+            if not isinstance(glob, str):
+                continue
+            try:
+                glob_to_regex(glob)
+            except re.error as e:
+                raise UsageError(f"{source}: code_map.{rule['id']}: glob "
+                                 f"{json.dumps(glob, ensure_ascii=False)} is not a valid "
+                                 f"pattern: {e}") from None
 
 
 def _pointer_paths(value) -> list[str]:
