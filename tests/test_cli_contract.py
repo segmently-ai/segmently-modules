@@ -48,6 +48,8 @@ GOLDEN = [
     (("packs", "list"), None),
     (("packs", "new", "team", "--role", "reviewer", "--skill", "api-review", "--dry-run"),
      {"pack", "dir", "files", "dry_run"}),
+    (("packs", "sync", "--agent", "claude", "--dry-run"),
+     {"agents", "check", "dry_run", "skills", "summary", "failed"}),
 ]
 
 

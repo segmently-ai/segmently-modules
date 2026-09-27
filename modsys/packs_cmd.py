@@ -1,9 +1,13 @@
-"""`modsys packs`: create and list packs — a team's roles, role templates and agent skills.
+"""`modsys packs`: create, list and sync packs — a team's roles, role templates and agent
+skills.
 
   new ID [--role NAME]… [--skill NAME]… [--description TEXT] [--priority N]
         scaffold `<config_dir>/packs/ID/`: `pack.toml`, a role template per `--role` and a
         `SKILL.md` per `--skill` (reading every `--role`); every refusal writes nothing
-  list  the installed packs in precedence order, with their roles and skills"""
+  list  the installed packs in precedence order, with their roles and skills
+  sync [--agent claude|codex]… [--check]
+        copy every pack skill into the agents' skill directories (`skill_sync`); agents = the
+        flags, else `[packs] agents`"""
 import os
 import re
 import shutil
@@ -14,12 +18,15 @@ from pathlib import Path
 from modsys.code_map_cmd import _toml_string
 from modsys.config import DEFAULT_PACK_PRIORITY, core_defaults, discover_packs
 from modsys.create import NAME
-from modsys.output import EXIT_OK, UsageError, emit
-from modsys.skills import (NAME_RULE, declared_skills, ejected_dir, read_front_matter,
-                           skill_id_ok)
+from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
+from modsys.skill_sync import STATUSES, apply_plan, plan_sync, row
+from modsys.skills import (AGENT_DIRS, NAME_RULE, declared_skills, ejected_dir,
+                           read_front_matter, skill_id_ok)
 from modsys.workspace import Workspace
 
-ACTIONS = ("new", "list")
+ACTIONS = ("new", "list", "sync")
+NEW_FLAGS = ("--role", "--skill", "--description", "--priority")
+SYNC_FLAGS = ("--agent", "--check")
 ROLE_NAME = re.compile(r"^[a-z][a-z0-9_]*(-[a-z0-9]+)*$")
 FIRST_ROLE_ORDER, ROLE_ORDER_STEP = 100, 10
 PACK_DESCRIPTION = "Describe what this pack adds: its roles and skills."
@@ -27,12 +34,16 @@ PACK_DESCRIPTION = "Describe what this pack adds: its roles and skills."
 
 def register(sub, common) -> None:
     p = sub.add_parser("packs", parents=[common],
-                       help="create or list packs: a team's roles, templates and agent skills",
+                       help="create, list or sync packs: a team's roles, templates and "
+                            "agent skills",
                        description="new ID: scaffold <config_dir>/packs/ID/ — pack.toml, "
                                    "roles/<role>.md per --role, skills/<skill>/SKILL.md per "
                                    "--skill (each skill reads every --role). list: the "
                                    "installed packs in precedence order with their roles and "
-                                   "skills.")
+                                   "skills. sync: copy every pack skill into the agents' skill "
+                                   "directories (claude: .claude/skills/, codex: "
+                                   ".agents/skills/); a locally edited or foreign copy is a "
+                                   "conflict and is never overwritten.")
     p.add_argument("action", choices=ACTIONS)
     p.add_argument("name", nargs="?", metavar="ID",
                    help="new: the pack id (lowercase words joined by '-', max 48)")
@@ -46,7 +57,13 @@ def register(sub, common) -> None:
     p.add_argument("--priority", type=int,
                    help=f"new: precedence among packs (default {DEFAULT_PACK_PRIORITY}; a "
                         f"lower number wins)")
-    p.add_argument("--dry-run", action="store_true", help="new: list the files, write nothing")
+    p.add_argument("--agent", action="append", dest="agents", metavar="claude|codex",
+                   help="sync: an agent to write skills for (repeatable; default: [packs] "
+                        "agents)")
+    p.add_argument("--check", action="store_true",
+                   help="sync: write nothing; exit 1 unless every skill is unchanged (CI)")
+    p.add_argument("--dry-run", action="store_true",
+                   help="new, sync: report what would be written, write nothing")
     p.set_defaults(func=run)
 
 
@@ -164,6 +181,35 @@ def new_pack(ws, pack_id: str, roles: list[str], skills: list[str], description:
             "files": [ws.rel(pack_dir / rel) for rel in files], "dry_run": dry_run}
 
 
+def sync(ws, agents: list[str] | None, check: bool, dry_run: bool) -> dict:
+    """`packs sync`: plan every (agent, skill), then apply the plans unless `check` /
+    `dry_run`; a conflicting or invalid skill is never written, the others are."""
+    if check and dry_run:
+        raise UsageError("--check and --dry-run cannot be combined (--check never writes)")
+    for agent in agents or []:
+        if agent not in AGENT_DIRS:
+            raise UsageError(f"unknown agent {agent!r} (agents: {', '.join(AGENT_DIRS)})")
+    chosen = list(dict.fromkeys(agents or (ws.config.get("packs") or {}).get("agents") or []))
+    if not chosen:
+        raise UsageError("choose --agent claude and/or --agent codex, or set [packs] agents")
+    plans = plan_sync(ws, chosen)
+    if not check and not dry_run:
+        for plan in plans:
+            if plan.same_as is None:
+                try:
+                    apply_plan(plan)
+                except OSError as e:
+                    raise UsageError(f"cannot write {ws.rel(plan.dest)}: {e.strerror or e} — "
+                                     f"fix it and run packs sync again (a skill written in "
+                                     f"part resumes)") from None
+    rows = [row(ws, plan) for plan in plans]
+    summary = {s: sum(r["status"] == s for r in rows) for s in STATUSES}
+    failed = (any(r["status"] != "unchanged" for r in rows) if check
+              else bool(summary["conflict"] or summary["invalid"]))
+    return {"agents": chosen, "check": check, "dry_run": dry_run, "skills": rows,
+            "summary": summary, "failed": failed}
+
+
 def pack_rows(ws) -> list[dict]:
     """`packs list` data: installed packs in precedence order."""
     rows = []
@@ -184,19 +230,28 @@ def pack_rows(ws) -> list[dict]:
     return rows
 
 
+def _refuse_flags(args, action: str, allowed: tuple[str, ...]) -> None:
+    given = {"ID": args.name, "--role": args.roles, "--skill": args.skills,
+             "--description": args.description, "--priority": args.priority,
+             "--agent": args.agents, "--check": args.check or None,
+             "--dry-run": args.dry_run or None}
+    used = [flag for flag, value in given.items() if value is not None and flag not in allowed]
+    if used:
+        raise UsageError(f"packs {action} takes no {used[0]}")
+
+
 def run(args) -> int:
     ws = Workspace.from_args(args)
     if args.action == "list":
-        used = [flag for flag, value in (("ID", args.name), ("--role", args.roles),
-                                         ("--skill", args.skills),
-                                         ("--description", args.description),
-                                         ("--priority", args.priority),
-                                         ("--dry-run", args.dry_run or None))
-                if value is not None]
-        if used:
-            raise UsageError(f"packs list takes no {used[0]}")
+        _refuse_flags(args, "list", ())
         emit("packs", pack_rows(ws), args.json, _render_list)
         return EXIT_OK
+    if args.action == "sync":
+        _refuse_flags(args, "sync", SYNC_FLAGS + ("--dry-run",))
+        data = sync(ws, args.agents, args.check, args.dry_run)
+        emit("packs", data, args.json, _render_sync)
+        return EXIT_FINDINGS if data["failed"] else EXIT_OK
+    _refuse_flags(args, "new", ("ID",) + NEW_FLAGS + ("--dry-run",))
     if args.name is None:
         raise UsageError("packs new needs an ID (the new pack's id, e.g. team)")
     data = new_pack(ws, args.name, args.roles or [], args.skills or [], args.description,
@@ -210,9 +265,13 @@ def _render_new(d) -> None:
     for f in d["files"]:
         print(f"{verb}  {f}")
     roles = [Path(f).stem for f in d["files"] if Path(f).parent.name == "roles"]
+    skills = any(Path(f).name == "SKILL.md" for f in d["files"])
     steps = [f"modsys create NAME … --role {roles[0]} (a module with the {roles[0]} doc)"
              if roles else "edit pack.toml (roles, fields, [[code_map]] rules, skills)"]
-    print(f"next: {steps[0]}; modsys packs list shows the pack")
+    if skills:
+        steps.append("modsys packs sync --agent claude --agent codex (the skills into the "
+                     "agents' skill directories)")
+    print(f"next: {'; then '.join(steps)}")
 
 
 def _render_list(rows) -> None:
@@ -225,3 +284,26 @@ def _render_list(rows) -> None:
         for s in r["skills"]:
             reads = f"  reads {', '.join(s['reads_roles'])}" if s["reads_roles"] else ""
             print(f"  skill  {s['id']}{reads}{'  (ejected)' if s['ejected'] else ''}")
+
+
+HINTS = {"conflict": "resolve by hand (revert the edit, or move the directory away)",
+         "invalid": "fix the skill in its pack (plain modsys lint reports it as MS062)"}
+
+
+def _render_sync(d) -> None:
+    if not d["skills"]:
+        print("no pack skills (add one: modsys packs new ID --skill NAME)")
+    for r in d["skills"]:
+        where = f"({r['pack']} {r['version']})" if r["version"] else f"({r['pack']})"
+        same = f"  same directory as {r['same_as']}" if r.get("same_as") else ""
+        print(f"{r['status']:<10} {r['agent']:<7} {r['dir']}  {where}{same}")
+        if r["reason"]:
+            hint = HINTS.get(r["status"])
+            print(f"  {r['reason']}" + (f" — {hint}" if hint else ""))
+    s = d["summary"]
+    counts = ", ".join(f"{s[k]} {k}" for k in STATUSES)
+    if d["check"]:
+        state = "stale — run modsys packs sync" if d["failed"] else "in sync"
+        print(f"packs sync --check: {counts}: {state}")
+    else:
+        print(f"packs sync: {counts}" + ("  (dry run: nothing written)" if d["dry_run"] else ""))

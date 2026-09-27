@@ -81,6 +81,30 @@ modsys templates list                 # roles/reviewer.md  role-template:team  .
 modsys packs list                     # the pack, its role and its skill
 ```
 
+Copy the skills where the agents read them — Claude Code from `.claude/skills/<skill>/`, Codex
+from `.agents/skills/<skill>/` — and commit the copies:
+
+```bash
+modsys packs sync --agent claude --agent codex   # created  claude  .claude/skills/api-review  (team 0.1.0) …
+git add .claude/skills .agents/skills && git commit -m "skills: api-review"
+modsys packs sync --check --agent claude --agent codex   # in CI: exit 1 when a copy is stale
+```
+
+Put the agents in the team config once (`[packs] agents = ["claude", "codex"]`) and a bare
+`modsys packs sync` does the same. Each copy holds a `.modsys-managed` marker (the pack, its
+version, the source and a hash per file). Edit the skill in the pack and run `packs sync` again:
+the copies are `updated`; a file the pack no longer has is deleted; a skill the pack no longer
+declares is `removed` from the agents' directories.
+
+## Conflicts
+
+`packs sync` never overwrites what it does not manage. A skill is a `conflict` — reported, left
+untouched, exit 1 — when its directory has no marker (a skill written by hand), the marker names
+another pack, a managed file was edited or deleted in the agent's directory, or a new pack file
+would replace a file that is not managed. The other skills still sync. Resolve it by hand: revert
+the local edit (`git checkout -- .claude/skills/api-review`) and sync again, or move a
+hand-written skill away. A source agents cannot load (MS062) is `invalid` and never copied.
+
 ## Lint
 
 Plain `modsys lint` (and the lint step of `modsys ci`) checks every installed pack; the findings

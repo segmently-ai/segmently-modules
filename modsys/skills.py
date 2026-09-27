@@ -7,6 +7,7 @@ merged into the config: `path` (required: the skill directory, relative to the p
 Agent Skills name rule and must equal the `name` in the skill's `SKILL.md` front matter. When
 two packs declare one id, the higher-precedence pack's declaration wins everywhere (plain
 `lint` reports the other as MS065)."""
+import hashlib
 import json
 import os
 import re
@@ -21,6 +22,9 @@ SKILL_ID_MAX = 64
 SKILL_KEYS = ("path", "reads_roles")
 NAME_RULE = "1–64 characters: lowercase letters and digits, words joined by single hyphens"
 DESCRIPTION_MAX = 1024
+AGENT_DIRS = {"claude": ".claude/skills", "codex": ".agents/skills"}  # where agents read skills
+MANAGED = ".modsys-managed"  # the marker `packs sync` writes into every skill it manages
+NOT_COPIED = {MANAGED, ".modsys-ejected", ".DS_Store"}  # never part of a skill's files
 _KEY = re.compile(r"^([A-Za-z_][\w.-]*)[ \t]*:(?:[ \t]+(.*))?$")
 _BLOCK = re.compile(r"^([|>])(?:[1-9]?[+-]?|[+-][1-9])$")  # block scalar indicator
 _COMMENT = re.compile(r"[ \t]+#.*$")
@@ -214,6 +218,31 @@ def source_problem(src: Path, skill_id: str, pack_dir: Path | None = None) -> st
         return (f"SKILL.md description has {len(description)} characters "
                 f"(max {DESCRIPTION_MAX})")
     return None
+
+
+def skill_files(directory: Path) -> list[str]:
+    """The files a skill is made of (posix, relative to `directory`, sorted): every regular
+    file below it, recursively, except `__pycache__/`, `*.pyc`, `.DS_Store` and the engine's
+    own markers. Symlinks are never followed (a source holding one is not loadable)."""
+    out = []
+    for dirpath, dirnames, filenames in os.walk(directory):
+        dirnames[:] = sorted(d for d in dirnames if d != "__pycache__")
+        for name in filenames:
+            path = Path(dirpath) / name
+            if (name in NOT_COPIED or name.endswith(".pyc") or path.is_symlink()
+                    or not path.is_file()):
+                continue
+            out.append(path.relative_to(directory).as_posix())
+    return sorted(out)
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def file_hashes(directory: Path) -> dict[str, str]:
+    """{relative path: sha256} of a skill's files (`skill_files`)."""
+    return {rel: sha256_file(directory / rel) for rel in skill_files(directory)}
 
 
 @dataclass

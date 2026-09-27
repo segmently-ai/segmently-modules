@@ -1,8 +1,8 @@
 # modsys configuration
 
 Start with `modsys init`: it writes a commented starter `.modsys/config.toml` with a worked
-example for the most-used sections below (it has none for `[budgets]`, `[match]`, `[lint]`,
-`[roles.<name>]` or packs). This page is the reference for every section and key.
+example for the most-used sections below (it has none for `[budgets]`, `[match]`, `[lint]` or
+`[roles.<name>]`). This page is the reference for every section and key.
 
 ## Layers
 
@@ -139,6 +139,12 @@ overrides each key (`--fail-on`, `--base`, `--fail-under`).
 | `fail_on` | `"warning"` | `error` · `warning` · `never`: the lowest severity that fails the lint and drift steps |
 | `base` | `"HEAD"` | the ref drift is measured against — in CI the target branch; against `HEAD` a clean checkout has nothing to compare (`ci` says so in `notes`) |
 | `coverage_fail_under` | unset | a number `0`–`100`: the coverage step fails below this percent (compared like `coverage --fail-under`); unset = the step only reports |
+
+## `[packs]`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `agents` | unset | the agents `modsys packs sync` writes pack skills for when no `--agent` flag is given: `claude` (`.claude/skills/`) and / or `codex` (`.agents/skills/`); any other name is refused (exit 2 naming the file). Like every array, a higher layer ADDS to a lower one's list; `--agent` flags replace it |
 
 ## `[roles.<name>]`
 
@@ -297,8 +303,10 @@ config): `path` (required, the skill directory relative to the pack: a `SKILL.md
 Skills format plus any other files) and `reads_roles` (optional, a list of role names). A
 malformed table is a config error naming the `pack.toml`; when two packs declare one skill id,
 the higher-precedence pack's skill wins. `modsys packs new ID --role NAME --skill NAME`
-scaffolds a pack, `modsys packs list` lists the installed ones — the whole workflow is in
-[writing-a-pack.md](writing-a-pack.md).
+scaffolds a pack, `modsys packs list` lists the installed ones and `modsys packs sync --agent
+claude --agent codex` copies every skill to `.claude/skills/<skill>/` and
+`.agents/skills/<skill>/` (the `[packs] agents` list when no `--agent` is given) — the whole
+workflow is in [writing-a-pack.md](writing-a-pack.md).
 
 ## Lint codes
 

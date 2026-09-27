@@ -151,7 +151,8 @@ class PacksNewTest(PacksRepo):  # P4A-AC-009
                                "created  .modsys/packs/team/roles/reviewer.md",
                                "created  .modsys/packs/team/skills/api-review/SKILL.md",
                                "next: modsys create NAME … --role reviewer (a module with the "
-                               "reviewer doc); modsys packs list shows the pack"])
+                               "reviewer doc); then modsys packs sync --agent claude --agent "
+                               "codex (the skills into the agents' skill directories)"])
 
 
 class PacksRefusalTest(PacksRepo):  # P4A-AC-010

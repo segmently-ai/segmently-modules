@@ -102,6 +102,12 @@ _BODY = '''
 # base = "origin/main"
 # fail_on = "warning"
 # coverage_fail_under = 80
+
+## Packs: a team's roles, doc templates and agent skills (docs/writing-a-pack.md in the modsys
+## repository). Create one with `modsys packs new ID --role NAME --skill NAME`; `modsys packs
+## sync` copies the skills into these agents' skill directories when no --agent is given.
+# [packs]
+# agents = ["claude", "codex"]
 '''
 _VERBS = {"created": ("created", "would create"), "updated": ("updated", "would update"),
           "exists": ("exists", "exists")}

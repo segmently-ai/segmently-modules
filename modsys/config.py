@@ -41,6 +41,7 @@ LAYER_SCHEMA = {
                "default_status": "str"},
     "coverage": {"include": "list[str]", "exclude": "list[str]"},
     "ci": {"fail_on": "str", "base": "str", "coverage_fail_under": "number"},
+    "packs": {"agents": "list[str]"},
 }
 CI_FAIL_ON = ("error", "never", "warning")
 ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str",
@@ -90,6 +91,13 @@ def validate_layer(layer: dict, source) -> None:
     if "coverage_fail_under" in ci and not 0 <= ci["coverage_fail_under"] <= 100:
         raise UsageError(f"{source}: [ci] coverage_fail_under: expected a number 0–100, "
                          f"got {ci['coverage_fail_under']!r}")
+    agents = layer.get("packs", {}).get("agents")
+    if agents is not None:
+        from modsys.skills import AGENT_DIRS  # skills imports this module
+        unknown = [a for a in agents if a not in AGENT_DIRS]
+        if unknown:
+            raise UsageError(f"{source}: [packs] agents: unknown agent {unknown[0]!r} "
+                             f"(agents: {', '.join(AGENT_DIRS)})")
     layout = layer.get("paths", {}).get("registry_layout")
     if layout is not None and layout not in REGISTRY_LAYOUTS:
         raise UsageError(f"{source}: [paths] registry_layout: expected one of "
