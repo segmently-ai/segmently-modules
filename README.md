@@ -28,7 +28,7 @@ A new todo API with three features: tasks, lists, reminders.
 
 ```bash
 mkdir todo && cd todo && git init
-modsys init        # .modsys/config.toml (commented starter), modules/registry.json, .gitignore lines
+modsys init        # .modsys/config.toml (starter: enables the core skills), modules/registry.json, .gitignore lines
 ```
 
 Create the modules. A top-level module needs a one-sentence description (20–200 characters)
@@ -227,6 +227,26 @@ nothing to compare, and `ci` says so in its notes. Outside a merge-ref checkout,
 counted as changes. Put the team's defaults in `[ci]` of `.modsys/config.toml` (`fail_on`,
 `base`, `coverage_fail_under`), then CI runs a bare `modsys ci`.
 
+## Core skills
+
+modsys ships agent skills that drive it for you — in Claude Code and Codex. `modsys init`
+enables them (`[packs] builtin = ["core"]` in `.modsys/config.toml`; add `"ui"` and `"qa"` for
+the designer and QA-acceptance packs). Copy them where the agents read them and commit them:
+
+```bash
+modsys packs sync --agent claude --agent codex   # .claude/skills/module-*/ and .agents/skills/module-*/
+```
+
+- `module-scout` — quick context on the modules a task names, while it is discussed;
+- `module-discover` — the touch-set of a confirmed task or a branch: modules, docs, code files;
+- `module-research` — one question answered in depth from docs and code, with the gaps;
+- `module-sync` — after the work: docs, keywords and links brought in line, `ci` green;
+- `module-create` — a new module or child, confirmed by a dry run;
+- `module-split` — an oversized module split into children, confirmed before any write;
+- `module-lint` — the gate explained and its safe findings fixed.
+
+Each one, the `ui` / `qa` packs, keeping them current and owning one: [docs/skills.md](docs/skills.md).
+
 ## Packs and skills
 
 A pack is a team's own layer on top of modsys: roles with their doc templates and agent skills
@@ -254,6 +274,8 @@ MS060–MS065: [docs/writing-a-pack.md](docs/writing-a-pack.md).
   the engine creates, pipeline stages.
 - [docs/writing-a-pack.md](docs/writing-a-pack.md) — packs: roles, templates, agent skills,
   `packs sync`, `eject`, the `agents-md` block.
+- [docs/skills.md](docs/skills.md) — the built-in skills (`core`, `ui`, `qa`): what each one
+  does, enabling, syncing and owning them.
 - `modsys <verb> --help` — flags and limits of one verb.
 - [evals/adoption/](evals/adoption/README.md) — the adoption evals (a deterministic script and
   blind-agent prompts).

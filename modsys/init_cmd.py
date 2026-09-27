@@ -15,11 +15,11 @@ from modsys.output import EXIT_OK, UsageError, emit
 from modsys.store import serialize
 
 _HEADER = '''\
-## modsys team config — commit it. Every key is optional: uncomment what you need.
-## Layers (later wins): engine defaults -> packs (.modsys/packs/<id>/pack.toml) -> this file
-## -> .modsys/config.user.toml (personal; add it to .gitignore). Tables merge key by key; arrays
-## ADD to the lower layers (an override never removes a default). Every key:
-## docs/configuration.md in the modsys repository.
+## modsys team config — commit it. Every key is optional: uncomment what you need (only
+## [packs] builtin is set). Layers (later wins): engine defaults -> built-in packs ([packs]
+## builtin) -> packs (.modsys/packs/<id>/pack.toml) -> this file -> .modsys/config.user.toml
+## (personal; add it to .gitignore). Tables merge key by key; arrays ADD to the lower layers (an
+## override never removes a default). Every key: docs/configuration.md in the modsys repository.
 
 '''
 _PATHS = {
@@ -106,7 +106,11 @@ _BODY = '''
 ## Packs: a team's roles, doc templates and agent skills (docs/writing-a-pack.md in the modsys
 ## repository). Create one with `modsys packs new ID --role NAME --skill NAME`; `modsys packs
 ## sync` copies the skills into these agents' skill directories when no --agent is given.
-# [packs]
+## builtin: the engine's own packs (docs/skills.md) — "core" = the module skills (scout,
+## discover, research, sync, create, split, lint); "ui" = a designer role and a UI review skill;
+## "qa" = an acceptance-baseline role and acceptance-criteria skills.
+[packs]
+builtin = ["core"]                   # or ["core", "ui", "qa"]
 # agents = ["claude", "codex"]
 '''
 _VERBS = {"created": ("created", "would create"), "updated": ("updated", "would update"),
@@ -114,7 +118,8 @@ _VERBS = {"created": ("created", "would create"), "updated": ("updated", "would 
 
 
 def starter_config(layout: str) -> str:
-    """The starter team config: sets nothing except a non-default registry layout."""
+    """The starter team config: enables the built-in `core` pack and sets nothing else except a
+    non-default registry layout."""
     return _HEADER + _PATHS[layout] + _BODY
 
 

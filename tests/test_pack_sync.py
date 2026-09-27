@@ -533,8 +533,9 @@ class PacksConfigAndContractTest(SyncRepo):  # D7 [packs], D10 init starter, P4A
         self.assertEqual((code, out), (2, ""))
         self.assertIn("[packs] agents: expected a list of strings", err)
         text = starter_config("single")
-        self.assertEqual(tomllib.loads(text), {})
-        self.assertIn('# [packs]\n# agents = ["claude", "codex"]\n', text)
+        self.assertEqual(tomllib.loads(text), {"packs": {"builtin": ["core"]}})  # P4b D8
+        self.assertIn('[packs]\nbuiltin = ["core"]                   # or ["core", "ui", "qa"]\n'
+                      '# agents = ["claude", "codex"]\n', text)
         self.assertIn("modsys packs new ID --role NAME --skill NAME", text)
 
     def test_usage_errors(self):

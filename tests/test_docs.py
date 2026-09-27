@@ -14,7 +14,8 @@ from modsys.hooks import HOOK_SCHEMA
 ENGINE = Path(__file__).resolve().parents[1]
 CONFIG_DOC = ENGINE / "docs" / "configuration.md"
 USER_DOCS = [ENGINE / "README.md", ENGINE / "docs" / "configuration.md",
-             ENGINE / "docs" / "cli-contract.md", ENGINE / "docs" / "writing-a-pack.md"]
+             ENGINE / "docs" / "cli-contract.md", ENGINE / "docs" / "writing-a-pack.md",
+             ENGINE / "docs" / "skills.md"]
 _FENCE = re.compile(r"^([ \t]*)(`{3,})[^\n]*\n(.*?)^\1\2\s*$", re.M | re.S)
 
 

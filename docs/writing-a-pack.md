@@ -5,7 +5,9 @@
 
 A pack bundles what a team (or a stack) adds to modsys: roles with their doc templates, agent
 skills that read those role docs, and any config layer — fields, `[[code_map]]` rules, hooks. A
-pack lives in the repository at `.modsys/packs/<id>/` and is committed with it.
+pack lives in the repository at `.modsys/packs/<id>/` and is committed with it. The engine also
+ships three built-in packs — `core`, `ui`, `qa` — that a team enables instead of writing
+([Built-in packs](#built-in-packs-and-reserved-ids)).
 
 ## Layout
 
@@ -151,6 +153,27 @@ it is the team's and is never touched (a file without the markers gets the block
 one blank line). Run it again after adding a skill or a role: only the block changes. The text
 comes from the `agents-md.md` template — `modsys templates override agents-md.md` gives the team
 its own copy to edit. When `AGENTS.md` is a symlink to `CLAUDE.md`, the block is written once.
+
+## Built-in packs and reserved ids
+
+The engine ships the packs `core` (the module skills), `ui` (the `designer` role and
+`designer-review`) and `qa` (the `qa_acceptance` role, `qa-acceptance` and
+`qa-acceptance-baseline`) inside its own package — what they contain and how to use them:
+[skills.md](skills.md). They are not files of the repository; the team config turns them on:
+
+```toml
+[packs]
+builtin = ["core", "ui", "qa"]
+```
+
+An enabled built-in pack works like any pack — `packs list` (with `builtin: true` and an
+absolute `dir`), `packs sync`, `eject`, `agents-md`, `templates list`, lint — and ranks below
+every repository pack whatever their `priority`. Its version is the engine version. The ids
+`core`, `qa` and `ui` are reserved: `modsys packs new ui` is refused
+(`pack id 'ui' is reserved for the engine's built-in pack — enable it: [packs] builtin = ["ui"]`).
+To own a whole built-in pack, copy its directory (the `dir` of its `packs list` row) to
+`.modsys/packs/<id>/`: a repository pack with a built-in id replaces the built-in pack, enabled
+or not. To own one skill of it, eject the skill.
 
 ## Lint
 

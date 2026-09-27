@@ -161,9 +161,10 @@ class StarterConfigTest(unittest.TestCase):
                                        for l in text.splitlines()))
 
     def test_starter_is_valid_and_sets_nothing_but_the_layout(self):
-        self.assertEqual(tomllib.loads(starter_config("single")), {})
+        core = {"packs": {"builtin": ["core"]}}  # P4b D8: a new repository gets the core skills
+        self.assertEqual(tomllib.loads(starter_config("single")), core)
         self.assertEqual(tomllib.loads(starter_config("per-module")),
-                         {"paths": {"registry_layout": "per-module"}})
+                         {"paths": {"registry_layout": "per-module"}, **core})
 
     def test_every_worked_example_is_valid_config(self):
         for layout in ("single", "per-module"):
