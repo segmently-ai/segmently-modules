@@ -3,3 +3,12 @@
 # Its version is the engine version; a repository pack with the id "core" replaces it.
 id = "core"
 description = "Agent skills that find, read, update, create, split and lint module docs"
+
+[skills.module-scout]
+path = "skills/module-scout"
+
+[skills.module-discover]
+path = "skills/module-discover"
+
+[skills.module-research]
+path = "skills/module-research"
