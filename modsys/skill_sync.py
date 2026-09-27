@@ -60,7 +60,7 @@ class Plan:
 
 
 def skill_sources(ws) -> dict[str, Source]:
-    """The source of every skill to materialize: its ejected copy when one exists
+    """The source of every skill to materialize, by id: its ejected copy when one exists
     (`<config_dir>/overrides/skills/<id>/`, synced even when no pack declares the skill any
     more; pack and version from its record), else the declaring pack's directory."""
     out = {}
