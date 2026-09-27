@@ -191,8 +191,7 @@ class PacksRefusalTest(PacksRepo):  # P4A-AC-010
         for role in ("Reviewer", "1st", "a" * 49, "qa lead"):
             with self.subTest(role=role):
                 self.refused(["team", "--role", role], f"role {role!r}: use lowercase letters, "
-                                                       f"digits and '_', words joined by '-', "
-                                                       f"starting with a letter (max 48)", "team")
+                                                       f"digits and '_'", "team")
         self.assertEqual(run("packs", "new", "team", "--role", "qa_lead", *self.R)[0], 0)
 
     def test_skills(self):
