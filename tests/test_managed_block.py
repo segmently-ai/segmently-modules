@@ -195,6 +195,12 @@ class BlockContentTest(BlockRepo):  # P4A-AC-021
         self.assertIn("Roles in this repository: developer, qa, po, architect, designer, "
                       "reviewer.", text)
         self.assertIn("- `api-review` — Reviews API changes against the reviewer docs.", body)
+        flat = " ".join(text.split())  # fix wave M7: the P4b flow after a change
+        self.assertIn("`modsys sync-instructions --from-diff <base>..HEAD`", flat)
+        self.assertIn("`git merge-base <target> HEAD`", flat)
+        self.assertIn("`module-sync`", flat)
+        self.assertNotIn("discover --from-diff", flat)
+        self.assertNotIn("instead of editing module docs", flat)
         self.assertNotIn("${", text)
         self.assertNotIn(__version__, text)
         data = self.agents_md("--dry-run")

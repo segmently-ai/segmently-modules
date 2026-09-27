@@ -35,6 +35,12 @@ conversation). It never edits code, module docs or a `*.legacy.md` file, and nev
    modsys discover --files <path> <path> --json
    ```
 
+   `<base>` is the fork point of the branch under review — `git merge-base <target> HEAD`
+   gives it; the target branch's name itself would add every change the target received since
+   the fork. For changes not committed yet, hand `--files` the output of
+   `git diff --name-only <base>` together with `git ls-files --others --exclude-standard`
+   (new files are listed one by one; a directory is refused).
+
    Keep the `modify` modules; the files each one touched are its `touched_files`.
 
 2. Load each module's designer doc.
@@ -52,8 +58,10 @@ conversation). It never edits code, module docs or a `*.legacy.md` file, and nev
 3. Read the designer docs: the UX invariants, the interaction states, the layout and
    accessibility rules, the visual patterns, and the design checker section.
 
-4. Read the change: `git diff <base>..HEAD -- <the touched files>`, and the files around it
-   when a rule depends on context (a parent layout, a shared component).
+4. Read the change: `git diff <base>..HEAD -- <the touched files>` when it is committed, or
+   `git diff <base> -- <the touched files>` when part of it is still in the working tree (a new,
+   untracked file has no diff: read it whole). Read the files around it too when a rule depends
+   on context (a parent layout, a shared component).
 
 5. Check every rule of every designer doc against the change. For each: kept · broken (with
    file:line) · cannot be told from the code (then say how to check it — which screen, which

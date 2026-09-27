@@ -45,10 +45,12 @@ changes the parent's keywords, never edits code, and never commits.
 
    - Stop if the result has `submodules` (already split) or no MS030 / MS031 finding and the
      user gave no other reason: explain and suggest the right skill.
-   - For every doc in `read[]`: count its lines and list its `##` sections with their line
-     ranges and a one-line summary.
-   - Group sections by what changes together — what one task would touch — using the code
-     files and their paths as a second opinion.
+   - Size up each doc in `read[]` as an outline table — heading (level two) · first–last line ·
+     length · topic in a few words — under the doc's total length.
+   - Draft candidate children by cohesion: headings about one feature, one kind of data or one
+     flow belong to the same child. Then hold the draft against the code: where
+     `code-map files` puts the module's files under separate paths, the children should follow
+     those paths.
 
 2. Propose, then **stop**.
 
@@ -72,6 +74,11 @@ changes the parent's keywords, never edits code, and never commits.
    ```bash
    modsys create <child> --parent <module> --non-interactive --description "<scope>" --keywords "<k1, k2>" --role <role> --json
    ```
+
+   `create` also scaffolds every standard role doc, whether or not it gets a section. A
+   scaffolded role doc that receives no section stays as `create` wrote it: do not fill it
+   from the parent — the parent's doc for that role is already the child's baseline. List it
+   as a follow-up in the report (step 9).
 
 5. Move the sections verbatim — no rewording — into the child docs `create` wrote, replacing
    their template prompts. Fix relative links for the new directory depth. Start each child

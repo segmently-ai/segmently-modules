@@ -38,7 +38,10 @@ code and never commits.
      modsys discover --task-file <file> --json
      ```
 
-   - A change: the commit range, or the changed files.
+   - A change: the commit range, or the changed files. `<base>` is where the branch left
+     its target: `git merge-base <target> HEAD` prints it. The target branch's own name is
+     no base — anything merged into it since the branch started would be listed as touched
+     (`<target>...HEAD`, with three dots, is accepted as the same range).
 
      ```bash
      modsys discover --from-diff <base>..HEAD --json

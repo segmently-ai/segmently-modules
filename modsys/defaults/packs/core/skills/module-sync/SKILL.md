@@ -32,9 +32,17 @@ unless the user asks.
 
 ## Steps
 
-1. Pin the change. Ask for the base when it is not obvious (the branch point, e.g. the target
-   branch the work will merge into). Committed work is the range `<base>..HEAD`; for work that
-   is not committed yet, list the changed files (`git status --short`) and use `--files`.
+1. Pin the change. `<base>` is the commit this work branched off: the output of
+   `git merge-base <target> HEAD`, where `<target>` is the branch the work will merge into
+   (ask the user when it is not obvious). Never pass the target branch itself as the base: its
+   own later commits would count as part of this change and drag in modules it never touched.
+
+   - Committed work: the range `<base>..HEAD` (modsys also accepts `<target>...HEAD` — three
+     dots — for the same range).
+   - Work not committed yet: its files are those `git diff --name-only <base>` prints plus the
+     new ones `git ls-files --others --exclude-standard` prints; pass all of them to `--files`.
+     (`git status --short` shows a new directory as one entry, and `--files` refuses a
+     directory.)
 
 2. Ask modsys what to update.
 
@@ -51,7 +59,9 @@ unless the user asks.
 
 3. For every module row, read what changed and what the docs say.
 
-   - The change: `git diff <base>..HEAD -- <the files of that module>`.
+   - The change: `git diff <base>..HEAD -- <the files of that module>` for committed work;
+     with uncommitted work, `git diff <base> -- <the files of that module>` (the working tree
+     against the base), and read each new, untracked file in full.
    - The docs: every path in `docs_to_update`. For a child of a split module the list also
      holds the parent's docs: put module-wide rules in the parent, area-specific ones in the
      child.
@@ -86,14 +96,15 @@ unless the user asks.
    ```
 
 6. Run the team's sync hooks (they may check other content that depends on the modules).
+   Skip this step when step 5 ran `sync --apply-proposals`: that run already ran the hooks.
 
    ```bash
    modsys sync --from-diff <base>..HEAD --json
    modsys sync --files <path> <path> --json
    ```
 
-   (The second form for work that is not committed.) Report every hook message. A failed required hook is exit 1: report it and stop — do not
-   work around it.
+   (The second form for work that is not committed.) Report every hook message. A failed
+   required hook is exit 1: report it and stop — do not work around it.
 
 7. Check the result.
 

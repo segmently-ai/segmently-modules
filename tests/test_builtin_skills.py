@@ -36,21 +36,25 @@ CORE: dict[str, tuple[str, list[tuple[str, ...]], list[str]]] = {
                     ["Autonomous by default", "two children of a split module equally well",
                      "a new top-level module or a child", "contradicts a claim in the docs",
                      "the only home for the new text is a `*.legacy.md` file",
-                     "never remove one from it"]),
+                     "never remove one from it",
+                     "git ls-files --others --exclude-standard",  # fix wave M4
+                     "Skip this step when step 5 ran"]),  # fix wave M5
     "module-create": ("writer", [("create", "--dry-run"), ("create",), ("code-map", "add"),
                                  ("lint",)],
                       ["Wait for an explicit yes", "at least five", "Never invent components"]),
     "module-split": ("writer", [("show",), ("create", "--parent"), ("code-map", "add"),
                                 ("lint",)],
                      ["**STOP**", "copy it byte for byte to a sibling named `<name>.legacy.md`",
-                      "The parent's keywords stay unchanged", "verbatim", "two to six"]),
+                      "The parent's keywords stay unchanged", "verbatim", "two to six",
+                      "receives no section stays as `create` wrote it"]),  # fix wave M11
     "module-lint": ("fix-up", [("ci",), ("lint",), ("registry", "set")],
                     ["Leave the judgement calls to the user", "references/lint-codes.md"]),
 }
 PACK_SKILLS: dict[str, tuple[str, str, list[tuple[str, ...]], list[str]]] = {
     "designer-review": ("ui", "writer", [("discover",), ("show", "--role", "designer")],
                         ["Must-fix", "Should-fix", "Nit", "`Result: PASS`", "`Result: FAIL",
-                         "Design checker", "a UI task is not done while a Must-fix is open"]),
+                         "Design checker", "a UI task is not done while a Must-fix is open",
+                         "git ls-files --others --exclude-standard"]),  # fix wave M4
     "qa-acceptance": ("qa", "writer", [("discover", "--task-file"), ("show", "--role", "qa"),
                                        ("show", "--role", "qa_acceptance")],
                       ["`PRE-NNN`", "`AC-NNN`", "**Given**", "**When**", "**Then**",
@@ -74,6 +78,8 @@ _INLINE = re.compile(r"`([^`\n]+)`")
 _PLACEHOLDER = re.compile(r"<[^<>\n]*>")
 _ABSOLUTE = re.compile(r"(?:^|[\s`'\"(=])(/[\w.-]+/[\w./-]*|[A-Za-z]:\\\S+)", re.M)
 _SPLIT = re.compile(r"`(modsys [^`]*\n[^`]*)`")  # an inline command broken over two lines
+MERGE_BASE = "`git merge-base <target> HEAD`"  # what `<base>` is: where the work branched off
+TARGET_AS_BASE = re.compile(r"\bbase\b[^.(]*\([^)]*\bthe target branch\b")  # the branch itself
 
 
 def skill_dirs() -> dict[str, tuple[str, Path]]:
@@ -283,6 +289,20 @@ class TextRulesTest(SkillRules):  # P4B-AC-014, P4B-AC-017
                     self.assertRegex(flat, r"never (edit|change)")
                     self.assertIn("review and commit", flat)
 
+    def test_the_base_is_the_merge_base(self):  # fix wave I-1
+        self.assertIsNotNone(TARGET_AS_BASE.search("Ask for the base (e.g. the target branch)."))
+        self.assertIsNotNone(TARGET_AS_BASE.search("With a base (the target branch) run it."))
+        self.assertIsNone(TARGET_AS_BASE.search("the base: the merge base of the target branch "
+                                                "and HEAD (`git merge-base <target> HEAD`)"))
+        for sid, (_, directory) in self.all_skills().items():
+            text = "\n".join(skill_files(directory).values())
+            flat = " ".join(text.split())
+            with self.subTest(skill=sid):
+                if "<base>" in text:
+                    self.assertTrue(MERGE_BASE in flat, f"uses <base> but never says it is "
+                                                        f"{MERGE_BASE}")
+                self.assertIsNone(TARGET_AS_BASE.search(flat))
+
     def test_generic_text(self):
         word = re.compile(r"\b(" + "|".join(FRAMEWORKS) + r")\b", re.I)
         self.assertIsNotNone(word.search("built with react and TAILWIND"))
@@ -312,6 +332,16 @@ class ContractTest(SkillRules):  # P4B-AC-015, P4B-AC-016
 
 
 class LintCodesReferenceTest(unittest.TestCase):  # module-lint explains every code
+    def test_the_safe_fixes_agree_with_the_reference(self):  # fix wave M6
+        skill = builtin_packs_root() / "core/skills/module-lint"
+        steps = section((skill / "SKILL.md").read_text("utf-8"), "## Steps")
+        fields = {argv(c)[3] for c in commands(steps) if argv(c)[:2] == ["registry", "set"]}
+        self.assertEqual(fields, {"name", "context_files"})
+        rows = dict(re.findall(r"^\| (MS\d{3}) \| [^|]+ \| ([^|]+) \|$",
+                               (skill / "references/lint-codes.md").read_text("utf-8"), re.M))
+        self.assertTrue(rows["MS003"].startswith("Ask"), rows["MS003"])
+        self.assertTrue(rows["MS002"].startswith("Safe"), rows["MS002"])
+
     def test_every_lint_code_is_explained(self):
         source = "".join((ENGINE / "modsys" / f).read_text(encoding="utf-8")
                          for f in ("lint.py", "rules.py"))

@@ -36,9 +36,11 @@ changes code, never changes the team config or a pack without asking, and never 
    modsys lint --json
    ```
 
-   With a base (the target branch, or the commit the work started from) run `ci`: it always
-   runs `lint`, `drift` and `coverage`. Without one, plain `lint`. Findings with module `*`
-   concern the config, packs or routing rules, not one module.
+   When the work sits on a branch, run `ci`: it always runs `lint`, `drift` and `coverage`.
+   Its `<base>` is the commit the branch grew from, as `git merge-base <target> HEAD` prints
+   it — not the target branch's name, whose newer commits would turn up as drift of this work.
+   With no branch to compare, plain `lint`. Findings with module `*` concern the config, packs
+   or routing rules, not one module.
 
 2. Explain every finding: its code, module and message, in one line of plain words. The
    meaning and the usual fix of every code are in [references/lint-codes.md](references/lint-codes.md).
@@ -48,7 +50,6 @@ changes code, never changes the team config or a pack without asking, and never 
    ```bash
    modsys registry set <module> name '"<module>"' --json
    modsys registry remove <module> keywords '""' --json
-   modsys registry set <module> status '"<status>"' --json
    ```
 
    - A value lint rejects is also refused by the writer (exit 2 naming the rule): read the
@@ -58,10 +59,11 @@ changes code, never changes the team config or a pack without asking, and never 
    - A frozen `*.legacy.md` that was changed (MS051): restore it from git — never edit it
      further.
 
-4. Leave the judgement calls to the user, each with the options you see: a relation to
-   another module (which one? which relation?), a keyword shared by many modules, overlapping
-   routing rules (which rule wins?), an undeclared or deprecated field, a pack finding (the
-   pack's owner decides), budgets (split or trim?).
+4. Leave the judgement calls to the user, each with the options you see: a `status` outside
+   the configured list (which one? the message lists them), a relation to another module
+   (which one? which relation?), a keyword shared by many modules, overlapping routing rules
+   (which rule wins?), an undeclared or deprecated field, a pack finding (the pack's owner
+   decides), budgets (split or trim?).
 
 5. Run the gate again (step 1). Repeat until it passes or only judgement calls remain.
 

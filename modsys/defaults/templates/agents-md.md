@@ -6,8 +6,12 @@ This repository keeps a module registry (`${registry}`) with docs per module und
 - Before a task, run `modsys context --task "<the task>" --role <role>` and read every file it
   lists.
 - Roles in this repository: ${roles}.
-- After a change, `modsys discover --from-diff <base>..HEAD` names the module docs to update;
-  propose the updates with `modsys propose` instead of editing module docs mid-run.
+- After a change, `modsys sync-instructions --from-diff <base>..HEAD` says what to bring up to
+  date per module: the docs, the drift, the field hints (the `module-sync` skill of the `core`
+  pack does the whole job). `<base>` is where the work branched off:
+  `git merge-base <target> HEAD`.
+- Pipelines whose agents must not edit docs mid-run queue changes with `modsys propose`
+  instead; `modsys sync --apply-proposals` applies them.
 - The gate: `modsys ci --base <base>` (lint, drift since the base, coverage).
 
 Skills from packs (`modsys packs sync` copies them into the agents' skill directories):
