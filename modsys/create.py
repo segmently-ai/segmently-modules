@@ -10,7 +10,7 @@ Template resolution (first hit wins), for `MODULE.md`, `roles/<role>.md` and `ag
   4. engine defaults: MODULE.md, agents-md.md and one file per         "engine"
      standard role; `roles/_role.md` for any other role                "engine-fallback"
 Templates use `${name}` placeholders: name, title, description, status, keywords, parent,
-role, role_description."""
+role, role_description, article (`a` or `an` before the role)."""
 import contextlib
 import json
 import re
@@ -26,6 +26,11 @@ from modsys.store import atomic_write, open_store
 
 NAME = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
 BASE_ANSWERS = {"description", "keywords", "status", "tags", "roles"}
+
+
+def article(word: str) -> str:
+    """The indefinite article before `word`: `an` before a vowel letter, else `a`."""
+    return "an" if word[:1] in ("a", "e", "i", "o", "u") else "a"
 
 
 def ask_fields(ws, scope: str) -> dict:
@@ -170,7 +175,8 @@ def plan_create(ws, name: str, parent: str | None, answers: dict) -> dict:
         spec = ws.config["roles"][role]
         rel = f"{rel_dir}/roles/{role}.md"
         files[rel] = string.Template(resolve_template(ws, f"roles/{role}.md", role)) \
-            .safe_substitute(values, role=role, role_description=spec.get("description", ""))
+            .safe_substitute(values, role=role, role_description=spec.get("description", ""),
+                             article=article(role))
         role_files[role] = rel
     files = {p: t if t.endswith("\n") else t + "\n" for p, t in files.items()}
     entry = {} if parent else {"name": name}

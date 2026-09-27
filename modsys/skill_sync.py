@@ -29,8 +29,8 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from modsys.skills import (AGENT_DIRS, EJECTED, MANAGED, ejected_copies, file_hashes,
-                           pack_skills, read_ejected, sha256_file, source_problem)
+from modsys.skills import (AGENT_DIRS, EJECTED, MANAGED, ejected_copies, pack_skills,
+                           read_ejected, sha256_file, source_hashes, source_problem)
 
 MANAGED_SCHEMA = "modsys.managed/1"
 STATUSES = ("created", "updated", "unchanged", "removed", "conflict", "invalid")
@@ -41,6 +41,15 @@ NO_RECORD = f"has no valid {EJECTED} record"  # an `invalid` ejected copy: lint 
 ORPHAN_BAD_MARKER = f"{BAD_MARKER} (not removed)"
 _OTHER_PACK = re.compile(r"managed for pack '(.*)', skill '.*'")
 _EDIT = re.compile(r" \(locally (?:edited|deleted)\)(?:; |$)")
+
+
+def sync_command(agents: list[str] | None, configured: list[str] | None) -> str:
+    """The `packs sync` command every hint names: bare when `[packs] agents` (`configured`)
+    already names `agents` (None: whatever the config names), else with the `--agent` flags
+    — claude and codex when no agent was chosen."""
+    if configured and (agents is None or list(agents) == list(configured)):
+        return "modsys packs sync"
+    return "modsys packs sync " + " ".join(f"--agent {a}" for a in agents or AGENT_DIRS)
 
 
 @dataclass
@@ -91,7 +100,7 @@ def skill_sources(ws) -> dict[str, Source]:
             skill = skills[sid]
             src = Source(sid, skill.pack, skill.version, "pack", skill.source,
                          source_problem(skill.source, sid, skill.pack_dir))
-        src.files = {} if src.problem else file_hashes(src.dir)
+        src.files = {} if src.problem else source_hashes(src.dir, ws.rel)
         out[sid] = src
     return out
 
@@ -122,16 +131,33 @@ def read_marker(dest: Path) -> dict | None:
     return data
 
 
-def _in_the_way(dest: Path, rel: str) -> bool:
+def _in_the_way(dest: Path, rel: str, dropped: frozenset = frozenset()) -> bool:
     """A symlink or a non-directory on the way to `dest/rel`, or `dest/rel` itself a symlink or
-    a directory: writing or deleting there could leave the skill directory."""
+    a directory: writing or deleting there could leave the skill directory. `dropped`: managed
+    files the sync deletes BEFORE it writes — a file among them on the way, or a directory that
+    holds only them, is gone by then (the source turned a file into a directory or back)."""
     path = dest
     for part in rel.split("/")[:-1]:
         path = path / part
-        if path.is_symlink() or (os.path.lexists(path) and not path.is_dir()):
+        if path.is_symlink():
             return True
+        if os.path.lexists(path) and not path.is_dir():
+            return path.relative_to(dest).as_posix() not in dropped
     target = dest / rel
-    return target.is_symlink() or target.is_dir()
+    if target.is_symlink():
+        return True
+    return target.is_dir() and not _only_dropped(dest, target, dropped)
+
+
+def _only_dropped(dest: Path, directory: Path, dropped: frozenset) -> bool:
+    """Every entry below `directory` is a plain directory or a file in `dropped`."""
+    for dirpath, dirnames, filenames in os.walk(directory):
+        for name in dirnames + filenames:
+            path = Path(dirpath) / name
+            if path.is_symlink() or (name in filenames
+                                     and path.relative_to(dest).as_posix() not in dropped):
+                return False
+    return True
 
 
 def _same_file(path: Path, src: Path) -> bool:
@@ -172,11 +198,13 @@ def plan_skill(agent: str, dest: Path, src: Source) -> Plan:
                 problems.append(f"{rel} (locally deleted)")
         elif sha256_file(path) not in (recorded, src.files.get(rel)):
             problems.append(f"{rel} (locally edited)")
+    dropped = frozenset(set(marker["files"]) - set(src.files))
     for rel in sorted(set(src.files) - set(marker["files"])):
         path = dest / rel
-        if _in_the_way(dest, rel):
+        if _in_the_way(dest, rel, dropped):
             problems.append(f"{rel} (a symlink or directory in the way)")
-        elif os.path.lexists(path) and sha256_file(path) != src.files[rel]:
+        elif (os.path.lexists(path) and not path.is_dir()
+              and sha256_file(path) != src.files[rel]):
             problems.append(f"{rel} (exists and is not managed by modsys)")
     if problems:
         plan.reason = "; ".join(problems)
@@ -269,11 +297,11 @@ def _prune(dest: Path, rels: list[str], including_dest: bool) -> None:
 
 
 def _write(plan: Plan) -> None:
-    for rel in plan.write:
-        copy_file(plan.source.dir / rel, plan.dest / rel)
-    for rel in plan.delete:
+    for rel in plan.delete:  # first: a dropped file may stand where a new directory goes
         (plan.dest / rel).unlink()
     _prune(plan.dest, plan.delete, False)
+    for rel in plan.write:
+        copy_file(plan.source.dir / rel, plan.dest / rel)
     text = marker_text(plan.source)
     path = plan.dest / MANAGED
     fd, tmp = tempfile.mkstemp(dir=plan.dest, prefix=f".{MANAGED}.", suffix=".tmp")

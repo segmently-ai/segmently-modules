@@ -213,15 +213,20 @@ def _inside(path: Path, base: Path) -> bool:
     return path == base or base in path.parents
 
 
+def inside(path: Path, base: Path) -> bool:
+    """`path` is `base` or lies below it, both as written (normalized) and with every symlink
+    resolved — the one containment check of pack skills (MS062) and role templates (MS061)."""
+    return _inside(Path(os.path.normpath(path.absolute())),
+                   Path(os.path.normpath(base.absolute()))) and _inside(
+        Path(os.path.realpath(path)), Path(os.path.realpath(base)))
+
+
 def source_problem(src: Path, skill_id: str, pack_dir: Path | None = None) -> str | None:
     """Why agents could not load the skill in directory `src` — lint MS062, `packs sync`
     status `invalid`, `eject` refusals — or None. `pack_dir`: the pack the source must stay
     inside (a pack skill); None for an ejected copy."""
-    if pack_dir is not None:
-        lexical = Path(os.path.normpath(src.absolute()))
-        if not _inside(lexical, Path(os.path.normpath(pack_dir.absolute()))) or not _inside(
-                Path(os.path.realpath(src)), Path(os.path.realpath(pack_dir))):
-            return "the path is outside the pack directory"
+    if pack_dir is not None and not inside(src, pack_dir):
+        return "the path is outside the pack directory"
     if not os.path.lexists(src):
         return "the path does not exist"
     if src.is_symlink():
@@ -279,6 +284,16 @@ def sha256_file(path: Path) -> str:
 def file_hashes(directory: Path) -> dict[str, str]:
     """{relative path: sha256} of a skill's files (`skill_files`)."""
     return {rel: sha256_file(directory / rel) for rel in skill_files(directory)}
+
+
+def source_hashes(directory: Path, show) -> dict[str, str]:
+    """`file_hashes` for a verb that copies or renders the skill: an unreadable file is exit 2
+    `cannot read <path>: <reason>` (`show` prints the path), never an internal error."""
+    try:
+        return file_hashes(directory)
+    except OSError as e:
+        raise UsageError(f"cannot read {show(e.filename or directory)}: "
+                         f"{e.strerror or e}") from None
 
 
 @dataclass

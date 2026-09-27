@@ -140,6 +140,8 @@ def agents_md(ws, targets: list[str], check: bool, dry_run: bool) -> dict:
                 text = real.read_bytes().decode("utf-8")
             except UnicodeDecodeError:
                 raise UsageError(f"{rel} is not valid UTF-8 text; nothing written") from None
+            except OSError as e:
+                raise UsageError(f"cannot read {rel}: {e.strerror or e}") from None
         status, new = updated_text(rel, text, block)
         row = {"path": rel, "status": status}
         rows.append(row)

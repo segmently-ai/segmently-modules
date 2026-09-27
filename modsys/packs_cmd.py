@@ -18,9 +18,10 @@ from pathlib import Path
 
 from modsys.code_map_cmd import _toml_string
 from modsys.config import DEFAULT_PACK_PRIORITY, core_defaults, discover_packs
-from modsys.create import NAME
+from modsys.create import NAME, article
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
-from modsys.skill_sync import NO_RECORD, STATUSES, apply_plan, conflict_kind, plan_sync, row
+from modsys.skill_sync import (NO_RECORD, STATUSES, apply_plan, conflict_kind, plan_sync, row,
+                               sync_command)
 from modsys.skills import (AGENT_DIRS, NAME_RULE, declared_skills, ejected_dir,
                            read_front_matter, skill_id_ok)
 from modsys.workspace import Workspace
@@ -71,11 +72,6 @@ def register(sub, common) -> None:
 def _scaffold(name: str) -> str:
     return resources.files("modsys").joinpath(f"defaults/scaffold/{name}").read_text(
         encoding="utf-8")
-
-
-def _a(word: str) -> str:
-    """The indefinite article before `word`: `an` before a vowel letter, else `a`."""
-    return "an" if word[:1] in ("a", "e", "i", "o", "u") else "a"
 
 
 def _and(words: list[str]) -> str:
@@ -130,7 +126,7 @@ def scaffold_files(pack_id: str, roles: list[str], skills: list[str], descriptio
         tables += (f"\n[roles.{role}]\norder = {FIRST_ROLE_ORDER + n * ROLE_ORDER_STEP}\n"
                    f"standard = false\n"
                    f"description = "
-                   f"{_toml_string(f'What {_a(role)} {role} needs to know about a module')}"
+                   f"{_toml_string(f'What {article(role)} {role} needs to know about a module')}"
                    f"\ntemplate = {_toml_string(f'roles/{role}.md')}\n")
     for skill in skills:
         reads = ", ".join(_toml_string(r) for r in roles)
@@ -141,7 +137,7 @@ def scaffold_files(pack_id: str, roles: list[str], skills: list[str], descriptio
         priority=DEFAULT_PACK_PRIORITY if priority is None else priority,
         description_toml=_toml_string(description or PACK_DESCRIPTION), tables=tables)}
     for role in roles:  # `${article}` is resolved now; the other placeholders by `create`
-        files[f"roles/{role}.md"] = _scaffold("role.md").replace("${article}", _a(role))
+        files[f"roles/{role}.md"] = _scaffold("role.md").replace("${article}", article(role))
     task = '"<the task in one sentence>"'
     if roles:
         context = "\n".join(f"   `modsys context --task {task} --role {r} --json`" for r in roles)
@@ -219,7 +215,11 @@ def sync(ws, agents: list[str] | None, check: bool, dry_run: bool) -> dict:
     chosen = list(dict.fromkeys(agents or (ws.config.get("packs") or {}).get("agents") or []))
     if not chosen:
         raise UsageError("choose --agent claude and/or --agent codex, or set [packs] agents")
-    plans = plan_sync(ws, chosen)
+    try:
+        plans = plan_sync(ws, chosen)
+    except OSError as e:  # planning only reads: an unreadable agent copy stops the run
+        raise UsageError(f"cannot read {ws.rel(e.filename or ws.root)}: "
+                         f"{e.strerror or e}") from None
     if not check and not dry_run:
         for plan in plans:
             if plan.same_as is None:
@@ -277,8 +277,8 @@ def _render_new(d) -> None:
     steps = [f"modsys create NAME … --role {roles[0]} (a module with the {roles[0]} doc)"
              if roles else "edit pack.toml (roles, fields, [[code_map]] rules, skills)"]
     if skills:
-        steps.append("modsys packs sync --agent claude --agent codex (the skills into the "
-                     "agents' skill directories)")
+        steps.append(f"{sync_command(None, None)} (the skills into the agents' skill "
+                     f"directories)")
     print(f"next: {'; then '.join(steps)}")
 
 
@@ -317,6 +317,8 @@ def _render_sync(d, ws) -> None:
         where += ", ejected copy)" if r["source"] == "ejected" else ")"
         if r["pack"] is None and r["source"] is None:  # an orphan whose marker is unreadable
             where = "(no valid marker)"
+        elif r["pack"] is None:  # an ejected copy without a record of a skill no pack declares
+            where = "(no valid record)"
         same = f"  same directory as {r['same_as']}" if r.get("same_as") else ""
         print(f"{r['status']:<10} {r['agent']:<7} {r['dir']}  {where}{same}")
         if r["reason"]:
@@ -325,8 +327,9 @@ def _render_sync(d, ws) -> None:
     s = d["summary"]
     counts = ", ".join(f"{s[k]} {k}" for k in STATUSES)
     if d["check"]:
+        configured = (ws.config.get("packs") or {}).get("agents")
         state = "; ".join(
-            (["stale — run modsys packs sync"]
+            ([f"stale — run {sync_command(d['agents'], configured)}"]
              if s["created"] or s["updated"] or s["removed"] else [])
             + (["blocked — resolve the conflict / invalid rows above"]
                if s["conflict"] or s["invalid"] else [])) or "in sync"

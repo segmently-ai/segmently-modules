@@ -514,10 +514,10 @@ class SyncHintsTest(SyncRepo):  # fix wave F3: each conflict reason gets a hint 
         self.assertEqual(self.text("--check")[-1], counts.format(0, 1, 1) + blocked)
         self.src("SKILL.md", sid="notes").write_text(SKILL.format(sid="notes", desc="New."))
         self.assertEqual(self.text("--check")[-1], counts.format(1, 0, 1)
-                         + "stale — run modsys packs sync; " + blocked)
+                         + "stale — run modsys packs sync --agent claude; " + blocked)
         self.dest("SKILL.md").write_text(mine)
         self.assertEqual(self.text("--check")[-1], counts.format(1, 1, 0)
-                         + "stale — run modsys packs sync")
+                         + "stale — run modsys packs sync --agent claude")
 
     def test_invalid_sources(self):
         self.src("SKILL.md").write_text("# no front matter\n")

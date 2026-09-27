@@ -6,7 +6,6 @@ pack.toml keys, role templates, skills agents cannot load, skills reading unconf
 shadowed skill ids) · MS063 ejected skills behind their pack ·
 with --changed: MS050 code changed but no doc of its module · MS051 frozen legacy snapshot
 modified or deleted (report narrowed to the changed modules)."""
-import os
 import re
 from collections import Counter
 from dataclasses import asdict, dataclass
@@ -21,8 +20,8 @@ from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.query import role_paths
 from modsys.registry import as_dict, as_list, stub_head
 from modsys.rules import edge_problems, status_problem
-from modsys.skills import (EJECTED, SKILL_KEYS, declared_skills, ejected_copies, is_behind,
-                           pack_skills, read_ejected, source_problem)
+from modsys.skills import (EJECTED, SKILL_KEYS, declared_skills, ejected_copies, inside,
+                           is_behind, pack_skills, read_ejected, source_problem)
 from modsys.workspace import Workspace
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "error": 2}
@@ -222,11 +221,6 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
     return out
 
 
-def _inside(path: Path, base: Path) -> bool:
-    path, base = Path(os.path.normpath(path.absolute())), Path(os.path.normpath(base.absolute()))
-    return base in path.parents
-
-
 def pack_findings(ws) -> list[Finding]:
     """The pack checks (config-level, module `*`, `path` = the offending file): MS060 unknown
     `pack.toml` keys, MS061 role templates that are missing or outside the pack, MS062 skills
@@ -249,7 +243,7 @@ def pack_findings(ws) -> list[Finding]:
             if not isinstance(template, str):
                 continue
             path = pack_dir / template
-            if not _inside(path, pack_dir):
+            if not inside(path, pack_dir):
                 out.append(Finding("MS061", "error", "*", f"pack '{pid}': role '{role}' template "
                                    f"'{template}' is outside the pack", toml))
             elif not path.is_file():

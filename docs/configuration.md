@@ -168,7 +168,7 @@ audience) and the generic `roles/_role.md` for any other role. `agents-md.md` â€
 managed block `modsys agents-md` keeps in agent instruction files (`${modules_dir}`,
 `${registry}`, `${roles}`, `${skills}`, `${version}`) â€” resolves the same way. Templates use `${name}`,
 `${title}`, `${description}`, `${status}`, `${keywords}`, `${parent}`, `${role}`,
-`${role_description}`.
+`${role_description}`, `${article}` (`a` or `an`, for the role name that follows it).
 
 `modsys templates list` prints every template with the layer that wins (`override`,
 `role-template:<pack>`, `pack:<pack>`, `engine`, or `engine-fallback` for a role rendered from

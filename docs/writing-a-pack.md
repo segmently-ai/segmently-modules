@@ -57,7 +57,8 @@ reads_roles = ["reviewer"]       # the roles whose module docs the skill reads
 
 A role's template is rendered by `modsys create` into `modules/<module>/roles/<role>.md` (or a
 child's `…/submodules/<child>/roles/<role>.md`). Placeholders: `${title}`, `${role}`,
-`${role_description}`, `${name}`, `${description}`, `${status}`, `${keywords}`, `${parent}`.
+`${role_description}`, `${name}`, `${description}`, `${status}`, `${keywords}`, `${parent}`,
+`${article}` (`a` or `an` before the role name: `What ${article} ${role} checks`).
 `modsys templates list` shows which file wins for each role; the team can still override any
 template with `modsys templates override roles/<role>.md`.
 
@@ -82,6 +83,10 @@ modsys show reviews --role reviewer   # the reviewer doc of the module: what the
 modsys templates list                 # roles/reviewer.md  role-template:team  .modsys/packs/team/roles/reviewer.md
 modsys packs list                     # the pack, its role and its skill
 ```
+
+`create --role reviewer` adds the pack role to what every module gets: the standard roles'
+docs (`developer`, `qa`, `po`, `architect`) are scaffolded too, and `reviews` ends up with five
+role docs.
 
 Copy the skills where the agents read them — Claude Code from `.claude/skills/<skill>/`, Codex
 from `.agents/skills/<skill>/` — and commit the copies:

@@ -3,7 +3,8 @@
 and the file hashes at eject time. From then on `packs sync` materializes the skill from that
 copy into every agent directory and the pack never overwrites it; plain `lint` reports MS063
 when the pack moves on. `--diff` compares the pack's current files with the copy (read-only).
-Back to the pack: delete the directory and run `modsys packs sync` (there is no un-eject)."""
+Back to the pack: delete the directory and run `packs sync` again with the agents (`--agent …`,
+or `[packs] agents`); there is no un-eject."""
 import difflib
 import functools
 import json
@@ -12,9 +13,11 @@ import shutil
 from pathlib import Path
 
 from modsys.output import EXIT_OK, UsageError, emit
-from modsys.skill_sync import copy_file
+from modsys.skill_sync import copy_file, sync_command
 from modsys.skills import (EJECTED, EJECTED_SCHEMA, ejected_dir, file_hashes, is_behind,
-                           pack_skills, read_ejected, source_problem)
+                           pack_skills, read_ejected, source_hashes, source_problem)
+
+SET_AGENTS = " (or set [packs] agents once)"
 from modsys.workspace import Workspace
 
 
@@ -26,7 +29,7 @@ def register(sub, common) -> None:
                                    "packs sync then materializes the skill from that copy and "
                                    "the pack never overwrites it. --diff compares the pack's "
                                    "current files with the copy. Back to the pack: delete the "
-                                   "directory, then modsys packs sync.")
+                                   f"directory, then {sync_command(None, None)}{SET_AGENTS}.")
     p.add_argument("skill", metavar="SKILL")
     p.add_argument("--diff", action="store_true",
                    help="compare the ejected copy with the pack's current files (read-only)")
@@ -49,7 +52,7 @@ def eject(ws, skill_id: str, dry_run: bool) -> dict:
     if problem:
         raise UsageError(f"skill '{skill_id}' of pack '{skill.pack}' is not loadable: {problem} "
                          f"(lint MS062); nothing written")
-    files = file_hashes(skill.source)
+    files = source_hashes(skill.source, ws.rel)
     if not dry_run:
         try:
             target.mkdir(parents=True)
@@ -132,14 +135,14 @@ def run(args) -> int:
             raise UsageError("--dry-run applies to eject without --diff (--diff never writes)")
         emit("eject", diff(ws, args.skill), args.json, _render_diff)
         return EXIT_OK
-    agents = bool((ws.config.get("packs") or {}).get("agents"))
+    agents = (ws.config.get("packs") or {}).get("agents")
     emit("eject", eject(ws, args.skill, args.dry_run), args.json,
          functools.partial(_render_eject, agents=agents))
     return EXIT_OK
 
 
-def _render_eject(d, agents: bool) -> None:
-    """`agents`: the config sets `[packs] agents`, so a bare `modsys packs sync` works."""
+def _render_eject(d, agents: list[str] | None) -> None:
+    """`agents`: the config's `[packs] agents` — set, a bare `modsys packs sync` works."""
     version = f" {d['version']}" if d["version"] else ""
     print(f"{'would eject' if d['dry_run'] else 'ejected'}  {d['skill']}  "
           f"({d['pack']}{version}) -> {d['dir']}")
@@ -150,8 +153,7 @@ def _render_eject(d, agents: bool) -> None:
         return
     print("edit the copy: packs sync materializes the skill from it, and the pack never "
           "overwrites it")
-    print("next: modsys packs sync" if agents else
-          "next: modsys packs sync --agent claude --agent codex (or set [packs] agents once)")
+    print(f"next: {sync_command(None, agents)}{'' if agents else SET_AGENTS}")
 
 
 def _render_diff(d) -> None:
