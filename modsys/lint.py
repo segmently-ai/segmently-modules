@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass
 from itertools import combinations
 from pathlib import Path
 
-from modsys.changes import (changed_files, diff_names, map_files, repo_files, routes,
+from modsys.changes import (changed_files, code_map_routes, diff_names, map_files, repo_files,
                             target_names, work_tree_error)
 from modsys.fields import value_matches
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
@@ -73,7 +73,9 @@ def _line_count(path: Path) -> int:
         return sum(1 for _ in fh)
 
 
-def lint_registry(ws) -> list[Finding]:
+def lint_registry(ws, overlap: bool = True) -> list[Finding]:
+    """Every registry, doc and config finding. `overlap=False` skips MS053, the one check
+    that lists every repository file — `lint --changed` would drop it anyway (module `*`)."""
     out: list[Finding] = []
     cfg, root, modules = ws.config, ws.root, ws.registry.modules
     statuses, relations = cfg["registry"]["statuses"], cfg["registry"]["relations"]
@@ -205,7 +207,8 @@ def lint_registry(ws) -> list[Finding]:
         if isinstance(rule, dict) and "module" in rule and rule["module"] not in targets:
             add("MS052", "warning", "*", f"[[code_map]] '{rule.get('id')}': module "
                 f"'{rule['module']}' is not a registry module or child; the rule maps nothing")
-    out += overlap_findings(ws)
+    if overlap:
+        out += overlap_findings(ws)
     return out
 
 
@@ -217,15 +220,15 @@ def _related(a: str, b: str) -> bool:
 def overlap_findings(ws) -> list[Finding]:
     """MS053 (config-level, module `*`): per pair of `[[code_map]]` rules, the repository files
     (git-tracked + new, no coverage filters) they route — after `exclusive` precedence — to two
-    targets where neither is the other's parent. Skipped silently with fewer than two rules
+    targets where neither is the other's parent. Only the rules route files here (docs and
+    `code_pointer` sources are never evaluated). Skipped silently with fewer than two rules
     (no pair can overlap) and outside a git work tree."""
     rules = [r for r in as_list(ws.config.get("code_map")) if isinstance(r, dict) and "id" in r]
     if len(rules) < 2 or work_tree_error(ws.root):
         return []
     per_file: dict[str, dict] = {}  # path -> {rule id: target}; repo_files order = sorted
-    for path, target, via in routes(ws, repo_files(ws.root)):
-        if via.startswith("code_map:"):
-            per_file.setdefault(path, {})[via[len("code_map:"):]] = target
+    for path, target, rule_id in code_map_routes(ws, repo_files(ws.root)):
+        per_file.setdefault(path, {})[rule_id] = target
     pairs: dict[tuple, list] = {}  # (rule a, rule b) -> [files, first path, target a, target b]
     for path, by_rule in per_file.items():
         for a, b in combinations(sorted(by_rule), 2):
@@ -297,7 +300,7 @@ def run(args) -> int:
     fail_on = args.fail_on or ws.config["lint"]["fail_on"]
     if fail_on not in FAIL_ON:
         raise UsageError(f"[lint].fail_on must be one of {sorted(FAIL_ON)}, got {fail_on!r}")
-    findings = lint_registry(ws)
+    findings = lint_registry(ws, overlap=not args.changed)  # --changed never reports MS053
     changed = None
     if args.changed:
         findings, changed = drift_report(ws, args.base, findings)

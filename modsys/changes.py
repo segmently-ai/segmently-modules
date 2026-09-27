@@ -258,6 +258,42 @@ def code_globs(config: dict, target: str) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+def _code_map_rules(ws) -> list[tuple]:
+    """(id, module, compiled globs, exclusive) of every effective `[[code_map]]` rule."""
+    return [(r["id"], r.get("module"), [glob_to_regex(g) for g in
+                                         ([r["pattern"]] if "pattern" in r else r["globs"])],
+             r.get("exclusive") is True)
+            for r in as_list(ws.config.get("code_map")) if isinstance(r, dict) and "id" in r]
+
+
+def _rule_targets(path: str, rules: list[tuple], targets: set[str]) -> list[tuple[str, str]]:
+    """(target, rule id) of every `[[code_map]]` rule that routes `path` to a registry target,
+    after `exclusive` precedence."""
+    routed = []  # (target, rule id, exclusive) of every code_map rule that routes the file
+    for rule_id, module, regexes, exclusive in rules:
+        for rx in regexes:
+            m = rx.match(path)
+            if not m:
+                continue
+            name = module or m.group("module")
+            if name in targets:
+                routed.append((name, rule_id, exclusive))
+    if any(exclusive for _, _, exclusive in routed):
+        routed = [r for r in routed if r[2]]  # exclusive rules win the file
+    return [(name, rule_id) for name, rule_id, _ in routed]
+
+
+def code_map_routes(ws, files: list[str]):
+    """Yield (path, target, rule id) for every `[[code_map]]` rule that routes each file, file
+    by file in the given order, after `exclusive` precedence — the rules alone: a file's docs
+    location and `code_pointer` fields are never evaluated (MS053 compares rules only)."""
+    targets = target_names(ws.registry.modules)
+    rules = _code_map_rules(ws)
+    for path in files:
+        for name, rule_id in _rule_targets(path, rules, targets):
+            yield path, name, rule_id
+
+
 def routes(ws, files: list[str]):
     """Yield (path, target, via) for every way each file maps to a module, file by file in
     the given order: docs, then code_pointer fields, then `[[code_map]]` rules after
@@ -268,10 +304,7 @@ def routes(ws, files: list[str]):
     pointers = [(t, f, p) for t, e in _targets(modules)
                 for f, d in ws.fields.items() if d.kind == "code_pointer" and f in e
                 for p in _pointer_paths(e[f])]
-    rules = [(r["id"], r.get("module"), [glob_to_regex(g) for g in
-                                         ([r["pattern"]] if "pattern" in r else r["globs"])],
-              r.get("exclusive") is True)
-             for r in as_list(ws.config.get("code_map")) if isinstance(r, dict) and "id" in r]
+    rules = _code_map_rules(ws)
     for path in files:
         if path.startswith(mdir):
             parts = path[len(mdir):].split("/")
@@ -283,18 +316,7 @@ def routes(ws, files: list[str]):
         for target, field, pointer in pointers:
             if path == pointer or path.startswith(pointer + "/"):
                 yield path, target, f"code_pointer:{field}"
-        routed = []  # (target, rule id, exclusive) of every code_map rule that routes the file
-        for rule_id, module, regexes, exclusive in rules:
-            for rx in regexes:
-                m = rx.match(path)
-                if not m:
-                    continue
-                name = module or m.group("module")
-                if name in targets:
-                    routed.append((name, rule_id, exclusive))
-        if any(exclusive for _, _, exclusive in routed):
-            routed = [r for r in routed if r[2]]  # exclusive rules win the file
-        for name, rule_id, _ in routed:
+        for name, rule_id in _rule_targets(path, rules, targets):
             yield path, name, f"code_map:{rule_id}"
 
 

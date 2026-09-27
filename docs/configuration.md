@@ -331,4 +331,6 @@ names both rules, the target each gives the first such file, the file count and 
 file (`[[code_map]] 'db' (-> db) and 'repositories' (-> orders) both map 4 file(s), e.g.
 app/repositories/orders.py — mark the more specific rule exclusive = true or narrow its
 globs`). The check runs only with two rules or more and inside a git work tree (otherwise it is
-skipped silently; without rules `lint` runs no git command at all).
+skipped silently; without rules `lint` runs no git command at all). Only the rules are compared:
+a file's docs location and `code_pointer` fields never make a pair. Plain `lint` and the lint
+step of `modsys ci` compute it; `lint --changed` does not (it would drop the finding anyway).
