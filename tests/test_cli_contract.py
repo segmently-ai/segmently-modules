@@ -50,6 +50,11 @@ GOLDEN = [
      {"pack", "dir", "files", "dry_run"}),
     (("packs", "sync", "--agent", "claude", "--dry-run"),
      {"agents", "check", "dry_run", "skills", "summary", "failed"}),
+    (("packs", "new", "team2", "--skill", "notes"), {"pack", "dir", "files", "dry_run"}),
+    (("eject", "notes", "--dry-run"), {"skill", "pack", "version", "dir", "files", "dry_run"}),
+    (("eject", "notes"), {"skill", "pack", "version", "dir", "files", "dry_run"}),
+    (("eject", "notes", "--diff"), {"skill", "pack", "ejected_from", "upstream_version",
+                                    "behind", "files", "diff"}),
 ]
 
 

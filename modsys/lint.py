@@ -3,7 +3,7 @@ keyword budgets and hygiene · MS030-MS032 doc budgets · MS040 component paths 
 MS052 a [[code_map]] rule whose `module` is not in the registry · MS053 two [[code_map]] rules
 route one file to two different modules · MS060-MS062, MS064, MS065 pack checks (unknown
 pack.toml keys, role templates, skills agents cannot load, skills reading unconfigured roles,
-shadowed skill ids) ·
+shadowed skill ids) · MS063 ejected skills behind their pack ·
 with --changed: MS050 code changed but no doc of its module · MS051 frozen legacy snapshot
 modified or deleted (report narrowed to the changed modules)."""
 import os
@@ -21,7 +21,8 @@ from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.query import role_paths
 from modsys.registry import as_dict, as_list, stub_head
 from modsys.rules import edge_problems, status_problem
-from modsys.skills import SKILL_KEYS, declared_skills, source_problem
+from modsys.skills import (EJECTED, SKILL_KEYS, declared_skills, ejected_copies, is_behind,
+                           pack_skills, read_ejected, source_problem)
 from modsys.workspace import Workspace
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "error": 2}
@@ -229,8 +230,9 @@ def _inside(path: Path, base: Path) -> bool:
 def pack_findings(ws) -> list[Finding]:
     """The pack checks (config-level, module `*`, `path` = the offending file): MS060 unknown
     `pack.toml` keys, MS061 role templates that are missing or outside the pack, MS062 skills
-    agents cannot load, MS064 `reads_roles` naming a role no layer enables, MS065 a skill id
-    shadowed by a higher-precedence pack."""
+    agents cannot load, MS063 ejected skills whose pack moved on (or dropped them), MS064
+    `reads_roles` naming a role no layer enables, MS065 a skill id shadowed by a
+    higher-precedence pack."""
     out: list[Finding] = []
     for pack in discover_packs(ws.config_dir):
         data, toml, pack_dir, pid = pack["data"], ws.rel(pack["path"]), pack["path"].parent, \
@@ -272,6 +274,21 @@ def pack_findings(ws) -> list[Finding]:
             out.append(Finding("MS065", "warning", "*", f"skill '{skill.id}' of pack "
                                f"'{skill.pack}' is shadowed by pack '{skill.shadowed_by}' "
                                f"(higher precedence); rename one", toml))
+    skills = pack_skills(ws.config_dir)
+    for sid, copy in ejected_copies(ws.config_dir).items():
+        record, where = read_ejected(copy), ws.rel(copy)
+        if record is None:
+            out.append(Finding("MS063", "warning", "*", f"ejected skill '{sid}' has no valid "
+                               f"{EJECTED} record — eject it again or restore the file", where))
+        elif sid not in skills:
+            out.append(Finding("MS063", "info", "*", f"ejected skill '{sid}': pack "
+                               f"'{record['pack']}' no longer declares it; the ejected copy is "
+                               f"its only source", where))
+        elif is_behind(skills[sid], record):
+            out.append(Finding("MS063", "warning", "*", f"ejected skill '{sid}' is behind pack "
+                               f"'{skills[sid].pack}' (ejected from {record.get('version')}, "
+                               f"pack is now {skills[sid].version}) — review: modsys eject "
+                               f"{sid} --diff", where))
     return out
 
 

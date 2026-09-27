@@ -133,7 +133,7 @@ class SyncTransitionsTest(SyncRepo):  # P4A-AC-014
                          SKILL.format(sid="notes", desc="New."))
         out = run("packs", "sync", "--agent", "claude", *self.R)[1].splitlines()
         self.assertEqual(out[1], "  SKILL.md (locally edited) — resolve by hand (revert the "
-                                 "edit, or move the directory away)")
+                                 "edit, or eject the skill to own it: modsys eject api-review)")
 
     def test_other_conflicts_leave_the_skill_untouched(self):
         cases = {

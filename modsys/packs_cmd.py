@@ -274,7 +274,8 @@ def _render_new(d) -> None:
     print(f"next: {'; then '.join(steps)}")
 
 
-HINTS = {"conflict": "resolve by hand (revert the edit, or move the directory away)",
+HINTS = {"conflict": "resolve by hand (revert the edit, or eject the skill to own it: "
+                     "modsys eject {skill})",
          "invalid": "fix the skill in its pack (plain modsys lint reports it as MS062)"}
 
 
@@ -282,11 +283,12 @@ def _render_sync(d) -> None:
     if not d["skills"]:
         print("no pack skills (add one: modsys packs new ID --skill NAME)")
     for r in d["skills"]:
-        where = f"({r['pack']} {r['version']})" if r["version"] else f"({r['pack']})"
+        where = f"({r['pack']} {r['version']}" if r["version"] else f"({r['pack']}"
+        where += ", ejected copy)" if r["source"] == "ejected" else ")"
         same = f"  same directory as {r['same_as']}" if r.get("same_as") else ""
         print(f"{r['status']:<10} {r['agent']:<7} {r['dir']}  {where}{same}")
         if r["reason"]:
-            hint = HINTS.get(r["status"])
+            hint = HINTS.get(r["status"], "").format(skill=r["skill"])
             print(f"  {r['reason']}" + (f" — {hint}" if hint else ""))
     s = d["summary"]
     counts = ", ".join(f"{s[k]} {k}" for k in STATUSES)

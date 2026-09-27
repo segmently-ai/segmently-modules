@@ -305,8 +305,10 @@ malformed table is a config error naming the `pack.toml`; when two packs declare
 the higher-precedence pack's skill wins. `modsys packs new ID --role NAME --skill NAME`
 scaffolds a pack, `modsys packs list` lists the installed ones and `modsys packs sync --agent
 claude --agent codex` copies every skill to `.claude/skills/<skill>/` and
-`.agents/skills/<skill>/` (the `[packs] agents` list when no `--agent` is given) — the whole
-workflow is in [writing-a-pack.md](writing-a-pack.md).
+`.agents/skills/<skill>/` (the `[packs] agents` list when no `--agent` is given). `modsys eject
+SKILL` copies a skill to `.modsys/overrides/skills/SKILL/` for the team to own: `packs sync`
+then materializes it from that copy and the pack never overwrites it — the whole workflow is in
+[writing-a-pack.md](writing-a-pack.md).
 
 ## Lint codes
 
@@ -350,6 +352,7 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS060 | warning | an unknown key in a pack's `pack.toml` — at the top level (neither a meta key nor a config section), in a `[roles.<name>]` or in a `[skills.<id>]` table (plain `lint` only) |
 | MS061 | error | a pack role's `template` file does not exist in the pack, or resolves outside the pack directory (plain `lint` only) |
 | MS062 | error | a pack skill agents cannot load: its `path` does not exist, is not a directory or is outside the pack; it contains a symlink; it has no `SKILL.md`; the front matter is missing, has no `name` or one that differs from the skill id, or no `description` of 1–1024 characters (plain `lint` only) |
+| MS063 | warning / info | an ejected skill (`modsys eject`) is behind its pack — the pack's version or files changed since the eject (warning; `modsys eject <skill> --diff` shows the change) — or no pack declares it any more (info: the ejected copy is its only source) (plain `lint` only) |
 | MS064 | warning | a skill's `reads_roles` names a role no layer configures, or a disabled one (plain `lint` only) |
 | MS065 | warning | two packs declare the same skill id: the lower-precedence one is shadowed (plain `lint` only) |
 

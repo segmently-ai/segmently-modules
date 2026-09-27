@@ -25,8 +25,8 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from modsys.skills import (AGENT_DIRS, MANAGED, file_hashes, pack_skills, sha256_file,
-                           source_problem)
+from modsys.skills import (AGENT_DIRS, EJECTED, MANAGED, ejected_copies, file_hashes,
+                           pack_skills, read_ejected, sha256_file, source_problem)
 
 MANAGED_SCHEMA = "modsys.managed/1"
 STATUSES = ("created", "updated", "unchanged", "removed", "conflict", "invalid")
@@ -36,9 +36,9 @@ STATUSES = ("created", "updated", "unchanged", "removed", "conflict", "invalid")
 class Source:
     """Where a skill is materialized from."""
     skill: str
-    pack: str
+    pack: str | None
     version: str | None
-    kind: str  # "pack"
+    kind: str  # "pack" | "ejected"
     dir: Path
     problem: str | None
     files: dict[str, str] = field(default_factory=dict)  # path -> sha256
@@ -60,12 +60,29 @@ class Plan:
 
 
 def skill_sources(ws) -> dict[str, Source]:
-    """The source of every skill to materialize, by id."""
+    """The source of every skill to materialize: its ejected copy when one exists
+    (`<config_dir>/overrides/skills/<id>/`, synced even when no pack declares the skill any
+    more; pack and version from its record), else the declaring pack's directory."""
     out = {}
-    for sid, skill in pack_skills(ws.config_dir).items():
-        problem = source_problem(skill.source, sid, skill.pack_dir)
-        out[sid] = Source(sid, skill.pack, skill.version, "pack", skill.source, problem,
-                          {} if problem else file_hashes(skill.source))
+    skills, ejected = pack_skills(ws.config_dir), ejected_copies(ws.config_dir)
+    for sid in sorted(set(skills) | set(ejected)):
+        if sid in ejected:
+            record = read_ejected(ejected[sid])
+            if record is None:
+                out[sid] = Source(sid, skills[sid].pack if sid in skills else None, None,
+                                  "ejected", ejected[sid],
+                                  f"the ejected copy {ws.rel(ejected[sid])} has no valid "
+                                  f"{EJECTED} record")
+                continue
+            version = record.get("version")
+            src = Source(sid, record["pack"], version if isinstance(version, str) else None,
+                         "ejected", ejected[sid], source_problem(ejected[sid], sid))
+        else:
+            skill = skills[sid]
+            src = Source(sid, skill.pack, skill.version, "pack", skill.source,
+                         source_problem(skill.source, sid, skill.pack_dir))
+        src.files = {} if src.problem else file_hashes(src.dir)
+        out[sid] = src
     return out
 
 

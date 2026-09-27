@@ -24,7 +24,9 @@ NAME_RULE = "1–64 characters: lowercase letters and digits, words joined by si
 DESCRIPTION_MAX = 1024
 AGENT_DIRS = {"claude": ".claude/skills", "codex": ".agents/skills"}  # where agents read skills
 MANAGED = ".modsys-managed"  # the marker `packs sync` writes into every skill it manages
-NOT_COPIED = {MANAGED, ".modsys-ejected", ".DS_Store"}  # never part of a skill's files
+EJECTED = ".modsys-ejected"  # the record `modsys eject` writes into an ejected copy
+EJECTED_SCHEMA = "modsys.ejected/1"
+NOT_COPIED = {MANAGED, EJECTED, ".DS_Store"}  # never part of a skill's files
 _KEY = re.compile(r"^([A-Za-z_][\w.-]*)[ \t]*:(?:[ \t]+(.*))?$")
 _BLOCK = re.compile(r"^([|>])(?:[1-9]?[+-]?|[+-][1-9])$")  # block scalar indicator
 _COMMENT = re.compile(r"[ \t]+#.*$")
@@ -285,3 +287,32 @@ def pack_skills(config_dir: Path) -> dict[str, PackSkill]:
 def ejected_dir(config_dir: Path, skill_id: str) -> Path:
     """Where `modsys eject` puts a skill's repo-owned copy."""
     return config_dir / "overrides" / "skills" / skill_id
+
+
+def ejected_copies(config_dir: Path) -> dict[str, Path]:
+    """Every ejected copy by skill id: the directories under `<config_dir>/overrides/skills/`."""
+    root = config_dir / "overrides" / "skills"
+    if not root.is_dir():
+        return {}
+    return {d.name: d for d in sorted(root.iterdir()) if d.is_dir() and not d.is_symlink()}
+
+
+def read_ejected(directory: Path) -> dict | None:
+    """The `.modsys-ejected` record of an ejected copy — {schema, skill, pack, version, files:
+    {path: sha256}}, the upstream snapshot at eject time — or None when missing or malformed."""
+    try:
+        data = json.loads((directory / EJECTED).read_bytes().decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if (not isinstance(data, dict) or data.get("schema") != EJECTED_SCHEMA
+            or not isinstance(data.get("skill"), str) or not isinstance(data.get("pack"), str)
+            or not isinstance(data.get("files"), dict)):
+        return None
+    return data
+
+
+def is_behind(skill: PackSkill, record: dict) -> bool:
+    """The pack moved on since the eject: another pack, another version, or other files."""
+    upstream = file_hashes(skill.source) if skill.source.is_dir() else {}
+    return ((skill.pack, skill.version) != (record["pack"], record.get("version"))
+            or upstream != record["files"])
