@@ -132,8 +132,12 @@ modsys eject api-review --diff                   # later: what the pack changed 
 Edit the ejected copy and run `packs sync`: both agents get it (`updated`, `source` `ejected`).
 The pack never overwrites an ejected skill, even at a new version; plain `modsys lint` then
 reports MS063 — `ejected skill 'api-review' is behind pack 'team' (ejected from 0.1.0, pack is
-now 0.2.0)` — and `eject api-review --diff` shows the upstream change as a unified diff, so the
-team can take what it wants by hand. If the pack drops the skill, the ejected copy stays the
+now 0.2.0)` — and `eject api-review --diff` shows the upstream change as a unified diff. For a
+repository pack a new version alone flags the copy; for a built-in pack only changed files do
+(its version is the engine's). Copying the change into the ejected copy by hand does not clear
+it: the record keeps the snapshot taken at eject time. Either delete the copy and sync again
+(below), or move the copy out of `.modsys/overrides/skills/`, eject again and re-apply the
+team's edits to the new copy. If the pack drops the skill, the ejected copy stays the
 skill's only source (MS063 info). To go back to the pack's version, delete
 `.modsys/overrides/skills/api-review/` and run `modsys packs sync --agent claude --agent codex`.
 

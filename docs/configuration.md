@@ -15,6 +15,11 @@ The effective config is merged from, lowest precedence first:
 4. **team config** — `.modsys/config.toml` (commit it);
 5. **user config** — `.modsys/config.user.toml` (personal; git-ignore it).
 
+Every file layer is optional: with no `.modsys/config.toml` on disk (and no user config), the
+engine defaults apply, packs under `.modsys/packs/<id>/` load as usual and every verb works —
+only what a missing file would set is absent (e.g. `[packs] builtin`, so no built-in pack is
+enabled).
+
 Merge rules: scalars — the higher layer wins; tables — merged key by key; arrays of tables that
 all carry an `id` (`[[code_map]]`, `[[hooks.post_sync]]`) — merged by `id` (the same id
 deep-merges, a new id appends); every other array — the higher layer's items are ADDED to the
@@ -379,7 +384,7 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS060 | warning | an unknown key in a pack's `pack.toml` — at the top level (neither a meta key nor a config section), in a `[roles.<name>]` or in a `[skills.<id>]` table (plain `lint` only) |
 | MS061 | error | a pack role's `template` file does not exist in the pack, or resolves outside the pack directory (plain `lint` only) |
 | MS062 | error | a pack skill, or an ejected copy in `<config_dir>/overrides/skills/<skill>/` (the one `packs sync` then copies), agents cannot load: its `path` does not exist, is not a directory or is outside the pack; it contains a symlink; it has no `SKILL.md`; the front matter is missing, has no `name` or one that differs from the skill id, has an unquoted `name` / `description` value that agents' strict YAML loaders reject (a `: ` inside, a trailing `:`, or a leading `@`, `%`, `*`, `&`, `!`, `[`, `{` or backtick), or has no `description` of 1–1024 characters (plain `lint` only) |
-| MS063 | warning / info | an ejected skill (`modsys eject`) is behind its pack — the pack's version or files changed since the eject (warning; `modsys eject <skill> --diff` shows the change) — or no pack declares it any more (info: the ejected copy is its only source) (plain `lint` only) |
+| MS063 | warning / info | an ejected skill (`modsys eject`) is behind its pack — the pack's files, or a repository pack's version, changed since the eject (a built-in pack's version is the engine's: an upgrade alone does not count) (warning; `modsys eject <skill> --diff` shows the change); a pack file it cannot read (warning, naming the file) — or no pack declares it any more (info: the ejected copy is its only source) (plain `lint` only) |
 | MS064 | warning | a skill's `reads_roles` names a role no layer configures, or a disabled one (plain `lint` only) |
 | MS065 | warning | two packs declare the same skill id: the lower-precedence one is shadowed (plain `lint` only) |
 

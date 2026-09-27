@@ -13,8 +13,10 @@ engine's built-in skills.
 
 and runs `claude plugin eval <out>/plugin --scaffold <flags…>` with `<out>/runtime/bin` first on
 PATH. Flags after the script's own are passed through; without any, the gate flags
-(GATE_FLAGS) are used. Every run is a real, billed model call: `--dry-run` assembles and prints
-the command without running it. The runtime lives outside your home directory (the sandbox
+(GATE_FLAGS) are used. With the caller's flags, the cost cap (`--max-cost-usd 20`) and
+`--no-publish` are added unless the flags carry their own; `--trust-plugin` never is (a trust
+grant is the caller's choice). Every run is a real, billed model call: `--dry-run` assembles and
+prints the command without running it. The runtime lives outside your home directory (the sandbox
 cannot read it), and so must the Python that runs this script. Stdlib only; never run by
 unittest.
 
@@ -33,8 +35,10 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ENGINE = HERE.parents[1]
 PACKS = ENGINE / "modsys" / "defaults" / "packs"
-GATE_FLAGS = ["--ablation", "none", "--runs", "2", "--threshold", "0.5", "--max-cost-usd", "20",
-              "--allow-tools", "Bash", "Write", "Edit", "--trust-plugin", "--no-publish"]
+MAX_COST_USD = "20"  # the gate's cost ceiling, added to any flags that set none
+GATE_FLAGS = ["--ablation", "none", "--runs", "2", "--threshold", "0.5", "--max-cost-usd",
+              MAX_COST_USD, "--allow-tools", "Bash", "Write", "Edit", "--trust-plugin",
+              "--no-publish"]
 LAUNCHER = """#!/bin/sh
 export PYTHONPATH="{engine}" PYTHONDONTWRITEBYTECODE=1
 exec "{python}" -m modsys "$@"
@@ -94,7 +98,13 @@ def assemble(out: Path) -> Path:
 
 
 def command(plugin: Path, flags: list[str], out: Path) -> list[str]:
+    """The `claude plugin eval` argv: the gate flags, or the caller's flags plus the defaults
+    they lack — `--max-cost-usd 20` and `--no-publish` — and `--json <out>/result.json`."""
     flags = list(flags) or list(GATE_FLAGS)
+    if not any(f == "--max-cost-usd" or f.startswith("--max-cost-usd=") for f in flags):
+        flags += ["--max-cost-usd", MAX_COST_USD]
+    if "--no-publish" not in flags:
+        flags.append("--no-publish")
     if "--json" not in flags:
         flags += ["--json", str(out / "result.json")]
     return ["claude", "plugin", "eval", str(plugin), "--scaffold", *flags]

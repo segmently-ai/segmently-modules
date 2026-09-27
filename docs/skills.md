@@ -65,6 +65,7 @@ yes before they write.
 drift and the `sync_hint` of every field ([configuration.md](configuration.md#fieldsname)):
 
 ```bash
+BASE=$(git merge-base main HEAD)   # where the branch left main — never main itself
 modsys sync-instructions --from-diff "$BASE..HEAD" --json
 ```
 
@@ -92,8 +93,11 @@ modsys templates list   # roles/designer.md  role-template:ui  …/defaults/pack
 ## Keeping them current
 
 A built-in pack has no version of its own: its version is the engine's (`modsys --version`).
-After an upgrade of modsys, `modsys packs sync` updates every copy whose files changed (the
-copies' hashes decide, not the version) and leaves edited or ejected ones alone.
+The managed marker records the version, so after an upgrade of modsys `modsys packs sync`
+reports every copy as `updated` — a skill whose files did not change gets a new marker — and
+`packs sync --check` is stale until it has run. That is intended: each agent copy names the
+engine it came from. A copy edited in an agent's directory stays a conflict, and an ejected
+skill is left alone.
 
 ## Owning one skill: eject
 
@@ -104,9 +108,14 @@ modsys eject module-sync --diff  # later: what the engine changed since
 ```
 
 Edit the ejected copy: the agents get it and the engine never overwrites it. When a later
-engine changes the skill, plain `modsys lint` reports MS063 (`ejected skill 'module-sync' is
-behind pack 'core' …`). An ejected copy stays the skill's source even when its pack is
-disabled. The rules are the same as for any pack skill ([writing-a-pack.md](writing-a-pack.md)).
+engine changes the skill's files, plain `modsys lint` reports MS063 (`ejected skill
+'module-sync' is behind pack 'core' (the pack's files changed since the eject) …`); an engine
+upgrade alone, with the skill's files unchanged, does not. Review the change with
+`modsys eject module-sync --diff`. Copying it into the ejected copy by hand does not clear it:
+the record keeps the snapshot taken at eject time. To clear it, either delete the copy and run
+`packs sync` (the agents get the engine's version again), or move the copy out of
+`.modsys/overrides/skills/`, eject again and re-apply the team's edits to the new copy. An
+ejected copy stays the skill's source even when its pack is disabled. The rules are the same as for any pack skill ([writing-a-pack.md](writing-a-pack.md)).
 
 ## Owning a whole pack: copy it
 

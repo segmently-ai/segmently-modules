@@ -51,6 +51,36 @@ class SkillDocsTest(unittest.TestCase):  # P4B-AC-023
         self.assertIn("**built-in packs**", text)
         self.assertIn("`modsys sync-instructions` lists it", text)
 
+    def test_the_config_file_is_optional(self):  # fix wave G9
+        layers = flat("docs/configuration.md").split("## Layers", 1)[1].split(" ## ", 1)[0]
+        self.assertIn("Every file layer is optional", layers)
+        self.assertIn("with no `.modsys/config.toml` on disk", layers)
+
+    def test_an_engine_upgrade_and_the_copies(self):  # fix wave M2
+        text = flat("docs/skills.md")
+        current = text.split("## Keeping them current", 1)[1].split(" ## ", 1)[0]
+        self.assertNotIn("not the version", current)
+        for needle in ("managed marker records the version", "`updated`",
+                       "`packs sync --check`", "stale"):
+            self.assertIn(needle, current)
+
+    def test_what_clears_ms063(self):  # fix wave I-3 (c)
+        eject = flat("docs/skills.md").split("## Owning one skill: eject", 1)[1].split(" ## ")[0]
+        pack = flat("docs/writing-a-pack.md").split("## Owning a skill: eject", 1)[1].split(
+            " ## ")[0]
+        ref = next(line for line in (ENGINE / "modsys/defaults/packs/core/skills/module-lint/"
+                                              "references/lint-codes.md").read_text(
+            encoding="utf-8").splitlines() if line.startswith("| MS063 |"))
+        for name, text in (("skills.md", eject), ("writing-a-pack.md", pack),
+                           ("lint-codes.md", ref)):
+            with self.subTest(doc=name):
+                self.assertIn("--diff", text)
+                self.assertIn("does not clear it", text)
+                self.assertIn("delete the copy", text)
+                self.assertIn("eject again and re-apply the team's edits", text)
+                self.assertNotIn("take what it wants by hand", text)
+        self.assertIn("an engine upgrade alone", eject)
+
     def test_the_init_starter_enables_core(self):
         for layout in ("single", "per-module"):
             text = starter_config(layout)

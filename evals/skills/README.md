@@ -37,9 +37,11 @@ built-in skills under `skills/`, these cases under `evals/` with their scaffold,
 with this engine, the fixture and a `modsys` launcher — and runs `claude plugin eval` on it with
 the launcher first on `PATH`, so the agent's sandboxed shell runs this checkout's modsys. Without
 flags it uses the gate flags: `--ablation none --runs 2 --threshold 0.5 --max-cost-usd 20
---allow-tools Bash Write Edit --trust-plugin --no-publish`, plus `--scaffold` and `--json
-<out>/result.json` always. It prints one line per case (score, cost, how many runs fired the
-skill, the first run error) and the overall score.
+--allow-tools Bash Write Edit --trust-plugin --no-publish`. With your own flags, it adds
+`--max-cost-usd 20` when they set no cost cap and `--no-publish` when they lack it, so a probe
+never runs uncapped or publishes; `--trust-plugin` is never added — a trust grant is yours to
+pass. `--scaffold` and `--json <out>/result.json` are always there. It prints one line per case
+(score, cost, how many runs fired the skill, the first run error) and the overall score.
 
 The gate passes with exit `0` and an overall score of at least 0.8. Exit `2` (a cost ceiling hit,
 a rejected credential) or a run error such as an unavailable service is "not run", never a pass.

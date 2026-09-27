@@ -3,9 +3,11 @@ front matter and grader types, the graders every kind of case needs, and `run.py
 which assembles the plugin (byte-equal skills, a scaffold per case, a modsys launcher) and prints
 the command without running `claude`. The seeded workspace itself is built and checked here."""
 import ast
+import importlib.util
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -94,11 +96,58 @@ class RunnerTest(unittest.TestCase):  # P4B-AC-019
     def tearDown(self):
         self._tmp.cleanup()
 
-    def dry_run(self) -> str:
+    def dry_run(self, *flags: str, out: Path | None = None) -> str:
         proc = subprocess.run([sys.executable, str(SUITE / "run.py"), "--dry-run", "--out",
-                               str(self.out)], capture_output=True, text=True, timeout=120)
+                               str(out or self.out), *flags], capture_output=True, text=True,
+                              timeout=120)
         self.assertEqual((proc.returncode, proc.stderr), (0, ""))
         return proc.stdout
+
+    def command(self, *flags: str) -> list[str]:
+        """The `claude plugin eval` argv a dry run with `flags` prints (a fresh work dir)."""
+        out = Path(tempfile.mkdtemp(dir=self._tmp.name)) / "work"
+        line = next(l for l in self.dry_run(*flags, out=out).splitlines()
+                    if l.startswith("command: "))
+        return shlex.split(line.removeprefix("command: "))
+
+    def test_caller_flags_keep_the_cost_cap_and_no_publish(self):  # fix wave P-b
+        cmd = self.command("--case", "x", "--runs", "1")
+        self.assertEqual(cmd[cmd.index("--case"):cmd.index("--case") + 4],
+                         ["--case", "x", "--runs", "1"])
+        self.assertEqual((cmd.count("--max-cost-usd"), cmd[cmd.index("--max-cost-usd") + 1]),
+                         (1, "20"))
+        self.assertEqual(cmd.count("--no-publish"), 1)
+        self.assertNotIn("--trust-plugin", cmd)  # a trust grant stays the caller's choice
+        cmd = self.command("--case", "x", "--max-cost-usd", "3", "--no-publish")
+        self.assertEqual((cmd.count("--max-cost-usd"), cmd[cmd.index("--max-cost-usd") + 1]),
+                         (1, "3"))
+        self.assertEqual(cmd.count("--no-publish"), 1)
+        cmd = self.command("--max-cost-usd=4")
+        self.assertEqual([a for a in cmd if a.startswith("--max-cost-usd")], ["--max-cost-usd=4"])
+
+    def test_the_summary_lines(self):  # fix wave T8: no `claude` call
+        spec = importlib.util.spec_from_file_location("skill_eval_runner", SUITE / "run.py")
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        result = Path(self._tmp.name) / "result.json"
+        result.write_text(json.dumps({
+            "cases": [{"name": "module-scout-trigger", "aggregates": {"score": 0.5},
+                       "arms": {"with": [
+                           {"costUsd": 0.25, "judgeCostUsd": 0.05,
+                            "graders": [{"name": "skill-fired", "passed": True},
+                                        {"name": "ran-modsys", "passed": True}]},
+                           {"costUsd": 0.5, "error": "the sandbox refused to start",
+                            "graders": [{"name": "skill-fired", "passed": False}]}]}},
+                      {"name": "negative-unrelated", "aggregates": {"score": 1.0},
+                       "arms": {"with": [{"costUsd": 0.125, "graders": []}],
+                                "without": [{"costUsd": 0.125}]}}],
+            "aggregates": {"overallScore": 0.75, "casesPassed": 1, "casesTotal": 2},
+            "costUsd": 1.05, "partial": True, "partialReason": "cost ceiling reached"}))
+        self.assertEqual(runner.summary(result), [
+            "module-scout-trigger: score 0.5, cost $0.80, skill fired 1/2, error: the sandbox "
+            "refused to start",
+            "negative-unrelated: score 1.0, cost $0.25",
+            "overall 0.75, cases passed 1/2, cost $1.05, partial: cost ceiling reached"])
 
     def test_the_dry_run_assembles_the_plugin(self):
         out = self.dry_run()
