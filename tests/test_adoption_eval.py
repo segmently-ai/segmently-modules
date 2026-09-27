@@ -1,5 +1,5 @@
-"""E-A adoption eval (evals/adoption/run_eval.py): both scenarios pass end to end, and a failing
-step is reported in the scorecard, never as a traceback."""
+"""E-A adoption eval (evals/adoption/run_eval.py): every scenario passes end to end, and a
+failing step is reported in the scorecard, never as a traceback."""
 import importlib.util
 import json
 import os
@@ -26,7 +26,7 @@ class AdoptionEvalTest(unittest.TestCase):
         failed = [(name, s["name"], s["detail"]) for name, result in card.items()
                   for s in result["steps"] if not s["ok"]]
         self.assertEqual((proc.returncode, failed), (0, []))
-        self.assertEqual(set(card), {"greenfield", "brownfield"})
+        self.assertEqual(set(card), {"greenfield", "brownfield", "packs"})
         for result in card.values():
             self.assertTrue(result["ok"])
             self.assertGreater(result["commands"], 10)
@@ -57,6 +57,18 @@ class AdoptionEvalTest(unittest.TestCase):
         self.assertFalse(card["greenfield"]["ok"])
         self.assertTrue(card["brownfield"]["ok"])
         self.assertGreater(len(card["brownfield"]["steps"]), 5)
+
+    def test_a_failing_packs_step_fails_only_that_scenario(self):  # P4A-AC-024
+        env = {**os.environ, "MODSYS_EVAL_FAIL_STEP": "packs:eject api-review"}
+        proc = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True,
+                              timeout=300, env=env)
+        card = json.loads(proc.stdout)
+        self.assertEqual(proc.returncode, 1)
+        self.assertEqual([s["name"] for s in card["packs"]["steps"]][-2:],
+                         ["revert the edit: in sync again", "eject api-review"])
+        self.assertFalse(card["packs"]["ok"])
+        self.assertTrue(card["greenfield"]["ok"] and card["brownfield"]["ok"])
+        self.assertIn("adoption eval: packs FAILED (10 steps, ", proc.stderr)
 
     def test_an_unexpected_error_is_a_failed_step(self):
         run_eval = load_eval()

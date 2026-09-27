@@ -26,6 +26,22 @@ class AgentFixturesTest(unittest.TestCase):
         self.assertIn("checkout -q 029eb77", text)
         self.assertIn("at least 80 %", text)
 
+    def test_the_pack_author_prompt_and_its_rubric(self):  # P4A-AC-025 (fixtures)
+        text = self.read("pack-author.md")
+        for needle in ("{WORKDIR}", "{VENV}", "{DOCS}", "tests/fixtures/bookshop", "CLAUDE.md",
+                       "AGENTS.md", "source peek", "--help", "about 35 commands", "FRICTION.md",
+                       "## Log", "## Summary", "blocker", "major", "minor", "5. "):
+            self.assertIn(needle, text)
+        self.assertNotIn("6. ", text)
+        rubric = " ".join(self.read("rubric.md").split())
+        self.assertIn("## pack-author", rubric)
+        self.assertIn("**PASS (pack-author)** = all 5 goal steps verified, 0 source peeks, "
+                      "0 blockers, commands ≤ 35.", rubric)
+        for check in ("modsys packs sync --check --agent claude --agent codex",
+                      "no MS060–MS065 error", "modsys show … --role <role>",
+                      ".modsys/overrides/skills/<skill>/", "exactly one `<!-- modsys:begin` line"):
+            self.assertIn(check, rubric)
+
     def test_rubric_pass_line(self):
         text = " ".join(self.read("rubric.md").split())
         self.assertIn("**PASS** = all goal steps done, 0 source peeks, 0 blockers, commands ≤ 40 "

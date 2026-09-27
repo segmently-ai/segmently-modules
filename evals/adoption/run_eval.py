@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""E-A — deterministic adoption eval. Builds two repositories from nothing in temp dirs and
-drives the modsys CLI of THIS checkout (`python -m modsys`, the checkout on PYTHONPATH):
+"""E-A — deterministic adoption eval. Builds three repositories in temp dirs and drives the
+modsys CLI of THIS checkout (`python -m modsys`, the checkout on PYTHONPATH):
 
   greenfield  git init -> init -> 3 modules -> code-map add -> a relation -> lint -> coverage
               -> context -> the agent loop (code change -> lint --changed gate fails -> propose
@@ -12,6 +12,11 @@ drives the modsys CLI of THIS checkout (`python -m modsys`, the checkout on PYTH
               until the per-feature rules are exclusive -> coverage >= 0.8 -> code-map files
               lists a feature's repository file -> a feature change drifts only the feature ->
               the per-module layout keeps list / match
+  packs       a git copy of the bookshop fixture -> packs new (a role + a skill) -> lint clean ->
+              create --role (the pack's template) -> show --role -> packs sync to claude and
+              codex -> --check -> a local edit is a conflict -> eject -> sync from the ejected
+              copy -> the pack moves on: MS063 + eject --diff -> agents-md keeps the team's
+              CLAUDE.md text -> templates list names the pack template
 
 Every step asserts an exit code and a data check. Prints the scorecard JSON
 {scenario: {steps: [{name, ok, detail}], commands, ok}} (commands = modsys invocations) and
@@ -21,6 +26,7 @@ Usage: python3 evals/adoption/run_eval.py
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -446,7 +452,149 @@ def brownfield(sc: Scenario) -> None:
         sc.step(name, fn)
 
 
-SCENARIOS = {"greenfield": greenfield, "brownfield": brownfield}
+# --- packs -------------------------------------------------------------------------------
+
+BOOKSHOP = ENGINE / "tests" / "fixtures" / "bookshop"
+REVIEWS = ("Customer reviews of books: ratings, comments and moderation.",
+           ["review", "rating", "stars", "comment", "moderation"])
+
+
+def packs(sc: Scenario) -> None:
+    claude_md = "# Bookshop\n\nTeam notes: run the tests before every push.\n"
+    skill = sc.root / ".claude/skills/api-review/SKILL.md"
+    ejected = sc.root / ".modsys/overrides/skills/api-review/SKILL.md"
+    upstream = sc.root / ".modsys/packs/team/skills/api-review/SKILL.md"
+    kept = {}
+
+    def statuses(data: dict) -> list[tuple]:
+        return [(r["agent"], r["status"]) for r in data["skills"]]
+
+    def sync(expect: int = 0, *flags: str) -> dict:
+        data, _ = sc.modsys("packs", "sync", "--agent", "claude", "--agent", "codex", *flags,
+                            expect=expect)
+        return data
+
+    def fixture():
+        shutil.copytree(BOOKSHOP, sc.root, dirs_exist_ok=True)
+        sc.git("init", "-q", "-b", "main")
+        sc.commit("bookshop", ".")
+
+    def new_pack():
+        data, _ = sc.modsys("packs", "new", "team", "--role", "reviewer", "--skill",
+                            "api-review", "--description", "Team review conventions")
+        check(len(data["files"]) == 3, f"files {data['files']}")
+        return ", ".join(data["files"])
+
+    def lint_clean():
+        data, _ = sc.modsys("lint")
+        check(not [f for f in data["findings"] if f["code"].startswith("MS06")],
+              f"lint {findings(data)}")
+
+    def create_with_role():
+        description, keywords = REVIEWS
+        data, _ = sc.modsys("create", "reviews", "--non-interactive", "--description",
+                            description, *[a for k in keywords for a in ("--keyword", k)],
+                            "--role", "reviewer")
+        check("modules/reviews/roles/reviewer.md" in data["files"], f"files {data['files']}")
+        doc = (sc.root / "modules/reviews/roles/reviewer.md").read_text(encoding="utf-8")
+        check(doc.startswith("# Reviews — reviewer\n"), f"doc {doc[:60]!r}")
+
+    def show_role():
+        data, _ = sc.modsys("show", "reviews", "--role", "reviewer")
+        rows = [(r["label"], r["exists"]) for r in data["read"]]
+        check(("role:reviewer", True) in rows, f"read {rows}")
+
+    def sync_created():
+        data = sync()
+        check(statuses(data) == [("claude", "created"), ("codex", "created")],
+              f"sync {statuses(data)}")
+        kept["skill"] = skill.read_bytes()
+
+    def check_passes():
+        sync(0, "--check")
+
+    def local_edit_conflicts():
+        skill.write_bytes(kept["skill"] + b"\nA local edit.\n")
+        data = sync(1)
+        check(statuses(data) == [("claude", "conflict"), ("codex", "unchanged")],
+              f"sync {statuses(data)}")
+        check(skill.read_bytes().endswith(b"A local edit.\n"), "the local edit was overwritten")
+
+    def revert():
+        skill.write_bytes(kept["skill"])
+        sync(0, "--check")
+
+    def eject():
+        data, _ = sc.modsys("eject", "api-review")
+        check(data["dir"] == ".modsys/overrides/skills/api-review", f"eject {data}")
+
+    def sync_from_the_ejected_copy():
+        ejected.write_text(ejected.read_text(encoding="utf-8") + "\n5. Check the error codes.\n",
+                           encoding="utf-8")
+        data = sync()
+        rows = [(r["agent"], r["status"], r["source"]) for r in data["skills"]]
+        check(rows == [("claude", "updated", "ejected"), ("codex", "updated", "ejected")],
+              f"sync {rows}")
+        check(skill.read_text(encoding="utf-8").endswith("5. Check the error codes.\n"),
+              "the agents' copy is not the ejected copy")
+
+    def pack_moves_on():
+        toml = sc.root / ".modsys/packs/team/pack.toml"
+        toml.write_text(toml.read_text(encoding="utf-8").replace('version = "0.1.0"',
+                                                                 'version = "0.2.0"'),
+                        encoding="utf-8")
+        upstream.write_text(upstream.read_text(encoding="utf-8")
+                            + "\n5. Check the API version header.\n", encoding="utf-8")
+        data, _ = sc.modsys("lint")
+        messages = [f["message"] for f in data["findings"] if f["code"] == "MS063"]
+        check(messages == ["ejected skill 'api-review' is behind pack 'team' (ejected from "
+                           "0.1.0, pack is now 0.2.0) — review: modsys eject api-review --diff"],
+              f"MS063 {messages}")
+
+    def diff_shows_it():
+        data, _ = sc.modsys("eject", "api-review", "--diff")
+        check(data["behind"] and "-5. Check the API version header." in data["diff"],
+              f"diff {data['diff'][:200]!r}")
+
+    def agents_md():
+        sc.write("CLAUDE.md", claude_md)
+        data, _ = sc.modsys("agents-md", "--target", "CLAUDE.md", "--target", "AGENTS.md")
+        rows = [(r["path"], r["status"]) for r in data["targets"]]
+        check(rows == [("CLAUDE.md", "added"), ("AGENTS.md", "created")], f"agents-md {rows}")
+
+    def agents_md_again():
+        data, _ = sc.modsys("agents-md", "--target", "CLAUDE.md", "--target", "AGENTS.md")
+        check([r["status"] for r in data["targets"]] == ["unchanged", "unchanged"],
+              f"agents-md {data['targets']}")
+        check((sc.root / "CLAUDE.md").read_text(encoding="utf-8").startswith(claude_md + "\n"),
+              "the team's text changed")
+
+    def template_provenance():
+        data, _ = sc.modsys("templates", "list")
+        rows = {r["template"]: r["source"] for r in data}
+        check(rows.get("roles/reviewer.md") == "role-template:team", f"templates {rows}")
+
+    for name, fn in [("a git copy of the bookshop fixture", fixture),
+                     ("packs new team --role reviewer --skill api-review", new_pack),
+                     ("plain lint: no pack findings", lint_clean),
+                     ("create --role reviewer renders the pack template", create_with_role),
+                     ("show --role reviewer lists the doc", show_role),
+                     ("packs sync: created for claude and codex", sync_created),
+                     ("packs sync --check passes", check_passes),
+                     ("a local edit is a conflict and stays", local_edit_conflicts),
+                     ("revert the edit: in sync again", revert),
+                     ("eject api-review", eject),
+                     ("packs sync from the edited ejected copy", sync_from_the_ejected_copy),
+                     ("the pack moves on: lint MS063", pack_moves_on),
+                     ("eject --diff shows the upstream change", diff_shows_it),
+                     ("agents-md: added to CLAUDE.md, AGENTS.md created", agents_md),
+                     ("agents-md again: unchanged, the team text kept", agents_md_again),
+                     ("templates list: the reviewer template comes from the pack",
+                      template_provenance)]:
+        sc.step(name, fn)
+
+
+SCENARIOS = {"greenfield": greenfield, "brownfield": brownfield, "packs": packs}
 
 
 def run_scenario(name: str, build) -> dict:

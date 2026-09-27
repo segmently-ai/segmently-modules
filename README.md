@@ -227,12 +227,33 @@ nothing to compare, and `ci` says so in its notes. Outside a merge-ref checkout,
 counted as changes. Put the team's defaults in `[ci]` of `.modsys/config.toml` (`fail_on`,
 `base`, `coverage_fail_under`), then CI runs a bare `modsys ci`.
 
+## Packs and skills
+
+A pack is a team's own layer on top of modsys: roles with their doc templates and agent skills
+that read those docs. It lives in `.modsys/packs/<id>/` and is committed with the repository.
+
+```bash
+modsys packs new team --role reviewer --skill api-review   # pack.toml, roles/reviewer.md, skills/api-review/SKILL.md
+modsys create reviews --non-interactive --role reviewer \
+  --description "Customer reviews of books: ratings, comments and moderation." \
+  --keywords "review, rating, stars, comment, moderation"
+modsys packs sync --agent claude --agent codex   # .claude/skills/api-review/ and .agents/skills/api-review/
+modsys agents-md --target CLAUDE.md --target AGENTS.md   # one managed block telling agents how to use modsys
+```
+
+`packs sync --check` and `agents-md --check` are the CI lines; `modsys eject <skill>` takes a
+skill over (the pack never overwrites it again) and `modsys templates list` shows where every doc
+template comes from. The walkthrough, `pack.toml` reference, conflicts and the lint codes
+MS060–MS065: [docs/writing-a-pack.md](docs/writing-a-pack.md).
+
 ## Reference
 
 - [docs/configuration.md](docs/configuration.md) — config layers, every section and key, packs,
   lint codes.
 - [docs/cli-contract.md](docs/cli-contract.md) — every verb's JSON `data`, exit codes, the files
   the engine creates, pipeline stages.
+- [docs/writing-a-pack.md](docs/writing-a-pack.md) — packs: roles, templates, agent skills,
+  `packs sync`, `eject`, the `agents-md` block.
 - `modsys <verb> --help` — flags and limits of one verb.
 - [evals/adoption/](evals/adoption/README.md) — the adoption evals (a deterministic script and
   blind-agent prompts).

@@ -27,3 +27,26 @@ Scorecard (one row per run):
 
 Run each persona 2–3 times per phase. For every major or blocker, note the doc, help text or
 error message that would have prevented it; those notes feed the next fix round.
+
+## pack-author
+
+Five goal steps, each verified by the scorer in the final repository (`{WORKDIR}`), not taken
+from the log:
+
+1. a pack under `.modsys/packs/` declares a new role and a skill whose `reads_roles` names it;
+   `modsys lint` exits 0 and reports no MS060–MS065 error;
+2. a new module's doc for that role exists (`modsys show <module> --role <role> --json` lists
+   it with `exists: true`);
+3. `modsys packs sync --check --agent claude --agent codex` exits 0, and the skill's `SKILL.md`
+   in `.claude/skills/<skill>/` calls `modsys show … --role <role>`;
+4. `.modsys/overrides/skills/<skill>/` exists, its `SKILL.md` differs from the pack's, and the
+   agents' copies equal the ejected copy;
+5. `CLAUDE.md` and `AGENTS.md` each hold exactly one `<!-- modsys:begin` line, `CLAUDE.md`
+   still holds the team's notes, and `modsys agents-md --check --target CLAUDE.md --target
+   AGENTS.md` exits 0.
+
+Commands and source peeks are counted as above; source peeks are verified by scanning every
+Bash (heredoc bodies stripped), Read, Grep and Glob input of the transcript, not only the
+self-report.
+
+**PASS (pack-author)** = all 5 goal steps verified, 0 source peeks, 0 blockers, commands ≤ 35.
