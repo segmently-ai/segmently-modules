@@ -4,11 +4,13 @@ import tomllib
 from importlib import resources
 from pathlib import Path
 
+from modsys import __version__
 from modsys.merge import merge_layers
 from modsys.output import UsageError
 
 PACK_META_KEYS = {"id", "version", "priority", "requires", "description", "skills", "agents"}
 DEFAULT_PACK_PRIORITY = 50
+BUILTIN_PACKS = ("core", "qa", "ui")  # the packs the engine ships: modsys/defaults/packs/<id>/
 REGISTRY_LAYOUTS = ("single", "per-module")
 
 
@@ -41,7 +43,7 @@ LAYER_SCHEMA = {
                "default_status": "str"},
     "coverage": {"include": "list[str]", "exclude": "list[str]"},
     "ci": {"fail_on": "str", "base": "str", "coverage_fail_under": "number"},
-    "packs": {"agents": "list[str]"},
+    "packs": {"agents": "list[str]", "builtin": "list[str]"},
 }
 CI_FAIL_ON = ("error", "never", "warning")
 ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str",
@@ -98,6 +100,7 @@ def validate_layer(layer: dict, source) -> None:
         if unknown:
             raise UsageError(f"{source}: [packs] agents: unknown agent {unknown[0]!r} "
                              f"(agents: {', '.join(AGENT_DIRS)})")
+    _check_builtin(layer.get("packs", {}).get("builtin"), source)
     layout = layer.get("paths", {}).get("registry_layout")
     if layout is not None and layout not in REGISTRY_LAYOUTS:
         raise UsageError(f"{source}: [paths] registry_layout: expected one of "
@@ -116,6 +119,13 @@ def validate_layer(layer: dict, source) -> None:
                 _check_table(spec, ROLE_SCHEMA, f"roles.{name}", source)
 
 
+def _check_builtin(ids, source) -> None:
+    unknown = [i for i in ids or [] if i not in BUILTIN_PACKS]
+    if unknown:
+        raise UsageError(f"{source}: [packs] builtin: unknown built-in pack {unknown[0]!r} "
+                         f"(built-in packs: {', '.join(BUILTIN_PACKS)})")
+
+
 def read_toml(path: Path) -> dict:
     try:
         with path.open("rb") as f:
@@ -131,8 +141,31 @@ def core_defaults() -> dict:
     return tomllib.loads(text)
 
 
+def builtin_packs_root() -> Path:
+    """The engine's built-in packs (package data): one directory per id in BUILTIN_PACKS."""
+    return Path(str(resources.files("modsys").joinpath("defaults/packs")))
+
+
+def enabled_builtins(config_dir: Path) -> list[str]:
+    """`[packs] builtin` of the team config and the user config — appended, de-duplicated. Read
+    before the merge: it decides which built-in packs are config layers at all."""
+    ids: list[str] = []
+    for name in ("config.toml", "config.user.toml"):
+        path = config_dir / name
+        if path.exists():
+            packs = _require_table(read_toml(path).get("packs", {}), "packs", path)
+            _check_table(packs, LAYER_SCHEMA["packs"], "packs", path)
+            _check_builtin(packs.get("builtin"), path)
+            ids += [i for i in packs.get("builtin", []) if i not in ids]
+    return ids
+
+
 def discover_packs(config_dir: Path) -> list[dict]:
-    """Installed packs, highest precedence first (lowest priority number, then id)."""
+    """Active packs, highest precedence first: the repository's packs (lowest priority number,
+    then id), then the built-in packs `[packs] builtin` enables, by id — below every repository
+    pack whatever its priority. A repository pack with a built-in id replaces that built-in pack.
+    A built-in pack's version is the engine version."""
+    from modsys.skills import validate_skills  # skills imports this module
     packs = []
     for pack_toml in sorted((config_dir / "packs").glob("*/pack.toml")):
         data = read_toml(pack_toml)
@@ -142,21 +175,36 @@ def discover_packs(config_dir: Path) -> list[dict]:
         pack_id = data.get("id", pack_toml.parent.name)
         if not isinstance(pack_id, str) or not pack_id:
             raise UsageError(f"{pack_toml}: id must be a non-empty string, got {pack_id!r}")
-        from modsys.skills import validate_skills  # skills imports this module
+        if isinstance(data.get("packs"), dict) and "builtin" in data["packs"]:
+            raise UsageError(f"{pack_toml}: [packs] builtin: a pack cannot enable built-in "
+                             f"packs — set it in .modsys/config.toml")
         validate_skills(data, pack_toml)
-        packs.append({"id": pack_id, "priority": priority, "path": pack_toml, "data": data})
-    return sorted(packs, key=lambda p: (p["priority"], p["id"]))
+        packs.append({"id": pack_id, "priority": priority, "path": pack_toml, "data": data,
+                      "builtin": False})
+    packs.sort(key=lambda p: (p["priority"], p["id"]))
+    taken = {p["id"] for p in packs}
+    for pack_id in sorted(set(enabled_builtins(config_dir)) - taken):
+        pack_toml = builtin_packs_root() / pack_id / "pack.toml"
+        data = {**read_toml(pack_toml), "id": pack_id, "version": __version__}
+        validate_skills(data, pack_toml)
+        packs.append({"id": pack_id, "priority": None, "path": pack_toml, "data": data,
+                      "builtin": True})
+    return packs
 
 
 def _pack_layer(pack: dict) -> dict:
     """The pack's config layer. A deep copy, so the parsed pack data stays untouched; every
     field, role and hook the pack declares records the pack as its `owner` (provenance for
-    error messages, pack-relative templates and hook paths)."""
+    error messages and hook paths), and a role that declares a `template` records the pack as
+    its `template_owner` (the template is a file of that pack, even when a later layer
+    overrides other keys of the role)."""
     layer = {k: copy.deepcopy(v) for k, v in pack["data"].items() if k not in PACK_META_KEYS}
     validate_layer(layer, pack["path"])
     for section in ("fields", "roles"):
         for spec in (layer.get(section) or {}).values():
             spec.setdefault("owner", pack["id"])
+            if section == "roles" and "template" in spec:  # the template lives in THIS pack,
+                spec.setdefault("template_owner", pack["id"])  # whoever overrides the role
     for hooks in (layer.get("hooks") or {}).values():
         for hook in hooks if isinstance(hooks, list) else []:
             if isinstance(hook, dict):

@@ -1,0 +1,5 @@
+# The built-in pack "qa": an acceptance-baseline role and skills that write acceptance
+# criteria. Enable it in .modsys/config.toml: [packs] builtin = ["qa"].
+# Its version is the engine version; a repository pack with the id "qa" replaces it.
+id = "qa"
+description = "An acceptance-baseline role and skills that write acceptance criteria"

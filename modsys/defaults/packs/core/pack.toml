@@ -1,0 +1,5 @@
+# The built-in pack "core": agent skills that find, read, update, create, split and lint module
+# docs through the modsys CLI. Enable it in .modsys/config.toml: [packs] builtin = ["core"].
+# Its version is the engine version; a repository pack with the id "core" replaces it.
+id = "core"
+description = "Agent skills that find, read, update, create, split and lint module docs"

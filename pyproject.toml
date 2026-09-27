@@ -13,4 +13,4 @@ include = ["modsys*"]
 
 [tool.setuptools.package-data]
 modsys = ["defaults/*.toml", "defaults/templates/*.md", "defaults/templates/roles/*.md",
-          "defaults/scaffold/*"]
+          "defaults/scaffold/*", "defaults/packs/**/*"]

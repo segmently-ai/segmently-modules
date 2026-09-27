@@ -254,7 +254,7 @@ class PacksListTest(PacksRepo):  # P4A-AC-011
         rows = self.ok("packs", "list")
         self.assertEqual([r["id"] for r in rows], ["bookshop", "team"])
         self.assertEqual(rows[0], {"id": "bookshop", "version": "0.1.0", "priority": 50,
-                                   "dir": ".modsys/packs/bookshop",
+                                   "builtin": False, "dir": ".modsys/packs/bookshop",
                                    "description": "Fixture pack: a custom role, a code-pointer "
                                                   "field, a deprecated field",
                                    "roles": ["designer"], "skills": []})

@@ -117,9 +117,11 @@ def resolve_template_source(ws, relpath: str, role: str | None = None) -> tuple[
     candidates = [("override", ws.config_dir / "overrides" / "templates" / relpath)]
     spec = (ws.config.get("roles") or {}).get(role or "", {})
     pack_dirs = ws.config.get("_pack_dirs", {})
-    if role and spec.get("template") and spec.get("owner") in pack_dirs:
-        candidates.append((f"role-template:{spec['owner']}",
-                           Path(pack_dirs[spec["owner"]]) / spec["template"]))
+    # the pack whose `template` the role uses; a template set only by the team config is a file
+    # of the pack that owns the role
+    owner = spec.get("template_owner", spec.get("owner"))
+    if role and spec.get("template") and owner in pack_dirs:
+        candidates.append((f"role-template:{owner}", Path(pack_dirs[owner]) / spec["template"]))
     candidates += [(f"pack:{p}", Path(pack_dirs[p]) / "templates" / relpath)
                    for p in ws.config.get("_packs", [])]
     for source, path in candidates:

@@ -4,7 +4,8 @@ skills.
   new ID [--role NAME]… [--skill NAME]… [--description TEXT] [--priority N]
         scaffold `<config_dir>/packs/ID/`: `pack.toml`, a role template per `--role` and a
         `SKILL.md` per `--skill` (reading every `--role`); every refusal writes nothing
-  list  the installed packs in precedence order, with their roles and skills
+  list  the active packs in precedence order (repository packs, then the enabled built-in
+        packs), with their roles and skills
   sync [--agent claude|codex]… [--check]
         copy every pack skill into the agents' skill directories (`skill_sync`); agents = the
         flags, else `[packs] agents`"""
@@ -17,7 +18,7 @@ from importlib import resources
 from pathlib import Path
 
 from modsys.code_map_cmd import _toml_string
-from modsys.config import DEFAULT_PACK_PRIORITY, core_defaults, discover_packs
+from modsys.config import BUILTIN_PACKS, DEFAULT_PACK_PRIORITY, core_defaults, discover_packs
 from modsys.create import NAME, article
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.skill_sync import (NO_RECORD, STATUSES, apply_plan, conflict_kind, plan_sync, row,
@@ -95,6 +96,9 @@ def _check_names(pack_id: str, roles: list[str], skills: list[str]) -> None:
 
 
 def _check_free(ws, pack_id: str, pack_dir: Path, roles: list[str], skills: list[str]) -> None:
+    if pack_id in BUILTIN_PACKS:
+        raise UsageError(f"pack id '{pack_id}' is reserved for the engine's built-in pack — "
+                         f"enable it: [packs] builtin = [\"{pack_id}\"]")
     if os.path.lexists(pack_dir):
         raise UsageError(f"{ws.rel(pack_dir)}/ already exists")
     for pack in discover_packs(ws.config_dir):
@@ -185,7 +189,8 @@ def new_pack(ws, pack_id: str, roles: list[str], skills: list[str], description:
 
 
 def pack_rows(ws) -> list[dict]:
-    """`packs list` data: installed packs in precedence order."""
+    """`packs list` data: active packs in precedence order (`builtin`: an engine pack, whose
+    `priority` is null — it ranks below every repository pack)."""
     rows = []
     for pack in discover_packs(ws.config_dir):
         data, pack_dir = pack["data"], pack["path"].parent
@@ -198,7 +203,8 @@ def pack_rows(ws) -> list[dict]:
                            "ejected": ejected_dir(ws.config_dir, sid).is_dir()})
         version, description = data.get("version"), data.get("description")
         rows.append({"id": pack["id"], "version": version if isinstance(version, str) else None,
-                     "priority": pack["priority"], "dir": ws.rel(pack_dir),
+                     "priority": pack["priority"], "builtin": pack["builtin"],
+                     "dir": ws.rel(pack_dir),
                      "description": description if isinstance(description, str) else None,
                      "roles": list(data.get("roles") or {}), "skills": skills})
     return rows
@@ -342,7 +348,8 @@ def _render_list(rows) -> None:
     if not rows:
         print("no packs (create one: modsys packs new ID)")
     for r in rows:
-        print(f"{r['id']} {r['version'] or '(no version)'} priority {r['priority']}  {r['dir']}")
+        rank = "built-in" if r["builtin"] else f"priority {r['priority']}"
+        print(f"{r['id']} {r['version'] or '(no version)'} {rank}  {r['dir']}")
         for role in r["roles"]:
             print(f"  role   {role}")
         for s in r["skills"]:

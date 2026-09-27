@@ -9,9 +9,11 @@ example for the most-used sections below (it has none for `[budgets]`, `[match]`
 The effective config is merged from, lowest precedence first:
 
 1. **engine defaults** — `modsys/defaults/config.toml` (shipped with the engine);
-2. **packs** — `.modsys/packs/<id>/pack.toml`, lower `priority` wins (see [Packs](#packs));
-3. **team config** — `.modsys/config.toml` (commit it);
-4. **user config** — `.modsys/config.user.toml` (personal; git-ignore it).
+2. **built-in packs** — the engine's packs that `[packs] builtin` enables (`core`, `qa`, `ui`),
+   by id, below every repository pack;
+3. **packs** — `.modsys/packs/<id>/pack.toml`, lower `priority` wins (see [Packs](#packs));
+4. **team config** — `.modsys/config.toml` (commit it);
+5. **user config** — `.modsys/config.user.toml` (personal; git-ignore it).
 
 Merge rules: scalars — the higher layer wins; tables — merged key by key; arrays of tables that
 all carry an `id` (`[[code_map]]`, `[[hooks.post_sync]]`) — merged by `id` (the same id
@@ -145,6 +147,7 @@ overrides each key (`--fail-on`, `--base`, `--fail-under`).
 | Key | Default | Meaning |
 |---|---|---|
 | `agents` | unset | the agents `modsys packs sync` writes pack skills for when no `--agent` flag is given: `claude` (`.claude/skills/`) and / or `codex` (`.agents/skills/`); any other name is refused (exit 2 naming the file). Like every array, a higher layer ADDS to a lower one's list; `--agent` flags replace it |
+| `builtin` | `[]` | the engine's built-in packs to enable: `core` (the core agent skills), `ui` (a `designer` role and a UI review skill), `qa` (a `qa_acceptance` role and acceptance-criteria skills). Set it in `config.toml` or `config.user.toml` (the two lists add up; a repeated id counts once; a pack cannot set it); an unknown id is refused (exit 2 naming the file and the known ids). An enabled built-in pack is a pack layer below every repository pack; its version is the engine version. A repository pack with the same id (`.modsys/packs/ui/`) replaces it, enabled or not |
 
 ## `[roles.<name>]`
 
