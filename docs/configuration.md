@@ -156,8 +156,18 @@ Roles are the audiences of per-module docs (`roles/<role>.md`). Defaults: `devel
 
 `create` resolves a template (first hit wins): `<config_dir>/overrides/templates/<path>` →
 the role's own pack `template` → `<pack>/templates/<path>` in pack precedence order → the
-engine's defaults (`MODULE.md`, `roles/_role.md`). Templates use `${name}`, `${title}`,
-`${description}`, `${status}`, `${keywords}`, `${parent}`, `${role}`, `${role_description}`.
+engine's defaults: `MODULE.md`, one template per standard role (`roles/developer.md`,
+`roles/qa.md`, `roles/po.md`, `roles/architect.md` — each with a few headed sections for that
+audience) and the generic `roles/_role.md` for any other role. `agents-md.md` — the text of the
+managed block for agent instruction files — resolves the same way. Templates use `${name}`,
+`${title}`, `${description}`, `${status}`, `${keywords}`, `${parent}`, `${role}`,
+`${role_description}`.
+
+`modsys templates list` prints every template with the layer that wins (`override`,
+`role-template:<pack>`, `pack:<pack>`, `engine`, or `engine-fallback` for a role rendered from
+`roles/_role.md`) and its file. `modsys templates override roles/qa.md` copies the winning
+template to `.modsys/overrides/templates/roles/qa.md` once; edit that copy — it wins from then
+on (the engine never rewrites it, and a later upstream change to the template does not reach it).
 
 ## `[fields.<name>]`
 

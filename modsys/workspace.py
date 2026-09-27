@@ -46,6 +46,15 @@ class Workspace:
     def from_args(cls, args) -> "Workspace":
         return cls.load(args.root or find_root(Path.cwd()), args.config_dir)
 
+    def rel(self, path) -> str:
+        """`path` as users see it: root-relative (posix) when it lies inside the root, else
+        absolute."""
+        path = Path(os.path.normpath(Path(path).absolute()))
+        try:
+            return path.relative_to(self.root).as_posix()
+        except ValueError:
+            return str(path)
+
     @property
     def registry(self) -> Registry:
         if self._registry is None:

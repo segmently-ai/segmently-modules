@@ -42,6 +42,9 @@ GOLDEN = [
     (("code-map", "list"), None),
     (("code-map", "files", "catalog"), {"target", "files", "total"}),
     (("ci", "--fail-on", "never"), {"base", "fail_on", "steps", "failed", "notes"}),
+    (("templates", "list"), None),
+    (("templates", "override", "roles/qa.md", "--dry-run"), {"template", "file", "from",
+                                                             "dry_run"}),
 ]
 
 

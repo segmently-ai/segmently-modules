@@ -2,11 +2,13 @@
 registry entry. Answers come from `--answers file.json`, flags, or (on a terminal) prompts;
 with `--non-interactive` a missing answer is an error that lists every missing key.
 
-Template resolution (first hit wins), for `MODULE.md` and `roles/<role>.md`:
-  1. `<config_dir>/overrides/templates/<path>`
-  2. a role's own `template` (path inside its owning pack)
-  3. `<pack>/templates/<path>` for packs in precedence order
-  4. engine defaults (`roles/_role.md` for any role without its own file)
+Template resolution (first hit wins), for `MODULE.md`, `roles/<role>.md` and `agents-md.md`
+(`resolve_template_source` names the layer — `modsys templates list` shows it):
+  1. `<config_dir>/overrides/templates/<path>`                         source "override"
+  2. a role's own `template` (path inside its owning pack)             "role-template:<pack>"
+  3. `<pack>/templates/<path>` for packs in precedence order           "pack:<pack>"
+  4. engine defaults: MODULE.md, agents-md.md and one file per         "engine"
+     standard role; `roles/_role.md` for any other role                "engine-fallback"
 Templates use `${name}` placeholders: name, title, description, status, keywords, parent,
 role, role_description."""
 import contextlib
@@ -99,20 +101,33 @@ def roles_to_scaffold(ws, answers: dict) -> list[str]:
             if roles[r].get("standard") or roles[r].get("applies_when") in tags or r in wanted]
 
 
-def resolve_template(ws, relpath: str, role: str | None = None) -> str:
-    candidates = [ws.config_dir / "overrides" / "templates" / relpath]
+def engine_templates() -> Path:
+    """The engine's default templates directory (package data)."""
+    return Path(str(resources.files("modsys").joinpath("defaults/templates")))
+
+
+def resolve_template_source(ws, relpath: str, role: str | None = None) -> tuple[str, Path]:
+    """(source, path) of the template file that wins for `relpath` — see the module docstring
+    for the order and the source names."""
+    candidates = [("override", ws.config_dir / "overrides" / "templates" / relpath)]
     spec = (ws.config.get("roles") or {}).get(role or "", {})
     pack_dirs = ws.config.get("_pack_dirs", {})
     if role and spec.get("template") and spec.get("owner") in pack_dirs:
-        candidates.append(Path(pack_dirs[spec["owner"]]) / spec["template"])
-    candidates += [Path(pack_dirs[p]) / "templates" / relpath for p in ws.config.get("_packs", [])]
-    for path in candidates:
+        candidates.append((f"role-template:{spec['owner']}",
+                           Path(pack_dirs[spec["owner"]]) / spec["template"]))
+    candidates += [(f"pack:{p}", Path(pack_dirs[p]) / "templates" / relpath)
+                   for p in ws.config.get("_packs", [])]
+    for source, path in candidates:
         if path.is_file():
-            return path.read_text(encoding="utf-8")
-    base = resources.files("modsys").joinpath("defaults/templates")
-    engine = base.joinpath(relpath)
-    return (engine if engine.is_file() else base.joinpath("roles/_role.md")).read_text(
-        encoding="utf-8")
+            return source, path
+    engine = engine_templates() / relpath
+    if engine.is_file():
+        return "engine", engine
+    return "engine-fallback", engine_templates() / "roles" / "_role.md"
+
+
+def resolve_template(ws, relpath: str, role: str | None = None) -> str:
+    return resolve_template_source(ws, relpath, role)[1].read_text(encoding="utf-8")
 
 
 def _check_name(value: str) -> None:
