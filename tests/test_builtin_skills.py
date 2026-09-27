@@ -48,6 +48,19 @@ CORE: dict[str, tuple[str, list[tuple[str, ...]], list[str]]] = {
                     ["Leave the judgement calls to the user", "references/lint-codes.md"]),
 }
 PACK_SKILLS: dict[str, tuple[str, str, list[tuple[str, ...]], list[str]]] = {
+    "designer-review": ("ui", "writer", [("discover",), ("show", "--role", "designer")],
+                        ["Must-fix", "Should-fix", "Nit", "`Result: PASS`", "`Result: FAIL",
+                         "Design checker", "a UI task is not done while a Must-fix is open"]),
+    "qa-acceptance": ("qa", "writer", [("discover", "--task-file"), ("show", "--role", "qa"),
+                                       ("show", "--role", "qa_acceptance")],
+                      ["`PRE-NNN`", "`AC-NNN`", "**Given**", "**When**", "**Then**",
+                       "equivalence partitioning", "boundary value analysis",
+                       "decision table", "state transition", "instead of restating it"]),
+    "qa-acceptance-baseline": ("qa", "writer", [("show", "--all-roles"),
+                                                ("show", "--role", "qa_acceptance"), ("lint",)],
+                               ["the next id after the highest existing `AC-NNN`",
+                                "never renumber", "P0", "P1", "P2", "Gate 1", "Gate 2",
+                                "Gate 3"]),
 }
 WRITER_VERBS = [("create",), ("registry", "set"), ("registry", "append"), ("propose",),
                 ("code-map", "add")]

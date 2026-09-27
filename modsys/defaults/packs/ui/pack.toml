@@ -3,3 +3,14 @@
 # Its version is the engine version; a repository pack with the id "ui" replaces it.
 id = "ui"
 description = "A designer role for UI modules and a skill that reviews UI changes against it"
+
+[roles.designer]
+order = 50
+standard = false
+applies_when = "ui"               # modsys create --tag ui (or --role designer) adds the doc
+description = "The UX rules a change to the module's user interface must keep"
+template = "roles/designer.md"
+
+[skills.designer-review]
+path = "skills/designer-review"
+reads_roles = ["designer"]
