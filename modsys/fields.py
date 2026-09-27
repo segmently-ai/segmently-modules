@@ -1,8 +1,9 @@
 """Registry field definitions. Core fields are built in; everything else is declared
 in config/packs under [fields.<name>] — one declaration drives validation, JSON Schema,
-show output, create prompts and sync hints."""
+show output, create prompts and sync hints (`modsys sync-instructions`). A layer may set a
+core field's `sync_hint` and nothing else."""
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from modsys.output import UsageError
 
@@ -30,26 +31,40 @@ class FieldDef:
     owner: str = "core"
 
 
-def _core(name, type_, scope, description, required=(), used_by=()):
+def _core(name, type_, scope, description, required=(), used_by=(), sync_hint=""):
     return FieldDef(name=name, type=type_, scope=scope, description=description,
-                    required=required, used_by=used_by)
+                    required=required, used_by=used_by, sync_hint=sync_hint)
 
 
 CORE_FIELDS: dict[str, FieldDef] = {f.name: f for f in [
     _core("name", ("string",), ("module",), "Registry key, repeated", ("module",)),
     _core("description", ("string",), BOTH, "Main relevance indicator: WHAT / WHY / WHEN",
-          ("module",)),
+          ("module",), sync_hint="Rewrite it when the module's purpose or scope changes: one "
+                                 "sentence on what it does, why, and when a task belongs here."),
     _core("status", ("string",), ("module",), "Lifecycle status (registry.statuses)",
-          ("module",)),
-    _core("keywords", ("string[]",), BOTH, "Routing discriminators", ("module",), ("match",)),
-    _core("context_files", ("object",), BOTH, "Docs to load: universal, roles, extras", BOTH),
-    _core("related_modules", ("object[]",), ("module",), "Typed edges to other modules"),
-    _core("submodules", ("object",), ("module",), "Child functional areas"),
+          ("module",), sync_hint="Change it when the module's lifecycle moves on, e.g. from "
+                                 "planned to active when its code ships."),
+    _core("keywords", ("string[]",), BOTH, "Routing discriminators", ("module",), ("match",),
+          sync_hint="Add the words a task about this module would use when the change brings "
+                    "new ones; a split parent keeps all its keywords."),
+    _core("context_files", ("object",), BOTH, "Docs to load: universal, roles, extras", BOTH,
+          sync_hint="Update it when a doc of the module is added, moved or removed: universal "
+                    "names the module doc, roles names each role doc."),
+    _core("related_modules", ("object[]",), ("module",), "Typed edges to other modules",
+          sync_hint="Add an edge when the change makes this module depend on, complement or "
+                    "share a contract with another module."),
+    _core("submodules", ("object",), ("module",), "Child functional areas",
+          sync_hint="Add a child when a functional area grows out of the module (a split); "
+                    "remove one when its area is retired."),
     _core("negative_keywords", ("map<string,string[]>", "string[]"), ("module",),
-          "Phrases that mean NOT this module", used_by=("match",)),
+          "Phrases that mean NOT this module", used_by=("match",),
+          sync_hint="Add a phrase when tasks that use this module's words but belong elsewhere "
+                    "keep matching it."),
     # both shapes exist in real registries: [["a", "b"]] and a flat ["a", "b"] (each item = one term)
     _core("required_combinations", ("string[][]", "string[]"), ("module",),
-          "Term groups that together add a match bonus", used_by=("match",)),
+          "Term groups that together add a match bonus", used_by=("match",),
+          sync_hint="Add a group when two words point to this module only together, not "
+                    "alone."),
 ]}
 
 
@@ -113,8 +128,11 @@ def load_field_defs(config: dict) -> dict[str, FieldDef]:
             raise UsageError(f"field {name!r}: declaration must be a table")
         owner = spec.get("owner", "config")
         if name in CORE_FIELDS:
+            if set(spec) - {"owner"} == {"sync_hint"} and isinstance(spec["sync_hint"], str):
+                defs[name] = replace(defs[name], sync_hint=spec["sync_hint"])
+                continue
             raise UsageError(f"field {name!r} (owner {owner}) is a core field; "
-                             f"it cannot be redeclared")
+                             f"it cannot be redeclared (a layer may set its sync_hint only)")
         _check_declaration(name, spec, owner)
         types = _tuple(spec["type"])
         for t in types:

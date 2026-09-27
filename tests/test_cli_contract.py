@@ -31,6 +31,8 @@ GOLDEN = [
     (("sync", "--files", "src/catalog/service.py", "--dry-run"),
      {"run_id", "diff_range", "changed_files", "modules", "unmapped", "missing_files", "hooks",
       "proposals", "dry_run"}),
+    (("sync-instructions", "--files", "src/catalog/service.py"),
+     {"modules", "files_outside_modules"}),
     (("create", "reviews", "--description", DESC, *KW, "--dry-run"),
      {"module", "files", "entry", "dry_run"}),
     (("migrate", "--dry-run"), {"applied", "dry_run", "diff"}),

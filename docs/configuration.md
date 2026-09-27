@@ -196,7 +196,30 @@ fields (always present, never redeclared): `name`, `description`, `status`, `key
 | `ask_on_create` | `false` | `create` asks for it (answers key = field name) |
 | `deprecated` | `""` | non-empty = deprecated; the text is the migration hint (MS011; writers refuse it) |
 | `used_by` | `[]` | informational: which features read it |
-| `sync_hint` | `""` | informational: how the field follows code changes |
+| `sync_hint` | `""` | when to update the field after a change, in plain words — `modsys sync-instructions` lists it for every module a change touches |
+
+The core fields carry these `sync_hint`s (`name` has none: the engine keeps it equal to the
+registry key). A layer may set a core field's `sync_hint` and nothing else —
+`[fields.keywords]` with only `sync_hint = "…"` replaces the hint; any other key is refused
+(exit 2, `is a core field; it cannot be redeclared`):
+
+| Core field | `sync_hint` |
+|---|---|
+| `description` | Rewrite it when the module's purpose or scope changes: one sentence on what it does, why, and when a task belongs here. |
+| `status` | Change it when the module's lifecycle moves on, e.g. from planned to active when its code ships. |
+| `keywords` | Add the words a task about this module would use when the change brings new ones; a split parent keeps all its keywords. |
+| `context_files` | Update it when a doc of the module is added, moved or removed: universal names the module doc, roles names each role doc. |
+| `related_modules` | Add an edge when the change makes this module depend on, complement or share a contract with another module. |
+| `submodules` | Add a child when a functional area grows out of the module (a split); remove one when its area is retired. |
+| `negative_keywords` | Add a phrase when tasks that use this module's words but belong elsewhere keep matching it. |
+| `required_combinations` | Add a group when two words point to this module only together, not alone. |
+
+After a change, one command lists per touched module the docs to update, the drift and these
+hints:
+
+```bash
+modsys sync-instructions --from-diff "$BASE..HEAD"   # or --files PATH …, or --module M …
+```
 
 An undeclared field in the registry is MS012; writing one is refused with
 `unknown field 'X' (declare [fields.X] in config or a pack)`. Example:
