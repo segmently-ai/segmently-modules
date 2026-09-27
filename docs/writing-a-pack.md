@@ -125,6 +125,23 @@ team can take what it wants by hand. If the pack drops the skill, the ejected co
 skill's only source (MS063 info). To go back to the pack's version, delete
 `.modsys/overrides/skills/api-review/` and run `modsys packs sync`.
 
+## Tell the agents: the managed block
+
+Agents read `CLAUDE.md` (Claude Code) and `AGENTS.md` (Codex). One command keeps a block there
+that says how to use modsys in this repository, which roles exist and which skills the packs
+add:
+
+```bash
+modsys agents-md --target CLAUDE.md --target AGENTS.md          # added / created
+modsys agents-md --target CLAUDE.md --target AGENTS.md --check  # in CI: exit 1 when stale
+```
+
+The block sits between `<!-- modsys:begin v1 -->` and `<!-- modsys:end -->`; every byte outside
+it is the team's and is never touched (a file without the markers gets the block appended after
+one blank line). Run it again after adding a skill or a role: only the block changes. The text
+comes from the `agents-md.md` template — `modsys templates override agents-md.md` gives the team
+its own copy to edit. When `AGENTS.md` is a symlink to `CLAUDE.md`, the block is written once.
+
 ## Lint
 
 Plain `modsys lint` (and the lint step of `modsys ci`) checks every installed pack; the findings

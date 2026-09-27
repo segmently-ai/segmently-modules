@@ -165,7 +165,8 @@ the role's own pack `template` → `<pack>/templates/<path>` in pack precedence 
 engine's defaults: `MODULE.md`, one template per standard role (`roles/developer.md`,
 `roles/qa.md`, `roles/po.md`, `roles/architect.md` — each with a few headed sections for that
 audience) and the generic `roles/_role.md` for any other role. `agents-md.md` — the text of the
-managed block for agent instruction files — resolves the same way. Templates use `${name}`,
+managed block `modsys agents-md` keeps in agent instruction files (`${modules_dir}`,
+`${registry}`, `${roles}`, `${skills}`, `${version}`) — resolves the same way. Templates use `${name}`,
 `${title}`, `${description}`, `${status}`, `${keywords}`, `${parent}`, `${role}`,
 `${role_description}`.
 
