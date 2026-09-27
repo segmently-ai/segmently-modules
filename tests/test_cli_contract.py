@@ -45,6 +45,9 @@ GOLDEN = [
     (("templates", "list"), None),
     (("templates", "override", "roles/qa.md", "--dry-run"), {"template", "file", "from",
                                                              "dry_run"}),
+    (("packs", "list"), None),
+    (("packs", "new", "team", "--role", "reviewer", "--skill", "api-review", "--dry-run"),
+     {"pack", "dir", "files", "dry_run"}),
 ]
 
 

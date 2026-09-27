@@ -292,6 +292,14 @@ the rest. A pack's roles, fields and hooks record the pack as their `owner`; a p
 templates under `templates/` (`MODULE.md`, `roles/<role>.md`) and hook scripts next to its
 `pack.toml`. The team config overrides every pack.
 
+A pack's agent skills are `[skills.<id>]` tables (the `skills` meta key — never merged into the
+config): `path` (required, the skill directory relative to the pack: a `SKILL.md` in the Agent
+Skills format plus any other files) and `reads_roles` (optional, a list of role names). A
+malformed table is a config error naming the `pack.toml`; when two packs declare one skill id,
+the higher-precedence pack's skill wins. `modsys packs new ID --role NAME --skill NAME`
+scaffolds a pack, `modsys packs list` lists the installed ones — the whole workflow is in
+[writing-a-pack.md](writing-a-pack.md).
+
 ## Lint codes
 
 `lint` checks the registry, fields, docs and config; `lint --changed` narrows the report to the

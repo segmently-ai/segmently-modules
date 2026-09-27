@@ -5,13 +5,13 @@ from pathlib import Path
 
 from modsys import __version__
 from modsys import (ci_cmd, code_map_cmd, coverage_cmd, create_cmd, hooks_cmd, index_cmd,
-                    init_cmd, lint, match, migrate_cmd, pipeline, proposals_cmd, query,
-                    registry_cmd, schema_cmd, sync_cmd, templates_cmd)
+                    init_cmd, lint, match, migrate_cmd, packs_cmd, pipeline, proposals_cmd,
+                    query, registry_cmd, schema_cmd, sync_cmd, templates_cmd)
 from modsys.output import EXIT_INTERRUPTED, EXIT_USAGE, UsageError
 
 COMMANDS: list = [init_cmd, schema_cmd, match, query, lint, registry_cmd, index_cmd,
                   proposals_cmd, hooks_cmd, sync_cmd, create_cmd, migrate_cmd, pipeline,
-                  coverage_cmd, code_map_cmd, ci_cmd, templates_cmd]
+                  coverage_cmd, code_map_cmd, ci_cmd, templates_cmd, packs_cmd]
 
 
 def common_parser() -> argparse.ArgumentParser:

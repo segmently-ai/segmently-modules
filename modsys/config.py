@@ -134,6 +134,8 @@ def discover_packs(config_dir: Path) -> list[dict]:
         pack_id = data.get("id", pack_toml.parent.name)
         if not isinstance(pack_id, str) or not pack_id:
             raise UsageError(f"{pack_toml}: id must be a non-empty string, got {pack_id!r}")
+        from modsys.skills import validate_skills  # skills imports this module
+        validate_skills(data, pack_toml)
         packs.append({"id": pack_id, "priority": priority, "path": pack_toml, "data": data})
     return sorted(packs, key=lambda p: (p["priority"], p["id"]))
 

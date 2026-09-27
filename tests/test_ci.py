@@ -235,7 +235,7 @@ class CiConfigTest(CiRepo):  # P32-AC-020, P32-AC-022
 class DocsAndVerbsTest(unittest.TestCase):  # P32-AC-021
     VERBS = {"init", "schema", "match", "show", "related", "list", "lint", "registry", "index",
              "propose", "proposals", "hooks", "sync", "create", "migrate", "context", "discover",
-             "coverage", "code-map", "ci", "templates"}
+             "coverage", "code-map", "ci", "templates", "packs"}
 
     def doc(self, rel: str) -> str:
         return " ".join((ENGINE / rel).read_text(encoding="utf-8").split())
