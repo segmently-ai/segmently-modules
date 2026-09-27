@@ -12,3 +12,15 @@ path = "skills/module-discover"
 
 [skills.module-research]
 path = "skills/module-research"
+
+[skills.module-sync]
+path = "skills/module-sync"
+
+[skills.module-create]
+path = "skills/module-create"
+
+[skills.module-split]
+path = "skills/module-split"
+
+[skills.module-lint]
+path = "skills/module-lint"

@@ -7,6 +7,7 @@ import contextlib
 import io
 import re
 import shlex
+import tempfile
 import tomllib
 import unittest
 from pathlib import Path
@@ -14,6 +15,9 @@ from pathlib import Path
 from modsys.cli import build_parser
 from modsys.config import BUILTIN_PACKS, builtin_packs_root
 from modsys.skills import read_front_matter, source_problem
+from tests.helpers import copy_fixture, git, init_git, run, run_json
+
+ENGINE = Path(__file__).resolve().parents[1]
 
 # skill -> (scope, the verbs its `## Steps` run, phrases its text must contain)
 CORE: dict[str, tuple[str, list[tuple[str, ...]], list[str]]] = {
@@ -27,6 +31,21 @@ CORE: dict[str, tuple[str, list[tuple[str, ...]], list[str]]] = {
                                       ("code-map", "files"), ("lint",)],
                         ["No gates — read-only", "file:line", "the docs say X",
                          "gaps are reported, not fixed"]),
+    "module-sync": ("writer", [("sync-instructions",), ("registry",), ("propose",), ("sync",),
+                               ("ci",)],
+                    ["Autonomous by default", "two children of a split module equally well",
+                     "a new top-level module or a child", "contradicts a claim in the docs",
+                     "the only home for the new text is a `*.legacy.md` file",
+                     "never remove one from it"]),
+    "module-create": ("writer", [("create", "--dry-run"), ("create",), ("code-map", "add"),
+                                 ("lint",)],
+                      ["Wait for an explicit yes", "at least five", "Never invent components"]),
+    "module-split": ("writer", [("show",), ("create", "--parent"), ("code-map", "add"),
+                                ("lint",)],
+                     ["**STOP**", "copy it byte for byte to a sibling named `<name>.legacy.md`",
+                      "The parent's keywords stay unchanged", "verbatim", "two to six"]),
+    "module-lint": ("fix-up", [("ci",), ("lint",), ("registry", "set")],
+                    ["Leave the judgement calls to the user", "references/lint-codes.md"]),
 }
 PACK_SKILLS: dict[str, tuple[str, str, list[tuple[str, ...]], list[str]]] = {
 }
@@ -243,12 +262,13 @@ class TextRulesTest(SkillRules):  # P4B-AC-014, P4B-AC-017
             text = "\n".join(skill_files(directory).values())
             code = "\n".join(b.group(3) for b in _FENCE.finditer(text)) + "\n".join(
                 _INLINE.findall(_FENCE.sub("", text)))
+            flat = " ".join(text.split())
             with self.subTest(skill=sid):
                 self.assertIsNone(re.search(r"\bgit (commit|push)\b", code))
                 if section(text, "## Scope").strip().startswith("Writes"):
-                    self.assertIn("`*.legacy.md`", text)
-                    self.assertRegex(text, r"never (edit|change)")
-                    self.assertIn("review and commit", text)
+                    self.assertIn("`*.legacy.md`", flat)
+                    self.assertRegex(flat, r"never (edit|change)")
+                    self.assertIn("review and commit", flat)
 
     def test_generic_text(self):
         word = re.compile(r"\b(" + "|".join(FRAMEWORKS) + r")\b", re.I)
@@ -276,6 +296,39 @@ class ContractTest(SkillRules):  # P4B-AC-015, P4B-AC-016
                                          for c in commands(text)))
                 flat = " ".join(text.split())
                 self.assertEqual([p for p in says if p not in flat], [])
+
+
+class LintCodesReferenceTest(unittest.TestCase):  # module-lint explains every code
+    def test_every_lint_code_is_explained(self):
+        source = "".join((ENGINE / "modsys" / f).read_text(encoding="utf-8")
+                         for f in ("lint.py", "rules.py"))
+        ref = (builtin_packs_root() / "core/skills/module-lint/references/lint-codes.md")
+        documented = re.findall(r"^\| (MS\d{3}) \|", ref.read_text("utf-8"), re.M)
+        self.assertEqual(sorted(documented), sorted(set(re.findall(r"MS\d{3}", source))))
+
+
+class SplitInOneChangeTest(unittest.TestCase):  # P4B-AC-015, SI-9
+    def test_adding_legacy_copies_is_not_ms051(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = copy_fixture(tmp)
+            init_git(root)
+            R = ("--root", str(root))
+            doc = root / "modules/catalog/MODULE.md"
+            (root / "modules/catalog/MODULE.legacy.md").write_bytes(doc.read_bytes())
+            self.assertEqual(run("create", "search", "--parent", "catalog", "--non-interactive",
+                                 "--description", "Finding books by title, author or isbn.",
+                                 "--keywords", "search", *R)[0], 0)
+            doc.write_text("# Catalog\n\n| Child | Scope |\n|---|---|\n| search | finding |\n")
+            code, env, err = run_json("lint", "--changed", "--base", "HEAD", *R)
+            self.assertEqual((code, err), (0, ""))
+            self.assertEqual([f for f in env["data"]["findings"] if f["code"] == "MS051"], [])
+            git(root, "add", "--", ".")
+            git(root, "commit", "-q", "-m", "split")
+            (root / "modules/catalog/MODULE.legacy.md").write_text("# edited\n")
+            data = run_json("lint", "--changed", "--base", "HEAD", "--fail-on", "never",
+                            *R)[1]["data"]
+            self.assertEqual([f["path"] for f in data["findings"] if f["code"] == "MS051"],
+                             ["modules/catalog/MODULE.legacy.md"])
 
 
 if __name__ == "__main__":
