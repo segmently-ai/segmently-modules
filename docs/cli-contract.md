@@ -93,4 +93,4 @@ they are missing.
 | CI, no task text | `modsys discover --from-diff $BASE..HEAD --json` |
 | during build | `modsys propose --run-id $RUN --agent builder --module M --op … --reason "…"` |
 | after build | `modsys sync --from-diff $BASE..HEAD --apply-proposals --run-id $RUN --json` |
-| CI gate | `modsys ci --base $BASE --fail-under 80 --json` — lint (plain: config-level findings MS021, MS052, MS053 appear only here), drift against `$BASE` (a real ref: the PR's target branch or a captured pre-change commit) and coverage, always all three |
+| CI gate | `modsys ci --base $BASE --fail-under 80 --json` — lint (plain: config-level findings MS021, MS052, MS053 and the pack checks MS06x appear only here), drift against `$BASE` (a real ref: the PR's target branch or a captured pre-change commit) and coverage, always all three |

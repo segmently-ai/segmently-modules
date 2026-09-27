@@ -304,7 +304,7 @@ scaffolds a pack, `modsys packs list` lists the installed ones — the whole wor
 
 `lint` checks the registry, fields, docs and config; `lint --changed` narrows the report to the
 modules a change touches and adds the drift checks. Config-level findings carry module `*`
-(MS021, MS052, MS053) — `lint --changed` drops them along with every other finding outside the
+(MS021, MS052, MS053 and the pack checks MS06x) — `lint --changed` drops them along with every other finding outside the
 touched modules, so they show up ONLY in plain `modsys lint` (and `modsys ci`). A CI gate built only on `lint --changed`
 never sees a shared-keyword note (MS021, severity `info` — report-only, it never fails a gate at
 any `--fail-on` setting) or a typo'd `[[code_map]]` rule (MS052, severity `warning`); `modsys ci`
@@ -339,6 +339,11 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS051 | error | `--changed`: a frozen `*.legacy.md` snapshot was modified or deleted |
 | MS052 | warning | a `[[code_map]]` rule's `module` is not a registry module or child (plain `lint` only) |
 | MS053 | `overlap_severity` | two `[[code_map]]` rules route the same file to two different modules (plain `lint` only; see below) |
+| MS060 | warning | an unknown key in a pack's `pack.toml` — at the top level (neither a meta key nor a config section), in a `[roles.<name>]` or in a `[skills.<id>]` table (plain `lint` only) |
+| MS061 | error | a pack role's `template` file does not exist in the pack, or resolves outside the pack directory (plain `lint` only) |
+| MS062 | error | a pack skill agents cannot load: its `path` does not exist, is not a directory or is outside the pack; it contains a symlink; it has no `SKILL.md`; the front matter is missing, has no `name` or one that differs from the skill id, or no `description` of 1–1024 characters (plain `lint` only) |
+| MS064 | warning | a skill's `reads_roles` names a role no layer configures, or a disabled one (plain `lint` only) |
+| MS065 | warning | two packs declare the same skill id: the lower-precedence one is shadowed (plain `lint` only) |
 
 MS053 compares every pair of `[[code_map]]` rules over the repository's files (git-tracked +
 new, not ignored; `[coverage]` filters do not apply) after `exclusive` precedence: a pair is

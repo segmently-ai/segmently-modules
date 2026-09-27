@@ -80,3 +80,16 @@ modsys show reviews --role reviewer   # the reviewer doc of the module: what the
 modsys templates list                 # roles/reviewer.md  role-template:team  .modsys/packs/team/roles/reviewer.md
 modsys packs list                     # the pack, its role and its skill
 ```
+
+## Lint
+
+Plain `modsys lint` (and the lint step of `modsys ci`) checks every installed pack; the findings
+carry module `*`, so `lint --changed` never shows them:
+
+| Code | Severity | Finding |
+|---|---|---|
+| MS060 | warning | an unknown key in `pack.toml` (top level, `[roles.<name>]`, `[skills.<id>]`) — e.g. a typo like `standrad`, or `budget` / `consumed_by`, which are not role keys |
+| MS061 | error | a role's `template` does not exist in the pack, or points outside it |
+| MS062 | error | a skill agents cannot load (path, symlink, `SKILL.md` front matter) |
+| MS064 | warning | `reads_roles` names a role no layer configures, or a disabled one |
+| MS065 | warning | another pack with a higher precedence declares the same skill id |

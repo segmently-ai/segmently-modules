@@ -1,9 +1,12 @@
 """Registry lint. Codes: MS001-MS004, MS006-MS015 registry/field checks · MS020-MS022
 keyword budgets and hygiene · MS030-MS032 doc budgets · MS040 component paths ·
 MS052 a [[code_map]] rule whose `module` is not in the registry · MS053 two [[code_map]] rules
-route one file to two different modules ·
+route one file to two different modules · MS060-MS062, MS064, MS065 pack checks (unknown
+pack.toml keys, role templates, skills agents cannot load, skills reading unconfigured roles,
+shadowed skill ids) ·
 with --changed: MS050 code changed but no doc of its module · MS051 frozen legacy snapshot
 modified or deleted (report narrowed to the changed modules)."""
+import os
 import re
 from collections import Counter
 from dataclasses import asdict, dataclass
@@ -12,16 +15,21 @@ from pathlib import Path
 
 from modsys.changes import (changed_files, code_map_routes, diff_names, map_files, repo_files,
                             target_names, work_tree_error)
+from modsys.config import PACK_META_KEYS, ROLE_SCHEMA, discover_packs, enabled_roles
 from modsys.fields import value_matches
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.query import role_paths
 from modsys.registry import as_dict, as_list, stub_head
 from modsys.rules import edge_problems, status_problem
+from modsys.skills import SKILL_KEYS, declared_skills, source_problem
 from modsys.workspace import Workspace
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "error": 2}
 FAIL_ON = {"error": 2, "warning": 1, "never": 99}
 _BACKTICK = re.compile(r"`([^`]+)`")
+# the top-level keys of a pack.toml besides its meta keys: every config section the engine reads
+PACK_SECTIONS = ("paths", "registry", "budgets", "match", "lint", "create", "coverage", "ci",
+                 "packs", "roles", "fields", "code_map", "hooks", "schema_version")
 
 
 @dataclass
@@ -207,8 +215,63 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
         if isinstance(rule, dict) and "module" in rule and rule["module"] not in targets:
             add("MS052", "warning", "*", f"[[code_map]] '{rule.get('id')}': module "
                 f"'{rule['module']}' is not a registry module or child; the rule maps nothing")
+    out += pack_findings(ws)
     if overlap:
         out += overlap_findings(ws)
+    return out
+
+
+def _inside(path: Path, base: Path) -> bool:
+    path, base = Path(os.path.normpath(path.absolute())), Path(os.path.normpath(base.absolute()))
+    return base in path.parents
+
+
+def pack_findings(ws) -> list[Finding]:
+    """The pack checks (config-level, module `*`, `path` = the offending file): MS060 unknown
+    `pack.toml` keys, MS061 role templates that are missing or outside the pack, MS062 skills
+    agents cannot load, MS064 `reads_roles` naming a role no layer enables, MS065 a skill id
+    shadowed by a higher-precedence pack."""
+    out: list[Finding] = []
+    for pack in discover_packs(ws.config_dir):
+        data, toml, pack_dir, pid = pack["data"], ws.rel(pack["path"]), pack["path"].parent, \
+            pack["id"]
+        unknown = [(k, "at the top level") for k in data
+                   if k not in PACK_META_KEYS and k not in PACK_SECTIONS]
+        for table, schema in (("roles", ROLE_SCHEMA), ("skills", SKILL_KEYS)):
+            for name, spec in as_dict(data.get(table)).items():
+                unknown += [(k, f"in [{table}.{name}]") for k in as_dict(spec) if k not in schema]
+        out += [Finding("MS060", "warning", "*", f"pack '{pid}': unknown key '{key}' {where}",
+                        toml) for key, where in unknown]
+        for role, spec in as_dict(data.get("roles")).items():
+            template = as_dict(spec).get("template")
+            if not isinstance(template, str):
+                continue
+            path = pack_dir / template
+            if not _inside(path, pack_dir):
+                out.append(Finding("MS061", "error", "*", f"pack '{pid}': role '{role}' template "
+                                   f"'{template}' is outside the pack", toml))
+            elif not path.is_file():
+                out.append(Finding("MS061", "error", "*", f"pack '{pid}': role '{role}' template "
+                                   f"'{template}' does not exist", ws.rel(path)))
+    configured, enabled = set(ws.config.get("roles") or {}), set(enabled_roles(ws.config))
+    for skill in declared_skills(ws.config_dir):
+        toml = ws.rel(skill.pack_toml)
+        problem = source_problem(skill.source, skill.id, skill.pack_dir)
+        if problem:
+            where = (toml if problem.startswith("the path") else
+                     ws.rel(skill.source / "SKILL.md") if problem.startswith("SKILL.md") else
+                     ws.rel(skill.source))
+            out.append(Finding("MS062", "error", "*", f"skill '{skill.id}' of pack "
+                               f"'{skill.pack}' is not loadable by agents: {problem}", where))
+        for role in skill.reads_roles:
+            if role not in enabled:
+                why = "is disabled" if role in configured else "no layer configures"
+                out.append(Finding("MS064", "warning", "*", f"skill '{skill.id}' of pack "
+                                   f"'{skill.pack}' reads role '{role}', which {why}", toml))
+        if skill.shadowed_by:
+            out.append(Finding("MS065", "warning", "*", f"skill '{skill.id}' of pack "
+                               f"'{skill.pack}' is shadowed by pack '{skill.shadowed_by}' "
+                               f"(higher precedence); rename one", toml))
     return out
 
 
