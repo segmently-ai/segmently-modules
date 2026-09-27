@@ -3,15 +3,15 @@
 > ${role_description}
 
 <!-- The pack's skills read this doc with `modsys show <module> --role ${role}`: keep it to what
-a ${role} needs for this module, short, and link to code instead of copying it. -->
+${article} ${role} needs for this module, short, and link to code instead of copying it. -->
 
 ## What to check
 
-<!-- The checks a ${role} runs on every change to this module. -->
+<!-- The checks ${article} ${role} runs on every change to this module. -->
 
 ## Rules
 
-<!-- This module's rules a ${role} enforces, one line each. -->
+<!-- This module's rules ${article} ${role} enforces, one line each. -->
 
 ## Known exceptions
 

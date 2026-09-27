@@ -230,9 +230,9 @@ def _inside(path: Path, base: Path) -> bool:
 def pack_findings(ws) -> list[Finding]:
     """The pack checks (config-level, module `*`, `path` = the offending file): MS060 unknown
     `pack.toml` keys, MS061 role templates that are missing or outside the pack, MS062 skills
-    agents cannot load, MS063 ejected skills whose pack moved on (or dropped them), MS064
-    `reads_roles` naming a role no layer enables, MS065 a skill id shadowed by a
-    higher-precedence pack."""
+    agents cannot load (a pack's, or an ejected copy's), MS063 ejected skills whose pack moved
+    on (or dropped them), MS064 `reads_roles` naming a role no layer enables, MS065 a skill id
+    shadowed by a higher-precedence pack."""
     out: list[Finding] = []
     for pack in discover_packs(ws.config_dir):
         data, toml, pack_dir, pid = pack["data"], ws.rel(pack["path"]), pack["path"].parent, \
@@ -280,7 +280,14 @@ def pack_findings(ws) -> list[Finding]:
         if record is None:
             out.append(Finding("MS063", "warning", "*", f"ejected skill '{sid}' has no valid "
                                f"{EJECTED} record — eject it again or restore the file", where))
-        elif sid not in skills:
+            continue
+        problem = source_problem(copy, sid)  # the copy `packs sync` materializes instead
+        if problem:
+            out.append(Finding("MS062", "error", "*", f"ejected skill '{sid}' ({where}) is not "
+                               f"loadable by agents: {problem}",
+                               ws.rel(copy / "SKILL.md") if problem.startswith("SKILL.md")
+                               else where))
+        if sid not in skills:
             out.append(Finding("MS063", "info", "*", f"ejected skill '{sid}': pack "
                                f"'{record['pack']}' no longer declares it; the ejected copy is "
                                f"its only source", where))

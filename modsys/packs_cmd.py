@@ -8,6 +8,7 @@ skills.
   sync [--agent claude|codex]… [--check]
         copy every pack skill into the agents' skill directories (`skill_sync`); agents = the
         flags, else `[packs] agents`"""
+import functools
 import os
 import re
 import shutil
@@ -19,7 +20,7 @@ from modsys.code_map_cmd import _toml_string
 from modsys.config import DEFAULT_PACK_PRIORITY, core_defaults, discover_packs
 from modsys.create import NAME
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
-from modsys.skill_sync import STATUSES, apply_plan, plan_sync, row
+from modsys.skill_sync import NO_RECORD, STATUSES, apply_plan, conflict_kind, plan_sync, row
 from modsys.skills import (AGENT_DIRS, NAME_RULE, declared_skills, ejected_dir,
                            read_front_matter, skill_id_ok)
 from modsys.workspace import Workspace
@@ -70,6 +71,11 @@ def register(sub, common) -> None:
 def _scaffold(name: str) -> str:
     return resources.files("modsys").joinpath(f"defaults/scaffold/{name}").read_text(
         encoding="utf-8")
+
+
+def _a(word: str) -> str:
+    """The indefinite article before `word`: `an` before a vowel letter, else `a`."""
+    return "an" if word[:1] in ("a", "e", "i", "o", "u") else "a"
 
 
 def _and(words: list[str]) -> str:
@@ -123,7 +129,8 @@ def scaffold_files(pack_id: str, roles: list[str], skills: list[str], descriptio
     for n, role in enumerate(roles):
         tables += (f"\n[roles.{role}]\norder = {FIRST_ROLE_ORDER + n * ROLE_ORDER_STEP}\n"
                    f"standard = false\n"
-                   f"description = {_toml_string(f'What a {role} needs to know about a module')}"
+                   f"description = "
+                   f"{_toml_string(f'What {_a(role)} {role} needs to know about a module')}"
                    f"\ntemplate = {_toml_string(f'roles/{role}.md')}\n")
     for skill in skills:
         reads = ", ".join(_toml_string(r) for r in roles)
@@ -133,8 +140,8 @@ def scaffold_files(pack_id: str, roles: list[str], skills: list[str], descriptio
         id=pack_id, id_toml=_toml_string(pack_id),
         priority=DEFAULT_PACK_PRIORITY if priority is None else priority,
         description_toml=_toml_string(description or PACK_DESCRIPTION), tables=tables)}
-    for role in roles:
-        files[f"roles/{role}.md"] = _scaffold("role.md")
+    for role in roles:  # `${article}` is resolved now; the other placeholders by `create`
+        files[f"roles/{role}.md"] = _scaffold("role.md").replace("${article}", _a(role))
     task = '"<the task in one sentence>"'
     if roles:
         context = "\n".join(f"   `modsys context --task {task} --role {r} --json`" for r in roles)
@@ -249,7 +256,7 @@ def run(args) -> int:
     if args.action == "sync":
         _refuse_flags(args, "sync", SYNC_FLAGS + ("--dry-run",))
         data = sync(ws, args.agents, args.check, args.dry_run)
-        emit("packs", data, args.json, _render_sync)
+        emit("packs", data, args.json, functools.partial(_render_sync, ws=ws))
         return EXIT_FINDINGS if data["failed"] else EXIT_OK
     _refuse_flags(args, "new", ("ID",) + NEW_FLAGS + ("--dry-run",))
     if args.name is None:
@@ -264,7 +271,8 @@ def _render_new(d) -> None:
     verb = "would create" if d["dry_run"] else "created"
     for f in d["files"]:
         print(f"{verb}  {f}")
-    roles = [Path(f).stem for f in d["files"] if Path(f).parent.name == "roles"]
+    role_dir = Path(d["dir"]) / "roles"  # only <pack dir>/roles/<role>.md is a role template
+    roles = [Path(f).stem for f in d["files"] if Path(f).parent == role_dir]
     skills = any(Path(f).name == "SKILL.md" for f in d["files"])
     steps = [f"modsys create NAME … --role {roles[0]} (a module with the {roles[0]} doc)"
              if roles else "edit pack.toml (roles, fields, [[code_map]] rules, skills)"]
@@ -274,26 +282,54 @@ def _render_new(d) -> None:
     print(f"next: {'; then '.join(steps)}")
 
 
-HINTS = {"conflict": "resolve by hand (revert the edit, or eject the skill to own it: "
-                     "modsys eject {skill})",
-         "invalid": "fix the skill in its pack (plain modsys lint reports it as MS062)"}
+def _hint(ws, r) -> str:
+    """How to resolve a `conflict` or `invalid` row (text output only): by the reason."""
+    here, copy = r["dir"], ws.rel(ejected_dir(ws.config_dir, r["skill"]))
+    if r["status"] == "invalid":
+        if r["source"] != "ejected":
+            return "fix the skill in its pack (plain modsys lint reports it as MS062)"
+        code = "MS063" if r["reason"].endswith(NO_RECORD) else "MS062"
+        return f"fix the ejected copy {copy} (plain modsys lint reports it as {code})"
+    if r["status"] != "conflict":
+        return ""
+    kind, other = conflict_kind(r["reason"])
+    if kind == "edit":
+        keep = (f"copy it into {copy}" if r["source"] == "ejected"
+                else f"modsys eject {r['skill']}, copy the change into {copy}")
+        return (f"revert it (git checkout -- {here}) and sync again, or keep the change: {keep}, "
+                f"then packs sync")
+    return {"hand-written": "a skill written by hand: move or rename it, then sync again",
+            "other-pack": f"it belongs to pack '{other}': remove it if that pack is gone, or "
+                          f"rename one of the skills",
+            "bad-marker": f"restore the marker (git checkout -- {here}) or move the directory "
+                          f"away, then sync again",
+            "orphan-edit": "revert the edit, or delete the directory if the skill is no longer "
+                           "wanted",
+            "orphan-bad-marker": f"restore the marker (git checkout -- {here}) or delete the "
+                                 f"directory"}.get(kind, "move it away, then sync again")
 
 
-def _render_sync(d) -> None:
+def _render_sync(d, ws) -> None:
     if not d["skills"]:
         print("no pack skills (add one: modsys packs new ID --skill NAME)")
     for r in d["skills"]:
         where = f"({r['pack']} {r['version']}" if r["version"] else f"({r['pack']}"
         where += ", ejected copy)" if r["source"] == "ejected" else ")"
+        if r["pack"] is None and r["source"] is None:  # an orphan whose marker is unreadable
+            where = "(no valid marker)"
         same = f"  same directory as {r['same_as']}" if r.get("same_as") else ""
         print(f"{r['status']:<10} {r['agent']:<7} {r['dir']}  {where}{same}")
         if r["reason"]:
-            hint = HINTS.get(r["status"], "").format(skill=r["skill"])
+            hint = _hint(ws, r)
             print(f"  {r['reason']}" + (f" — {hint}" if hint else ""))
     s = d["summary"]
     counts = ", ".join(f"{s[k]} {k}" for k in STATUSES)
     if d["check"]:
-        state = "stale — run modsys packs sync" if d["failed"] else "in sync"
+        state = "; ".join(
+            (["stale — run modsys packs sync"]
+             if s["created"] or s["updated"] or s["removed"] else [])
+            + (["blocked — resolve the conflict / invalid rows above"]
+               if s["conflict"] or s["invalid"] else [])) or "in sync"
         print(f"packs sync --check: {counts}: {state}")
     else:
         print(f"packs sync: {counts}" + ("  (dry run: nothing written)" if d["dry_run"] else ""))

@@ -5,6 +5,7 @@ copy into every agent directory and the pack never overwrites it; plain `lint` r
 when the pack moves on. `--diff` compares the pack's current files with the copy (read-only).
 Back to the pack: delete the directory and run `modsys packs sync` (there is no un-eject)."""
 import difflib
+import functools
 import json
 import os
 import shutil
@@ -12,8 +13,8 @@ from pathlib import Path
 
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.skill_sync import copy_file
-from modsys.skills import (EJECTED, EJECTED_SCHEMA, ejected_dir, file_hashes, pack_skills,
-                           read_ejected, source_problem)
+from modsys.skills import (EJECTED, EJECTED_SCHEMA, ejected_dir, file_hashes, is_behind,
+                           pack_skills, read_ejected, source_problem)
 from modsys.workspace import Workspace
 
 
@@ -93,8 +94,8 @@ def _unified(upstream: Path | None, ejected: Path | None, rel: str) -> str:
 
 
 def diff(ws, skill_id: str) -> dict:
-    """The pack's current files vs the ejected copy; `behind` = the pack's version or files
-    differ from the snapshot recorded at eject time."""
+    """The pack's current files vs the ejected copy; `behind` = `is_behind` (lint MS063's
+    rule): the pack's version or files differ from the snapshot recorded at eject time."""
     target = ejected_dir(ws.config_dir, skill_id)
     if not target.is_dir():
         raise UsageError(f"skill '{skill_id}' is not ejected (eject it first: modsys eject "
@@ -118,10 +119,9 @@ def diff(ws, skill_id: str) -> dict:
         if status != "same":
             chunks.append(_unified(skill.source / rel if rel in upstream else None,
                                    target / rel if rel in mine else None, rel))
-    behind = ((skill.pack, skill.version) != (record["pack"], record.get("version"))
-              or upstream != record["files"])
     return {"skill": skill_id, "pack": skill.pack, "ejected_from": record.get("version"),
-            "upstream_version": skill.version, "behind": behind, "files": rows,
+            "upstream_version": skill.version,
+            "behind": is_behind(skill, record, upstream=upstream), "files": rows,
             "diff": "".join(chunks)}
 
 
@@ -132,19 +132,26 @@ def run(args) -> int:
             raise UsageError("--dry-run applies to eject without --diff (--diff never writes)")
         emit("eject", diff(ws, args.skill), args.json, _render_diff)
         return EXIT_OK
-    emit("eject", eject(ws, args.skill, args.dry_run), args.json, _render_eject)
+    agents = bool((ws.config.get("packs") or {}).get("agents"))
+    emit("eject", eject(ws, args.skill, args.dry_run), args.json,
+         functools.partial(_render_eject, agents=agents))
     return EXIT_OK
 
 
-def _render_eject(d) -> None:
+def _render_eject(d, agents: bool) -> None:
+    """`agents`: the config sets `[packs] agents`, so a bare `modsys packs sync` works."""
     version = f" {d['version']}" if d["version"] else ""
     print(f"{'would eject' if d['dry_run'] else 'ejected'}  {d['skill']}  "
           f"({d['pack']}{version}) -> {d['dir']}")
     for f in d["files"]:
         print(f"  {f}")
+    if d["dry_run"]:
+        print(f"next: modsys eject {d['skill']} (to do it)")
+        return
     print("edit the copy: packs sync materializes the skill from it, and the pack never "
           "overwrites it")
-    print("next: modsys packs sync")
+    print("next: modsys packs sync" if agents else
+          "next: modsys packs sync --agent claude --agent codex (or set [packs] agents once)")
 
 
 def _render_diff(d) -> None:

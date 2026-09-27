@@ -146,6 +146,30 @@ class FrontMatterTest(unittest.TestCase):  # P4A-AC-008
             with self.subTest(text=text):
                 self.assertEqual(self.loadable(text), problem)
 
+    def test_plain_values_strict_yaml_loaders_reject(self):  # fix wave F5
+        def problem(key, what):
+            return (f"SKILL.md {key}: quote the value — a plain YAML value cannot {what} "
+                    f"(agents' YAML loaders reject it)")
+
+        head = "---\nname: api-review\n"
+        rows = [(head + "description: Use when: the API changes\n---\n",
+                 problem("description", "contain ': '")),
+                (head + "description: Reviews API\n  changes: routes and errors\n---\n",
+                 problem("description", "contain ': '")),
+                (head + "description: Reviews these:\n---\n", problem("description",
+                                                                     "end with ':'")),
+                (head + 'description: "Use when: the API changes"\n---\n', None),
+                (head + "description: 'Use when: the API changes'\n---\n", None),
+                (head + "description: >\n  Use when: the API changes\n---\n", None),
+                (head + "description: |-\n  Use when: the API changes\n---\n", None),
+                (head + "description: Reviews API changes # note: set by the pack\n---\n", None),
+                (head + "description: Reviews http://example.com/api changes.\n---\n", None)]
+        rows += [(head + f"description: {c}team reviews API changes\n---\n",
+                  problem("description", f"start with '{c}'")) for c in "`@%*&![{"]
+        for text, expected in rows:
+            with self.subTest(text=text):
+                self.assertEqual(self.loadable(text), expected)
+
     def test_front_matter_other_tools_write(self):  # Review Focus
         text = ("--- \nname: api-review   \nlicense: MIT\nallowed-tools:\n- Read\n- Grep\n"
                 "metadata:\n  version: '2'\n  tags: [a, b]\n"

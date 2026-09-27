@@ -1,5 +1,6 @@
 """`modsys packs sync` (D7): statuses decided before anything is written, file safety, agents,
 `--check` / `--dry-run`, mirrored agent directories and the `[packs]` config section."""
+import errno
 import hashlib
 import json
 import os
@@ -11,11 +12,16 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from modsys import skill_sync
 from modsys.init_cmd import starter_config
 from tests.helpers import copy_fixture, run, run_json
 
 SKILL = "---\nname: {sid}\ndescription: {desc}\n---\n\n# {sid}\n"
 BLOCK = '[skills.{sid}]\npath = "skills/{sid}"\n'
+EDIT_HINT = ("  SKILL.md (locally edited) — revert it (git checkout -- "
+             ".claude/skills/api-review) and sync again, or keep the change: modsys eject "
+             "api-review, copy the change into .modsys/overrides/skills/api-review, then packs "
+             "sync")
 
 
 def sha(data: bytes) -> str:
@@ -132,8 +138,7 @@ class SyncTransitionsTest(SyncRepo):  # P4A-AC-014
         self.assertEqual(self.dest("SKILL.md", sid="notes").read_text(),
                          SKILL.format(sid="notes", desc="New."))
         out = run("packs", "sync", "--agent", "claude", *self.R)[1].splitlines()
-        self.assertEqual(out[1], "  SKILL.md (locally edited) — resolve by hand (revert the "
-                                 "edit, or eject the skill to own it: modsys eject api-review)")
+        self.assertEqual(out[1], EDIT_HINT)
 
     def test_other_conflicts_leave_the_skill_untouched(self):
         cases = {
@@ -268,6 +273,32 @@ class SyncFileSafetyTest(SyncRepo):  # P4A-AC-015
                         err)
         self.assertIn("run packs sync again", err)
 
+    def test_a_first_sync_that_fails_part_way_resumes(self):  # fix wave F2
+        self.src("references").mkdir()
+        self.src("references/api.md").write_text("# API\n")
+        real = skill_sync.copy_file
+        for error, code, needle in [
+                (OSError(errno.ENOSPC, "No space left on device"), 2,
+                 "modsys: error: cannot write .claude/skills/api-review: No space left on device"),
+                (KeyboardInterrupt(), 130, "modsys: interrupted\n")]:
+            with self.subTest(error=type(error).__name__):
+                calls = []
+
+                def the_second_write_fails(src, path):
+                    calls.append(path)
+                    if len(calls) == 2:
+                        raise error
+                    real(src, path)
+
+                with mock.patch("modsys.skill_sync.copy_file", side_effect=the_second_write_fails):
+                    got, out, err = run("packs", "sync", "--agent", "claude", "--json", *self.R)
+                self.assertEqual((got, out, len(calls)), (code, "", 2))
+                self.assertTrue(err.startswith(needle), err)
+                self.assertFalse(os.path.lexists(self.dest()))  # nothing half-made stays
+                self.assertTrue((self.root / ".claude/skills").is_dir())
+                self.assertEqual(self.statuses(self.sync()), [("claude", "api-review", "created")])
+                shutil.rmtree(self.root / ".claude")
+
     def test_every_write_stays_inside_the_skill_directory(self):
         outside = self.root / "outside"
         outside.mkdir()
@@ -400,6 +431,99 @@ class SyncAgentsTest(SyncRepo):  # P4A-AC-016
         shutil.rmtree(self.root / ".agents")
         self.assertEqual(run("packs", "sync", "--agent", "claude", *self.R)[1].splitlines()[0],
                          "no pack skills (add one: modsys packs new ID --skill NAME)")
+
+
+class SyncHintsTest(SyncRepo):  # fix wave F3: each conflict reason gets a hint that works
+    def text(self, *argv) -> list[str]:
+        return run("packs", "sync", "--agent", "claude", *argv, *self.R)[1].splitlines()
+
+    def test_a_managed_file_edited_or_deleted(self):
+        self.sync()
+        self.dest("SKILL.md").write_text("# edited\n")
+        self.assertEqual(self.text()[1], EDIT_HINT)
+        self.src("notes.md").write_text("theirs\n")
+        self.dest("notes.md").write_text("mine\n")  # joined with a move problem: the edit wins
+        self.assertEqual(self.text()[1], EDIT_HINT.replace(
+            "SKILL.md (locally edited)", "SKILL.md (locally edited); notes.md (exists and is not "
+                                         "managed by modsys)"))
+        self.assertEqual(run("eject", "api-review", *self.R)[0], 0)  # the source is the copy
+        self.dest("SKILL.md").unlink()
+        self.assertEqual(self.text()[1], "  SKILL.md (locally deleted); notes.md (exists and is "
+                                         "not managed by modsys) — revert it (git checkout -- "
+                                         ".claude/skills/api-review) and sync again, or keep the "
+                                         "change: copy it into .modsys/overrides/skills/"
+                                         "api-review, then packs sync")
+
+    def test_something_in_the_way(self):
+        self.sync()
+        self.src("notes.md").write_text("theirs\n")
+        self.dest("notes.md").write_text("mine\n")
+        self.assertEqual(self.text()[1], "  notes.md (exists and is not managed by modsys) — "
+                                         "move it away, then sync again")
+        shutil.rmtree(self.root / ".claude")
+        (self.root / "elsewhere").mkdir()
+        self.dest().parent.mkdir(parents=True)
+        os.symlink(self.root / "elsewhere", self.dest())
+        self.assertEqual(self.sync(code=1)["skills"][0]["reason"], "the destination is a symlink")
+        self.assertEqual(self.text()[1], "  the destination is a symlink — move it away, then "
+                                         "sync again")
+        self.dest().unlink()
+        self.dest().write_text("a file\n")
+        self.assertEqual(self.text()[1], "  the destination is not a directory — move it away, "
+                                         "then sync again")
+
+    def test_a_directory_that_is_not_ours(self):
+        self.dest().mkdir(parents=True)
+        self.dest("SKILL.md").write_text("mine\n")
+        self.assertEqual(self.text()[1], "  not managed by modsys (no .modsys-managed) — a skill "
+                                         "written by hand: move or rename it, then sync again")
+        shutil.rmtree(self.root / ".claude")
+        self.sync()
+        marker = self.dest(".modsys-managed")
+        marker.write_text(marker.read_text().replace('"team"', '"other"'))
+        self.assertEqual(self.text()[1], "  managed for pack 'other', skill 'api-review' — it "
+                                         "belongs to pack 'other': remove it if that pack is "
+                                         "gone, or rename one of the skills")
+        marker.write_text("{}\n")
+        self.assertEqual(self.text()[1], "  .modsys-managed is not a valid marker — restore the "
+                                         "marker (git checkout -- .claude/skills/api-review) or "
+                                         "move the directory away, then sync again")
+
+    def test_orphans(self):
+        self.sync()
+        self.pack("team", [])
+        self.dest("SKILL.md").write_text("# edited\n")
+        self.assertEqual(self.text()[:2], [
+            "conflict   claude  .claude/skills/api-review  (team 0.1.0)",
+            "  SKILL.md (locally edited; not removed) — revert the edit, or delete the directory "
+            "if the skill is no longer wanted"])
+        self.dest(".modsys-managed").write_text("{}\n")
+        self.assertEqual(self.text()[:2], [
+            "conflict   claude  .claude/skills/api-review  (no valid marker)",
+            "  .modsys-managed is not a valid marker (not removed) — restore the marker (git "
+            "checkout -- .claude/skills/api-review) or delete the directory"])
+
+    def test_check_says_what_would_fix_it(self):
+        self.pack("team", ["api-review", "notes"])
+        self.sync()
+        mine = self.dest("SKILL.md").read_text()
+        self.dest("SKILL.md").write_text("# edited\n")
+        counts = ("packs sync --check: 0 created, {} updated, {} unchanged, 0 removed, "
+                  "{} conflict, 0 invalid: ")
+        blocked = "blocked — resolve the conflict / invalid rows above"
+        self.assertEqual(self.text("--check")[-1], counts.format(0, 1, 1) + blocked)
+        self.src("SKILL.md", sid="notes").write_text(SKILL.format(sid="notes", desc="New."))
+        self.assertEqual(self.text("--check")[-1], counts.format(1, 0, 1)
+                         + "stale — run modsys packs sync; " + blocked)
+        self.dest("SKILL.md").write_text(mine)
+        self.assertEqual(self.text("--check")[-1], counts.format(1, 1, 0)
+                         + "stale — run modsys packs sync")
+
+    def test_invalid_sources(self):
+        self.src("SKILL.md").write_text("# no front matter\n")
+        self.assertEqual(self.text()[1], "  SKILL.md has no front matter (a --- block at the top, "
+                                         "closed by a --- line) — fix the skill in its pack "
+                                         "(plain modsys lint reports it as MS062)")
 
 
 class PacksConfigAndContractTest(SyncRepo):  # D7 [packs], D10 init starter, P4A-AC-023

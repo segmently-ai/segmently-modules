@@ -50,6 +50,8 @@ reads_roles = ["reviewer"]       # the roles whose module docs the skill reads
   a list of strings, an id that breaks the rule) is a config error: every verb exits 2 naming
   the `pack.toml`. When two packs declare the same skill id, the higher-precedence pack's
   skill is the one every verb uses.
+- **`SKILL.md` front matter:** quote a `description` that contains `: ` —
+  `description: "Use when: the API changes"` — agents' YAML loaders reject it unquoted (MS062).
 
 ## Role templates
 
@@ -104,7 +106,10 @@ another pack, a managed file was edited or deleted in the agent's directory, or 
 would replace a file that is not managed. The other skills still sync. Resolve it by hand: revert
 the local edit (`git checkout -- .claude/skills/api-review`) and sync again, or move a
 hand-written skill away, or eject the skill (next section) when the team wants to own its
-changes. A source agents cannot load (MS062) is `invalid` and never copied.
+changes. To keep a local edit, eject the skill and copy the edit into
+`.modsys/overrides/skills/<skill>/` before syncing — the ejected copy starts as the pack's files,
+so ejecting alone leaves the edit a conflict. A source agents cannot load (MS062) is `invalid`
+and never copied.
 
 ## Owning a skill: eject
 
@@ -112,9 +117,9 @@ When the team needs its own version of a pack skill (a skill from someone else's
 it wants to freeze), eject it:
 
 ```bash
-modsys eject api-review                  # copies it to .modsys/overrides/skills/api-review/
-modsys packs sync                        # the agents' copies now come from the ejected copy
-modsys eject api-review --diff           # later: what the pack changed since the eject
+modsys eject api-review                          # copies it to .modsys/overrides/skills/api-review/
+modsys packs sync --agent claude --agent codex   # the agents' copies now come from the ejected copy
+modsys eject api-review --diff                   # later: what the pack changed since the eject
 ```
 
 Edit the ejected copy and run `packs sync`: both agents get it (`updated`, `source` `ejected`).
@@ -123,7 +128,7 @@ reports MS063 — `ejected skill 'api-review' is behind pack 'team' (ejected fro
 now 0.2.0)` — and `eject api-review --diff` shows the upstream change as a unified diff, so the
 team can take what it wants by hand. If the pack drops the skill, the ejected copy stays the
 skill's only source (MS063 info). To go back to the pack's version, delete
-`.modsys/overrides/skills/api-review/` and run `modsys packs sync`.
+`.modsys/overrides/skills/api-review/` and run `modsys packs sync --agent claude --agent codex`.
 
 ## Tell the agents: the managed block
 
@@ -151,7 +156,7 @@ carry module `*`, so `lint --changed` never shows them:
 |---|---|---|
 | MS060 | warning | an unknown key in `pack.toml` (top level, `[roles.<name>]`, `[skills.<id>]`) — e.g. a typo like `standrad`, or `budget` / `consumed_by`, which are not role keys |
 | MS061 | error | a role's `template` does not exist in the pack, or points outside it |
-| MS062 | error | a skill agents cannot load (path, symlink, `SKILL.md` front matter) |
+| MS062 | error | a pack skill or an ejected copy agents cannot load (path, symlink, `SKILL.md` front matter) |
 | MS063 | warning / info | an ejected skill is behind its pack, or no pack declares it any more |
 | MS064 | warning | `reads_roles` names a role no layer configures, or a disabled one |
 | MS065 | warning | another pack with a higher precedence declares the same skill id |

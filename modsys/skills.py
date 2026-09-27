@@ -30,6 +30,8 @@ NOT_COPIED = {MANAGED, EJECTED, ".DS_Store"}  # never part of a skill's files
 _KEY = re.compile(r"^([A-Za-z_][\w.-]*)[ \t]*:(?:[ \t]+(.*))?$")
 _BLOCK = re.compile(r"^([|>])(?:[1-9]?[+-]?|[+-][1-9])$")  # block scalar indicator
 _COMMENT = re.compile(r"[ \t]+#.*$")
+_PLAIN_STARTS = "`@%*&![{"  # characters a plain YAML scalar cannot start with
+_PLAIN_COLON = re.compile(r":(?:\s|$)")  # `: ` inside, or `:` at the end, of a plain scalar
 
 
 def skill_id_ok(value: str) -> bool:
@@ -115,6 +117,12 @@ def front_matter(text: str) -> dict[str, str] | None:
     plain scalar's indented continuation lines are folded with spaces; the indented lines
     under a key without a value (e.g. `metadata:`) are skipped (the key reads as ""); comment
     lines are skipped. A UTF-8 BOM and `\\r\\n` line ends are accepted."""
+    parsed = _front_matter(text)
+    return None if parsed is None else parsed[0]
+
+
+def _front_matter(text: str) -> tuple[dict[str, str], set[str]] | None:
+    """`front_matter` plus the keys whose value is a plain (unquoted, non-block) scalar."""
     lines = text.lstrip("﻿").splitlines()
     if not lines or lines[0].rstrip() != "---":
         return None
@@ -122,17 +130,20 @@ def front_matter(text: str) -> dict[str, str] | None:
     if end is None:
         return None
     out: dict[str, str] = {}
+    plain: set[str] = set()
     key, style, value, extra = None, "skip", "", []
 
     def flush() -> None:
         if key is None:
             return
+        plain.discard(key)
         if style in ("|", ">"):
             indent = min((len(l) - len(l.lstrip()) for l in extra if l.strip()), default=0)
             body = [l[indent:].rstrip() if l.strip() else "" for l in extra]
             out[key] = ("\n".join(body) if style == "|" else _fold(body)).strip("\n")
         elif style == "plain":
             out[key] = " ".join([value] + [l.strip() for l in extra if l.strip()])
+            plain.add(key)
         else:
             out[key] = value
 
@@ -158,15 +169,33 @@ def front_matter(text: str) -> dict[str, str] | None:
         else:
             style, value = "plain", _COMMENT.sub("", raw).strip()
     flush()
-    return out
+    return out, plain
+
+
+def _read_front_matter(path: Path) -> tuple[dict[str, str], set[str]] | None:
+    try:
+        return _front_matter(path.read_bytes().decode("utf-8"))
+    except (OSError, UnicodeDecodeError):
+        return None
 
 
 def read_front_matter(path: Path) -> dict[str, str] | None:
     """`front_matter` of a file; None when it is unreadable or not UTF-8."""
-    try:
-        return front_matter(path.read_bytes().decode("utf-8"))
-    except (OSError, UnicodeDecodeError):
+    parsed = _read_front_matter(path)
+    return None if parsed is None else parsed[0]
+
+
+def strict_yaml_problem(key: str, value: str) -> str | None:
+    """Why agents' strict YAML loaders would reject `key`'s plain (unquoted) value although the
+    lenient reader above takes it: a `: ` inside or a `:` at the end, or a first character
+    that starts another YAML construct. Quoting the value fixes it."""
+    if value[:1] in ('"', "'", "|", ">"):
         return None
+    what = (f"start with '{value[0]}'" if value[:1] and value[0] in _PLAIN_STARTS
+            else "end with ':'" if value.endswith(":")
+            else "contain ': '" if _PLAIN_COLON.search(value) else None)
+    return (f"SKILL.md {key}: quote the value — a plain YAML value cannot {what} (agents' YAML "
+            f"loaders reject it)") if what else None
 
 
 def first_symlink(directory: Path) -> str | None:
@@ -205,14 +234,19 @@ def source_problem(src: Path, skill_id: str, pack_dir: Path | None = None) -> st
     md = src / "SKILL.md"
     if not md.is_file():
         return "no SKILL.md"
-    meta = read_front_matter(md)
-    if meta is None:
+    parsed = _read_front_matter(md)
+    if parsed is None:
         return "SKILL.md has no front matter (a --- block at the top, closed by a --- line)"
+    meta, plain = parsed
     name = meta.get("name")
     if not name:
         return "SKILL.md front matter has no name"
     if name != skill_id:
         return f"SKILL.md name '{name}' is not the skill id '{skill_id}'"
+    for key in ("name", "description"):
+        problem = strict_yaml_problem(key, meta[key]) if key in plain else None
+        if problem:
+            return problem
     description = meta.get("description", "")
     if not description.strip():
         return "SKILL.md front matter has no description"
@@ -311,8 +345,11 @@ def read_ejected(directory: Path) -> dict | None:
     return data
 
 
-def is_behind(skill: PackSkill, record: dict) -> bool:
-    """The pack moved on since the eject: another pack, another version, or other files."""
-    upstream = file_hashes(skill.source) if skill.source.is_dir() else {}
+def is_behind(skill: PackSkill, record: dict, upstream: dict[str, str] | None = None) -> bool:
+    """The pack moved on since the eject: another pack, another version, or other files — the
+    one rule of lint MS063 and `eject --diff`. `upstream`: the pack source's `file_hashes`
+    when the caller already has them (hashed here otherwise)."""
+    if upstream is None:
+        upstream = file_hashes(skill.source) if skill.source.is_dir() else {}
     return ((skill.pack, skill.version) != (record["pack"], record.get("version"))
             or upstream != record["files"])

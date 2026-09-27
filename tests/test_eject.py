@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+from modsys.skills import is_behind, pack_skills, read_ejected
 from tests.helpers import copy_fixture, init_git, run, run_json
 
 SKILL = "---\nname: api-review\ndescription: {desc}\n---\n\n# api-review\n"
@@ -111,21 +112,75 @@ class EjectTest(EjectRepo):  # P4A-AC-017
         data = self.ok("eject", "api-review", "--dry-run")
         self.assertEqual((data["dry_run"], data["files"]), (True, ["SKILL.md"]))
         self.assertFalse(self.ejected.exists())
+        out = run("eject", "api-review", "--dry-run", *self.R)[1].splitlines()
+        self.assertEqual(out, ["would eject  api-review  (team 0.1.0) -> "
+                               ".modsys/overrides/skills/api-review", "  SKILL.md",
+                               "next: modsys eject api-review (to do it)"])
         out = run("eject", "api-review", *self.R)[1].splitlines()
         self.assertEqual(out, ["ejected  api-review  (team 0.1.0) -> "
                                ".modsys/overrides/skills/api-review", "  SKILL.md",
                                "edit the copy: packs sync materializes the skill from it, and "
-                               "the pack never overwrites it", "next: modsys packs sync"])
+                               "the pack never overwrites it",
+                               "next: modsys packs sync --agent claude --agent codex (or set "
+                               "[packs] agents once)"])
         out = run("packs", "sync", "--agent", "claude", *self.R)[1].splitlines()
         self.assertEqual(out[0], "created    claude  .claude/skills/api-review  (team 0.1.0, "
                                  "ejected copy)")
+
+    def test_the_next_line_works_as_printed(self):  # fix wave F6
+        (self.root / ".modsys/config.toml").write_text('[packs]\nagents = ["claude"]\n')
+        out = run("eject", "api-review", *self.R)[1].splitlines()
+        self.assertEqual(out[-1], "next: modsys packs sync")
+        code, _, err = run("packs", "sync", *self.R)  # the line as printed
+        self.assertEqual((code, err), (0, ""))
 
     def test_the_conflict_hint_names_eject(self):
         self.sync()
         (self.root / ".claude/skills/api-review/SKILL.md").write_text("# edited\n")
         out = run("packs", "sync", "--agent", "claude", *self.R)[1].splitlines()
-        self.assertEqual(out[1], "  SKILL.md (locally edited) — resolve by hand (revert the "
-                                 "edit, or eject the skill to own it: modsys eject api-review)")
+        self.assertEqual(out[1], "  SKILL.md (locally edited) — revert it (git checkout -- "
+                                 ".claude/skills/api-review) and sync again, or keep the change: "
+                                 "modsys eject api-review, copy the change into "
+                                 ".modsys/overrides/skills/api-review, then packs sync")
+
+
+class EjectedCopyLoadableTest(EjectRepo):  # fix wave F4: lint checks the copy packs sync reads
+    def ms062(self) -> list[tuple]:
+        data = self.ok("lint", "--fail-on", "never")
+        return [(f["severity"], f["module"], f["message"], f["path"]) for f in data["findings"]
+                if f["code"] == "MS062"]
+
+    def sync_text(self) -> list[str]:
+        return run("packs", "sync", "--agent", "claude", *self.R)[1].splitlines()
+
+    def test_an_ejected_copy_agents_cannot_load(self):
+        self.ok("eject", "api-review")
+        self.assertEqual(self.ms062(), [])  # a valid ejected copy
+        (self.ejected / "SKILL.md").write_text("---\nname: api_review\ndescription: Ours.\n---\n")
+        self.assertEqual(self.ms062(), [(
+            "error", "*", "ejected skill 'api-review' (.modsys/overrides/skills/api-review) is not "
+                          "loadable by agents: SKILL.md name 'api_review' is not the skill id "
+                          "'api-review'", ".modsys/overrides/skills/api-review/SKILL.md")])
+        self.assertEqual(run("lint", "--fail-on", "error", *self.R)[0], 1)
+        self.assertEqual(self.sync(code=1), [("claude", "invalid", "ejected"),
+                                             ("codex", "invalid", "ejected")])
+        self.assertEqual(self.sync_text()[1], "  SKILL.md name 'api_review' is not the skill id "
+                                              "'api-review' — fix the ejected copy "
+                                              ".modsys/overrides/skills/api-review (plain modsys "
+                                              "lint reports it as MS062)")
+        (self.ejected / "SKILL.md").unlink()
+        self.assertEqual([f[2:] for f in self.ms062()], [(
+            "ejected skill 'api-review' (.modsys/overrides/skills/api-review) is not loadable by "
+            "agents: no SKILL.md", ".modsys/overrides/skills/api-review")])
+
+    def test_an_ejected_copy_without_its_record(self):
+        self.ok("eject", "api-review")
+        (self.ejected / ".modsys-ejected").write_text("{}")
+        self.assertEqual(self.ms062(), [])  # MS063 reports it
+        self.assertEqual(self.sync_text()[1], "  the ejected copy .modsys/overrides/skills/"
+                                              "api-review has no valid .modsys-ejected record — "
+                                              "fix the ejected copy .modsys/overrides/skills/"
+                                              "api-review (plain modsys lint reports it as MS063)")
 
 
 class EjectDiffTest(EjectRepo):  # P4A-AC-018
@@ -210,6 +265,20 @@ class EjectDiffTest(EjectRepo):  # P4A-AC-018
         init_git(self.root)
         (self.root / "modules/catalog/MODULE.md").write_text("# Catalog\n\nChanged.\n")
         self.assertEqual(self.ms063("--changed", "--base", "HEAD"), [])
+
+    def test_diff_and_lint_share_one_behind_rule(self):  # fix wave F1
+        self.ok("eject", "api-review")
+        digest = hashlib.sha256(self.upstream().read_bytes()).hexdigest()
+        with mock.patch("modsys.eject_cmd.is_behind", return_value=True) as rule:
+            self.assertTrue(self.diff()["behind"])
+        rule.assert_called_once()
+        self.assertEqual(rule.call_args.kwargs["upstream"], {"SKILL.md": digest})
+        skill = pack_skills(self.root / ".modsys")["api-review"]
+        record = read_ejected(self.ejected)
+        with mock.patch("modsys.skills.file_hashes", side_effect=AssertionError("hashed twice")):
+            self.assertFalse(is_behind(skill, record, upstream={"SKILL.md": digest}))
+            self.assertTrue(is_behind(skill, record, upstream={}))
+        self.assertFalse(is_behind(skill, record))  # hashes the pack's files itself
 
     def test_text_output(self):
         self.ok("eject", "api-review")

@@ -162,6 +162,30 @@ class SkillLoadableTest(PackLintRepo):  # P4A-AC-013
         md.write_text(SKILL, encoding="utf-8")
         self.assertEqual(self.ms062(), [])
 
+    def test_a_description_strict_yaml_loaders_reject(self):  # fix wave F5
+        self.pack(SKILLS.replace('["reviewer"]', "[]"))
+        md = self.team / "skills/api-review/SKILL.md"
+        colon = ("SKILL.md description: quote the value — a plain YAML value cannot contain ': ' "
+                 "(agents' YAML loaders reject it)")
+        md.write_text("---\nname: api-review\ndescription: Use when: the API changes\n---\n")
+        self.assertEqual(self.ms062(), [(colon, ".modsys/packs/team/skills/api-review/SKILL.md")])
+        code, env, _ = run_json("packs", "sync", "--agent", "claude", *self.R)
+        self.assertEqual((code, env["data"]["skills"][0]["status"],
+                          env["data"]["skills"][0]["reason"]), (1, "invalid", colon))
+        code, out, err = run("eject", "api-review", "--json", *self.R)
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn(f"skill 'api-review' of pack 'team' is not loadable: {colon} (lint MS062); "
+                      f"nothing written", err)
+        for text in ('description: "Use when: the API changes"\n',
+                     "description: >\n  Use when: the API changes\n"):
+            with self.subTest(text=text):
+                md.write_text("---\nname: api-review\n" + text + "---\n")
+                self.assertEqual(self.ms062(), [])
+        md.write_text("---\nname: api-review\ndescription: @team reviews API changes\n---\n")
+        self.assertEqual(self.ms062(), [(
+            "SKILL.md description: quote the value — a plain YAML value cannot start with '@' "
+            "(agents' YAML loaders reject it)", ".modsys/packs/team/skills/api-review/SKILL.md")])
+
 
 if __name__ == "__main__":
     unittest.main()

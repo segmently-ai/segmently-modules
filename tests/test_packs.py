@@ -97,6 +97,24 @@ class PacksNewTest(PacksRepo):  # P4A-AC-009
         self.assertEqual((rows["roles/reviewer.md"]["source"], rows["roles/reviewer.md"]["path"]),
                          ("role-template:team", ".modsys/packs/team/roles/reviewer.md"))
 
+    def test_a_or_an_before_the_role(self):  # fix wave F7
+        self.ok("packs", "new", "team", "--role", "api-reviewer", "--role", "reviewer")
+        roles = self.pack_toml("team")["roles"]
+        self.assertEqual([roles[r]["description"] for r in ("api-reviewer", "reviewer")],
+                         ["What an api-reviewer needs to know about a module",
+                          "What a reviewer needs to know about a module"])
+        templates = {r: (self.root / f".modsys/packs/team/roles/{r}.md").read_text(
+            encoding="utf-8") for r in ("api-reviewer", "reviewer")}
+        self.assertIn("to what\nan ${role} needs for this module", templates["api-reviewer"])
+        self.assertIn("to what\na ${role} needs for this module", templates["reviewer"])
+        self.assertEqual(templates["api-reviewer"].replace(" an ${role}", " a ${role}")
+                         .replace("\nan ${role}", "\na ${role}"), templates["reviewer"])
+        self.ok("create", "reviews", *DESC, *KW, "--role", "api-reviewer", "--non-interactive")
+        doc = (self.root / "modules/reviews/roles/api-reviewer.md").read_text(encoding="utf-8")
+        self.assertTrue(doc.startswith("# Reviews — api-reviewer\n\n> What an api-reviewer needs "
+                                       "to know about a module\n"), doc)
+        self.assertNotIn(" a api-reviewer", doc.replace("\n", " "))
+
     def test_two_roles_and_two_skills(self):
         self.ok("packs", "new", "duo", "--role", "alpha", "--role", "beta", "--skill", "one",
                 "--skill", "two")
@@ -153,6 +171,18 @@ class PacksNewTest(PacksRepo):  # P4A-AC-009
                                "next: modsys create NAME … --role reviewer (a module with the "
                                "reviewer doc); then modsys packs sync --agent claude --agent "
                                "codex (the skills into the agents' skill directories)"])
+
+
+    def test_the_next_line_names_only_role_templates(self):  # fix wave F8
+        bare = ("next: edit pack.toml (roles, fields, [[code_map]] rules, skills); then modsys "
+                "packs sync --agent claude --agent codex (the skills into the agents' skill "
+                "directories)")
+        for argv in (("roles", "--skill", "notes"), ("team", "--skill", "roles")):
+            with self.subTest(argv=argv):
+                self.assertEqual(run("packs", "new", *argv, *self.R)[1].splitlines()[-1], bare)
+        out = run("packs", "new", "roles2", "--role", "roles", "--skill", "one", *self.R)[1]
+        self.assertEqual(out.splitlines()[-1].split(";")[0], "next: modsys create NAME … --role "
+                                                              "roles (a module with the roles doc)")
 
 
 class PacksRefusalTest(PacksRepo):  # P4A-AC-010

@@ -14,12 +14,16 @@ Every (agent, skill) gets its status BEFORE anything is written:
              would replace an unmanaged one — the skill is left untouched
   invalid    the source is not loadable by agents (lint MS062) — nothing written for it
 The marker `<dest>/.modsys-managed` = {schema, pack, skill, version, source, files: {path:
-sha256}} is written LAST: after an interrupted sync, a file that already equals the source is
-not a local edit, so the next run resumes. Directories without a marker are never read beyond
-the existence check; a symlink inside a destination is never written through."""
+sha256}} is written LAST: after an interrupted update, a file that already equals the source is
+not a local edit, so the next run resumes; a first write (`created`) that fails or is interrupted
+removes the directory it made, so the next run creates the skill again. Directories without a
+marker are never read beyond the existence check; a symlink inside a destination is never
+written through."""
 import contextlib
 import json
 import os
+import re
+import shutil
 import stat
 import tempfile
 from dataclasses import dataclass, field
@@ -30,6 +34,13 @@ from modsys.skills import (AGENT_DIRS, EJECTED, MANAGED, ejected_copies, file_ha
 
 MANAGED_SCHEMA = "modsys.managed/1"
 STATUSES = ("created", "updated", "unchanged", "removed", "conflict", "invalid")
+# fixed reasons that `conflict_kind` and the `packs sync` hints read back
+NOT_MANAGED = f"not managed by modsys (no {MANAGED})"
+BAD_MARKER = f"{MANAGED} is not a valid marker"
+NO_RECORD = f"has no valid {EJECTED} record"  # an `invalid` ejected copy: lint MS063, not MS062
+ORPHAN_BAD_MARKER = f"{BAD_MARKER} (not removed)"
+_OTHER_PACK = re.compile(r"managed for pack '(.*)', skill '.*'")
+_EDIT = re.compile(r" \(locally (?:edited|deleted)\)(?:; |$)")
 
 
 @dataclass
@@ -71,8 +82,7 @@ def skill_sources(ws) -> dict[str, Source]:
             if record is None:
                 out[sid] = Source(sid, skills[sid].pack if sid in skills else None, None,
                                   "ejected", ejected[sid],
-                                  f"the ejected copy {ws.rel(ejected[sid])} has no valid "
-                                  f"{EJECTED} record")
+                                  f"the ejected copy {ws.rel(ejected[sid])} {NO_RECORD}")
                 continue
             version = record.get("version")
             src = Source(sid, record["pack"], version if isinstance(version, str) else None,
@@ -139,14 +149,15 @@ def plan_skill(agent: str, dest: Path, src: Source) -> Plan:
         return plan
     plan.status = "conflict"
     if dest.is_symlink() or not dest.is_dir():
-        plan.reason = "the destination is not a directory"
+        plan.reason = ("the destination is a symlink" if dest.is_symlink()
+                       else "the destination is not a directory")
         return plan
     if not os.path.lexists(dest / MANAGED):
-        plan.reason = f"not managed by modsys (no {MANAGED})"
+        plan.reason = NOT_MANAGED
         return plan
     marker = plan.marker = read_marker(dest)
     if marker is None:
-        plan.reason = f"{MANAGED} is not a valid marker"
+        plan.reason = BAD_MARKER
         return plan
     if (marker["pack"], marker["skill"]) != (src.pack, src.skill):
         plan.reason = f"managed for pack '{marker['pack']}', skill '{marker['skill']}'"
@@ -193,7 +204,7 @@ def plan_orphans(agent: str, agent_dir: Path, wanted: set[str]) -> list[Plan]:
             continue  # a marker copied from elsewhere: not this directory's own
         plan = Plan(agent, dest.name, dest, "conflict", marker=marker)
         if marker is None:
-            plan.reason = f"{MANAGED} is not a valid marker (not removed)"
+            plan.reason = ORPHAN_BAD_MARKER
         else:
             edited = [rel for rel, recorded in sorted(marker["files"].items())
                       if os.path.lexists(dest / rel) and (_in_the_way(dest, rel)
@@ -210,6 +221,26 @@ def plan_orphans(agent: str, agent_dir: Path, wanted: set[str]) -> list[Plan]:
                 plan.reason = f"left unmanaged files: {', '.join(left)}" if left else None
         plans.append(plan)
     return plans
+
+
+def conflict_kind(reason: str) -> tuple[str, str | None]:
+    """What a `conflict` reason is about, for the hint `packs sync` prints, and the other pack
+    for `other-pack`: `orphan-bad-marker` / `orphan-edit` (a skill no pack declares any more,
+    not removed), `hand-written` (no marker), `bad-marker`, `other-pack`, `edit` (a managed
+    file edited or deleted locally — it wins when a reason joins several problems), else
+    `in-the-way` (something the sync must not write over)."""
+    if reason == ORPHAN_BAD_MARKER:
+        return "orphan-bad-marker", None
+    if reason.endswith("(locally edited; not removed)"):
+        return "orphan-edit", None
+    if reason == NOT_MANAGED:
+        return "hand-written", None
+    if reason == BAD_MARKER:
+        return "bad-marker", None
+    other = _OTHER_PACK.fullmatch(reason)
+    if other:
+        return "other-pack", other.group(1)
+    return ("edit" if _EDIT.search(reason) else "in-the-way"), None
 
 
 def copy_file(src: Path, path: Path) -> None:
@@ -237,20 +268,35 @@ def _prune(dest: Path, rels: list[str], including_dest: bool) -> None:
             d.rmdir()
 
 
+def _write(plan: Plan) -> None:
+    for rel in plan.write:
+        copy_file(plan.source.dir / rel, plan.dest / rel)
+    for rel in plan.delete:
+        (plan.dest / rel).unlink()
+    _prune(plan.dest, plan.delete, False)
+    text = marker_text(plan.source)
+    path = plan.dest / MANAGED
+    fd, tmp = tempfile.mkstemp(dir=plan.dest, prefix=f".{MANAGED}.", suffix=".tmp")
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)  # last: the marker only ever describes files already written
+
+
 def apply_plan(plan: Plan) -> None:
-    if plan.status in ("created", "updated"):
-        for rel in plan.write:
-            copy_file(plan.source.dir / rel, plan.dest / rel)
-        for rel in plan.delete:
-            (plan.dest / rel).unlink()
-        _prune(plan.dest, plan.delete, False)
-        text = marker_text(plan.source)
-        path = plan.dest / MANAGED
-        fd, tmp = tempfile.mkstemp(dir=plan.dest, prefix=f".{MANAGED}.", suffix=".tmp")
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(text)
-        os.chmod(tmp, 0o644)
-        os.replace(tmp, path)  # last: the marker only ever describes files already written
+    """Write, update or remove one skill. A `created` skill's directory is made here (never an
+    existing one) and removed again when the write fails or is interrupted, so a rerun creates
+    it instead of finding a directory without a marker; an `updated` one resumes by hash."""
+    if plan.status == "created":
+        plan.dest.parent.mkdir(parents=True, exist_ok=True)
+        os.mkdir(plan.dest)  # exclusive: the directory is this run's alone to remove
+        try:
+            _write(plan)
+        except BaseException:  # a failed write or Ctrl-C: no marker-less directory stays
+            shutil.rmtree(plan.dest, ignore_errors=True)
+            raise
+    elif plan.status == "updated":
+        _write(plan)
     elif plan.status == "removed":
         for rel in plan.delete:
             (plan.dest / rel).unlink()
