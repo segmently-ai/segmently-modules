@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E-A — deterministic adoption eval. Builds three repositories in temp dirs and drives the
+"""E-A — deterministic adoption eval. Builds four repositories in temp dirs and drives the
 modsys CLI of THIS checkout (`python -m modsys`, the checkout on PYTHONPATH):
 
   greenfield  git init -> init -> 3 modules -> code-map add -> a relation -> lint -> coverage
@@ -17,6 +17,12 @@ modsys CLI of THIS checkout (`python -m modsys`, the checkout on PYTHONPATH):
               codex -> --check -> a local edit is a conflict -> eject -> sync from the ejected
               copy -> the pack moves on: MS063 + eject --diff -> agents-md keeps the team's
               CLAUDE.md text -> templates list names the pack template
+  skills      a git copy of the bookshop fixture -> [packs] builtin = core, ui, qa -> packs list
+              (3 built-in rows) -> lint without MS06x -> packs sync to claude and codex (10 x 2
+              created) -> --check -> agents-md lists the 10 skills -> create --tag ui --tag qa
+              (the designer and qa_acceptance templates) -> a code change: sync-instructions
+              names the module, MS050 and the keywords hint -> eject module-sync -> packs sync
+              from the edited copy -> packs new core is refused (a reserved id)
 
 Every step asserts an exit code and a data check. Prints the scorecard JSON
 {scenario: {steps: [{name, ok, detail}], commands, ok}} (commands = modsys invocations) and
@@ -594,7 +600,109 @@ def packs(sc: Scenario) -> None:
         sc.step(name, fn)
 
 
-SCENARIOS = {"greenfield": greenfield, "brownfield": brownfield, "packs": packs}
+# --- skills ------------------------------------------------------------------------------
+
+BUILTIN_SKILLS = ["designer-review", "module-create", "module-discover", "module-lint",
+                  "module-research", "module-scout", "module-split", "module-sync",
+                  "qa-acceptance", "qa-acceptance-baseline"]
+
+
+def skills(sc: Scenario) -> None:
+    base = {}
+
+    def fixture():
+        shutil.copytree(BOOKSHOP, sc.root, dirs_exist_ok=True)
+        sc.git("init", "-q", "-b", "main")
+        sc.commit("bookshop", ".")
+
+    def enable():
+        sc.write(".modsys/config.toml", '[packs]\nbuiltin = ["core", "ui", "qa"]\n')
+        data, _ = sc.modsys("packs", "list")
+        rows = [(r["id"], r["builtin"]) for r in data]
+        check(rows == [("bookshop", False), ("core", True), ("qa", True), ("ui", True)],
+              f"packs {rows}")
+        sc.commit("enable the built-in packs", ".modsys")
+        base["sha"] = sc.git("rev-parse", "HEAD")
+
+    def lint_clean():
+        data, _ = sc.modsys("lint")
+        check(not [f for f in data["findings"] if f["code"].startswith("MS06")],
+              f"lint {findings(data)}")
+
+    def sync_created():
+        data, _ = sc.modsys("packs", "sync", "--agent", "claude", "--agent", "codex")
+        rows = sorted({r["skill"] for r in data["skills"] if r["status"] == "created"})
+        check(len(data["skills"]) == 20 and rows == BUILTIN_SKILLS, f"sync {data['summary']}")
+
+    def check_passes():
+        sc.modsys("packs", "sync", "--check", "--agent", "claude", "--agent", "codex")
+
+    def agents_md():
+        sc.modsys("agents-md", "--target", "AGENTS.md")
+        text = (sc.root / "AGENTS.md").read_text(encoding="utf-8")
+        missing = [s for s in BUILTIN_SKILLS if f"- `{s}` — " not in text]
+        check(not missing, f"AGENTS.md lacks {missing}")
+
+    def create_tagged():
+        description, keywords = REVIEWS
+        data, _ = sc.modsys("create", "reviews", "--non-interactive", "--description",
+                            description, *[a for k in keywords for a in ("--keyword", k)],
+                            "--tag", "ui", "--tag", "qa")
+        docs = {"modules/reviews/roles/designer.md", "modules/reviews/roles/qa_acceptance.md"}
+        check(docs <= set(data["files"]), f"files {data['files']}")
+        text = (sc.root / "modules/reviews/roles/designer.md").read_text(encoding="utf-8")
+        check("\n## UX invariants\n" in text, f"designer doc {text[:80]!r}")
+        data, _ = sc.modsys("templates", "list")
+        rows = {r["template"]: r["source"] for r in data}
+        check((rows.get("roles/designer.md"), rows.get("roles/qa_acceptance.md"))
+              == ("role-template:ui", "role-template:qa"), f"templates {rows}")
+
+    def sync_instructions():
+        sc.append("src/catalog/service.py", "\nPAGE_SIZE = 20\n")
+        sc.commit("catalog: page size", "src")
+        data, _ = sc.modsys("sync-instructions", "--from-diff", f"{base['sha']}..HEAD")
+        rows = {m["module"]: m for m in data["modules"]}
+        check(list(rows) == ["catalog"], f"modules {list(rows)}")
+        check([f["code"] for f in rows["catalog"]["drift"]] == ["MS050"],
+              f"drift {rows['catalog']['drift']}")
+        hints = {f["name"]: f["sync_hint"] for f in rows["catalog"]["fields"]}
+        check(bool(hints.get("keywords")), f"fields {sorted(hints)}")
+
+    def eject():
+        data, _ = sc.modsys("eject", "module-sync")
+        check((data["pack"], data["dir"]) == ("core", ".modsys/overrides/skills/module-sync"),
+              f"eject {data}")
+
+    def sync_from_the_ejected_copy():
+        sc.append(".modsys/overrides/skills/module-sync/SKILL.md", "\nTeam rule: link the PR.\n")
+        data, _ = sc.modsys("packs", "sync", "--agent", "claude", "--agent", "codex")
+        rows = [(r["agent"], r["status"], r["source"]) for r in data["skills"]
+                if r["status"] != "unchanged"]
+        check(rows == [("claude", "updated", "ejected"), ("codex", "updated", "ejected")],
+              f"sync {rows}")
+
+    def reserved_id():
+        _, err = sc.modsys("packs", "new", "core", expect=2)
+        check("pack id 'core' is reserved for the engine's built-in pack" in err,
+              f"stderr: {err.strip()}")
+
+    for name, fn in [("a git copy of the bookshop fixture", fixture),
+                     ("[packs] builtin: packs list shows core, qa, ui", enable),
+                     ("plain lint: no pack findings", lint_clean),
+                     ("packs sync: 10 skills x 2 agents created", sync_created),
+                     ("packs sync --check passes", check_passes),
+                     ("agents-md lists the ten skills", agents_md),
+                     ("create --tag ui --tag qa renders the pack templates", create_tagged),
+                     ("a code change: sync-instructions names catalog, MS050 and the hints",
+                      sync_instructions),
+                     ("eject module-sync", eject),
+                     ("packs sync from the edited ejected copy", sync_from_the_ejected_copy),
+                     ("packs new core is refused: a reserved id", reserved_id)]:
+        sc.step(name, fn)
+
+
+SCENARIOS = {"greenfield": greenfield, "brownfield": brownfield, "packs": packs,
+             "skills": skills}
 
 
 def run_scenario(name: str, build) -> dict:

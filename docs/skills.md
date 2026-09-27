@@ -122,3 +122,12 @@ The ids `core`, `qa` and `ui` are reserved: `modsys packs new ui` is refused and
 enable the built-in pack instead. A team pack that declares a skill with a core skill's name
 shadows it (plain `lint` reports MS065 for the built-in one); a hand-written
 `.claude/skills/module-scout/` is a `packs sync` conflict and is never overwritten.
+
+## Evals
+
+Whether the skills fire on the requests they are written for is measured with `claude plugin
+eval`: `evals/skills/` in the modsys repository holds a trigger case per skill, an outcome case
+per writer (`module-sync`, `module-create`, `module-split`) and a negative case, and
+`evals/skills/run.py` runs them against a plugin assembled from the built-in packs — see
+`evals/skills/README.md` there. Every run is a billed model call, so they run at release gates,
+not in the unit suite.

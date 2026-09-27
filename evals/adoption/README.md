@@ -9,21 +9,23 @@ it with a pack — using only what ships: a deterministic script (E-A) and blind
 python3 evals/adoption/run_eval.py      # from the engine checkout; exit 0 = every step passed
 ```
 
-It builds three repositories in temp dirs and drives this checkout's CLI (`python -m modsys`)
-through adoption and a team pack. No network: the brownfield app is generated.
+It builds four repositories in temp dirs and drives this checkout's CLI (`python -m modsys`)
+through adoption, a team pack and the built-in skills. No network: the brownfield app is generated.
 
 | Scenario | Steps |
 |---|---|
 | greenfield | `git init` → a missing registry names `modsys init` → `init` (and again: nothing changes) → 3 modules → `code-map add` (no hand edit) → a relation via `registry append` (a bad edge is refused) → lint clean → coverage 100 % → `context` returns `code_globs` → commit → code-only change: `lint --changed --fail-on warning` exits 1 with MS050 → `propose` a `doc_append` → `sync --from-diff --apply-proposals` → commit: gate exits 0 → `ci --base <first commit>` exits 0 → a code-only change: `ci` exits 1 (drift step failed) → a docs follow-up: `ci` exits 0 → a child module mapped by its own exclusive rule (`code-map add --exclusive`) |
 | brownfield | a generated layered app (`app/routes/<f>/`, `app/repositories/<f>.py`, `app/models/<f>.py`, `app/sql/<f>.sql`, `tests/test_<f>.py`, an `app/db/` layer) → `init` keeps `.gitignore` → baseline coverage → a module per feature + `db` → layered rules: lint reports MS053 until the per-feature `repositories` / `sql` rules are `exclusive` (a hand edit), then lint is clean → coverage ≥ 80 % → `code-map files orders` lists `app/repositories/orders.py` → a feature repository maps only to its feature → a feature change drifts only the feature (MS050, `discover`) → `index split` + per-module layout keep `list` / `match` |
 | packs | a git copy of `tests/fixtures/bookshop` → `packs new team --role reviewer --skill api-review` → plain `lint` without MS06x → `create reviews … --role reviewer` renders the pack's template → `show reviews --role reviewer` lists it → `packs sync --agent claude --agent codex`: 2 × `created` → `packs sync --check` exits 0 → a local edit in `.claude/skills/api-review/SKILL.md`: `packs sync` exits 1 (`conflict`), the edit stays → revert → `eject api-review` → edit the ejected copy: `packs sync` 2 × `updated` from it → the pack moves to `0.2.0` with a changed skill: plain `lint` reports MS063 → `eject api-review --diff` shows the change → a `CLAUDE.md` with team text: `agents-md --target CLAUDE.md --target AGENTS.md` → `added` + `created`, and again → 2 × `unchanged`, the team text kept → `templates list`: `roles/reviewer.md` from `role-template:team` |
+| skills | a git copy of `tests/fixtures/bookshop` → `[packs] builtin = ["core", "ui", "qa"]`: `packs list` shows the three built-in packs → plain `lint` without MS06x → `packs sync --agent claude --agent codex`: 10 skills × 2 agents `created` → `packs sync --check` exits 0 → `agents-md --target AGENTS.md` lists the 10 skills → `create reviews … --tag ui --tag qa` renders `roles/designer.md` and `roles/qa_acceptance.md` from the packs' templates (`templates list`: `role-template:ui` / `role-template:qa`) → a code change in `catalog`: `sync-instructions --from-diff` names `catalog` with an MS050 drift row and the `keywords` hint → `eject module-sync` → the edited ejected copy: `packs sync` 2 × `updated` (`source: ejected`) → `packs new core` is refused (a reserved id) |
 
 Every step checks an exit code and the data. The scorecard on stdout:
 
 ```json
 {"greenfield": {"steps": [{"name": "init", "ok": true, "detail": "…"}], "commands": 26, "ok": true},
  "brownfield": {"steps": ["…"], "commands": 20, "ok": true},
- "packs": {"steps": ["…"], "commands": 15, "ok": true}}
+ "packs": {"steps": ["…"], "commands": 15, "ok": true},
+ "skills": {"steps": ["…"], "commands": 11, "ok": true}}
 ```
 
 `commands` counts modsys invocations. A scenario stops at its first failed step; the other
