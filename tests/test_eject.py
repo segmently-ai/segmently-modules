@@ -303,7 +303,7 @@ class EjectContractTest(EjectRepo):  # P4A-AC-023
                              (130, "", "modsys: interrupted\n"))
         self.assertFalse(self.ejected.exists())  # no half-made copy
         self.ok("eject", "api-review")
-        with mock.patch("modsys.eject_cmd.file_hashes", side_effect=KeyboardInterrupt):
+        with mock.patch("modsys.eject_cmd.source_hashes", side_effect=KeyboardInterrupt):
             self.assertEqual(run("eject", "api-review", "--diff", *self.R),
                              (130, "", "modsys: interrupted\n"))
 

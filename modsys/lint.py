@@ -20,8 +20,8 @@ from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.query import role_paths
 from modsys.registry import as_dict, as_list, stub_head
 from modsys.rules import edge_problems, status_problem
-from modsys.skills import (EJECTED, SKILL_KEYS, declared_skills, ejected_copies, inside,
-                           is_behind, pack_skills, read_ejected, source_problem)
+from modsys.skills import (EJECTED, SKILL_KEYS, behind_reason, declared_skills, ejected_copies,
+                           inside, pack_skills, read_ejected, source_problem)
 from modsys.workspace import Workspace
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "error": 2}
@@ -285,11 +285,20 @@ def pack_findings(ws) -> list[Finding]:
             out.append(Finding("MS063", "info", "*", f"ejected skill '{sid}': pack "
                                f"'{record['pack']}' no longer declares it; the ejected copy is "
                                f"its only source", where))
-        elif is_behind(skills[sid], record):
+            continue
+        skill = skills[sid]
+        try:
+            reason = behind_reason(skill, record)
+        except OSError as e:  # an unreadable pack file: say so, never crash (P4B-AC-003)
+            unreadable = ws.rel(e.filename or skill.source)
+            out.append(Finding("MS063", "warning", "*", f"ejected skill '{sid}': cannot read "
+                               f"{unreadable}: {e.strerror or e} — cannot tell whether pack "
+                               f"'{skill.pack}' moved on since the eject", unreadable))
+            continue
+        if reason:
             out.append(Finding("MS063", "warning", "*", f"ejected skill '{sid}' is behind pack "
-                               f"'{skills[sid].pack}' (ejected from {record.get('version')}, "
-                               f"pack is now {skills[sid].version}) — review: modsys eject "
-                               f"{sid} --diff", where))
+                               f"'{skill.pack}' ({reason}) — review: modsys eject {sid} --diff",
+                               where))
     return out
 
 

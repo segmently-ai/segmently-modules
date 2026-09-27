@@ -307,6 +307,7 @@ class PackSkill:
     path: str
     reads_roles: list[str]
     shadowed_by: str | None = None  # the higher-precedence pack that declares the same id
+    builtin: bool = False  # a pack the engine ships: its version is the engine version
 
     @property
     def source(self) -> Path:
@@ -322,7 +323,8 @@ def declared_skills(config_dir: Path) -> list[PackSkill]:
         for sid, spec in (pack["data"].get("skills") or {}).items():
             out.append(PackSkill(sid, pack["id"], version if isinstance(version, str) else None,
                                  pack["path"].parent, pack["path"], spec["path"],
-                                 list(spec.get("reads_roles", [])), first.get(sid)))
+                                 list(spec.get("reads_roles", [])), first.get(sid),
+                                 bool(pack.get("builtin"))))
             first.setdefault(sid, pack["id"])
     return out
 
@@ -360,11 +362,24 @@ def read_ejected(directory: Path) -> dict | None:
     return data
 
 
-def is_behind(skill: PackSkill, record: dict, upstream: dict[str, str] | None = None) -> bool:
-    """The pack moved on since the eject: another pack, another version, or other files — the
-    one rule of lint MS063 and `eject --diff`. `upstream`: the pack source's `file_hashes`
-    when the caller already has them (hashed here otherwise)."""
+def behind_reason(skill: PackSkill, record: dict,
+                  upstream: dict[str, str] | None = None) -> str | None:
+    """Why the pack moved on since the eject, or None — the one rule of lint MS063 and `eject
+    --diff`: another pack, another version, or other files. The version counts for a
+    repository pack only: a built-in pack's version is the engine's, so an engine upgrade that
+    leaves the skill's files alone is no move. `upstream`: the pack source's `file_hashes` when
+    the caller already has them (hashed here otherwise; an unreadable file raises OSError)."""
     if upstream is None:
         upstream = file_hashes(skill.source) if skill.source.is_dir() else {}
-    return ((skill.pack, skill.version) != (record["pack"], record.get("version"))
-            or upstream != record["files"])
+    if skill.pack != record["pack"]:
+        return f"ejected from pack '{record['pack']}'"
+    if not skill.builtin and skill.version != record.get("version"):
+        return f"ejected from {record.get('version')}, pack is now {skill.version}"
+    if upstream != record["files"]:
+        return "the pack's files changed since the eject"
+    return None
+
+
+def is_behind(skill: PackSkill, record: dict, upstream: dict[str, str] | None = None) -> bool:
+    """`behind_reason` is not None."""
+    return behind_reason(skill, record, upstream) is not None

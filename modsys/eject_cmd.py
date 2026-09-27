@@ -14,11 +14,11 @@ from pathlib import Path
 
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.skill_sync import copy_file, sync_command
-from modsys.skills import (EJECTED, EJECTED_SCHEMA, ejected_dir, file_hashes, is_behind,
-                           pack_skills, read_ejected, source_hashes, source_problem)
+from modsys.skills import (EJECTED, EJECTED_SCHEMA, ejected_dir, is_behind, pack_skills,
+                           read_ejected, source_hashes, source_problem)
+from modsys.workspace import Workspace
 
 SET_AGENTS = " (or set [packs] agents once)"
-from modsys.workspace import Workspace
 
 
 def register(sub, common) -> None:
@@ -98,7 +98,8 @@ def _unified(upstream: Path | None, ejected: Path | None, rel: str) -> str:
 
 def diff(ws, skill_id: str) -> dict:
     """The pack's current files vs the ejected copy; `behind` = `is_behind` (lint MS063's
-    rule): the pack's version or files differ from the snapshot recorded at eject time."""
+    rule): the pack (or a repository pack's version) or its files differ from the snapshot
+    recorded at eject time. An unreadable file on either side is exit 2 `cannot read …`."""
     target = ejected_dir(ws.config_dir, skill_id)
     if not target.is_dir():
         raise UsageError(f"skill '{skill_id}' is not ejected (eject it first: modsys eject "
@@ -112,8 +113,8 @@ def diff(ws, skill_id: str) -> dict:
         raise UsageError(f"pack '{record['pack']}' no longer declares skill '{skill_id}' — the "
                          f"ejected copy {ws.rel(target)} is its only source (nothing to "
                          f"compare)")
-    upstream = file_hashes(skill.source) if skill.source.is_dir() else {}
-    mine = file_hashes(target)
+    upstream = source_hashes(skill.source, ws.rel) if skill.source.is_dir() else {}
+    mine = source_hashes(target, ws.rel)
     rows, chunks = [], []
     for rel in sorted(set(upstream) | set(mine)):
         status = ("only-upstream" if rel not in mine else "only-ejected" if rel not in upstream

@@ -109,6 +109,26 @@ class ModesTest(SyncInstructionsRepo):  # P4B-AC-011
                                      "docs"])
         self.assertIn(f"  field   keywords — {CORE_FIELDS['keywords'].sync_hint}", lines)
 
+    def test_the_queued_and_outside_lines(self):  # fix wave P-a
+        code, _, err = run("propose", "--run-id", "r1", "--module", "catalog", "--op", "append",
+                           "--field", "keywords", "--value", '"shelf"', "--reason", "new words",
+                           *self.R)
+        self.assertEqual((code, err), (0, ""))
+        (self.root / "other.txt").write_text("x\n")
+        code, out, err = run("sync-instructions", "--files", "src/catalog/service.py",
+                             "other.txt", *self.R)
+        self.assertEqual((code, err), (0, ""))
+        lines = out.splitlines()
+        self.assertEqual(lines[0], "catalog  modify")
+        self.assertIn("  queued  1 proposal item(s) — modsys proposals list", lines)
+        self.assertEqual(lines[-1], "outside   other.txt")
+        row = next(line for line in (ENGINE / "docs/cli-contract.md").read_text(
+            encoding="utf-8").splitlines() if line.startswith("| `sync-instructions` |"))
+        text = row.split("Text:", 1)[1]
+        for kind in ("`  queued  <n> proposal item(s) — modsys proposals list`",
+                     "`outside   <path>`"):
+            self.assertIn(kind, text)
+
     def test_usage_errors(self):
         for argv, needle in [((), "one of the arguments --from-diff --files --module is "
                                   "required"),

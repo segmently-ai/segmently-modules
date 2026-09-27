@@ -98,9 +98,8 @@ class ShippedMachineryTest(ShippedPacks):  # P4B-AC-008
             diff = self.ok("eject", "module-sync", "--diff")
             rows = self.sync("claude")
         self.assertEqual([f["message"] for f in lint["findings"] if f["code"] == "MS063"],
-                         [f"ejected skill 'module-sync' is behind pack 'core' (ejected from "
-                          f"{__version__}, pack is now {__version__}) — review: modsys eject "
-                          f"module-sync --diff"])
+                         ["ejected skill 'module-sync' is behind pack 'core' (the pack's files "
+                          "changed since the eject) — review: modsys eject module-sync --diff"])
         self.assertTrue(diff["behind"])
         self.assertIn("-A new upstream step.", diff["diff"])
         self.assertEqual({s for _, s, st in rows if st != "unchanged"}, set())

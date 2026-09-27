@@ -177,7 +177,7 @@ def discover_packs(config_dir: Path) -> list[dict]:
             raise UsageError(f"{pack_toml}: id must be a non-empty string, got {pack_id!r}")
         if isinstance(data.get("packs"), dict) and "builtin" in data["packs"]:
             raise UsageError(f"{pack_toml}: [packs] builtin: a pack cannot enable built-in "
-                             f"packs — set it in .modsys/config.toml")
+                             f"packs — set it in {config_dir / 'config.toml'}")
         validate_skills(data, pack_toml)
         packs.append({"id": pack_id, "priority": priority, "path": pack_toml, "data": data,
                       "builtin": False})

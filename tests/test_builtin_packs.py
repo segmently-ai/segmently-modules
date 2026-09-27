@@ -121,8 +121,19 @@ class BuiltinConfigTest(FakeBuiltins):  # P4B-AC-005
     def test_a_pack_cannot_enable_a_builtin_pack(self):
         self.repo_pack("team", '[packs]\nbuiltin = ["core"]\n')
         self.assertIn(".modsys/packs/team/pack.toml: [packs] builtin: a pack cannot enable "
-                      "built-in packs — set it in .modsys/config.toml",
+                      "built-in packs — set it in "
+                      f"{self.root.resolve() / '.modsys' / 'config.toml'}\n",
                       self.refused("packs", "list"))
+
+    def test_the_refusal_names_the_config_dir_in_use(self):  # fix wave M10
+        cfg = self.root / "cfg"
+        pack = cfg / "packs/team"
+        pack.mkdir(parents=True)
+        (pack / "pack.toml").write_text('id = "team"\n[packs]\nbuiltin = ["core"]\n')
+        err = self.refused("packs", "list", "--config-dir", str(cfg))
+        self.assertIn("cfg/packs/team/pack.toml: [packs] builtin: a pack cannot enable built-in "
+                      f"packs — set it in {cfg.resolve() / 'config.toml'}\n", err)
+        self.assertNotIn(".modsys", err)
 
 
 class BuiltinDiscoveryTest(FakeBuiltins):  # P4B-AC-006
@@ -260,12 +271,43 @@ class BuiltinMachineryTest(FakeBuiltins):  # P4B-AC-008 (mechanics; the shipped 
         self.change_the_engine()
         lint = self.ok("lint", "--fail-on", "never")
         self.assertEqual([f["message"] for f in lint["findings"] if f["code"] == "MS063"],
-                         [f"ejected skill 'notes' is behind pack 'core' (ejected from "
-                          f"{__version__}, pack is now {__version__}) — review: modsys eject "
-                          f"notes --diff"])
+                         ["ejected skill 'notes' is behind pack 'core' (the pack's files changed "
+                          "since the eject) — review: modsys eject notes --diff"])  # M3
         diff = self.ok("eject", "notes", "--diff")
         self.assertTrue(diff["behind"])
         self.assertIn("-5. A new step upstream.", diff["diff"])
+
+    def ms063(self) -> list[str]:
+        lint = self.ok("lint", "--fail-on", "never")
+        return [f["message"] for f in lint["findings"] if f["code"] == "MS063"]
+
+    def test_an_engine_upgrade_alone_is_not_behind(self):  # fix wave I-3
+        self.enable("core")
+        init_git(self.root)
+        self.ok("eject", "notes")
+        with mock.patch("modsys.config.__version__", "99.0.0"):  # the next engine release
+            self.assertEqual([r["version"] for r in self.ok("packs", "list")
+                              if r["id"] == "core"], ["99.0.0"])
+            self.assertEqual(self.ms063(), [])
+            self.assertFalse(self.ok("eject", "notes", "--diff")["behind"])
+            ci = self.ok("ci")
+            self.assertEqual((ci["failed"], ci["steps"][0]["status"]), (False, "passed"))
+            self.change_the_engine()  # the upgrade also changes the skill's files
+            self.assertEqual(self.ms063(), [
+                "ejected skill 'notes' is behind pack 'core' (the pack's files changed since "
+                "the eject) — review: modsys eject notes --diff"])
+            self.assertTrue(self.ok("eject", "notes", "--diff")["behind"])
+            self.assertTrue(self.ok("ci", code=1)["failed"])
+
+    def test_a_repository_copy_of_a_builtin_pack_keeps_the_version_rule(self):  # I-3
+        shutil.copytree(self.tree / "core", self.root / ".modsys/packs/core")
+        toml = self.root / ".modsys/packs/core/pack.toml"
+        toml.write_text('version = "1.0.0"\n' + toml.read_text())
+        self.ok("eject", "notes")
+        toml.write_text(toml.read_text().replace('"1.0.0"', '"1.1.0"'))  # same files
+        self.assertEqual(self.ms063(), [
+            "ejected skill 'notes' is behind pack 'core' (ejected from 1.0.0, pack is now "
+            "1.1.0) — review: modsys eject notes --diff"])
 
     def test_the_agents_md_block_and_templates_list(self):
         self.enable("core", "ui", "qa")

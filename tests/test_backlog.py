@@ -11,7 +11,7 @@ from pathlib import Path
 
 from modsys import lint
 from modsys.skill_sync import sync_command
-from tests.helpers import copy_fixture, run, run_json
+from tests.helpers import copy_fixture, init_git, run, run_json
 
 SKILL = "---\nname: {sid}\ndescription: The {sid} skill.\n---\n\n# {sid}\n"
 SYNC = re.compile(r"modsys packs sync(?: --agent \w+)*")
@@ -81,6 +81,16 @@ class HintsNameTheAgentsTest(BacklogRepo):  # P4B-AC-001
         self.assertTrue(self.text("packs", "sync", "--check", "--agent", "claude").endswith(
             "stale — run modsys packs sync --agent claude\n"))
 
+    def test_packs_new_names_the_configured_agents(self):  # fix wave M1
+        for configured in (None, ["claude"], ["claude", "codex"]):
+            with self.subTest(configured=configured):
+                self.config("" if configured is None else
+                            f"[packs]\nagents = {json.dumps(configured)}\n")
+                new = self.text("packs", "new", "late", "--skill", "notes",
+                                "--dry-run").splitlines()[-1]
+                self.assertTrue(new.startswith("next: "), new)
+                self.assertEqual(SYNC.findall(new), [sync_command(None, configured)])
+
 
 class RecordAndArticleTest(BacklogRepo):  # P4B-AC-002
     def test_a_record_less_copy_of_a_skill_no_pack_declares(self):
@@ -143,6 +153,39 @@ class UnreadableInputsTest(BacklogRepo):  # P4B-AC-003
         os.chmod(self.root / ".claude/skills/api-review/SKILL.md", 0)
         self.refused("packs", "sync", "--agent", "claude",
                      path=".claude/skills/api-review/SKILL.md")
+
+    def eject_then_lock(self, side: str) -> str:
+        """Commit, eject `api-review`, then make `references/r.md` of the pack's source
+        (`side` "source") or of the ejected copy ("copy") unreadable; its root-relative path."""
+        init_git(self.root)
+        self.assertEqual(run("eject", "api-review", *self.R)[0], 0)
+        path = (self.ref if side == "source" else
+                self.root / ".modsys/overrides/skills/api-review/references/r.md")
+        os.chmod(path, 0)
+        return path.relative_to(self.root).as_posix()
+
+    def test_ejected_then_an_unreadable_source_file(self):  # fix wave I-2 (case A)
+        path = self.eject_then_lock("source")
+        self.refused("eject", "api-review", "--diff", path=path)
+        ms063 = [("MS063", "warning", "*", f"ejected skill 'api-review': cannot read {path}: "
+                  "Permission denied — cannot tell whether pack 'team' moved on since the "
+                  "eject", path)]
+        code, env, err = run_json("lint", "--fail-on", "never", *self.R)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual([tuple(f.values()) for f in env["data"]["findings"]], ms063)
+        code, env, err = run_json("ci", *self.R)
+        self.assertEqual((code, err), (1, ""))
+        lint_step = env["data"]["steps"][0]
+        self.assertEqual((lint_step["name"], lint_step["status"]), ("lint", "failed"))
+        self.assertEqual([tuple(f.values()) for f in lint_step["findings"]], ms063)
+
+    def test_ejected_then_an_unreadable_copy_file(self):  # fix wave I-2 (case B)
+        path = self.eject_then_lock("copy")
+        self.refused("eject", "api-review", "--diff", path=path)
+        for argv in (("lint",), ("ci",)):
+            with self.subTest(verb=argv[0]):
+                code, env, err = run_json(*argv, *self.R)
+                self.assertEqual((code, err, env["data"]["failed"]), (0, "", False))
 
 
 class ContainmentTest(BacklogRepo):  # P4B-AC-004 (M-4)

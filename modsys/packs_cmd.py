@@ -269,11 +269,13 @@ def run(args) -> int:
         raise UsageError("packs new needs an ID (the new pack's id, e.g. team)")
     data = new_pack(ws, args.name, args.roles or [], args.skills or [], args.description,
                     args.priority, args.dry_run)
-    emit("packs", data, args.json, _render_new)
+    agents = (ws.config.get("packs") or {}).get("agents")
+    emit("packs", data, args.json, functools.partial(_render_new, agents=agents))
     return EXIT_OK
 
 
-def _render_new(d) -> None:
+def _render_new(d, agents: list[str] | None = None) -> None:
+    """`agents`: the config's `[packs] agents` — set, a bare `modsys packs sync` works."""
     verb = "would create" if d["dry_run"] else "created"
     for f in d["files"]:
         print(f"{verb}  {f}")
@@ -283,7 +285,7 @@ def _render_new(d) -> None:
     steps = [f"modsys create NAME … --role {roles[0]} (a module with the {roles[0]} doc)"
              if roles else "edit pack.toml (roles, fields, [[code_map]] rules, skills)"]
     if skills:
-        steps.append(f"{sync_command(None, None)} (the skills into the agents' skill "
+        steps.append(f"{sync_command(None, agents)} (the skills into the agents' skill "
                      f"directories)")
     print(f"next: {'; then '.join(steps)}")
 
