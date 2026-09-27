@@ -181,6 +181,26 @@ def new_pack(ws, pack_id: str, roles: list[str], skills: list[str], description:
             "files": [ws.rel(pack_dir / rel) for rel in files], "dry_run": dry_run}
 
 
+def pack_rows(ws) -> list[dict]:
+    """`packs list` data: installed packs in precedence order."""
+    rows = []
+    for pack in discover_packs(ws.config_dir):
+        data, pack_dir = pack["data"], pack["path"].parent
+        skills = []
+        for sid, spec in (data.get("skills") or {}).items():
+            meta = read_front_matter(pack_dir / spec["path"] / "SKILL.md") or {}
+            skills.append({"id": sid, "path": spec["path"],
+                           "reads_roles": list(spec.get("reads_roles", [])),
+                           "description": meta.get("description") or None,
+                           "ejected": ejected_dir(ws.config_dir, sid).is_dir()})
+        version, description = data.get("version"), data.get("description")
+        rows.append({"id": pack["id"], "version": version if isinstance(version, str) else None,
+                     "priority": pack["priority"], "dir": ws.rel(pack_dir),
+                     "description": description if isinstance(description, str) else None,
+                     "roles": list(data.get("roles") or {}), "skills": skills})
+    return rows
+
+
 def sync(ws, agents: list[str] | None, check: bool, dry_run: bool) -> dict:
     """`packs sync`: plan every (agent, skill), then apply the plans unless `check` /
     `dry_run`; a conflicting or invalid skill is never written, the others are."""
@@ -208,26 +228,6 @@ def sync(ws, agents: list[str] | None, check: bool, dry_run: bool) -> dict:
               else bool(summary["conflict"] or summary["invalid"]))
     return {"agents": chosen, "check": check, "dry_run": dry_run, "skills": rows,
             "summary": summary, "failed": failed}
-
-
-def pack_rows(ws) -> list[dict]:
-    """`packs list` data: installed packs in precedence order."""
-    rows = []
-    for pack in discover_packs(ws.config_dir):
-        data, pack_dir = pack["data"], pack["path"].parent
-        skills = []
-        for sid, spec in (data.get("skills") or {}).items():
-            meta = read_front_matter(pack_dir / spec["path"] / "SKILL.md") or {}
-            skills.append({"id": sid, "path": spec["path"],
-                           "reads_roles": list(spec.get("reads_roles", [])),
-                           "description": meta.get("description") or None,
-                           "ejected": ejected_dir(ws.config_dir, sid).is_dir()})
-        version, description = data.get("version"), data.get("description")
-        rows.append({"id": pack["id"], "version": version if isinstance(version, str) else None,
-                     "priority": pack["priority"], "dir": ws.rel(pack_dir),
-                     "description": description if isinstance(description, str) else None,
-                     "roles": list(data.get("roles") or {}), "skills": skills})
-    return rows
 
 
 def _refuse_flags(args, action: str, allowed: tuple[str, ...]) -> None:
@@ -274,18 +274,6 @@ def _render_new(d) -> None:
     print(f"next: {'; then '.join(steps)}")
 
 
-def _render_list(rows) -> None:
-    if not rows:
-        print("no packs (create one: modsys packs new ID)")
-    for r in rows:
-        print(f"{r['id']} {r['version'] or '(no version)'} priority {r['priority']}  {r['dir']}")
-        for role in r["roles"]:
-            print(f"  role   {role}")
-        for s in r["skills"]:
-            reads = f"  reads {', '.join(s['reads_roles'])}" if s["reads_roles"] else ""
-            print(f"  skill  {s['id']}{reads}{'  (ejected)' if s['ejected'] else ''}")
-
-
 HINTS = {"conflict": "resolve by hand (revert the edit, or move the directory away)",
          "invalid": "fix the skill in its pack (plain modsys lint reports it as MS062)"}
 
@@ -307,3 +295,15 @@ def _render_sync(d) -> None:
         print(f"packs sync --check: {counts}: {state}")
     else:
         print(f"packs sync: {counts}" + ("  (dry run: nothing written)" if d["dry_run"] else ""))
+
+
+def _render_list(rows) -> None:
+    if not rows:
+        print("no packs (create one: modsys packs new ID)")
+    for r in rows:
+        print(f"{r['id']} {r['version'] or '(no version)'} priority {r['priority']}  {r['dir']}")
+        for role in r["roles"]:
+            print(f"  role   {role}")
+        for s in r["skills"]:
+            reads = f"  reads {', '.join(s['reads_roles'])}" if s["reads_roles"] else ""
+            print(f"  skill  {s['id']}{reads}{'  (ejected)' if s['ejected'] else ''}")
