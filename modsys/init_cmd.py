@@ -10,7 +10,8 @@ then preflight and map; stops at gate 3), `confirm` (gate 3), `status`, `resume`
 work item per confirmed module), `next` (claim one), `done MODULE` (check its staging output),
 `run --executor CMD` (every pending item through one command), `reconcile` (the staging
 registry), `eval-tasks --executor CMD` (the routing tasks), `verify` (lint, invented components,
-routing) — one envelope `modsys.init/1` each."""
+routing), `finish [--open-pr]` (gate 7: the docs and the registry written) — one envelope
+`modsys.init/1` each."""
 import subprocess
 import sys
 from pathlib import Path
@@ -134,17 +135,19 @@ def starter_config(layout: str) -> str:
 
 
 ACTIONS = ("map", "confirm", "status", "resume", "fanout", "next", "done", "run", "reconcile",
-           "eval-tasks", "verify")
-FORCE_ACTIONS = ("reconcile", "eval-tasks")
+           "eval-tasks", "verify", "finish")
+FORCE_ACTIONS = ("reconcile", "eval-tasks", "finish")
+PR_ACTIONS = ("finish",)
+BRANCH = "modsys/init"
 EXECUTOR_ACTIONS = ("run", "resume", "eval-tasks")
-NON_INTERACTIVE_ACTIONS = ("run", "resume")  # the others never prompt: no flag (SI-25)
+NON_INTERACTIVE_ACTIONS = ("run", "resume", "finish")  # the others never prompt (SI-25)
 
 
 def register(sub, common) -> None:
     p = sub.add_parser("init", parents=[common],
                        help="set up modsys here: starter config, empty registry, .gitignore lines "
                             "(map|confirm|fanout|next|done|run|reconcile|eval-tasks|verify|"
-                            "status|resume: start from existing code)",
+                            "finish|status|resume: start from existing code)",
                        description="Without an action: the starter config, an empty registry and "
                                    "the .gitignore lines. map: those, then preflight and map of "
                                    "the existing code into <config_dir>/init/proposal.json "
@@ -159,9 +162,12 @@ def register(sub, common) -> None:
                                    "edges, keyword collisions, duplicates. eval-tasks --executor "
                                    "CMD: CMD writes the routing tasks from the routing prompt. "
                                    "verify: lint, invented components and the routing hit rate "
-                                   "over the staging tree. status: the phases, the modules and "
-                                   "the next step. resume: re-run an interrupted phase and "
-                                   "continue.")
+                                   "over the staging tree. finish: gate 7 — move the staging "
+                                   "docs into the modules dir, write the registry, the code-map "
+                                   "rules and the agents' block (never commits; --open-pr: a "
+                                   "branch, one commit and a pull request). status: the phases, "
+                                   "the modules and the next step. resume: re-run an "
+                                   "interrupted phase and continue.")
     p.add_argument("action", nargs="?", metavar="ACTION",
                    help=f"{', '.join(ACTIONS)} (none: the starter files only)")
     p.add_argument("module", nargs="?", metavar="MODULE",
@@ -171,10 +177,19 @@ def register(sub, common) -> None:
                         "the routing tasks (split like a shell line, never run by a shell; "
                         "stdin: the prompt)")
     p.add_argument("--non-interactive", action="store_true",
-                   help="run, resume: never wait for a person")
+                   help="run, resume, finish: never wait for a person")
     p.add_argument("--force", action="store_true",
                    help="reconcile: rebuild the staging registry from entry.json, discarding "
-                        "edits made to it; eval-tasks: write the tasks again")
+                        "edits made to it; eval-tasks: write the tasks again; finish: even when "
+                        "verify has not passed (recorded)")
+    p.add_argument("--agents-md", action="append", dest="agents_md", metavar="FILE",
+                   help="finish: an instruction file for the managed block (repeatable; "
+                        "default: CLAUDE.md and AGENTS.md when they exist)")
+    p.add_argument("--open-pr", action="store_true",
+                   help="finish: commit on a new branch, push it and open a pull request (gh)")
+    p.add_argument("--base", help="--open-pr: the pull request's base (default: the current "
+                                  "branch)")
+    p.add_argument("--branch", help=f"--open-pr: the new branch (default: {BRANCH})")
     p.add_argument("--layout", choices=REGISTRY_LAYOUTS,
                    help="registry layout for a new setup (default: the configured one, else single)")
     p.add_argument("--dry-run", action="store_true", help="report what would change, write nothing")
@@ -305,6 +320,12 @@ def _check_flags(args) -> None:
         raise UsageError(f'init {action} needs --executor "<command>"')
     if args.executor is not None and action not in EXECUTOR_ACTIONS:
         raise UsageError(f"--executor works with {', '.join(f'init {a}' for a in EXECUTOR_ACTIONS)}")
+    if args.agents_md and action != "finish":
+        raise UsageError("--agents-md works with init finish")
+    if args.open_pr and action not in PR_ACTIONS:
+        raise UsageError(f"--open-pr works with {', '.join(f'init {a}' for a in PR_ACTIONS)}")
+    if (args.base is not None or args.branch is not None) and not args.open_pr:
+        raise UsageError("--base and --branch work with --open-pr")
     if args.force and action not in FORCE_ACTIONS:
         raise UsageError(f"--force works with {', '.join(f'init {a}' for a in FORCE_ACTIONS)}")
     if args.non_interactive and action not in NON_INTERACTIVE_ACTIONS:
@@ -314,7 +335,7 @@ def _check_flags(args) -> None:
     if args.layout and action not in (None, "map"):
         raise UsageError(f"--layout works with plain init and init map, not init {action}")
     if args.dry_run and action in ("status", "resume", "fanout", "next", "done", "run",
-                                   "reconcile", "eval-tasks", "verify"):
+                                   "reconcile", "eval-tasks", "verify", "finish"):
         raise UsageError(f"init {action} takes no --dry-run (it never writes)"
                          if action == "status" else f"init {action} takes no --dry-run")
 
@@ -437,6 +458,11 @@ def run_action(args, root: Path, config_dir: Path) -> int:
                 "next": flow.next_step(flow.load_state(), work)}
         emit("init", data, args.json, _render_verify)
         return EXIT_OK if result["passed"] else EXIT_FINDINGS
+    if args.action == "finish":
+        from modsys.init_finish import Finish
+        result = Finish(phase4).run(args.force, args.agents_md or [], args.open_pr, args.base,
+                                    args.branch or BRANCH)
+        return _report_finish(flow, work, result, args.json)
     if args.action == "run":
         runner = Runner(phase4, executor_argv(args.executor, root))
         phase4.reset()
@@ -501,6 +527,35 @@ def _render_run(d) -> None:
     c = d["counts"]
     print(f"modules  {c['done']} done, {c['running']} running, {c['pending']} pending, "
           f"{c['failed']} failed")
+    print(f"next: {d['next']}")
+
+
+def _report_finish(flow, work: str, result: dict, as_json: bool) -> int:
+    state, error = result.pop("state"), result.pop("error")
+    if error:
+        print(f"modsys: the pull request is pending: {error} — retry with modsys init resume "
+              f"--open-pr", file=sys.stderr)
+    nxt = flow.next_step(state, work)
+    if not result["agents_md"]:
+        nxt = (f"no CLAUDE.md or AGENTS.md got the block: modsys agents-md --target CLAUDE.md "
+               f"(init finish takes --agents-md CLAUDE.md); {nxt}")
+    data = {"action": "finish", **result, "next": nxt}
+    emit("init", data, as_json, _render_finish)
+    return EXIT_FINDINGS if error else EXIT_OK
+
+
+def _render_finish(d) -> None:
+    print(f"moved         {len(d['moved'])} doc(s) into the modules dir")
+    print(f"registry      {d['registry']}")
+    if d["code_map"]:
+        print(f"code-map      {', '.join(d['code_map'])}")
+    for row in d["agents_md"]:
+        print(f"agents-md     {row['status']} {row['path']}")
+    if d["forced"]:
+        print("forced        finished with --force (recorded in the state)")
+    print(f"git add {' '.join(d['git_add'])}")
+    if d["pr"]:
+        print(f"pr            {d['pr']}")
     print(f"next: {d['next']}")
 
 

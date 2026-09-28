@@ -168,5 +168,24 @@ class VerifyTest(VerifyRepo):  # P5B-AC-022 (SI-16, SI-17)
         self.assertIn("modsys init reconcile", err)
 
 
+class OverlayEqualsFinalTest(VerifyRepo):  # P5B-AC-022 (verify reads what finish writes)
+    def test_the_same_lint_and_routing_after_finish(self):
+        for shared in (False, True):
+            with self.subTest(shared_keyword=shared):
+                self.setUp()
+                if shared:  # a finding to compare: MS021 (info) needs 4 modules
+                    self.edit(lambda m: [m[x]["keywords"].append("shelfmark")
+                                         for x in ("cart", "catalog", "payments", "ui-kit")])
+                code, data, _ = self.verify()
+                self.assertEqual(code, 0)
+                ok(self.root, "init", "finish")
+                lint = ok(self.root, "lint")
+                self.assertEqual((lint["findings"], lint["summary"]),
+                                 (data["lint"]["findings"], data["lint"]["summary"]))
+                routed = ok(self.root, "eval", "routing", "--tasks",
+                            str(self.root / WORK / "routing-tasks.json"))
+                self.assertEqual(routed, data["routing"])
+
+
 if __name__ == "__main__":
     unittest.main()

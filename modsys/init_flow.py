@@ -232,6 +232,13 @@ class InitFlow:
         if state is None:
             return "run modsys init map"
         phases = state["phases"]
+        if phases["finish"]["status"] == "done":
+            if state.get("pr") == "pending":
+                return "the pull request is pending: modsys init resume --open-pr"
+            pr = f" ({state['pr']})" if state.get("pr") else ""
+            return f"init is finished{pr} — review, then commit (init never commits)"
+        if phases["finish"]["status"] == "running":
+            return "init finish was interrupted (nothing kept): modsys init finish"
         for phase in ("preflight", "map"):
             if phases[phase]["status"] == "running":
                 return (f"phase {phase} was interrupted: modsys init resume re-runs it from its "
@@ -273,7 +280,8 @@ class InitFlow:
         except (OSError, ValueError, KeyError, TypeError):
             passed = False
         if passed:
-            return f"gate 7: a person reads {work_rel}/verify.json and decides"
+            return (f"gate 7: a person reads {work_rel}/verify.json, then modsys init finish "
+                    f"(never commits), or modsys init finish --open-pr")
         return (f"verify failed ({work_rel}/verify.json): fix the staging docs or keywords (never "
                 f"the tasks), then modsys init verify")
 

@@ -1,5 +1,6 @@
 """Helpers of the `init` phase 4–7 tests: a git copy of `bookshop_monorepo` taken through `init
-map` and gate 3, calls that assert their exit code, and the fake executor's command line."""
+map` and gate 3, calls that assert their exit code, the fake executor's command line, and a
+`gh` stand-in plus a local bare remote for `init finish --open-pr` (no network, no real PR)."""
 import hashlib
 import json
 import shlex
@@ -76,3 +77,30 @@ def protected_sha(root: Path) -> str:
         for p in files:
             h.update(p.relative_to(root).as_posix().encode() + b"\0" + p.read_bytes() + b"\0")
     return h.hexdigest()
+
+
+IDENTITY = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
+
+
+def gh_shim(bin_dir: Path, log: Path, code: int = 0) -> Path:
+    """An executable `gh` in `bin_dir` (put it first on PATH): it appends {argv, body} to `log`
+    as a JSON line, prints a pull request URL and exits `code`."""
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    shim = bin_dir / "gh"
+    shim.write_text(
+        f"#!{sys.executable}\nimport json, sys\nargs = sys.argv[1:]\nbody = None\n"
+        f"if '--body-file' in args:\n    body = open(args[args.index('--body-file') + 1]).read()\n"
+        f"with open({str(log)!r}, 'a') as fh:\n"
+        f"    fh.write(json.dumps({{'argv': args, 'body': body}}) + '\\n')\n"
+        f"print('https://example.invalid/bookshop/pull/1')\nsys.exit({code})\n")
+    shim.chmod(0o755)
+    return shim
+
+
+def bare_remote(root: Path, remote: Path) -> Path:
+    """A local bare repository as the `origin` of `root`."""
+    from tests.helpers import git
+    git(remote.parent, "init", "-q", "--bare", remote.name)
+    git(root, "remote", "add", "origin", str(remote))
+    return remote
