@@ -3,7 +3,8 @@ without changing it. The registry is read as it is (one file, or the per-module 
 team config it needs is inferred, every key followed by `# adopt:` lines with the evidence:
 
   [paths]            the registry's path and modules dir when they are not the configured ones;
-                     `registry_layout = "per-module"` when every module has its entry file
+                     `registry_layout = "per-module"` when every module has its entry file and
+                     each one is a registry entry of that module (`--layout` decides instead)
   [roles.<r>]        every `context_files.roles` key no active layer declares: `order` after the
                      highest configured order (+10 each, by frequency then name), `standard`
                      when >= 80 % of the top-level modules carry it
@@ -15,20 +16,28 @@ team config it needs is inferred, every key followed by `# adopt:` lines with th
                      pointer stubs)
   updated_at_path    a registry-level key <= 2 levels deep named updated / modified holding an
                      ISO-8601 timestamp (the shallowest, then by name)
+  statuses           the status values and relation types the registry uses that no team layer
+  relations          allows (`inferred.statuses` / `.relations`: [{value, count}], by count then
+                     value); a null, non-string or empty value is never declared (`skipped`)
   [[code_map]]       one `<prefix>/{module}/**` rule when >= 50 % of the top-level modules have
-                     `<prefix>/<module>` (a directory, or a code-pointer value under it); prefixes
-                     up to 3 segments, never the modules / config / dot / dependency dirs; none
-                     when a layer has rules. When no prefix reaches 50 %, the best one is written
-                     COMMENTED OUT (`inferred.code_map_suggestion`), never as a rule
+                     `<prefix>/<module>` (a directory holding a code file, or a code-pointer value
+                     under it); prefixes up to 3 segments, never the modules / config / dot /
+                     dependency dirs; none when a layer has rules; on equal coverage fewer
+                     segments, then a source container name (`src`, `lib`, …), then the name win.
+                     When no prefix reaches 50 %, the best one is written COMMENTED OUT
+                     (`inferred.code_map_suggestion`), never as a rule
   [budgets]          COMMENTED OUT: the observed maximum where the doc budgets would flag docs
 
 Thresholds are integer comparisons (80 %: `count * 5 >= total * 4`; 50 %: `count * 2 >=
-total`). The team and user configs are active layers: with a config present, the inferred keys
-go to `<config_dir>/adopt.proposed.toml` (always rewritten; an existing config is never edited),
-else to a new `<config_dir>/config.toml`; `--dry-run` writes nothing. Lint then runs in report
-mode against the config merged with what was inferred (exit 0 either way). The registry, its
-docs and every file outside the config dir are never written."""
+total`). The inference reads the team layers only — a key declared only in `config.user.toml`
+(personal) is still written, with an evidence line saying so, so the team file never depends
+on one person's file. With a config present, the inferred keys go to
+`<config_dir>/adopt.proposed.toml` (always rewritten; an existing config is never edited), else
+to a new `<config_dir>/config.toml`; `--dry-run` writes nothing. Lint then runs in report mode
+against every layer merged with what was inferred (exit 0 either way). The registry, its docs
+and every file outside the config dir are never written."""
 import contextlib
+import json
 import os
 import re
 import tempfile
@@ -39,13 +48,15 @@ from pathlib import Path
 
 from modsys.changes import DEPENDENCY_DIRS
 from modsys.code_map_cmd import _toml_string
-from modsys.config import load_config
+from modsys.config import REGISTRY_LAYOUTS, load_config
 from modsys.fields import CORE_FIELDS, load_field_defs
 from modsys.init_cmd import _HEADER, ignore_lines
 from modsys.layout import load_per_module
 from modsys.lint import _docs, _line_count, lint_registry
+from modsys.mapper import CONTAINERS
 from modsys.output import EXIT_OK, UsageError, emit
-from modsys.registry import as_dict, load_registry, stub_head
+from modsys.preflight import language
+from modsys.registry import as_dict, as_list, load_registry, stub_head
 from modsys.store import atomic_write
 from modsys.workspace import Workspace, find_root
 
@@ -62,6 +73,8 @@ _ISO = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?"
 _UPDATED = re.compile(r"updated|modified", re.I)
 _EMPTY = "[]"  # an empty list: any `X[]`
 _SHOWN_NAMES = 10
+PERSONAL = "also declared in config.user.toml (personal)"
+ENTRY_KEYS = ("description", "keywords", "context_files", "status")  # one makes a registry entry
 
 
 def adopt_header() -> str:
@@ -91,6 +104,9 @@ def register(sub, common) -> None:
     p.add_argument("--registry", metavar="PATH",
                    help="the registry file, root-relative (default: the configured one, "
                         "modules/registry.json)")
+    p.add_argument("--layout", choices=REGISTRY_LAYOUTS,
+                   help="the registry layout to write (default: per-module only when every "
+                        "module has a <modules_dir>/<name>/module.json that is its entry)")
     p.add_argument("--dry-run", action="store_true",
                    help="write nothing; data.config (text: the output) holds the TOML")
     p.set_defaults(func=run)
@@ -182,12 +198,40 @@ def _strings(value) -> list[str]:
     return [v for v in value if isinstance(v, str)] if isinstance(value, list) else []
 
 
+def entry_kind(path: Path, name: str) -> str | None:
+    """What `<modules_dir>/<name>/module.json` is: None (no file), "entry" (a JSON object with a
+    core registry field and no other module's `name`) or "other" (anything another tool keeps
+    there)."""
+    if not path.is_file():
+        return None
+    try:
+        doc = json.loads(path.read_bytes().decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return "other"
+    if isinstance(doc, dict) and any(k in doc for k in ENTRY_KEYS) \
+            and doc.get("name", name) == name:
+        return "entry"
+    return "other"
+
+
+def _value_problem(value) -> str | None:
+    """Why a status or relation value cannot be declared (None: it can)."""
+    if value is None:
+        return "a null value"
+    if not isinstance(value, str):
+        return f"a non-string value ({json.dumps(value)})"
+    return "an empty string" if not value.strip() else None
+
+
 class Inference:
     """What `adopt` infers for one registry, with the TOML lines of each section."""
 
     def __init__(self, root: Path, config_dir: Path, config: dict, registry_rel: str, raw: dict,
-                 paths: dict):
+                 paths: dict, personal: dict | None = None, notes: list[str] = ()):
         self.root, self.config_dir, self.config = root, config_dir, config
+        self.personal = personal or config  # every layer: what config.user.toml declares
+        self.notes = list(notes)  # `# adopt:` lines about the layout (no key of their own)
+        self.code_dirs: dict[Path, bool] = {}
         self.registry_rel, self.raw, self.modules = registry_rel, raw, raw["modules"]
         self.paths = paths  # the [paths] adopt infers ({} when the configured ones fit)
         self.modules_dir = paths.get("modules_dir", config["paths"]["modules_dir"])
@@ -211,6 +255,7 @@ class Inference:
         self.infer_fields()
         self.infer_dir_whitelist()
         self.infer_updated_at_path()
+        self.infer_vocabulary()
         if self.registry_keys:
             self.section("[registry]", self.registry_keys)
         self.infer_code_map()
@@ -222,9 +267,9 @@ class Inference:
         if self.paths:
             evidence = {"registry": f"the registry is {self.registry_rel}",
                         "modules_dir": f"the registry's directory: {self.modules_dir}",
-                        "registry_layout": f"every module of {self.registry_rel} has its "
-                                           f"{self.modules_dir}/<name>/"
-                                           f"{self.config['paths']['module_entry']}"}
+                        "registry_layout": self.notes.pop(0) if self.notes else
+                        f"every module of {self.registry_rel} has its {self.modules_dir}/"
+                        f"<name>/{self.config['paths']['module_entry']}"}
             self.section("[paths]", [(k, v, [evidence[k]]) for k, v in self.paths.items()])
 
     def infer_roles(self) -> None:
@@ -247,10 +292,11 @@ class Inference:
             standard = at_least_80(count, len(self.top))
             labels = carriers[role]
             rows.append({"name": role, "order": order, "standard": standard, "modules": labels})
+            personal = [PERSONAL] if role in (self.personal.get("roles") or {}) else []
             self.section(f"[roles.{_toml_key(role)}]", [
                 ("order", order, [f"after the highest configured order ({base}); carried by "
                                   f"{len(labels)} entr{'y' if len(labels) == 1 else 'ies'}: "
-                                  f"{_names(labels)}"]),
+                                  f"{_names(labels)}"] + personal),
                 ("standard", standard, [f"{count} of {len(self.top)} top-level modules carry "
                                         f"it ({'at least' if standard else 'below'} 80 %)"])])
         self.data["roles"] = rows
@@ -294,6 +340,8 @@ class Inference:
                       f"{observed}"]
                      + ([f"{existing} of {len(strings)} string values name existing paths "
                          f"(below 80 %): data"] if strings and not pointer else []))]
+            if key in (self.personal.get("fields") or {}):
+                keys[0][2].append(PERSONAL)
             if pointer:
                 keys.append(("kind", "code_pointer", [f"{existing} of {len(strings)} string "
                                                       f"values name existing paths (at least "
@@ -314,9 +362,10 @@ class Inference:
             if mdir.is_dir() else []
         self.data["dir_whitelist"] = dirs
         if dirs:
+            personal = set(self.personal["registry"]["dir_whitelist"])
             self.registry_keys.append(("dir_whitelist", dirs, [
                 f"{self.modules_dir}/{d}/ is not a registry module or a pointer stub (lint "
-                f"MS014 otherwise)" for d in dirs]))
+                f"MS014 otherwise)" + (f"; {PERSONAL}" if d in personal else "") for d in dirs]))
 
     def infer_updated_at_path(self) -> None:
         found = []
@@ -334,6 +383,47 @@ class Inference:
             self.registry_keys.append(("updated_at_path", found[0][1], [
                 "a registry-level ISO-8601 timestamp named updated/modified; the registry "
                 "writers stamp it" + (f" (also found: {', '.join(others)})" if others else "")]))
+
+    def infer_vocabulary(self) -> None:
+        """The status values and relation types the registry uses that no team layer allows —
+        `[registry] statuses` / `relations` (arrays add to the defaults), each value with the
+        entries that use it; a value no list can hold goes to `skipped`."""
+        seen: dict[str, dict[str, list[str]]] = {"statuses": {}, "relations": {}}
+        bad: dict[str, list[str]] = {}
+
+        def observe(kind: str, key: str, value, label: str) -> None:
+            problem = _value_problem(value)
+            if problem:
+                bad.setdefault(key, []).append(f"{problem} on {label}")
+            else:
+                seen[kind].setdefault(value, []).append(label)
+
+        for name, entry in self.modules.items():
+            if isinstance(entry, dict) and "status" in entry:
+                observe("statuses", "status", entry["status"], name)
+        for label, entry, _ in _entries(self.modules):
+            for edge in as_list(entry.get("related_modules")):
+                if isinstance(edge, dict) and "relation" in edge:
+                    observe("relations", "related_modules[].relation", edge["relation"], label)
+        for kind, noun in (("statuses", "module"), ("relations", "edge")):
+            allowed = set(self.config["registry"][kind])
+            rows = sorted(((v, labels) for v, labels in seen[kind].items() if v not in allowed),
+                          key=lambda row: (-len(row[1]), row[0]))
+            self.data[kind] = [{"value": v, "count": len(labels)} for v, labels in rows]
+            if not rows:
+                continue
+            personal = set(self.personal["registry"][kind])
+            evidence = []
+            for value, labels in rows:
+                names = list(dict.fromkeys(labels))
+                shown = ", ".join(names[:3]) + (f" and {len(names) - 3} more"
+                                                if len(names) > 3 else "")
+                evidence.append(f"{_toml_string(value)} on {len(labels)} {noun}"
+                                f"{'' if len(labels) == 1 else 's'} ({shown})"
+                                + (f"; {PERSONAL}" if value in personal else ""))
+            self.registry_keys.append((kind, [v for v, _ in rows], evidence))
+        self.data["skipped"] += [{"key": key, "reason": "; ".join(reasons) + " — no list holds "
+                                  "it (lint reports it)"} for key, reasons in bad.items()]
 
     def top_level(self) -> dict:
         return {k: v for k, v in self.raw.items() if k != "modules" and "." not in k}
@@ -363,6 +453,21 @@ class Inference:
                 dirnames[:] = []
         return out
 
+    def holds_code(self, directory: Path) -> bool:
+        """A directory holds a code file (the preflight language table) at any depth, dot and
+        dependency directories skipped — `docs/<module>/` of Markdown files does not count."""
+        if directory not in self.code_dirs:
+            found = False
+            if directory.is_dir() and not directory.is_symlink():
+                for _, dirnames, filenames in os.walk(directory):
+                    dirnames[:] = [d for d in dirnames if not d.startswith(".")
+                                   and d not in DEPENDENCY_DIRS]
+                    if any(language(f) for f in filenames):
+                        found = True
+                        break
+            self.code_dirs[directory] = found
+        return self.code_dirs[directory]
+
     def infer_code_map(self) -> None:
         self.data["code_map"] = self.data["code_map_suggestion"] = None
         if self.config.get("code_map") or not self.top:
@@ -379,21 +484,22 @@ class Inference:
         for prefix in candidates:
             if prefix.split("/")[0] in DEPENDENCY_DIRS or prefix == self.modules_dir.rstrip("/"):
                 continue
-            covered = [m for m in self.top if (self.root / prefix / m).is_dir()
+            covered = [m for m in self.top if self.holds_code(self.root / prefix / m)
                        or any(v == f"{prefix}/{m}" or v.startswith(f"{prefix}/{m}/")
                               for v in pointers[m])]
-            if covered:
-                scores.append((-len(covered), prefix.count("/"), prefix, covered))
+            if covered:  # equal coverage: fewer segments, then a source container, then name
+                scores.append((-len(covered), prefix.count("/"),
+                               prefix.split("/")[-1] not in CONTAINERS, prefix, covered))
         scores.sort()
-        if scores and not at_least_50(len(scores[0][3]), len(self.top)):
-            self.suggest(scores[0][2], scores[0][3])
-        scores = [s for s in scores if at_least_50(len(s[3]), len(self.top))]
+        if scores and not at_least_50(len(scores[0][4]), len(self.top)):
+            self.suggest(scores[0][3], scores[0][4])
+        scores = [s for s in scores if at_least_50(len(s[4]), len(self.top))]
         if not scores:
             return
-        _, _, prefix, covered = scores[0]
+        _, _, _, prefix, covered = scores[0]
         pattern = f"{prefix}/{{module}}/**"
         alternatives = [{"pattern": f"{p}/{{module}}/**", "covered": len(c)}
-                        for _, _, p, c in scores[1:6]]
+                        for _, _, _, p, c in scores[1:6]]
         rule_id = prefix.replace("/", "-")
         self.data["code_map"] = {"id": rule_id, "pattern": pattern, "covered": len(covered),
                                  "total": len(self.top), "alternatives": alternatives}
@@ -455,6 +561,8 @@ class Inference:
 
     def text(self) -> str:
         blocks = ["\n".join(lines) for lines in self.sections if lines]
+        if self.notes:
+            blocks.append("\n".join(f"# adopt: {note}" for note in self.notes))
         if self.suggestion_lines:
             blocks.append("\n".join(self.suggestion_lines))
         if self.budget_lines:
@@ -482,11 +590,50 @@ def _registry_path(root: Path, config: dict, arg: str | None) -> tuple[str, bool
     return rel, True
 
 
-def plan_adopt(root: Path, config_dir: Path, registry_arg: str | None) -> dict:
-    """Everything `adopt` would write and report; reads only."""
+def plan_layout(root: Path, config: dict, raw: dict, modules_dir: str,
+                layout_arg: str | None) -> tuple[str, list[str]]:
+    """(layout, the `# adopt:` notes about it): `--layout` wins; else per-module only when every
+    module's `<modules_dir>/<name>/<module_entry>` is a registry entry of that module (a file
+    another tool keeps there is not); some entries, or files that are not entries, keep the
+    registry file as the source, with a note."""
+    entry = config["paths"]["module_entry"]
+    kinds = {m: entry_kind(root / modules_dir / m / entry, m) for m in raw["modules"]}
+    if layout_arg == "per-module":
+        bad = [m for m, k in kinds.items() if k != "entry"]
+        if bad:
+            what = "missing" if kinds[bad[0]] is None else "not a registry entry of the module"
+            raise UsageError(f"--layout per-module: {modules_dir}/{bad[0]}/{entry} is {what} — "
+                             f"run adopt with --layout single to keep the registry file")
+        return "per-module", [f"--layout per-module: every module has its {modules_dir}/<name>/"
+                              f"{entry}"]
+    if layout_arg == "single":
+        return "single", ["--layout single: the registry file is the source"]
+    configured = config["paths"]["registry_layout"]
+    if configured != "single" or not raw["modules"]:
+        return configured, []
+    entries = [m for m, k in kinds.items() if k == "entry"]
+    others = [m for m, k in kinds.items() if k == "other"]
+    if len(entries) == len(kinds):
+        return "per-module", []
+    if entries:
+        return "single", [f"layout single: {len(entries)} of {len(kinds)} modules have their "
+                          f"entry in {modules_dir}/<name>/{entry} ({_names(entries)}), not every "
+                          f"module — the registry file stays the source (--layout per-module "
+                          f"once every module has one)"]
+    if others:
+        return "single", [f"layout single: {modules_dir}/<name>/{entry} of {_names(others)} is "
+                          f"not a registry entry (another tool's file?) — ignored"]
+    return "single", []
+
+
+def plan_adopt(root: Path, config_dir: Path, registry_arg: str | None,
+               layout_arg: str | None = None) -> dict:
+    """Everything `adopt` would write and report; reads only. The inference reads the team
+    layers (`config.user.toml` is personal: never a source of what the team file needs)."""
     if config_dir.exists() and not config_dir.is_dir():
         raise UsageError(f"{config_dir} is not a directory (the config dir); nothing written")
-    config = load_config(config_dir, root)
+    personal = load_config(config_dir, root)  # every layer (validates config.user.toml too)
+    config = load_config(config_dir, root, user=False)
     rel, given = _registry_path(root, config, registry_arg)
     registry = root / rel
     if not registry.is_file():
@@ -501,20 +648,15 @@ def plan_adopt(root: Path, config_dir: Path, registry_arg: str | None) -> dict:
         mdir = Path(rel).parent.as_posix()
         if mdir != config["paths"]["modules_dir"]:
             paths["modules_dir"] = mdir
-    layout = config["paths"]["registry_layout"]
     modules_dir = paths.get("modules_dir", config["paths"]["modules_dir"])
-    entry = config["paths"]["module_entry"]
-    if layout == "single" and raw["modules"]:
-        missing = [m for m in raw["modules"] if not (root / modules_dir / m / entry).is_file()]
-        if not missing:
-            layout = paths["registry_layout"] = "per-module"
-        elif len(missing) < len(raw["modules"]):
-            raise UsageError(f"{rel}: a mixed layout — some modules have {modules_dir}/<name>/"
-                             f"{entry}, these do not: {', '.join(missing)}; give every module "
-                             f"its entry file, or none")
+    layout, notes = plan_layout(root, config, raw, modules_dir, layout_arg)
+    if layout != config["paths"]["registry_layout"]:
+        paths["registry_layout"] = layout
+    elif layout_arg:
+        notes = []  # the configured layout: nothing to write or explain
     if layout == "per-module":
         raw = load_per_module(root, {**config, "paths": {**config["paths"], **paths}}).raw
-    inference = Inference(root, config_dir, config, rel, raw, paths)
+    inference = Inference(root, config_dir, config, rel, raw, paths, personal, notes)
     inferred = inference.run()
     existing = (config_dir / "config.toml").exists()
     target = config_dir / (PROPOSAL if existing else "config.toml")
@@ -585,7 +727,7 @@ def _rel(root: Path, path: Path) -> str:
 def run(args) -> int:
     root = Path(args.root or find_root(Path.cwd())).resolve()
     config_dir = Path(args.config_dir or root / ".modsys").resolve()
-    plan = plan_adopt(root, config_dir, args.registry)
+    plan = plan_adopt(root, config_dir, args.registry, args.layout)
     rel = _rel(root, plan["target"])
     if not args.dry_run:
         write_config(plan["target"], plan["text"], rel, replace=plan["existing"])

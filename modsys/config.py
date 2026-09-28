@@ -167,12 +167,13 @@ def builtin_packs_root() -> Path:
     return Path(str(resources.files("modsys").joinpath("defaults/packs")))
 
 
-def enabled_builtins(config_dir: Path, root: Path | None = None) -> list[str]:
+def enabled_builtins(config_dir: Path, root: Path | None = None, user: bool = True) -> list[str]:
     """`[packs] builtin` of the team config and the user config — appended, de-duplicated. Read
     before the merge: it decides which built-in packs are config layers at all. A refusal names
-    the file root-relative when `root` is given and holds it."""
+    the file root-relative when `root` is given and holds it. `user=False`: the team config
+    only."""
     ids: list[str] = []
-    for name in ("config.toml", "config.user.toml"):
+    for name in ("config.toml", "config.user.toml") if user else ("config.toml",):
         path = config_dir / name
         if path.exists():
             source = shown(path, root)
@@ -183,12 +184,13 @@ def enabled_builtins(config_dir: Path, root: Path | None = None) -> list[str]:
     return ids
 
 
-def discover_packs(config_dir: Path, root: Path | None = None) -> list[dict]:
+def discover_packs(config_dir: Path, root: Path | None = None, user: bool = True) -> list[dict]:
     """Active packs, highest precedence first: the repository's packs (lowest priority number,
     then id), then the built-in packs `[packs] builtin` enables, by id — below every repository
     pack whatever its priority. A repository pack with a built-in id replaces that built-in pack.
     A built-in pack's version is the engine version. `root`: the `[packs] builtin` refusals name
-    their files root-relative."""
+    their files root-relative. `user=False`: built-in packs the user config enables do not
+    count."""
     from modsys.skills import validate_skills  # skills imports this module
     packs = []
     for pack_toml in sorted((config_dir / "packs").glob("*/pack.toml")):
@@ -208,7 +210,7 @@ def discover_packs(config_dir: Path, root: Path | None = None) -> list[dict]:
                       "builtin": False})
     packs.sort(key=lambda p: (p["priority"], p["id"]))
     taken = {p["id"] for p in packs}
-    for pack_id in sorted(set(enabled_builtins(config_dir, root)) - taken):
+    for pack_id in sorted(set(enabled_builtins(config_dir, root, user)) - taken):
         pack_toml = builtin_packs_root() / pack_id / "pack.toml"
         data = {**read_toml(pack_toml), "id": pack_id, "version": __version__}
         validate_skills(data, pack_toml)
@@ -238,12 +240,13 @@ def _pack_layer(pack: dict) -> dict:
 
 
 def load_config(config_dir: Path, root: Path | None = None, extra: dict | None = None,
-                extra_source: str = "") -> dict:
+                extra_source: str = "", user: bool = True) -> dict:
     """The merged config. `extra`: one more layer right after the team config (before the user
-    config) — `adopt` lints against the config it is about to write this way."""
-    packs = discover_packs(config_dir, root)
+    config) — `adopt` lints against the config it is about to write this way. `user=False`:
+    without `config.user.toml` (what `adopt` infers a team file from)."""
+    packs = discover_packs(config_dir, root, user)
     layers = [core_defaults()] + [_pack_layer(p) for p in reversed(packs)]
-    for name in ("config.toml", "config.user.toml"):
+    for name in ("config.toml", "config.user.toml") if user else ("config.toml",):
         path = config_dir / name
         if path.exists():
             layer = read_toml(path)

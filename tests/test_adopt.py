@@ -137,7 +137,8 @@ class AdoptOutputsTest(AdoptRepo):  # P5A-AC-015
                                      "config", "lint", "next_steps", "dry_run"})
         self.assertEqual(set(data["inferred"]), {"paths", "roles", "fields", "dir_whitelist",
                                                  "updated_at_path", "code_map",
-                                                 "code_map_suggestion", "budgets", "skipped"})
+                                                 "code_map_suggestion", "budgets", "skipped",
+                                                 "statuses", "relations"})  # P5B-AC-044
         steps = " ".join(data["next_steps"])
         self.assertIn("review .modsys/config.toml", steps)
         self.assertIn('[packs] builtin = ["core"]', steps)
@@ -501,7 +502,10 @@ class PathsAndLayoutTest(AdoptRepo):  # P5A-AC-021
         self.assertEqual(self.listed(), ["a", "b"])
         shutil.rmtree(self.root / ".modsys")
         (self.root / "modules/b/module.json").unlink()
-        self.assertIn("these do not: b", self.refused())
+        data = self.adopt()  # P5B-AC-046: a mixed layout keeps the registry file (was exit 2)
+        self.assertEqual((data["layout"], data["inferred"]["paths"]), ("single", {}))
+        self.assertIn("# adopt: layout single: 1 of 2 modules have their entry in "
+                      "modules/<name>/module.json (a), not every module", data["config"])
 
     def test_bad_registries_and_paths(self):
         self.registry({"a": entry("a")})
@@ -528,6 +532,198 @@ class PathsAndLayoutTest(AdoptRepo):  # P5A-AC-021
                          ("modules/registry.json", {}))
         self.assertIn("outside the repository",
                       self.refused("--registry", str(alias.parent / "registry.json")))
+
+
+class VocabularyInferenceTest(AdoptRepo):  # P5B-AC-044 (D15(b), SI-27)
+    def vocabulary(self, modules: dict) -> tuple[dict, dict]:
+        shutil.rmtree(self.root / "modules", ignore_errors=True)
+        self.registry(modules)
+        data = self.adopt("--dry-run")
+        return self.toml(data).get("registry", {}), data
+
+    def test_the_decision_table(self):
+        edge = {"module": "b", "relation": "depends-on", "description": "d"}
+        layer, data = self.vocabulary({"a": entry("a", related_modules=[edge]),
+                                       "b": entry("b", status="draft")})
+        self.assertEqual((layer, data["inferred"]["statuses"], data["inferred"]["relations"]),
+                         ({}, [], []))
+        modules = {n: entry(n, status=s) for n, s in (("a", "stable"), ("b", "stable"),
+                                                       ("c", "deprecated"), ("d", "stable"),
+                                                       ("e", "active"), ("f", "active"))}
+        layer, data = self.vocabulary(modules)
+        self.assertEqual(layer, {"statuses": ["stable", "deprecated"]})
+        self.assertEqual(data["inferred"]["statuses"], [{"value": "stable", "count": 3},
+                                                        {"value": "deprecated", "count": 1}])
+        self.assertIn('statuses = ["stable", "deprecated"]\n# adopt: "stable" on 3 modules '
+                      '(a, b, d)\n# adopt: "deprecated" on 1 module (c)\n', data["config"])
+        child = entry("x", related_modules=[{"module": "a", "relation": "wraps",
+                                             "description": "d"}],
+                      context_files={"universal": "modules/b/submodules/x/MODULE.md"})
+        child.pop("name")
+        layer, data = self.vocabulary({
+            "a": entry("a", related_modules=[{"module": "b", "relation": "uses",
+                                              "description": "d"}]),
+            "b": entry("b", submodules={"x": child})})
+        self.assertEqual(layer, {"relations": ["uses", "wraps"]})
+        self.assertEqual(data["inferred"]["relations"], [{"value": "uses", "count": 1},
+                                                         {"value": "wraps", "count": 1}])
+        self.assertIn('# adopt: "wraps" on 1 edge (b/x)', data["config"])
+        self.write(".modsys/config.toml", '[registry]\nstatuses = ["stable"]\n')
+        layer, data = self.vocabulary({"a": entry("a", status="stable")})
+        self.assertEqual((layer, data["inferred"]["statuses"]), ({}, []))
+        (self.root / ".modsys/config.toml").unlink()
+        layer, data = self.vocabulary({
+            "a": entry("a", status=None), "b": entry("b", status=3), "c": entry("c", status=""),
+            "d": entry("d", related_modules=[{"module": "a", "relation": None,
+                                              "description": "d"}])})
+        self.assertEqual((layer, data["inferred"]["statuses"], data["inferred"]["relations"]),
+                         ({}, [], []))
+        skipped = {s["key"]: s["reason"] for s in data["inferred"]["skipped"]}
+        self.assertEqual(sorted(skipped), ["related_modules[].relation", "status"])
+        self.assertEqual(skipped["status"], "a null value on a; a non-string value (3) on b; "
+                                            "an empty string on c — no list holds it (lint "
+                                            "reports it)")
+        self.assertTrue(data["lint"]["counts"])  # lint keeps its findings for them
+
+    def test_the_adopter_probe_and_the_fixed_point(self):
+        modules = {"inventory": entry("inventory", status="stable"),
+                   "orders": entry("orders", status="stable", related_modules=[
+                       {"module": "inventory", "relation": "uses", "description": "stock"}]),
+                   "loyalty": entry("loyalty", status="deprecated")}
+        self.registry(modules)
+        before = manifest(self.root)
+        self.assertEqual(self.adopt("--dry-run")["lint"]["counts"],  {})
+        self.adopt()
+        self.assertEqual(manifest(self.root), before)  # the registry and every doc untouched
+        self.assertEqual(run("lint", "--fail-on", "warning", *self.R)[0], 0)
+        code, _, err = run("registry", "set", "loyalty", "status", '"stable"', "--dry-run",
+                           *self.R)
+        self.assertEqual((code, err), (0, ""))
+        again = self.adopt("--dry-run")["inferred"]
+        self.assertEqual((again["statuses"], again["relations"]), ([], []))
+
+
+class LayoutDetectionTest(AdoptRepo):  # P5B-AC-046 (D15(d) M-3)
+    def setUp(self):
+        super().setUp()
+        self.registry({"a": entry("a"), "b": entry("b")})
+
+    def files(self, a, b) -> None:
+        for name, doc in (("a", a), ("b", b)):
+            path = self.root / f"modules/{name}/module.json"
+            path.unlink(missing_ok=True)
+            if doc is not None:
+                path.write_text(json.dumps(doc) + "\n")
+
+    def test_the_decision_table(self):
+        before = manifest(self.root)
+        data = self.adopt("--dry-run")
+        self.assertEqual((data["layout"], data["inferred"]["paths"]), ("single", {}))
+        self.files(entry("a"), entry("b"))
+        data = self.adopt("--dry-run")
+        self.assertEqual((data["layout"], data["inferred"]["paths"]),
+                         ("per-module", {"registry_layout": "per-module"}))
+        tool = {"owner": "team-a", "tool": "shelfkeeper"}
+        self.files(tool, tool)
+        data = self.adopt("--dry-run")
+        self.assertEqual((data["layout"], data["inferred"]["paths"]), ("single", {}))
+        self.assertIn("# adopt: layout single: modules/<name>/module.json of a, b is not a "
+                      "registry entry (another tool's file?) — ignored", data["config"])
+        self.assertNotIn("MS001", data["lint"]["counts"])
+        self.files(entry("a"), tool)
+        before = manifest(self.root)
+        data = self.adopt()
+        self.assertEqual(data["layout"], "single")
+        self.assertIn("1 of 2 modules have their entry in modules/<name>/module.json (a)",
+                      data["config"])
+        self.assertEqual(manifest(self.root), before)
+        self.files(entry("b"), None)  # a's file names another module: not its entry
+        shutil.rmtree(self.root / ".modsys")
+        self.assertEqual(self.adopt("--dry-run")["layout"], "single")
+
+    def test_the_flag(self):
+        self.files(entry("a"), entry("b"))
+        data = self.adopt("--dry-run", "--layout", "single")
+        self.assertEqual((data["layout"], data["inferred"]["paths"]), ("single", {}))
+        data = self.adopt("--dry-run", "--layout", "per-module")
+        self.assertEqual(data["inferred"]["paths"], {"registry_layout": "per-module"})
+        self.assertIn('registry_layout = "per-module"\n# adopt: --layout per-module: every '
+                      'module has its modules/<name>/module.json', data["config"])
+        self.files(entry("a"), {"owner": "x"})
+        err = self.refused("--layout", "per-module")
+        self.assertIn("--layout per-module: modules/b/module.json is not a registry entry of the "
+                      "module — run adopt with --layout single", err)
+        self.files(entry("a"), None)
+        self.assertIn("modules/b/module.json is missing", self.refused("--layout", "per-module"))
+        code, out, err = run("adopt", "--layout", "bogus", "--json", *self.R)
+        self.assertEqual((code, out), (2, ""))
+        self.assertRegex(err, r"invalid choice: 'bogus' \(choose from '?single'?, "
+                              r"'?per-module'?\)")  # Python 3.11 quotes the choices
+
+
+class UserLayerTest(AdoptRepo):  # P5B-AC-047 (D15(d) M-4, SI-28)
+    def setUp(self):
+        super().setUp()
+        cf = {"universal": "modules/a/MODULE.md", "roles": {"reviewer": "modules/a/roles/r.md"}}
+        self.registry({"a": entry("a", context_files=cf, owner="team-a")})
+
+    def roles_written(self) -> tuple[dict, str]:
+        data = self.adopt("--dry-run")
+        return self.toml(data).get("roles", {}), data["config"]
+
+    def test_the_decision_table(self):
+        roles, _ = self.roles_written()
+        self.assertEqual(list(roles), ["reviewer"])  # declared nowhere: declared
+        user = self.write(".modsys/config.user.toml", '[roles.reviewer]\norder = 70\n'
+                                                      '[fields.owner]\ntype = "string"\n')
+        roles, text = self.roles_written()
+        self.assertEqual(list(roles), ["reviewer"])  # only the personal file: declared too
+        self.assertIn("# adopt: also declared in config.user.toml (personal)", text)
+        owner = text.split("[fields.owner]\n", 1)[1].split("\nscope", 1)[0].splitlines()
+        self.assertEqual((owner[0], owner[-1]), ('type = "string"', "# adopt: also declared in "
+                                                                    "config.user.toml (personal)"))
+        team = self.write(".modsys/config.toml", '[roles.reviewer]\norder = 70\n')
+        roles, _ = self.roles_written()
+        self.assertEqual(roles, {})  # the team file declares it: not repeated
+        user.unlink()
+        roles, _ = self.roles_written()
+        self.assertEqual(roles, {})
+        team.unlink()
+
+    def test_a_teammate_without_the_personal_file(self):
+        user = self.write(".modsys/config.user.toml", '[roles.reviewer]\norder = 70\n')
+        before = user.read_bytes()
+        data = self.adopt()
+        self.assertEqual(data["config_path"], ".modsys/config.toml")
+        self.assertEqual(data["lint"]["counts"], {})  # report mode: every layer
+        self.assertEqual(user.read_bytes(), before)
+        user.unlink()  # a teammate's checkout
+        lint = run_json("lint", "--fail-on", "warning", *self.R)
+        self.assertEqual((lint[0], [f["code"] for f in lint[1]["data"]["findings"]]), (0, []))
+
+
+class CodeMapRankingTest(AdoptRepo):  # P5B-AC-048 (D15(d) M-6)
+    def inferred(self, layout: dict[str, tuple[int, str]]) -> dict:
+        names = [f"m{i}" for i in range(5)]
+        self.registry({n: entry(n) for n in names})
+        for prefix, (count, ext) in layout.items():
+            for n in names[:count]:
+                self.write(f"{prefix}/{n}/x{ext}")
+        return self.adopt("--dry-run")["inferred"]
+
+    def test_the_decision_table(self):
+        found = self.inferred({"src": (4, ".py"), "docs": (4, ".md")})
+        self.assertEqual((found["code_map"]["pattern"], found["code_map"]["alternatives"]),
+                         ("src/{module}/**", []))
+        shutil.rmtree(self.root / "src")
+        shutil.rmtree(self.root / "docs")
+        found = self.inferred({"src": (3, ".py"), "e2e": (3, ".ts")})
+        self.assertEqual((found["code_map"]["pattern"], found["code_map"]["alternatives"]),
+                         ("src/{module}/**", [{"pattern": "e2e/{module}/**", "covered": 3}]))
+        shutil.rmtree(self.root / "src")
+        shutil.rmtree(self.root / "e2e")
+        found = self.inferred({"docs": (5, ".md")})
+        self.assertEqual((found["code_map"], found["code_map_suggestion"]), (None, None))
 
 
 class LintReportTest(AdoptRepo):  # P5A-AC-022
@@ -643,7 +839,8 @@ class EdgeInputsTest(AdoptRepo):  # P5A-AC-043
         data = self.adopt()
         self.assertEqual(data["inferred"], {"paths": {}, "roles": [], "fields": [],
                                             "skipped": [], "dir_whitelist": [],
-                                            "updated_at_path": None, "code_map": None,
+                                            "updated_at_path": None, "statuses": [],
+                                            "relations": [], "code_map": None,
                                             "code_map_suggestion": None, "budgets": []})
         self.assertIn("modsys init map", " ".join(data["next_steps"]))
 
