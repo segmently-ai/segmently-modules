@@ -7,8 +7,10 @@ Root: `--root`, else the git top-level of the current directory, else the curren
 
 Actions (`modsys.init_flow`, `modsys.init_work`): `map` (the starter files that are missing,
 then preflight and map; stops at gate 3), `confirm` (gate 3), `status`, `resume`, `fanout` (one
-work item per confirmed module) — one envelope `modsys.init/1` each."""
+work item per confirmed module), `next` (claim one), `done MODULE` (check its staging output) —
+one envelope `modsys.init/1` each."""
 import subprocess
+import sys
 from pathlib import Path
 
 from modsys.changes import git_env
@@ -16,7 +18,7 @@ from modsys.config import REGISTRY_LAYOUTS, load_config
 from modsys.fields import load_field_defs
 from modsys.layout import build_index
 from modsys.merge import merge
-from modsys.output import EXIT_OK, UsageError, emit
+from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.store import serialize
 from modsys.workspace import Workspace
 
@@ -129,24 +131,29 @@ def starter_config(layout: str) -> str:
     return _HEADER + _PATHS[layout] + _BODY
 
 
-ACTIONS = ("map", "confirm", "status", "resume", "fanout")
+ACTIONS = ("map", "confirm", "status", "resume", "fanout", "next", "done")
 
 
 def register(sub, common) -> None:
     p = sub.add_parser("init", parents=[common],
                        help="set up modsys here: starter config, empty registry, .gitignore lines "
-                            "(map|confirm|fanout|status|resume: start from existing code)",
+                            "(map|confirm|fanout|next|done|status|resume: start from existing "
+                            "code)",
                        description="Without an action: the starter config, an empty registry and "
                                    "the .gitignore lines. map: those, then preflight and map of "
                                    "the existing code into <config_dir>/init/proposal.json "
                                    "(stops at gate 3; refused when the registry has modules). "
                                    "confirm: gate 3 — validate the edited proposal and freeze "
                                    "it. fanout: one work item per confirmed module "
-                                   "(<config_dir>/init/work/). status: the phases, the modules "
-                                   "and the next step. resume: re-run an interrupted phase and "
-                                   "continue.")
+                                   "(<config_dir>/init/work/). next: claim the next pending "
+                                   "module (its work item and prompt). done MODULE: check the "
+                                   "files written into its staging directory. status: the "
+                                   "phases, the modules and the next step. resume: re-run an "
+                                   "interrupted phase and continue.")
     p.add_argument("action", nargs="?", metavar="ACTION",
                    help=f"{', '.join(ACTIONS)} (none: the starter files only)")
+    p.add_argument("module", nargs="?", metavar="MODULE",
+                   help="done: the module whose staging output to check")
     p.add_argument("--layout", choices=REGISTRY_LAYOUTS,
                    help="registry layout for a new setup (default: the configured one, else single)")
     p.add_argument("--dry-run", action="store_true", help="report what would change, write nothing")
@@ -269,11 +276,15 @@ def _check_flags(args) -> None:
     action = args.action
     if action is not None and action not in ACTIONS:
         raise UsageError(f"unknown init action {action!r} (actions: {', '.join(ACTIONS)})")
+    if action == "done" and not args.module:
+        raise UsageError("init done needs the MODULE whose staging output to check")
+    if args.module and action != "done":
+        raise UsageError(f"init {action or '(no action)'} takes no MODULE")
     if args.restart and action != "map":
         raise UsageError("--restart works with map only (modsys init map --restart)")
     if args.layout and action not in (None, "map"):
         raise UsageError(f"--layout works with plain init and init map, not init {action}")
-    if args.dry_run and action in ("status", "resume", "fanout"):
+    if args.dry_run and action in ("status", "resume", "fanout", "next", "done"):
         raise UsageError(f"init {action} takes no --dry-run (it never writes)"
                          if action == "status" else f"init {action} takes no --dry-run")
 
@@ -349,6 +360,22 @@ def run_action(args, root: Path, config_dir: Path) -> int:
                 "next": flow.next_step(result["state"], work)}
         emit("init", data, args.json, _render_fanout)
         return EXIT_OK
+    if args.action == "next":
+        item, tally = phase4.claim()
+        data = {"action": "next", "item": item,
+                "path": flow.rel(phase4.item_path(item["module"])) if item else None,
+                "counts": tally}
+        emit("init", data, args.json, _render_next)
+        return EXIT_OK
+    if args.action == "done":
+        status, problems = phase4.done(args.module)
+        data = {"action": "done", "module": args.module,
+                "status": "done" if status == "already done" else status, "problems": problems,
+                "message": "already done" if status == "already done" else None}
+        for problem in problems:
+            print(f"modsys: {args.module}: {problem}", file=sys.stderr)
+        emit("init", data, args.json, _render_done)
+        return EXIT_FINDINGS if problems else EXIT_OK
     state = flow.load_state()
     if state is not None and state["phases"]["gate-map"]["status"] == "done":
         ran = []
@@ -415,6 +442,23 @@ def _render_fanout(d) -> None:
           f"{len(d['existing'])} already in the registry)")
     print(f"modules       {', '.join(d['items'])}")
     print(f"next: {d['next']}")
+
+
+def _render_next(d) -> None:
+    c = d["counts"]
+    if d["item"] is None:
+        print(f"nothing pending ({c['done']} done, {c['running']} running, {c['failed']} "
+              f"failed)")
+        return
+    print(f"claimed       {d['item']['module']}  (work item {d['path']})")
+    print(d["item"]["prompt"], end="")
+
+
+def _render_done(d) -> None:
+    if d["problems"]:
+        print(f"not done      {d['module']} ({len(d['problems'])} problem(s) on stderr)")
+    else:
+        print(f"{d['message'] or 'done':<13} {d['module']}")
 
 
 def _render_resume(d) -> None:

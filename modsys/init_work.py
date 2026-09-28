@@ -1,5 +1,6 @@
-"""`init fanout` — phase 4 (fan-out): one work item per confirmed module, whoever writes the docs
-(an agent session, a skill's subagents, a CI executor).
+"""`init fanout|next|done` — phase 4 (fan-out): one work item per confirmed module, claimed and
+checked one at a time, whoever writes the docs (an agent session, a skill's subagents, a CI
+executor: `init run`).
 
   <config_dir>/init/work/<module>.json   the work item: {module, parent, paths, files (the first
                                          200 of the module's files, in path order), files_total,
@@ -14,14 +15,18 @@
 
 The prompt is rendered from the template `init/module_prompt.md` (the template chain: team
 override, packs, engine), the doc templates it embeds from `create`'s chain; no `${…}`
-placeholder is left in it. Every module starts `pending` in `state.json` (a module created by
-hand: `done`, `existing`)."""
+placeholder is left in it. A module's status in `state.json`: pending -> running (a claim:
+`init next`, `init run`) -> done | failed; `init done` checks the staging output. Every state
+change is a read-modify-write under `state.json.lock`."""
+import json
 import re
+import shutil
 import string
 
 from modsys.changes import glob_to_regex
 from modsys.config import enabled_roles
 from modsys.create import article, ask_fields, resolve_template
+from modsys.fields import value_matches
 from modsys.output import UsageError
 from modsys.store import serialize
 
@@ -29,6 +34,7 @@ FILES_CAP = 200
 DOC_PLACEHOLDERS = {"description": "<one sentence: what the module does, why, when to use it>",
                     "keywords": "<the keywords>", "status": "active", "parent": ""}
 _LEFT = re.compile(r"\$\{(\w*)\}?")
+_FIRST_PLACEHOLDER = re.compile(r"\$\{[^}\s]*\}?")
 
 
 def fence(text: str) -> str:
@@ -74,11 +80,18 @@ class Work:
         roles = self.ws.config.get("roles") or {}
         return [r for r in enabled_roles(self.ws.config) if roles[r].get("standard")]
 
+    def targets(self) -> set[str]:
+        """The modules an entry's edge may name: the included confirmed ones and the registry."""
+        return {c["name"] for c in self.confirmed()} | set(self.registry_modules())
+
     def item_path(self, module: str):
         return self.dir / f"{module}.json"
 
     def staging_dir(self, module: str):
         return self.staging / module
+
+    def item(self, module: str) -> dict:
+        return self.flow.read_json(self.item_path(module))
 
     # --- the work items -------------------------------------------------------------------
 
@@ -183,3 +196,140 @@ class Work:
         return {"items": list(items), "existing": [n for n, i in items.items()
                                                    if i.get("existing")],
                 "status": "unchanged" if unchanged else "written", "state": state}
+
+    # --- claims and checks ----------------------------------------------------------------
+
+    def require_fanout(self, state: dict | None) -> dict:
+        if state is None or state["phases"]["gate-map"]["status"] != "done":
+            raise UsageError("gate 3 has not passed — run modsys init confirm first")
+        if state["phases"]["fanout"]["status"] != "done":
+            raise UsageError("the fan-out has not run — run modsys init fanout first")
+        return state
+
+    def clear(self, module: str) -> None:
+        target = self.staging_dir(module)
+        if target.is_symlink():
+            raise UsageError(f"{self.flow.rel(target)} is a symlink — remove it (its target is "
+                             f"left alone)")
+        if target.exists():
+            try:
+                shutil.rmtree(target)
+            except OSError as e:
+                raise UsageError(f"cannot write {self.flow.rel(target)}/: {e.strerror or e}") \
+                    from None
+
+    def claim(self) -> tuple[dict | None, dict]:
+        """The first pending module in name order, now running (attempts + 1, its staging dir
+        cleared, its last error dropped): (work item or None, counts)."""
+        self.require_fanout(self.flow.load_state())  # a refusal writes nothing, not even the lock
+        with self.flow.locked():
+            state = self.require_fanout(self.flow.load_state())
+            pending = sorted(m for m, e in state["modules"].items() if e["status"] == "pending")
+            if not pending:
+                return None, counts(state)
+            module = pending[0]
+            self.clear(module)
+            entry = state["modules"][module]
+            entry.update(status="running", attempts=entry["attempts"] + 1, error=None)
+            self.flow.save_state(state)
+        return self.item(module), counts(state)
+
+    def problems(self, module: str) -> list[str]:
+        """What keeps a module's staging output from `done` (SI-8), one line each."""
+        item = self.item(module)
+        base = self.staging_dir(module)
+        expected = ["MODULE.md", *(f"roles/{r}.md" for r in item["roles"]), "entry.json"]
+        found = sorted(p.relative_to(base).as_posix() for p in base.rglob("*")
+                       if p.is_file() or p.is_symlink()) if base.is_dir() else []
+        out = [f"missing {rel}" for rel in expected if rel not in found]
+        out += [f"unexpected file {rel}" for rel in found if rel not in expected]
+        for rel in expected[:-1]:
+            path = base / rel
+            if rel not in found:
+                continue
+            if path.is_symlink():
+                out.append(f"{rel} is a symlink (write the file itself)")
+                continue
+            try:
+                text = path.read_bytes().decode("utf-8")
+            except (OSError, UnicodeDecodeError) as e:
+                out.append(f"{rel}: cannot read it as UTF-8 text ({e})")
+                continue
+            if not text.strip():
+                out.append(f"{rel} is empty")
+            elif "${" in text:
+                out.append(f"{rel}: unfilled placeholder {_FIRST_PLACEHOLDER.search(text).group(0)}")
+        if "entry.json" in found and not (base / "entry.json").is_symlink():
+            out += self.entry_problems(base / "entry.json")
+        elif "entry.json" in found:
+            out.append("entry.json is a symlink (write the file itself)")
+        return out
+
+    def entry_problems(self, path) -> list[str]:
+        try:
+            entry = json.loads(path.read_bytes().decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return ["entry.json: invalid JSON"]
+        if not isinstance(entry, dict):
+            return ["entry.json: not an object"]
+        cfg = self.ws.config
+        extra = ask_fields(self.ws, "module")
+        allowed = {"description", "keywords", "related_modules", *extra}
+        out = [f"entry.json: unknown key '{k}'" for k in sorted(entry) if k not in allowed]
+        low, high = cfg["create"]["description_min"], cfg["create"]["description_max"]
+        desc = entry.get("description")
+        if not isinstance(desc, str) or not low <= len(desc.strip()) <= high:
+            out.append(f"description must be {low}–{high} characters")
+        kws = entry.get("keywords")
+        need = cfg["create"]["min_keywords"]
+        if not (isinstance(kws, list) and all(isinstance(k, str) and k.strip() for k in kws)
+                and len(set(kws)) >= need):
+            out.append(f"at least {need} distinct keywords (a list of non-empty strings)")
+        for name, fdef in extra.items():
+            if name not in entry:
+                out.append(f"entry.json: missing '{name}' (a field this repository asks for)")
+            elif not value_matches(fdef, entry[name]):
+                out.append(f"entry.json: '{name}' does not match type {' | '.join(fdef.type)}")
+        edges = entry.get("related_modules", [])
+        if not isinstance(edges, list):
+            return out + ["related_modules must be a list of edges"]
+        targets, relations = self.targets(), cfg["registry"]["relations"]
+        for i, edge in enumerate(edges):
+            if not isinstance(edge, dict):
+                out.append(f"related_modules[{i}]: not an object")
+                continue
+            if edge.get("module") not in targets:
+                out.append(f"related_modules[{i}]: '{edge.get('module')}' is not a confirmed "
+                           f"module")
+            if edge.get("relation") not in relations:
+                out.append(f"related_modules[{i}]: relation '{edge.get('relation')}' is not in "
+                           f"the relations ({', '.join(relations)})")
+            if not isinstance(edge.get("description"), str) or not edge["description"].strip():
+                out.append(f"related_modules[{i}]: missing description")
+            unknown = sorted(set(edge) - {"module", "relation", "description"})
+            if unknown:
+                out.append(f"related_modules[{i}]: unknown key '{unknown[0]}'")
+        return out
+
+    def done(self, module: str) -> tuple[str, list[str]]:
+        """`init done <module>`: (status, problems) — `done` when the staging output is
+        complete; a pending or unknown module is exit 2; an item already done stays done."""
+        state = self.require_fanout(self.flow.load_state())
+        modules = state["modules"]
+        if module not in modules:
+            raise UsageError(f"unknown module '{module}' (modules: {', '.join(sorted(modules))})")
+        status = modules[module]["status"]
+        if status == "done":
+            return "already done", []
+        if status == "pending":
+            raise UsageError(f"'{module}' is pending — claim it first: modsys init next")
+        problems = self.problems(module)
+        if problems:
+            return status, problems
+        with self.flow.locked():
+            state = self.flow.load_state()
+            entry = state["modules"][module]
+            if entry["status"] in ("running", "failed"):
+                entry.update(status="done", error=None)
+                self.flow.save_state(state)
+        return "done", []

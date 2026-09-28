@@ -7,6 +7,8 @@ import json
 import os
 import re
 import shutil
+import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -17,6 +19,7 @@ from modsys import __version__
 from modsys.init_cmd import ACTIONS
 from modsys.init_flow import PHASES, TEST_STOP, InitFlow
 from tests.helpers import git, run, run_json
+from tests.init_fake_executor import write_docs
 
 ENGINE = Path(__file__).resolve().parents[1]
 ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
@@ -477,6 +480,141 @@ class WritesAndRacesTest(InitRepo):  # P5A-AC-044 (init)
         finally:
             os.chmod(self.work, 0o755)
         self.assertEqual(self.temps(), [])
+
+
+class Phase4Repo(InitRepo):
+    """x, y, z through gate 3 and the fan-out."""
+    def setUp(self):
+        super().setUp()
+        self.init("map")
+        self.init("confirm")
+        self.init("fanout")
+
+    def modules(self) -> dict:
+        return self.state()["modules"]
+
+    def item(self, module: str) -> dict:
+        return json.loads((self.work / "work" / f"{module}.json").read_text())
+
+
+class ModuleTransitionsTest(Phase4Repo):  # P5B-AC-003 (the claims and checks; runs: test_init_run)
+    def test_pending_running_done(self):
+        self.assertEqual(self.modules(), {m: {"status": "pending", "attempts": 0, "error": None}
+                                          for m in ("x", "y", "z")})
+        self.assertEqual(self.init("next")["item"]["module"], "x")
+        self.assertEqual(self.modules()["x"], {"status": "running", "attempts": 1, "error": None})
+        code, out, err = run("init", "done", "x", "--json", *self.R)  # nothing written yet
+        self.assertEqual((code, self.modules()["x"]["status"]), (1, "running"))
+        self.assertIn("modsys: x: missing MODULE.md", err.splitlines())
+        write_docs(self.root, self.item("x"))
+        data = self.init("done", "x")
+        self.assertEqual((data["status"], data["problems"], data["message"]), ("done", [], None))
+        before = {p: p.read_bytes() for p in (self.work / "staging/x").rglob("*") if p.is_file()}
+        for action in (("done", "x"), ("next",), ("fanout",)):
+            with self.subTest(action=action):
+                run("init", *action, *self.R)
+                self.assertEqual(self.modules()["x"]["status"], "done")
+        self.assertEqual({p: p.read_bytes() for p in (self.work / "staging/x").rglob("*")
+                          if p.is_file()}, before)
+
+    def test_a_claim_clears_leftovers_and_a_failed_item_can_be_done(self):
+        stale = self.work / "staging/x/partial.tmp"
+        stale.parent.mkdir(parents=True)
+        stale.write_text("half")
+        self.init("next")
+        self.assertFalse(stale.exists())
+        state = self.state()
+        state["modules"]["x"].update(status="failed", error="exit 3: boom")
+        (self.work / "state.json").write_text(json.dumps(state))
+        write_docs(self.root, self.item("x"))
+        self.assertEqual(self.init("done", "x")["status"], "done")
+        self.assertEqual(self.modules()["x"], {"status": "done", "attempts": 1, "error": None})
+
+    def test_state_writes_are_atomic(self):
+        good = (self.work / "state.json").read_bytes()
+        with mock.patch("modsys.init_flow.os.replace", side_effect=KeyboardInterrupt):
+            self.assertEqual(run("init", "next", *self.R), (130, "", "modsys: interrupted\n"))
+        self.assertEqual((self.work / "state.json").read_bytes(), good)
+        json.loads(good)
+        self.assertEqual(self.temps(), [])
+
+
+class Phase4InvalidTransitionsTest(InitRepo):  # P5B-AC-004 (the phase 4 rows)
+    def test_before_gate_3(self):
+        self.init("map")
+        for argv in (("fanout",), ("next",)):
+            with self.subTest(argv=argv):
+                self.assertIn("modsys init confirm", self.refused(*argv))
+        self.assertFalse((self.work / "work").exists())
+
+    def test_the_claim_and_check_rows(self):
+        self.init("map")
+        self.init("confirm")
+        self.init("fanout")
+        self.assertIn("'x' is pending — claim it first: modsys init next",
+                      self.refused("done", "x"))
+        self.assertIn("unknown module 'nosuch' (modules: x, y, z)", self.refused("done", "nosuch"))
+        for _ in range(3):
+            self.init("next")
+        for m in ("x", "y", "z"):
+            write_docs(self.root, json.loads((self.work / "work" / f"{m}.json").read_text()))
+            self.init("done", m)
+        data = self.init("next")
+        self.assertEqual((data["item"], data["counts"]), (None, {"pending": 0, "running": 0,
+                                                                 "done": 3, "failed": 0}))
+        before = {p: p.read_bytes() for p in (self.work / "staging/x").rglob("*") if p.is_file()}
+        data = self.init("done", "x")
+        self.assertEqual((data["status"], data["message"]), ("done", "already done"))
+        self.assertEqual({p: p.read_bytes() for p in (self.work / "staging/x").rglob("*")
+                          if p.is_file()}, before)
+        err = self.refused("fanout")
+        self.assertIn("modsys init resume", err)
+        self.assertIn("modsys init run", err)
+        self.assertIn("gate 3 passed", self.refused("map"))
+        self.assertIn("init done needs the MODULE", self.refused("done"))
+        self.assertIn("init next takes no MODULE", self.refused("next", "x"))
+
+
+class ConcurrencyTest(Phase4Repo):  # P5B-AC-006 (SI-3)
+    UNITS = ("a", "b", "c", "d", "e", "f")
+
+    def at_once(self, argvs: list[list[str]]) -> list[dict]:
+        """Start every command at once (they wait on a gate file), then open the gate."""
+        gate = self.root.parent / "go"
+        script = ("import os, sys, time\n"
+                  f"while not os.path.exists({str(gate)!r}): time.sleep(0.01)\n"
+                  "from modsys.cli import main\nsys.exit(main(sys.argv[1:]))\n")
+        env = {**os.environ, "PYTHONPATH": str(ENGINE)}
+        procs = [subprocess.Popen([sys.executable, "-c", script, *argv, "--json", *self.R],
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                  env=env) for argv in argvs]
+        time.sleep(0.5)
+        gate.write_text("go")
+        outs = [p.communicate(timeout=120) for p in procs]
+        gate.unlink()
+        self.assertEqual([p.returncode for p in procs], [0] * len(procs), [e for _, e in outs])
+        return [json.loads(o)["data"] for o, _ in outs]
+
+    def test_eight_claims_and_six_checks_at_once(self):
+        claimed = [d["item"]["module"] if d["item"] else None
+                   for d in self.at_once([["init", "next"]] * 8)]
+        self.assertEqual(sorted(m for m in claimed if m), list(self.UNITS))
+        self.assertEqual(claimed.count(None), 2)
+        self.assertEqual(self.modules(), {m: {"status": "running", "attempts": 1, "error": None}
+                                          for m in self.UNITS})
+        for m in self.UNITS:
+            write_docs(self.root, self.item(m))
+        self.at_once([["init", "done", m] for m in self.UNITS])
+        self.assertEqual({m: e["status"] for m, e in self.modules().items()},
+                         dict.fromkeys(self.UNITS, "done"))
+
+    def test_a_writer_waits_for_the_lock_then_gives_up(self):
+        from modsys.store import file_lock
+        with file_lock(self.work / "state.json"), \
+                mock.patch("modsys.init_flow.LOCK_TIMEOUT_S", 0.2):
+            err = self.refused("next")
+        self.assertIn("state.json.lock", err)
+        self.assertIn("locked by another writer", err)
 
 
 class ReconfirmTest(InitRepo):  # P5B-AC-050 (P5a SI-13)

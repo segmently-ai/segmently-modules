@@ -1,15 +1,23 @@
 """Helpers of the `init` phase 4–7 tests: a git copy of `bookshop_monorepo` taken through `init
-map` and gate 3, and calls that assert their exit code."""
+map` and gate 3, calls that assert their exit code, and the fake executor's command line."""
 import hashlib
 import json
+import shlex
+import sys
 from pathlib import Path
 
 from tests.fixtures.build_monorepo import build
 from tests.helpers import run, run_json
 
+FAKE = Path(__file__).resolve().parent / "init_fake_executor.py"
 WORK = ".modsys/init"
 SIX = ["cart", "catalog", "payments", "recommendations", "storefront", "ui-kit"]
 ROLES = ["developer", "qa", "po", "architect"]
+
+
+def executor(*flags: str) -> str:
+    """`--executor` for the fake executor (this interpreter; paths quoted for `shlex`)."""
+    return " ".join(shlex.quote(a) for a in (sys.executable, str(FAKE), *flags))
 
 
 def ok(root: Path, *argv: str, code: int = 0):
