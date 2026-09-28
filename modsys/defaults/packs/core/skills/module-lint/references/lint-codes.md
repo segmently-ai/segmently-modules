@@ -33,7 +33,7 @@ Every code the `lint` and `ci` verbs report. **Safe** = a mechanical fix the ski
 | MS060 | an unknown key in a pack's `pack.toml` (`*`) | Ask the pack's owner (usually a typo) |
 | MS061 | a pack role's template is missing or outside the pack (`*`) | Ask the pack's owner |
 | MS062 | a pack skill agents cannot load (`*`) | Ask the pack's owner; the message says what is wrong |
-| MS063 | an ejected skill is behind its pack (its files changed since the eject, or a repository pack's version did), a pack file it cannot read, or no pack declares it (`*`) | Ask: review `modsys eject <skill> --diff --json`; taking changes by hand does not clear it. Either delete the copy and run `packs sync` (the pack's version returns), or move the copy out of `overrides/skills/`, eject again and re-apply the team's edits to the new copy |
+| MS063 | an ejected skill is behind its pack (its files changed since the eject, or a repository pack's version did), a pack file it cannot read, or no pack declares it (`*`) | Ask: review `modsys eject <skill> --diff --json`, take what the team wants into the copy by hand, then `modsys eject <skill> --rebase --json` records the pack's current state and clears it (the copy's files stay as they are). Or delete the copy and run `packs sync` (the pack's version returns) |
 | MS064 | a skill reads a role that is not configured or disabled (`*`) | Ask the pack's owner |
 | MS065 | two packs declare one skill id; one is shadowed (`*`) | Ask: rename one of the skills |
 | MS066 | a repository pack takes a built-in pack's id and replaces that pack (`*`, info) | Nothing to fix when the team owns that pack on purpose; otherwise ask to rename the repository pack |

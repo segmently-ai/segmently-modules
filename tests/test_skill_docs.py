@@ -73,12 +73,13 @@ class SkillDocsTest(unittest.TestCase):  # P4B-AC-023
             encoding="utf-8").splitlines() if line.startswith("| MS063 |"))
         for name, text in (("skills.md", eject), ("writing-a-pack.md", pack),
                            ("lint-codes.md", ref)):
-            with self.subTest(doc=name):
+            with self.subTest(doc=name):  # P5a D1: review, take by hand, then --rebase
                 self.assertIn("--diff", text)
-                self.assertIn("does not clear it", text)
+                self.assertIn("by hand", text)
+                self.assertIn("--rebase", text)
                 self.assertIn("delete the copy", text)
-                self.assertIn("eject again and re-apply the team's edits", text)
-                self.assertNotIn("take what it wants by hand", text)
+                self.assertNotIn("does not clear it", text)
+                self.assertNotIn("eject again and re-apply", text)
         self.assertIn("an engine upgrade alone", eject)
 
     def test_the_init_starter_enables_core(self):

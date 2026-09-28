@@ -3,8 +3,11 @@
 and the file hashes at eject time. From then on `packs sync` materializes the skill from that
 copy into every agent directory and the pack never overwrites it; plain `lint` reports MS063
 when the pack moves on. `--diff` compares the pack's current files with the copy (read-only).
-Back to the pack: delete the directory and run `packs sync` again with the agents (`--agent …`,
-or `[packs] agents`); there is no un-eject."""
+`--rebase` acknowledges the pack's current state once the team has taken what it wants by hand:
+it rewrites only the record (pack, version, file hashes), never the copy's files, so MS063 and
+`--diff`'s `behind` compare with the new snapshot. Back to the pack: delete the directory and
+run `packs sync` again with the agents (`--agent …`, or `[packs] agents`); there is no
+un-eject."""
 import difflib
 import functools
 import json
@@ -14,6 +17,7 @@ from pathlib import Path
 
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.skill_sync import copy_file, sync_command
+from modsys.store import atomic_write
 from modsys.skills import (EJECTED, EJECTED_SCHEMA, behind_reason, ejected_dir, pack_skills,
                            read_ejected, source_hashes, source_problem)
 from modsys.workspace import Workspace
@@ -28,11 +32,17 @@ def register(sub, common) -> None:
                        description="Copy a pack skill to <config_dir>/overrides/skills/SKILL/; "
                                    "packs sync then materializes the skill from that copy and "
                                    "the pack never overwrites it. --diff compares the pack's "
-                                   "current files with the copy. Back to the pack: delete the "
+                                   "current files with the copy; --rebase, after taking what "
+                                   "the team wants by hand, records the pack's current state "
+                                   "(clears MS063). Back to the pack: delete the "
                                    f"directory, then {sync_command(None, None)}{SET_AGENTS}.")
     p.add_argument("skill", metavar="SKILL")
     p.add_argument("--diff", action="store_true",
                    help="compare the ejected copy with the pack's current files (read-only)")
+    p.add_argument("--rebase", action="store_true",
+                   help="record the pack's current version and files in the ejected copy's "
+                        ".modsys-ejected (after taking the upstream changes by hand); the "
+                        "copy's files are never touched")
     p.add_argument("--dry-run", action="store_true", help="list the files, write nothing")
     p.set_defaults(func=run)
 
@@ -73,8 +83,7 @@ def eject(ws, skill_id: str, dry_run: bool) -> dict:
                 copy_file(skill.source / rel, target / rel)
             record = {"schema": EJECTED_SCHEMA, "skill": skill_id, "pack": skill.pack,
                       "version": skill.version, "files": files}
-            (target / EJECTED).write_text(json.dumps(record, indent=2, sort_keys=True) + "\n",
-                                          encoding="utf-8")
+            (target / EJECTED).write_text(_record_text(record), encoding="utf-8")
         except BaseException as e:  # Ctrl-C or a failed write: no half-made copy stays
             shutil.rmtree(target, ignore_errors=True)
             if isinstance(e, OSError):
@@ -83,6 +92,40 @@ def eject(ws, skill_id: str, dry_run: bool) -> dict:
             raise
     return {"skill": skill_id, "pack": skill.pack, "version": skill.version,
             "dir": ws.rel(target), "files": sorted(files), "dry_run": dry_run}
+
+
+def _record_text(record: dict) -> str:
+    return json.dumps(record, indent=2, sort_keys=True) + "\n"
+
+
+def rebase(ws, skill_id: str, dry_run: bool) -> dict:
+    """Rewrite the ejected copy's record with the declaring pack's current pack, version and
+    file hashes (a temp file + rename); a record that already holds them is left alone. The
+    copy's files are never read or written; every refusal writes nothing."""
+    target = ejected_dir(ws.config_dir, skill_id)
+    in_the_way(ws, target)
+    if not target.is_dir():
+        raise UsageError(f"skill '{skill_id}' is not ejected (eject it first: modsys eject "
+                         f"{skill_id})")
+    record = read_ejected(target)
+    if record is None:
+        raise UsageError(f"{ws.rel(target)} has no valid {EJECTED} record — eject it again or "
+                         f"restore the file")
+    skill = pack_skills(ws.config_dir).get(skill_id)
+    if skill is None:
+        raise UsageError(f"pack '{record['pack']}' no longer declares skill '{skill_id}' — the "
+                         f"ejected copy {ws.rel(target)} is its only source (nothing to rebase "
+                         f"onto)")
+    upstream = source_hashes(skill.source, ws.rel) if skill.source.is_dir() else {}
+    old = record["files"]
+    changed = sorted(p for p in set(old) | set(upstream) if old.get(p) != upstream.get(p))
+    new = {**record, "pack": skill.pack, "version": skill.version, "files": upstream}
+    if new != record and not dry_run:
+        atomic_write(target / EJECTED, _record_text(new))
+    return {"skill": skill_id, "pack": skill.pack,
+            "rebased_from": {"pack": record["pack"], "version": record.get("version")},
+            "rebased_to": {"pack": skill.pack, "version": skill.version},
+            "files_changed": len(changed), "dry_run": dry_run}
 
 
 def _lines(path: Path | None) -> list[str] | None:
@@ -141,7 +184,13 @@ def diff(ws, skill_id: str) -> dict:
 
 
 def run(args) -> int:
+    if args.rebase and args.diff:
+        raise UsageError("--rebase and --diff cannot be combined: review with --diff first, "
+                         "then record the pack's state with --rebase")
     ws = Workspace.from_args(args)
+    if args.rebase:
+        emit("eject", rebase(ws, args.skill, args.dry_run), args.json, _render_rebase)
+        return EXIT_OK
     if args.diff:
         if args.dry_run:
             raise UsageError("--dry-run applies to eject without --diff (--diff never writes)")
@@ -182,3 +231,16 @@ def _render_diff(d) -> None:
             print(f"{f['status']:<14} {f['path']}")
     if d["diff"]:
         print(d["diff"], end="")
+    if d["behind"]:
+        print(f"next: take what you want by hand, then modsys eject {d['skill']} --rebase")
+
+
+def _render_rebase(d) -> None:
+    old, new = d["rebased_from"], d["rebased_to"]
+    pairs = f"{old['pack']} {old['version']} -> {new['pack']} {new['version']}"
+    if old == new and not d["files_changed"]:
+        print(f"{d['skill']}: nothing to rebase — the record already holds {pairs}")
+        return
+    verb = "would rebase" if d["dry_run"] else "rebased"
+    print(f"{verb}  {d['skill']}: {pairs} ({d['files_changed']} file(s) changed in the record; "
+          f"the ejected files are unchanged)")

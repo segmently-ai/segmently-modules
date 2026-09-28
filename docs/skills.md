@@ -105,17 +105,18 @@ skill is left alone.
 modsys eject module-sync         # copies it to .modsys/overrides/skills/module-sync/
 modsys packs sync --agent claude --agent codex
 modsys eject module-sync --diff  # later: what the engine changed since
+modsys eject module-sync --rebase   # after taking that change by hand: MS063 clears
 ```
 
 Edit the ejected copy: the agents get it and the engine never overwrites it. When a later
 engine changes the skill's files, plain `modsys lint` reports MS063 (`ejected skill
 'module-sync' is behind pack 'core' (the pack's files changed since the eject) …`); an engine
 upgrade alone, with the skill's files unchanged, does not. Review the change with
-`modsys eject module-sync --diff`. Copying it into the ejected copy by hand does not clear it:
-the record keeps the snapshot taken at eject time. To clear it, either delete the copy and run
-`packs sync` (the agents get the engine's version again), or move the copy out of
-`.modsys/overrides/skills/`, eject again and re-apply the team's edits to the new copy. An
-ejected copy stays the skill's source even when its pack is disabled. The rules are the same as for any pack skill ([writing-a-pack.md](writing-a-pack.md)).
+`modsys eject module-sync --diff`, take what the team wants into the ejected copy by hand, then
+run `modsys eject module-sync --rebase`: it records the engine's current version and file hashes
+in the copy's `.modsys-ejected` (never touching the copy's files), so `--diff` says up to date
+and MS063 clears. Or delete the copy and run `packs sync` — the agents get the engine's version
+again. An ejected copy stays the skill's source even when its pack is disabled. The rules are the same as for any pack skill ([writing-a-pack.md](writing-a-pack.md)).
 
 ## Owning a whole pack: copy it
 
