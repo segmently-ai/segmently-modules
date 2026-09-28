@@ -124,8 +124,9 @@ show <module>`; `modsys show <module>` prints the module's keywords on its `keys
 | `default_status` | `"planned"` | status of a new module when none is given |
 
 `create` also checks the keywords it is given and warns — it never refuses and never changes
-what it writes (`--non-interactive` included; a `modsys: warning: …` line on stderr, with
-`--json` the list `data.warnings`). It warns about a keyword of 3 characters or fewer (`api`,
+what it writes (`--non-interactive` included; `modsys: warning: …` lines on stderr — one per
+short or generic keyword, and ONE line for all the plural hints of the run, naming their count
+and the first three pairs —, with `--json` the list `data.warnings`, one entry per keyword). It warns about a keyword of 3 characters or fewer (`api`,
 `ui`), a generic word (`common`, `data`, `helper`, `info`, `item`, `list`, `misc`, `stuff`,
 `util`; any case), and a single lowercase word of 4 letters or more whose plain singular or
 plural is not a keyword too (matching is exact-token: `book` does not match "books"). The plural

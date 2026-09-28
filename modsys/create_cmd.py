@@ -67,8 +67,8 @@ def run(args) -> int:
         creator.apply_create(ws, plan)
     warnings = creator.keyword_warnings(plan["entry"]["keywords"])
     if not args.json:  # never blocks: --json carries them in data.warnings, stderr stays empty
-        for warning in warnings:
-            print(f"modsys: warning: {warning}", file=sys.stderr)
+        for line in creator.warning_lines(plan["entry"]["keywords"]):
+            print(f"modsys: warning: {line}", file=sys.stderr)
     data = {"module": plan["module"], "files": sorted(plan["files"]), "entry": plan["entry"],
             "warnings": warnings, "dry_run": args.dry_run}
     emit("create", data, args.json, _render)

@@ -134,8 +134,8 @@ class KeywordWarningsTest(unittest.TestCase):  # P5A-AC-006 (D0b)
                 code, out, err = run(*self.argv(keywords, name="loans"), *mode, *self.R)
                 self.assertEqual(code, 0)
                 self.assertEqual(err.splitlines(), [
-                    l for l in err.splitlines() if l.startswith("modsys: warning: keyword '")])
-                self.assertEqual(len(err.splitlines()), 3)
+                    l for l in err.splitlines() if l.startswith("modsys: warning: ")])
+                self.assertEqual(len(err.splitlines()), 3)  # short, generic, the plural line
                 self.assertIn("loans", out)
                 if "--dry-run" not in mode:
                     reg = json.loads((self.root / "modules/registry.json").read_text())
@@ -158,6 +158,57 @@ class KeywordWarningsTest(unittest.TestCase):  # P5A-AC-006 (D0b)
         self.assertEqual(code, 0)
         self.assertEqual(err, "modsys: warning: keyword 'api' is short (3 characters): it "
                               "matches many tasks — prefer a longer domain word\n")
+
+
+class OneLineHintsTest(unittest.TestCase):  # P5B-AC-045 (D15(c))
+    SUMMARY = ("modsys: warning: {n} keyword(s) without their singular / plural form (matching "
+               "is exact: add the form tasks use): {pairs} — --json lists each")
+    TABLE = [  # (keywords, stderr lines, data.warnings count)
+        (["books", "book"], [], 0),
+        (["loans"], [SUMMARY.format(n=1, pairs="loans → loan")], 1),
+        (["loans", "reviews"], [SUMMARY.format(n=2, pairs="loans → loan, reviews → review")],
+         2),
+        (["loans", "reviews", "fines", "shelves", "authors", "genres"],
+         [SUMMARY.format(n=6, pairs="loans → loan, reviews → review, fines → fine and 3 more")],
+         6),
+        (["ui", "data", "loans", "reviews"],
+         ["modsys: warning: keyword 'ui' is short (2 characters): it matches many tasks — prefer "
+          "a longer domain word",
+          "modsys: warning: keyword 'data' is a generic word: it matches many tasks — prefer a "
+          "domain word", SUMMARY.format(n=2, pairs="loans → loan, reviews → review")], 4),
+    ]
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = copy_fixture(self._tmp.name)
+        self.R = ("--root", str(self.root), "--dry-run", "--non-interactive")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_the_table(self):
+        for keywords, lines, count in self.TABLE:
+            argv = ["create", "loans", *DESC,
+                    *[a for k in keywords + NEUTRAL for a in ("--keyword", k)]]
+            with self.subTest(keywords=keywords):
+                code, out, err = run(*argv, *self.R)
+                self.assertEqual((code, err.splitlines()), (0, lines))
+                self.assertIn("would register  loans", out)
+                code, env, err = run_json(*argv, *self.R)
+                self.assertEqual((code, err, len(env["data"]["warnings"])), (0, "", count))
+
+    def test_data_warnings_keep_one_entry_per_keyword(self):
+        keywords = ["ui", "data", "loans", "reviews"] + NEUTRAL
+        argv = ["create", "loans", *DESC, *[a for k in keywords for a in ("--keyword", k)]]
+        warnings = run_json(*argv, *self.R)[1]["data"]["warnings"]
+        self.assertEqual(warnings, [
+            "keyword 'ui' is short (2 characters): it matches many tasks — prefer a longer "
+            "domain word",
+            "keyword 'data' is a generic word: it matches many tasks — prefer a domain word",
+            "keyword 'loans' has no singular 'loan': matching is exact, so a task that says "
+            "'loan' does not match it — add it if tasks use it",
+            "keyword 'reviews' has no singular 'review': matching is exact, so a task that says "
+            "'review' does not match it — add it if tasks use it"])
 
 
 if __name__ == "__main__":

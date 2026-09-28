@@ -59,29 +59,50 @@ def counterpart(word: str) -> str:
     return word + "s"
 
 
-def keyword_warnings(keywords: list[str]) -> list[str]:
-    """Why a keyword may route poorly — never a refusal: a short keyword (3 characters or
-    fewer), a generic word (`GENERIC_KEYWORDS`), or a single lowercase word of 4+ letters whose
-    plain singular / plural counterpart is missing (matching is exact-token) and is not itself a
-    generic word (`utils` never suggests `util`)."""
+def keyword_notes(keywords: list[str]) -> list[tuple[str, str, tuple[str, str] | None]]:
+    """(kind, warning, (keyword, counterpart) for a plural hint) per keyword that may route
+    poorly — never a refusal: `short` (3 characters or fewer), `generic` (`GENERIC_KEYWORDS`),
+    or `plural`: a single lowercase word of 4+ letters whose plain singular / plural counterpart
+    is missing (matching is exact-token) and is not itself a generic word (`utils` never
+    suggests `util`)."""
     have = {k.strip() for k in keywords if isinstance(k, str)}
     out = []
     for keyword in dict.fromkeys(k for k in keywords if isinstance(k, str)):
         word = keyword.strip()
         if len(word) <= SHORT_KEYWORD:
-            out.append(f"keyword '{keyword}' is short ({len(word)} characters): it matches "
-                       f"many tasks — prefer a longer domain word")
+            out.append(("short", f"keyword '{keyword}' is short ({len(word)} characters): it "
+                                 f"matches many tasks — prefer a longer domain word", None))
         elif word.lower() in GENERIC_KEYWORDS:
-            out.append(f"keyword '{keyword}' is a generic word: it matches many tasks — prefer "
-                       f"a domain word")
+            out.append(("generic", f"keyword '{keyword}' is a generic word: it matches many "
+                                   f"tasks — prefer a domain word", None))
         elif _WORD.fullmatch(word):
             other = counterpart(word)
             if other not in have and other not in GENERIC_KEYWORDS:
                 form = "singular" if plural(word) else "plural"
-                out.append(f"keyword '{keyword}' has no {form} '{other}': matching is exact, "
-                           f"so a task that says '{other}' does not match it — add it if tasks "
-                           f"use it")
+                out.append(("plural", f"keyword '{keyword}' has no {form} '{other}': matching "
+                                      f"is exact, so a task that says '{other}' does not match "
+                                      f"it — add it if tasks use it", (keyword, other)))
     return out
+
+
+def keyword_warnings(keywords: list[str]) -> list[str]:
+    """`data.warnings` of `create`: one warning per keyword (`keyword_notes`), keyword order."""
+    return [text for _, text, _ in keyword_notes(keywords)]
+
+
+def warning_lines(keywords: list[str]) -> list[str]:
+    """The text-mode stderr lines: each short and generic warning on its own line, then ONE
+    line for every plural hint of the run (the count, the first three pairs, `--json` for the
+    rest)."""
+    notes = keyword_notes(keywords)
+    lines = [text for kind, text, _ in notes if kind != "plural"]
+    pairs = [pair for kind, _, pair in notes if kind == "plural"]
+    if pairs:
+        shown = ", ".join(f"{a} → {b}" for a, b in pairs[:3])
+        more = f" and {len(pairs) - 3} more" if len(pairs) > 3 else ""
+        lines.append(f"{len(pairs)} keyword(s) without their singular / plural form (matching "
+                     f"is exact: add the form tasks use): {shown}{more} — --json lists each")
+    return lines
 
 
 def ask_fields(ws, scope: str) -> dict:
