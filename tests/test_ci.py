@@ -202,6 +202,41 @@ class CiOptionsTest(CiRepo):  # P32-AC-019
         self.assertEqual(lines[-1], "ci: passed")
 
 
+class DriftSplitTest(CiRepo):  # P5A-AC-008 (D0b)
+    def drift(self, *argv) -> dict:
+        return self.ci("--fail-on", "never", *argv)["steps"][1]
+
+    def counts(self, *argv) -> tuple:
+        s = self.drift(*argv)["summary"]
+        return s["committed"], s["uncommitted"], s["files"]
+
+    def commit(self, *rels) -> None:
+        self.touch(*rels)
+        git(self.root, "add", "--", *rels)
+        git(self.root, "commit", "-q", "-m", "change")
+
+    def test_the_decision_table(self):
+        self.commit("src/tasks/b.py", "src/tasks/d.py")
+        base = git(self.root, "rev-parse", "HEAD").strip()
+        self.assertEqual(self.counts("--base", base), (0, 0, 0))
+        self.assertEqual(self.drift("--base", base)["status"], "no-changes")
+        self.commit("src/tasks/a.py")
+        self.assertEqual(self.counts("--base", base), (1, 0, 1))
+        self.touch("src/tasks/b.py")
+        self.assertEqual(self.counts("--base", base), (1, 1, 2))
+        self.touch("src/lists/c.py")  # untracked
+        self.assertEqual(self.counts("--base", base), (1, 2, 3))
+        self.commit("src/tasks/d.py")
+        self.touch("src/tasks/d.py")
+        self.assertEqual(self.counts("--base", base), (2, 3, 4))
+        self.assertEqual(self.counts("--base", "HEAD"), (0, 3, 3))
+        self.assertEqual(set(self.drift("--base", base)["summary"]),
+                         {"base", "files", "committed", "uncommitted", "modules", "error",
+                          "warning", "info"})
+        out = run("ci", "--base", base, "--fail-on", "never", *self.R)[1]
+        self.assertIn(f"4 file(s) changed since {base} (2 committed, 3 uncommitted)", out)
+
+
 class CiConfigTest(CiRepo):  # P32-AC-020, P32-AC-022
     def test_values(self):
         for text, needle in [("coverage_fail_under = -0.1", "0–100"),

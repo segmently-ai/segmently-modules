@@ -5,7 +5,7 @@ base) and coverage. Settings: flag, else `[ci]`, else the default (fail_on "warn
 for a usage error (an unknown or option-like --base, a threshold outside 0–100, no git)."""
 from dataclasses import asdict
 
-from modsys.changes import commit_ref, repo_files, require_work_tree
+from modsys.changes import changed_files, commit_ref, diff_names, repo_files, require_work_tree
 from modsys.coverage_cmd import coverage_report, percent
 from modsys.lint import FAIL_ON, drift_report, failing, lint_registry, severity_counts
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
@@ -33,6 +33,18 @@ def register(sub, common) -> None:
     p.set_defaults(func=run)
 
 
+def split_change(root, base: str, files: list[str]) -> tuple[int, int]:
+    """(committed, uncommitted) of the files changed since `base`: those that differ between
+    `base` and HEAD, and those that differ between HEAD and the working tree (untracked files
+    included). A file changed in both counts in both; `files` stays their union."""
+    if not files:
+        return 0, 0
+    wanted = set(files)
+    committed = wanted & set(diff_names(root, f"{base}..HEAD"))
+    uncommitted = wanted & set(changed_files(root, base="HEAD"))
+    return len(committed), len(uncommitted)
+
+
 def run(args) -> int:
     ws = Workspace.from_args(args)
     cfg = ws.config["ci"]
@@ -50,8 +62,10 @@ def run(args) -> int:
     drift, changed = drift_report(ws, base, findings)
     status = ("no-changes" if not changed["files"] else
               "failed" if failing(drift, fail_on) else "passed")
+    committed, uncommitted = split_change(ws.root, base, changed["files"])
     steps.append({"name": "drift", "status": status,
                   "summary": {"base": base, "files": len(changed["files"]),
+                              "committed": committed, "uncommitted": uncommitted,
                               "modules": changed["modules"], **severity_counts(drift)},
                   "findings": [asdict(f) for f in drift]})
     report = coverage_report(ws, repo_files(ws.root))
@@ -76,7 +90,8 @@ def _summary(step: dict) -> str:
     if step["name"] == "drift":
         if step["status"] == "no-changes":
             return f"no changed files since {s['base']}"
-        return f"{s['files']} changed file(s) since {s['base']}: {counts}"
+        return (f"{s['files']} file(s) changed since {s['base']} ({s['committed']} committed, "
+                f"{s['uncommitted']} uncommitted): {counts}")
     gate = "" if s["fail_under"] is None else f", fail-under {s['fail_under']:g} %"
     return f"share {s['share']} ({percent(s['share'])} %), {s['unmapped']} unmapped{gate}"
 

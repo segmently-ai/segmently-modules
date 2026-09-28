@@ -34,7 +34,7 @@ GOLDEN = [
     (("sync-instructions", "--files", "src/catalog/service.py"),
      {"modules", "files_outside_modules"}),
     (("create", "reviews", "--description", DESC, *KW, "--dry-run"),
-     {"module", "files", "entry", "dry_run"}),
+     {"module", "files", "entry", "warnings", "dry_run"}),
     (("migrate", "--dry-run"), {"applied", "dry_run", "diff"}),
     (("context", "--task", "isbn"), {"task", "role", "all_roles", "modules", "read",
                                      "near_misses"}),

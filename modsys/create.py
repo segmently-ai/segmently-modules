@@ -26,11 +26,61 @@ from modsys.store import atomic_write, open_store
 
 NAME = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
 BASE_ANSWERS = {"description", "keywords", "status", "tags", "roles"}
+# keywords that match too many tasks to route one (`create` warns; a hint, not a rule)
+GENERIC_KEYWORDS = ("common", "data", "helper", "info", "item", "list", "misc", "stuff", "util")
+SHORT_KEYWORD = 3  # a keyword this long or shorter matches many tasks
+_WORD = re.compile(r"[a-z]{4,}")  # the plural hint applies to one lowercase word of 4+ letters
 
 
 def article(word: str) -> str:
     """The indefinite article before `word`: `an` before a vowel letter, else `a`."""
     return "an" if word[:1] in ("a", "e", "i", "o", "u") else "a"
+
+
+def plural(word: str) -> bool:
+    """A word reads as plural when it ends in `s` but not in `ss`, `us` or `is`."""
+    return word.endswith("s") and not word.endswith(("ss", "us", "is"))
+
+
+def counterpart(word: str) -> str:
+    """The plain English singular of a plural word or the plural of a singular one, by suffix
+    only (a hint, not linguistics): `ies` <-> consonant + `y`; `sses`, `xes`, `zes`, `ches`,
+    `shes` <-> the word without `es`; otherwise `s`."""
+    if plural(word):
+        if word.endswith("ies"):
+            return word[:-3] + "y"
+        if word.endswith(("sses", "xes", "zes", "ches", "shes")):
+            return word[:-2]
+        return word[:-1]
+    if word.endswith("y") and word[-2:-1] not in ("a", "e", "i", "o", "u"):
+        return word[:-1] + "ies"
+    if word.endswith(("s", "x", "z", "ch", "sh")):
+        return word + "es"
+    return word + "s"
+
+
+def keyword_warnings(keywords: list[str]) -> list[str]:
+    """Why a keyword may route poorly — never a refusal: a short keyword (3 characters or
+    fewer), a generic word (`GENERIC_KEYWORDS`), or a single lowercase word of 4+ letters whose
+    plain singular / plural counterpart is missing (matching is exact-token)."""
+    have = {k.strip() for k in keywords if isinstance(k, str)}
+    out = []
+    for keyword in dict.fromkeys(k for k in keywords if isinstance(k, str)):
+        word = keyword.strip()
+        if len(word) <= SHORT_KEYWORD:
+            out.append(f"keyword '{keyword}' is short ({len(word)} characters): it matches "
+                       f"many tasks — prefer a longer domain word")
+        elif word.lower() in GENERIC_KEYWORDS:
+            out.append(f"keyword '{keyword}' is a generic word: it matches many tasks — prefer "
+                       f"a domain word")
+        elif _WORD.fullmatch(word):
+            other = counterpart(word)
+            if other not in have:
+                form = "singular" if plural(word) else "plural"
+                out.append(f"keyword '{keyword}' has no {form} '{other}': matching is exact, "
+                           f"so a task that says '{other}' does not match it — add it if tasks "
+                           f"use it")
+    return out
 
 
 def ask_fields(ws, scope: str) -> dict:

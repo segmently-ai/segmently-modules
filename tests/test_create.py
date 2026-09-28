@@ -223,5 +223,45 @@ class CreateBoundaryTest(unittest.TestCase):  # AC-027, AC-032
         self.assertFalse((self.root / "modules/reviews").exists())
 
 
+class PurposeLineTest(unittest.TestCase):  # P5A-AC-005 (D0b)
+    TEXT = "Customer reviews of books: ratings, comments and moderation."
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = copy_fixture(self._tmp.name)
+        self.R = ("--root", str(self.root), "--non-interactive")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def create(self) -> str:
+        code, _, err = run_json("create", "reviews", "--description", self.TEXT, "--keywords",
+                                "review, rating, stars, comment, moderation", *self.R)
+        self.assertEqual((code, err), (0, ""))
+        return (self.root / "modules/reviews/MODULE.md").read_text(encoding="utf-8")
+
+    def override(self, text: str) -> None:
+        path = self.root / ".modsys/overrides/templates/MODULE.md"
+        path.parent.mkdir(parents=True)
+        path.write_text(text, encoding="utf-8")
+
+    def test_the_description_fills_the_purpose_line(self):
+        text = self.create()
+        purpose = [l for l in text.split("## Purpose\n", 1)[1].splitlines() if l.strip()]
+        self.assertEqual(purpose[0], self.TEXT)
+        self.assertTrue(purpose[1].startswith("<!-- What this module does"), purpose[1])
+        self.assertTrue(text.startswith(f"# Reviews\n\n> {self.TEXT}\n\n## Purpose\n"))
+        self.assertNotIn("${description}", text)
+
+    def test_a_team_template_without_the_placeholder_is_unchanged(self):
+        self.override("# ${title}\n\n> ${description}\n\n## Purpose\n\n<!-- team -->\n")
+        self.assertEqual(self.create(),
+                         f"# Reviews\n\n> {self.TEXT}\n\n## Purpose\n\n<!-- team -->\n")
+
+    def test_a_team_template_with_the_placeholder_is_filled(self):
+        self.override("# ${title}\n\n## Purpose\n\n${description}\n")
+        self.assertEqual(self.create(), f"# Reviews\n\n## Purpose\n\n{self.TEXT}\n")
+
+
 if __name__ == "__main__":
     unittest.main()

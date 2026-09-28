@@ -1,6 +1,7 @@
 """Pipeline verbs. `context` answers "what should this role read before planning this task";
 `discover` answers "which modules will this change touch, and which docs follow along".
 Both are deterministic (keywords, code pointers, code_map, paths) — agents add judgment."""
+import functools
 import os
 import re
 import sys
@@ -177,7 +178,9 @@ def run_discover(args) -> int:
         if (args.from_diff or args.files) else []
     data = build_discover(ws, task_text(args) if has_task else None, files, args.top,
                           missing_files(ws.root, files) if args.files else [])
-    emit("discover", data, args.json, _render_discover)
+    # --from-diff REF (no range) compares the working tree with REF: the text says so
+    ref = args.from_diff if args.from_diff and ".." not in args.from_diff else None
+    emit("discover", data, args.json, functools.partial(_render_discover, ref=ref))
     return EXIT_OK
 
 
@@ -186,6 +189,9 @@ def _render_context(d) -> None:
         print("no module matched (try domain terms, or: modsys list)")
         for line in near_lines(d["near_misses"]):
             print(line)
+    for m in d["modules"]:  # why each module matched: its keywords found in the task
+        print(f"{m['module']:<28} {'matched':<30} {', '.join(m['keywords'])} "
+              f"(score {m['score']})")
     for r in d["read"]:
         mark = "" if r["exists"] else "  (MISSING ON DISK)"
         print(f"{r['module']:<28} {r['label']:<30} {r['path']}{mark}")
@@ -194,10 +200,14 @@ def _render_context(d) -> None:
             print(f"{m['module']:<28} {'code':<30} {c}")
 
 
-def _render_discover(d) -> None:
+def _render_discover(d, ref: str | None = None) -> None:
+    """`ref`: the single ref of `--from-diff REF` — its `diff` source is labelled `diff
+    (working tree vs REF)`."""
     for m in d["modules"]:
         score = f"score {m['score']:<3} " if m["score"] is not None else ""
-        print(f"{m['usage']:<9} {m['module']:<30} {score}via {', '.join(m['sources'])}")
+        sources = [f"diff (working tree vs {ref})" if s == "diff" and ref else s
+                   for s in m["sources"]]
+        print(f"{m['usage']:<9} {m['module']:<30} {score}via {', '.join(sources)}")
         for doc in m["docs_to_update"]:
             print(f"          update {doc}")
     for f in d["files"]:

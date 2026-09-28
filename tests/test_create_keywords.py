@@ -1,7 +1,9 @@
 """`create --keywords a,b,c`: comma-separated keywords, merged after --keyword values."""
 import json
+import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 from tests.helpers import copy_fixture, run, run_json
 
@@ -58,6 +60,88 @@ class CreateKeywordsTest(unittest.TestCase):  # P32-AC-017
         out = " ".join(run("create", "--help")[1].split())
         self.assertIn("--keywords A,B,C", out)
         self.assertIn("a keyword that contains a comma needs --keyword", out)
+
+
+NEUTRAL = ["shelf mark", "loan period", "reading room", "due date", "front desk"]
+
+
+class KeywordWarningsTest(unittest.TestCase):  # P5A-AC-006 (D0b)
+    TABLE = [  # (keywords, [a needle of each warning, in keyword order])
+        (["book"], ["has no plural 'books'"]),
+        (["books"], ["has no singular 'book'"]),
+        (["categories"], ["has no singular 'category'"]),
+        (["boxes"], ["has no singular 'box'"]),
+        (["category"], ["has no plural 'categories'"]),
+        (["class"], ["has no plural 'classes'"]),
+        (["book", "books"], []),
+        (["api"], ["'api' is short (3 characters)"]),
+        (["ui"], ["'ui' is short (2 characters)"]),
+        (["isbn"], ["has no plural 'isbns'"]),
+        (["data"], ["'data' is a generic word"]),
+        (["Data"], ["'Data' is a generic word"]),
+        ([" list "], ["' list ' is a generic word"]),
+        (["helper"], ["'helper' is a generic word"]),
+        (["stuff"], ["'stuff' is a generic word"]),
+        (["partial refund", "BookRepository", ".epub", "v2api"], []),
+    ]
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = copy_fixture(self._tmp.name)
+        self.R = ("--root", str(self.root))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def argv(self, keywords, name="reviews", parent=None) -> list[str]:
+        out = ["create", name, *DESC, *[a for k in keywords for a in ("--keyword", k)]]
+        return out + (["--parent", parent] if parent else [])
+
+    def test_the_table(self):
+        for keywords, needles in self.TABLE:
+            with self.subTest(keywords=keywords):
+                code, env, err = run_json(*self.argv(keywords + NEUTRAL), "--dry-run",
+                                          "--non-interactive", *self.R)
+                self.assertEqual((code, err), (0, ""))
+                warnings = env["data"]["warnings"]
+                self.assertEqual(len(warnings), len(needles), warnings)
+                for warning, needle in zip(warnings, needles):
+                    self.assertIn(needle, warning)
+                    self.assertIn("keyword '", warning)
+
+    def test_warnings_never_block(self):
+        keywords = ["api", "book", "data"] + NEUTRAL
+        code, env, err = run_json(*self.argv(NEUTRAL), "--dry-run", "--non-interactive", *self.R)
+        self.assertEqual((code, err, env["data"]["warnings"]), (0, "", []))
+        for mode in (["--non-interactive"], ["--dry-run"], []):
+            with self.subTest(mode=mode):
+                code, out, err = run(*self.argv(keywords, name="loans"), *mode, *self.R)
+                self.assertEqual(code, 0)
+                self.assertEqual(err.splitlines(), [
+                    l for l in err.splitlines() if l.startswith("modsys: warning: keyword '")])
+                self.assertEqual(len(err.splitlines()), 3)
+                self.assertIn("loans", out)
+                if "--dry-run" not in mode:
+                    reg = json.loads((self.root / "modules/registry.json").read_text())
+                    self.assertEqual(reg["modules"]["loans"]["keywords"], keywords)
+                    (self.root / "modules/registry.json").write_text(json.dumps(
+                        {**reg, "modules": {k: v for k, v in reg["modules"].items()
+                                            if k != "loans"}}, indent=2) + "\n")
+                    shutil.rmtree(self.root / "modules/loans")
+        code, env, err = run_json(*self.argv(["api"], name="fines", parent="checkout"),
+                                  "--non-interactive", *self.R)
+        self.assertEqual((code, err, len(env["data"]["warnings"])), (0, "", 1))
+        self.assertEqual(env["data"]["module"], "checkout/fines")
+
+    def test_an_interactive_run_warns_after_the_prompts(self):
+        answers = iter([DESC[1]])
+        with mock.patch("modsys.create.interactive", return_value=True), \
+                mock.patch("builtins.input", lambda prompt: next(answers)):
+            code, out, err = run("create", "loans", *[a for k in ["api"] + NEUTRAL
+                                                       for a in ("--keyword", k)], *self.R)
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "modsys: warning: keyword 'api' is short (3 characters): it "
+                              "matches many tasks — prefer a longer domain word\n")
 
 
 if __name__ == "__main__":

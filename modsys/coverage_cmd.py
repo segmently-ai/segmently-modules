@@ -20,10 +20,9 @@ def percent(share: float) -> float:
     return round(share * 100, 1)
 
 
-def counted_files(ws, files: list[str]) -> list[str]:
-    cfg = ws.config.get("coverage") or {}
-    include = [glob_to_regex(g) for g in cfg.get("include") or DEFAULT_INCLUDE]
-    exclude = [glob_to_regex(g) for g in cfg.get("exclude") or []]
+def _engine_owned(ws):
+    """A predicate: the path lies in the modules dir, the proposals dir or the config dir, or
+    is the registry file or its `.lock` — never counted, before any other rule."""
     paths = ws.config["paths"]
     skip = [PurePosixPath(paths[k]).as_posix() + "/" for k in ("modules_dir", "proposals_dir")]
     registry = PurePosixPath(paths["registry"]).as_posix()
@@ -34,14 +33,32 @@ def counted_files(ws, files: list[str]) -> list[str]:
             skip.append(config_rel + "/")
     except ValueError:  # config dir outside the root: none of its files are listed anyway
         pass
+    return lambda path: path.startswith(tuple(skip)) or path in engine_files
+
+
+def _dotted(path: str) -> bool:
+    return any(part.startswith(".") for part in path.split("/"))
+
+
+def counted_files(ws, files: list[str]) -> list[str]:
+    cfg = ws.config.get("coverage") or {}
+    include = [glob_to_regex(g) for g in cfg.get("include") or DEFAULT_INCLUDE]
+    exclude = [glob_to_regex(g) for g in cfg.get("exclude") or []]
+    owned = _engine_owned(ws)
 
     def counts(path: str) -> bool:
-        if (any(part.startswith(".") for part in path.split("/")) or path.startswith(tuple(skip))
-                or path in engine_files):
+        if _dotted(path) or owned(path):
             return False
         return any(rx.match(path) for rx in include) and not any(rx.match(path) for rx in exclude)
 
     return [f for f in files if counts(f)]
+
+
+def dotfiles_left_out(ws, files: list[str]) -> int:
+    """The files only the dot rule keeps out of `total` (a dotfile or a file in a
+    dot-directory, at any level) — the engine's own paths are left out first."""
+    owned = _engine_owned(ws)
+    return sum(1 for f in files if _dotted(f) and not owned(f))
 
 
 def coverage_report(ws, files: list[str]) -> dict:
@@ -70,17 +87,21 @@ def run(args) -> int:
         raise UsageError("--fail-under must be between 0 and 100")
     ws = Workspace.from_args(args)
     require_work_tree(ws.root, "coverage")
-    data = coverage_report(ws, repo_files(ws.root))
+    files = repo_files(ws.root)
+    data = coverage_report(ws, files)
     failed = args.fail_under is not None and percent(data["share"]) < args.fail_under
-    emit("coverage", data, args.json, lambda d: _render(d, args.fail_under, failed))
+    dotfiles = dotfiles_left_out(ws, files)  # text only: the JSON shape stays as it is
+    emit("coverage", data, args.json, lambda d: _render(d, args.fail_under, failed, dotfiles))
     return EXIT_FINDINGS if failed else EXIT_OK
 
 
-def _render(d, fail_under, failed) -> None:
+def _render(d, fail_under, failed, dotfiles: int = 0) -> None:
     for target, n in d["modules"].items():
         print(f"{target:<36} {n:>5} file(s)")
     print(f"mapped {d['mapped']} of {d['total']} file(s): share {d['share']} "
           f"({percent(d['share'])} %)")
+    if dotfiles:
+        print(f"{dotfiles} dotfile(s) not counted (dotfiles and dot-directories never count)")
     if d["unmapped"]:
         print("unmapped:")
         for f in d["unmapped"][:UNMAPPED_SHOWN]:

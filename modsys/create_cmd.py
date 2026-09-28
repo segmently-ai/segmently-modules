@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 
 from modsys import create as creator
@@ -64,8 +65,12 @@ def run(args) -> int:
     plan = creator.plan_create(ws, args.name, args.parent, answers)
     if not args.dry_run:
         creator.apply_create(ws, plan)
+    warnings = creator.keyword_warnings(plan["entry"]["keywords"])
+    if not args.json:  # never blocks: --json carries them in data.warnings, stderr stays empty
+        for warning in warnings:
+            print(f"modsys: warning: {warning}", file=sys.stderr)
     data = {"module": plan["module"], "files": sorted(plan["files"]), "entry": plan["entry"],
-            "dry_run": args.dry_run}
+            "warnings": warnings, "dry_run": args.dry_run}
     emit("create", data, args.json, _render)
     return EXIT_OK
 

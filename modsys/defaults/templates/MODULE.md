@@ -4,6 +4,8 @@
 
 ## Purpose
 
+${description}
+
 <!-- What this module does, why it exists, and when a change belongs here. -->
 
 ## EXISTING Components - DO NOT CREATE NEW

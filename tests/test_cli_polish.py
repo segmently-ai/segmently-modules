@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from modsys.proposals import join_blocks
-from tests.helpers import copy_fixture, git, run, run_json
+from tests.helpers import copy_fixture, git, init_git, make_repo, run, run_json
 
 DESC = "Customer reviews of books: ratings, comments and moderation."
 KW = [a for k in ("review", "rating", "stars", "comment", "moderation") for a in ("--keyword", k)]
@@ -103,6 +103,63 @@ class QuietLintAndTemplateTest(unittest.TestCase):
             self.assertIn(needle, section)
         self.assertNotIn("reviews", {f["module"] for f in env["data"]["findings"]
                                      if f["code"] == "MS040"})
+
+
+class P5aTextTest(unittest.TestCase):  # P5A-AC-007 (D0b)
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_context_names_the_matched_keywords_once(self):
+        root = copy_fixture(self._tmp.name)
+        code, out, err = run("context", "--task", "isbn for a book listing", "--root", str(root))
+        self.assertEqual((code, err), (0, ""))
+        lines = [l for l in out.splitlines() if l.startswith("catalog") and "book, isbn" in l]
+        self.assertEqual(len(lines), 1, out)
+        self.assertEqual(lines[0].split(), ["catalog", "matched", "book,", "isbn", "(score", "8)"])
+        data = run_json("context", "--task", "isbn for a book listing", "--root",
+                        str(root))[1]["data"]
+        self.assertEqual(set(data), {"task", "role", "all_roles", "modules", "read",
+                                     "near_misses"})
+        self.assertEqual([(m["module"], m["keywords"], m["score"]) for m in data["modules"]],
+                         [("catalog", ["book", "isbn"], 8)])
+
+    def test_coverage_counts_the_dotfiles_it_left_out(self):
+        root = make_repo(self._tmp.name, {"tasks": ["task"]}, "[packs]\nagents = []\n",
+                         (".github/workflows/ci.yml", ".env.example", "src/tasks/a.py"))
+        init_git(root)
+        code, out, _ = run("coverage", "--root", str(root))
+        self.assertEqual(code, 0)
+        self.assertIn("2 dotfile(s) not counted (dotfiles and dot-directories never count)",
+                      out.splitlines())  # .modsys/config.toml: the config dir, not a dotfile
+        data = run_json("coverage", "--root", str(root))[1]["data"]
+        self.assertEqual((set(data), data["total"]),
+                         ({"total", "mapped", "share", "modules", "unmapped"}, 1))
+        for rel in (".github/workflows/ci.yml", ".env.example"):
+            git(root, "rm", "-q", rel)
+        self.assertNotIn("dotfile", run("coverage", "--root", str(root))[1])
+
+    def test_discover_labels_a_working_tree_diff(self):
+        root = copy_fixture(self._tmp.name)
+        init_git(root)
+        R = ("--root", str(root))
+        with (root / "src/catalog/service.py").open("a") as fh:
+            fh.write("PAGE = 20\n")
+        out = run("discover", "--from-diff", "HEAD", *R)[1]
+        self.assertIn("via diff (working tree vs HEAD)", out)
+        git(root, "commit", "-q", "-am", "page")
+        for argv in (("--from-diff", "HEAD~1..HEAD"), ("--files", "src/catalog/service.py")):
+            with self.subTest(argv=argv):
+                out = run("discover", *argv, *R)[1]
+                self.assertIn("via diff", out)
+                self.assertNotIn("working tree", out)
+        for argv in (("--from-diff", "HEAD~1"), ("--from-diff", "HEAD~1..HEAD"),
+                     ("--files", "src/catalog/service.py")):
+            with self.subTest(json=argv):
+                data = run_json("discover", *argv, *R)[1]["data"]
+                self.assertEqual([m["sources"] for m in data["modules"]], [["diff"]])
 
 
 if __name__ == "__main__":
