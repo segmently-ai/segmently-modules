@@ -186,6 +186,17 @@ class RebaseRefusalsTest(RebaseRepo):  # P5A-AC-014
         finally:
             os.chmod(self.upstream("notes.md"), 0o644)
 
+    @unittest.skipIf(os.geteuid() == 0, "root writes into read-only directories")
+    def test_a_read_only_ejected_copy(self):
+        self.set_pack("0.2.0", "Reviews API changes, the new way.")
+        os.chmod(self.ejected, 0o555)
+        try:
+            self.assertIn("cannot write .modsys/overrides/skills/api-review/.modsys-ejected: "
+                          "Permission denied", self.refused())
+        finally:
+            os.chmod(self.ejected, 0o755)
+        self.assertEqual([p.name for p in self.ejected.iterdir() if p.name.endswith(".tmp")], [])
+
 
 class RebaseEdgesTest(RebaseRepo):  # P5A-AC-012 (--rebase), P5A-AC-046 (--rebase)
     def test_a_symlink_at_the_ejected_path(self):

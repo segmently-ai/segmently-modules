@@ -3,7 +3,8 @@
 The file set: `git ls-files --cached --others --exclude-standard` in a git work tree (ONE
 listing), else a walk that skips dot-directories and the dependency / build directories
 (`DEPENDENCY_DIRS`); minus `[init] exclude` globs (the `[[code_map]]` glob grammar); a listed
-path missing on disk is dropped. `scan` reads every file once; `build` turns both into
+path missing on disk is dropped, and so is a path that is not valid UTF-8 (possible on Linux:
+no output could name it). `scan` reads every file once; `build` turns both into
 `preflight.json`: `{schema, root, git: {head, commits} | null, files, lines, bytes,
 token_estimate, languages: [{language, files, lines}], manifests: [{path, kind, name,
 workspaces}], agent_docs, adrs, top_dirs}`, every list sorted.
@@ -79,8 +80,17 @@ def list_files(root: Path, config: dict) -> list[str]:
     else:
         paths = _walk(root)
     exclude = [glob_to_regex(g) for g in config["init"]["exclude"]]
-    return sorted({p for p in paths if os.path.lexists(root / p)
+    return sorted({p for p in paths if _utf8(p) and os.path.lexists(root / p)
                    and not any(rx.match(p) for rx in exclude)})
+
+
+def _utf8(path: str) -> bool:
+    """False for a name the listing decoded with `surrogateescape` (not valid UTF-8)."""
+    try:
+        path.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def _read(path: Path) -> bytes:
@@ -90,8 +100,9 @@ def _read(path: Path) -> bytes:
 
 def scan(root: Path, files: list[str], keep=lambda rel: False) -> dict:
     """Read every file of `files` at most once: {files, lines, bytes, text_bytes, languages:
-    {language: [files, lines]}, texts: {path: text}} — `texts` holds the manifests and the
-    text files `keep(path)` asks for that are valid UTF-8 (the map's import scan reuses them)."""
+    {language: [files, lines]}, texts: {path: text | None}} — `texts` holds every manifest and
+    every file `keep(path)` asks for that the scan read: its text, or None when it is not
+    UTF-8 (the map reuses them and never reads such a file again)."""
     out = {"files": len(files), "lines": 0, "bytes": 0, "text_bytes": 0, "languages": {},
            "texts": {}}
     for rel in files:
@@ -107,6 +118,11 @@ def scan(root: Path, files: list[str], keep=lambda rel: False) -> dict:
         except OSError:
             continue  # unreadable: it counts toward files only
         out["bytes"] += len(data)
+        if manifest_kind(rel) or keep(rel):
+            try:
+                out["texts"][rel] = data.decode("utf-8")
+            except UnicodeDecodeError:
+                out["texts"][rel] = None  # read once: not UTF-8, nobody reads it again
         if b"\0" in data[:SNIFF]:
             continue
         text = data.decode("utf-8", errors="replace")
@@ -118,24 +134,22 @@ def scan(root: Path, files: list[str], keep=lambda rel: False) -> dict:
             row = out["languages"].setdefault(lang, [0, 0])
             row[0] += 1
             row[1] += lines
-        if manifest_kind(rel) or keep(rel):
-            try:
-                out["texts"][rel] = data.decode("utf-8")
-            except UnicodeDecodeError:
-                pass  # not UTF-8: read by nobody else either
     return out
 
 
-def read_manifest(path: Path, kind: str, text: str | None = None) -> dict:
+def read_manifest(path: Path, kind: str, text: str | None = None, read: bool = True) -> dict:
     """{name, workspaces, keywords, description} of one manifest (`text`: its content, when the
-    scan already read it); a file that does not parse (or has no name) gives `name: None` and
-    empty lists — never an error."""
+    scan already read it; `read=False`: the scan read it and it is not UTF-8); a file that does
+    not parse (or has no name), or a symlink (never followed), gives `name: None` and empty
+    lists — never an error."""
     out = {"name": None, "workspaces": [], "keywords": [], "description": ""}
     if kind == "csproj":
         out["name"] = path.stem
         return out
     try:
         if text is None:
+            if not read or path.is_symlink():
+                return out
             text = _read(path).decode("utf-8")
         if kind in ("package.json", "composer.json"):
             data = json.loads(text)
@@ -173,7 +187,8 @@ def manifests(root: Path, files: list[str], texts: dict | None = None) -> list[d
     """Every manifest of the file set, by path: {path, kind, name, workspaces, keywords,
     description} (preflight.json keeps the first four); `texts`: what the scan read."""
     texts = texts or {}
-    return [{"path": f, "kind": kind, **read_manifest(root / f, kind, texts.get(f))}
+    return [{"path": f, "kind": kind, **read_manifest(root / f, kind, texts.get(f),
+                                                      read=f not in texts)}
             for f in files if (kind := manifest_kind(f))]
 
 

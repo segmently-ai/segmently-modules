@@ -1,18 +1,20 @@
 """`modsys init map|confirm|status|resume` (D3): the init state machine — valid and invalid
 transitions, an interrupted phase and `init resume` (row 5.2 for phases 1–2), the data of each
 action, atomic writes and the headless contract."""
+import copy
 import io
 import json
 import os
 import re
 import shutil
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from modsys import __version__
-from modsys.init_flow import NO_P4, TEST_STOP
+from modsys.init_flow import NO_P4, TEST_STOP, InitFlow
 from tests.helpers import git, run, run_json
 
 ENGINE = Path(__file__).resolve().parents[1]
@@ -202,6 +204,41 @@ class InvalidTransitionsTest(InitRepo):  # P5A-AC-026
                       self.refused("status", "--layout", "single"))
 
 
+class StateEntriesTest(InitRepo):  # P5A-AC-026: a later engine's phases, damaged entries
+    def test_a_state_without_a_phase_a_later_engine_appends(self):
+        self.init("map")
+        before = (self.work / "state.json").read_bytes()
+        with mock.patch("modsys.init_flow.PHASES", ("preflight", "map", "gate-map", "fanout")):
+            self.assertEqual(self.init("status")["phases"], {
+                "preflight": "done", "map": "done", "gate-map": "pending", "fanout": "pending"})
+            self.assertEqual((self.work / "state.json").read_bytes(), before)
+            self.assertEqual(self.init("confirm")["status"], "confirmed")
+        self.assertEqual(self.state()["phases"]["fanout"], {
+            "status": "pending", "started_at": None, "finished_at": None, "sha256": None})
+        self.assertEqual(self.init("status")["phases"], {  # an unknown phase key is ignored
+            "preflight": "done", "map": "done", "gate-map": "done"})
+
+    def test_a_missing_earlier_phase_or_a_damaged_entry(self):
+        self.init("map")
+        good = self.state()
+        for label, change in [
+                ("map missing", lambda s: s["phases"].pop("map")),
+                ("an empty entry", lambda s: s["phases"].update({"gate-map": {}})),
+                ("a status outside pending, running, done",
+                 lambda s: s["phases"]["map"].update(status="finished")),
+                ("an entry without sha256", lambda s: s["phases"]["preflight"].pop("sha256")),
+                ("no phases at all", lambda s: s.update(phases={})),
+                ("no phase key", lambda s: s.pop("phase"))]:
+            state = copy.deepcopy(good)
+            change(state)
+            (self.work / "state.json").write_text(json.dumps(state))
+            for action in ("status", "resume", "confirm", "map"):
+                with self.subTest(case=label, action=action):
+                    err = self.refused(action)
+                    self.assertIn(f"{WORK}/state.json: not a valid init state", err)
+                    self.assertIn("start over: modsys init map --restart", err)
+
+
 class InterruptTest(InitRepo):  # P5A-AC-027 (row 5.2, phases 1–2)
     def baseline(self) -> tuple:
         self.init("map")
@@ -243,6 +280,37 @@ class InterruptTest(InitRepo):  # P5A-AC-027 (row 5.2, phases 1–2)
                 self.assertEqual((self.outputs(), self.statuses()),
                                  (first, ("done", "done", "pending")))
                 self.assertEqual(self.temps(), [])
+
+    def interrupted_confirm(self) -> None:
+        """`init confirm` stopped after confirmed.json is renamed into place, before gate-map
+        is marked done."""
+        self.init("map")
+        real = InitFlow.mark
+
+        def stop(flow, state, phase, status, sha=None):
+            if (phase, status) == ("gate-map", "done"):
+                raise KeyboardInterrupt
+            return real(flow, state, phase, status, sha)
+
+        with mock.patch("modsys.init_flow.InitFlow.mark", autospec=True, side_effect=stop):
+            self.assertEqual(run("init", "confirm", *self.R), (130, "", "modsys: interrupted\n"))
+        self.assertTrue((self.work / "confirmed.json").exists())
+        self.assertEqual(self.statuses(), ("done", "done", "running"))
+
+    def test_an_interrupted_confirm(self):
+        self.interrupted_confirm()
+        self.assertEqual(self.init("confirm")["status"], "confirmed")
+        self.assertEqual(self.statuses(), ("done",) * 3)
+        self.assertIn("gate 3 passed", self.init("status")["next"])
+        self.assertEqual(self.init("confirm")["status"], "unchanged")
+
+    def test_init_map_after_an_interrupted_confirm(self):
+        self.interrupted_confirm()
+        self.init("map")  # allowed: gate 3 has not passed
+        self.assertFalse((self.work / "confirmed.json").exists())
+        self.assertEqual(self.statuses(), ("done", "done", "pending"))
+        self.assertEqual(self.init("confirm")["status"], "confirmed")
+        self.assertEqual(self.statuses(), ("done",) * 3)
 
     def test_init_map_instead_of_resume_and_the_seam_is_inert(self):
         first = self.baseline()
@@ -295,6 +363,22 @@ class ActionDataTest(InitRepo):  # P5A-AC-029
         self.assertIn(NO_P4, out.splitlines())
 
 
+    def test_a_note_when_code_stays_outside_the_manifest_units(self):
+        note = ("note: 3 code file(s) are outside every candidate — a manifest in a fixture, "
+                "docs site or functions folder can hide source directories: add it to [init] "
+                "exclude and run modsys init map --restart")
+        (self.root / "site").mkdir()
+        (self.root / "site/package.json").write_text('{"name": "site"}\n')
+        code, out, err = run("init", "map", "--dry-run", *self.R)
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn(note, out.splitlines())
+        data = self.init("map", "--dry-run")
+        self.assertEqual((data["candidates"], data["unassigned"]), (["site"], 3))
+        self.assertNotIn("note", json.dumps(data))
+        (self.root / "site/package.json").unlink()  # no manifest unit: the source directories
+        self.assertNotIn("note:", run("init", "map", "--dry-run", *self.R)[1])
+
+
 class WritesAndRacesTest(InitRepo):  # P5A-AC-044 (init)
     def test_a_symlinked_work_directory(self):
         self.init("map")
@@ -311,6 +395,7 @@ class WritesAndRacesTest(InitRepo):  # P5A-AC-044 (init)
         self.init("map")
         stale = self.work / ".proposal.json.crash.tmp"
         stale.write_text("{half")
+        os.utime(stale, (time.time() - 60,) * 2)  # a crash's leftover, not a live temp file
         self.assertIn("gate 3", self.init("status")["next"])
         self.init("map")
         self.assertFalse(stale.exists())
@@ -329,6 +414,57 @@ class WritesAndRacesTest(InitRepo):  # P5A-AC-044 (init)
         for name in ("state.json", "preflight.json", "proposal.json"):
             json.loads((self.work / name).read_text())
         self.assertEqual(self.statuses(), ("done", "done", "pending"))
+        self.assertEqual(self.temps(), [])
+
+
+    def test_a_concurrent_runs_temp_file(self):
+        self.init("map")
+        live = self.work / ".proposal.json.live.tmp"
+        live.write_text("{half")  # another run is writing it right now
+        self.init("map")
+        self.assertTrue(live.exists())
+        old = time.time() - 60
+        os.utime(live, (old, old))  # a crash's leftover
+        self.init("map")
+        self.assertFalse(live.exists())
+        first = self.outputs()
+        real = os.replace
+
+        def swept(src, dst):  # a concurrent run removed this run's temp file
+            os.unlink(src)
+            return real(src, dst)
+
+        with mock.patch("modsys.init_flow.os.replace", side_effect=swept):
+            err = self.refused("map")
+        self.assertIn("another init run", err)
+        self.assertIn("try again", err)
+        self.assertEqual(self.outputs(), first)
+        self.assertEqual(self.temps(), [])
+
+    @unittest.skipIf(os.geteuid() == 0, "root writes into read-only directories")
+    def test_write_failures(self):
+        os.chmod(self.root, 0o555)
+        try:
+            self.assertIn("cannot write .modsys/config.toml: Permission denied",
+                          self.refused("map"))
+        finally:
+            os.chmod(self.root, 0o755)
+        self.init()
+        os.chmod(self.root / ".modsys", 0o555)
+        try:
+            self.assertIn("cannot write .modsys/init/state.json: Permission denied",
+                          self.refused("map"))
+        finally:
+            os.chmod(self.root / ".modsys", 0o755)
+        self.init("map")
+        os.chmod(self.work, 0o555)
+        try:
+            self.assertIn("cannot write .modsys/init/state.json: Permission denied",
+                          self.refused("confirm"))
+            self.assertIn("cannot write .modsys/init/: Permission denied",
+                          self.refused("map", "--restart"))
+        finally:
+            os.chmod(self.work, 0o755)
         self.assertEqual(self.temps(), [])
 
 

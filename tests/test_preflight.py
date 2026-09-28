@@ -168,6 +168,36 @@ class MetadataTest(PreflightRepo):  # P5A-AC-031
         self.assertEqual(doc["top_dirs"], ["api", "bad", "docs", "dotnet", "legacy", "php",
                                            "root", "rs", "svc", "web"])
 
+    def test_a_file_name_that_is_not_utf8(self):  # possible on Linux, never on macOS
+        self.write("shelf/a.py", "A = 1\n")
+        odd = "caf\udce9/menu.py"  # the bytes caf\xe9 as the listing decodes them
+        real_walk, real_lexists = preflight._walk, os.path.lexists
+        with mock.patch("modsys.preflight._walk",
+                        side_effect=lambda root: real_walk(root) + [odd]), \
+                mock.patch("modsys.preflight.os.path.lexists",
+                           side_effect=lambda p: str(p).endswith(odd) or real_lexists(p)):
+            code, env, err = run_json("init", "map", "--root", str(self.root))
+            files = preflight.list_files(self.root, load_config(self.root / ".modsys",
+                                                                self.root))
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(files, [".gitignore", "modules/registry.json", "shelf/a.py"])
+        work = self.root / ".modsys/init"
+        self.assertEqual(json.loads((work / "preflight.json").read_text())["top_dirs"],
+                         ["modules", "shelf"])
+        self.assertEqual(env["data"]["candidates"], ["shelf"])
+
+    def test_a_symlinked_manifest_is_never_read(self):
+        (self.root.parent / "elsewhere.json").write_text('{"name": "outside"}\n')
+        self.write("packages/a/index.js", "var a = 1;\n")
+        (self.root / "packages/a/package.json").symlink_to(self.root.parent / "elsewhere.json")
+        reads, real = [], preflight._read
+        with mock.patch("modsys.preflight._read",
+                        side_effect=lambda p: reads.append(p) or real(p)):
+            found = preflight.manifests(self.root, ["packages/a/index.js",
+                                                    "packages/a/package.json"])
+        self.assertEqual((found[0]["path"], found[0]["name"], reads),
+                         ("packages/a/package.json", None, []))
+
     def test_the_docs_table_is_the_code_table(self):
         text = (ENGINE / "docs/configuration.md").read_text(encoding="utf-8")
         rows = dict(re.findall(r"^\| `(\.[a-z0-9]+)` \| ([^|]+?) \|$", text, re.M))

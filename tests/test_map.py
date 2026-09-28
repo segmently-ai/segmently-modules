@@ -314,6 +314,65 @@ class CandidatesTest(MapRepo):  # P5A-AC-033
                          ["packages-catalog", "services-catalog"])
 
 
+class UniqueNamesTest(MapRepo):  # P5A-AC-033, SI-15: every unit gets a unique, valid name
+    LONG = "inventory-reconciliation-and-warehouse-sync-service"  # 51 characters
+
+    @staticmethod
+    def unit(d: str, name: str | None = None) -> dict:
+        return {"dir": d, "rationale": [],
+                "manifest": {"name": name, "kind": "package.json"} if name else None}
+
+    def test_names_that_collide(self):
+        cut = self.LONG[:48]  # both long names read the same after the 48-character cut
+        for found, expected in [
+            ([self.unit("billing", "app"), self.unit("shipping", "app")],
+             ["billing", "shipping"]),  # top-level units fall back too
+            ([self.unit("services/billing", "app"), self.unit("services/shipping", "app")],
+             ["billing", "shipping"]),  # siblings: their own directory names
+            ([self.unit("packages/a", "@one/utils"), self.unit("packages/b", "@two/utils")],
+             ["a", "b"]),
+            ([self.unit(f"packages/{self.LONG}-east"), self.unit(f"packages/{self.LONG}-west")],
+             [cut, cut[:46] + "-2"]),  # unique only before the cut: a numeric suffix
+            ([self.unit("billing", "app"), self.unit("shipping", "app"),
+              self.unit("x", "billing")], ["billing", "shipping", "x"]),  # a fallback collides
+            ([self.unit("a_b"), self.unit("a-b"), self.unit("a-b-2")],
+             ["a-b", "a-b-3", "a-b-2"])]:  # a suffix never takes another unit's name
+            with self.subTest(dirs=[u["dir"] for u in found]):
+                got = mapper.names(found)
+                self.assertEqual(got, expected)
+                self.assertEqual(len(set(got)), len(got))
+                for name in got:
+                    self.assertTrue(NAME.fullmatch(name) and len(name) <= 48, name)
+
+    def test_the_unedited_proposal_confirms(self):
+        py = '[project]\nname = "app"\n'
+        repos = {
+            "cookie-cutter": {"billing/pyproject.toml": py, "billing/app/main.py": "X = 1\n",
+                              "shipping/pyproject.toml": py, "shipping/app/main.py": "X = 1\n"},
+            "siblings": {"services/billing/pyproject.toml": py,
+                         "services/billing/app/main.py": "X = 1\n",
+                         "services/shipping/pyproject.toml": py,
+                         "services/shipping/app/main.py": "X = 1\n"},
+            "scopes": {"packages/a/package.json": '{"name": "@one/utils"}',
+                       "packages/a/index.js": "var a = 1;\n",
+                       "packages/b/package.json": '{"name": "@two/utils"}',
+                       "packages/b/index.js": "var b = 1;\n"},
+            "long": {f"packages/{self.LONG}-{side}/{rel}": text for side in ("east", "west")
+                     for rel, text in (("package.json", f'{{"name": "{self.LONG}-{side}"}}'),
+                                       ("index.js", "var x = 1;\n"))}}
+        for label, files in repos.items():
+            with self.subTest(repo=label):
+                root = write_files(self.base / label, files)
+                commit(root, [])
+                code, env, err = run_json("init", "map", "--root", str(root))
+                self.assertEqual((code, err), (0, ""))
+                names = env["data"]["candidates"]
+                self.assertEqual(len(set(names)), 2, names)
+                code, env, err = run_json("init", "confirm", "--root", str(root))
+                self.assertEqual((code, err), (0, ""), env)
+                self.assertEqual(env["data"]["included"], names)
+
+
 class ImportsTest(MapRepo):  # P5A-AC-034
     def test_the_statement_table(self):
         root = write_files(self.base / "shop", {
@@ -497,6 +556,24 @@ class CostTest(MapRepo):  # P5A-AC-045 (the spies; the timings are recorded at t
         self.assertEqual((len(listings), len(logs)), (1, 1))
         self.assertEqual(len(reads), len(set(reads)))
         self.assertTrue(reads)
+
+    def test_an_empty_codeowners_and_files_that_are_not_utf8_or_text(self):
+        root = build(self.base / "shop")
+        odd = {".github/CODEOWNERS": b"",
+               "packages/cart/src/latin1.ts": b"// caf\xe9\nimport x from './lines';\n",
+               "services/payments/payments/latin1.py": b"# caf\xe9\nimport os\n",
+               "packages/cart/src/nul.ts": b"\0import k from '@bookshop/ui-kit';\n",
+               "tools/package.json": b'{"name": "caf\xe9"}\n'}
+        for rel, data in odd.items():
+            (root / rel).write_bytes(data)
+        reads, real = [], preflight._read
+        with mock.patch("modsys.preflight._read",
+                        side_effect=lambda p: reads.append(p) or real(p)):
+            code, _, err = run("init", "map", "--root", str(root))
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual([p for p in set(reads) if reads.count(p) > 1], [])
+        for rel in odd:
+            self.assertIn(root / rel, reads)
 
 
 if __name__ == "__main__":

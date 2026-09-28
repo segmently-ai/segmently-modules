@@ -242,11 +242,14 @@ def starter(root: Path, config_dir: Path, layout: str | None,
     layout, files = plan_init(root, config_dir, layout)
     if not dry_run:
         for path, status, text in files:
-            if status == "created":
-                _create(path, text)
-            elif status == "updated":
-                with open(path, "ab") as fh:  # append: keeps the bytes, mode and a symlink
-                    fh.write(text.encode("utf-8"))
+            try:
+                if status == "created":
+                    _create(path, text)
+                elif status == "updated":
+                    with open(path, "ab") as fh:  # append: keeps the bytes, mode and a symlink
+                        fh.write(text.encode("utf-8"))
+            except OSError as e:
+                raise UsageError(f"cannot write {_rel(root, path)}: {e.strerror or e}") from None
     return layout, [{"path": _rel(root, p), "status": s} for p, s, _ in files]
 
 
@@ -276,7 +279,7 @@ def run(args) -> int:
 
 
 def run_action(args, root: Path, config_dir: Path) -> int:
-    from modsys.init_flow import NO_P4, InitFlow  # the flow imports the phases
+    from modsys.init_flow import NO_P4, RESTART, InitFlow  # the flow imports the phases
     flow = InitFlow(root, config_dir, load_config(config_dir, root))
     work = flow.rel(flow.work)
     if args.action == "map":
@@ -294,7 +297,12 @@ def run_action(args, root: Path, config_dir: Path) -> int:
                 "next": flow.next_step(state, work) if state else
                 f"run modsys init map without --dry-run to write {work}/",
                 "dry_run": args.dry_run}
-        emit("init", data, args.json, _render_map)
+        hidden = proposal["unassigned"] and any(c["signals"]["manifest"]
+                                                for c in proposal["candidates"])
+        note = (f"note: {len(proposal['unassigned'])} code file(s) are outside every candidate "
+                f"— a manifest in a fixture, docs site or functions folder can hide source "
+                f"directories: add it to [init] exclude and run {RESTART}") if hidden else None
+        emit("init", data, args.json, lambda d: _render_map(d, note))
         return EXIT_OK
     if args.action == "confirm":
         result = flow.confirm(args.dry_run)
@@ -305,7 +313,7 @@ def run_action(args, root: Path, config_dir: Path) -> int:
     if args.action == "status":
         state = flow.load_state()
         data = {"action": "status", "phase": state["phase"] if state else None,
-                "phases": {p: s["status"] for p, s in state["phases"].items()} if state else {},
+                "phases": flow.statuses(state),
                 "next": flow.next_step(state, work)}
         emit("init", data, args.json, _render_status)
         return EXIT_OK
@@ -322,7 +330,7 @@ def run_action(args, root: Path, config_dir: Path) -> int:
     return EXIT_OK
 
 
-def _render_map(d) -> None:
+def _render_map(d, note: str | None = None) -> None:
     for f in d["files"]:
         print(f"{_VERBS[f['status']][d['dry_run']]:<13} {f['path']}")
     verb = "would write" if d["dry_run"] else "wrote"
@@ -330,6 +338,8 @@ def _render_map(d) -> None:
     print(f"{verb:<13} {d['proposal']}")
     print(f"candidates    {', '.join(d['candidates']) or '(none)'}")
     print(f"unassigned    {d['unassigned']} code file(s); hints {d['hints']}")
+    if note:  # text only: code files outside every manifest unit
+        print(note)
     print(f"next: {d['next']}")
 
 

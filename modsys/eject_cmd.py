@@ -121,7 +121,11 @@ def rebase(ws, skill_id: str, dry_run: bool) -> dict:
     changed = sorted(p for p in set(old) | set(upstream) if old.get(p) != upstream.get(p))
     new = {**record, "pack": skill.pack, "version": skill.version, "files": upstream}
     if new != record and not dry_run:
-        atomic_write(target / EJECTED, _record_text(new))
+        try:
+            atomic_write(target / EJECTED, _record_text(new))
+        except OSError as e:  # the temp file is gone (atomic_write removes it): no half write
+            raise UsageError(f"cannot write {ws.rel(target / EJECTED)}: {e.strerror or e}") \
+                from None
     return {"skill": skill_id, "pack": skill.pack,
             "rebased_from": {"pack": record["pack"], "version": record.get("version")},
             "rebased_to": {"pack": skill.pack, "version": skill.version},

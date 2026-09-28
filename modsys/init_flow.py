@@ -4,7 +4,9 @@ The work directory is `<config_dir>/init/` (git-ignored by `modsys init`):
   state.json      {schema: "modsys.init-state/1", engine, started_at, phase, phases: {preflight,
                   map, gate-map: {status: pending|running|done, started_at, finished_at,
                   sha256}}, modules: {}} — `phase` = the phase most recently started; `sha256` =
-                  the phase's output as written (map's is how an edited proposal is recognised)
+                  the phase's output as written (map's is how an edited proposal is recognised).
+                  A state that lacks phases at the end of `PHASES` (written by an engine that
+                  had fewer) reads them as pending; unknown phase keys are ignored
   preflight.json  phase 1 (`modsys.preflight`)
   proposal.json   phase 2 (`modsys.mapper`) — edit it at gate 3: `include`, `name`, `paths`
   confirmed.json  gate 3: the validated proposal, frozen by `init confirm`
@@ -18,6 +20,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 from pathlib import Path
 
 from modsys import __version__, mapper, preflight
@@ -33,10 +36,37 @@ OUTPUTS = {"preflight": "preflight.json", "map": "proposal.json", "gate-map": "c
 TEST_STOP = "MODSYS_INIT_TEST_STOP"  # test seam: "<phase>" or "<phase>:renamed"
 NO_P4 = "phase 4 (fan-out) is not available in this engine version"
 RESTART = "modsys init map --restart"
+STATUSES = ("pending", "running", "done")
+ENTRY_KEYS = ("status", "started_at", "finished_at", "sha256")
+STALE_TEMP_S = 5  # a temp file older than this is a crash's leftover, not a concurrent run's
 
 
 def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def pending() -> dict:
+    return {"status": "pending", "started_at": None, "finished_at": None, "sha256": None}
+
+
+def state_problem(state: dict) -> str | None:
+    """Why `state` is not a valid init state, else None: `phases` must hold a leading run of
+    `PHASES` (a later phase without an earlier one is invalid), each entry with the four keys
+    and a status of `STATUSES`; `phase` is null or a phase name."""
+    phases = state.get("phases")
+    if not isinstance(phases, dict):
+        return "phases"
+    held = [p for p in PHASES if p in phases]
+    if held != list(PHASES[:len(held)]) or not held:
+        return f"phase '{next(p for p in PHASES if p not in phases)}' is missing"
+    for p in held:
+        entry = phases[p]
+        if not isinstance(entry, dict) or any(k not in entry for k in ENTRY_KEYS) \
+                or entry["status"] not in STATUSES:
+            return f"phase '{p}'"
+    if not isinstance(state.get("phase", 0), (str, type(None))):
+        return "phase"
+    return None
 
 
 class InitFlow:
@@ -83,14 +113,20 @@ class InitFlow:
         return doc
 
     def write(self, path: Path, text: str, seam: str | None = None) -> None:
-        """Temp file + atomic rename in the work directory; stale temp files of `path` (a crash)
-        are removed first. `seam`: the phase the test seam may stop."""
+        """Temp file + atomic rename in the work directory; stale temp files of `path` (a
+        crash's: older than `STALE_TEMP_S`, so a concurrent run's live one stays) are removed
+        first. A failed write is exit 2 `cannot write <path>: <reason>`. `seam`: the phase the
+        test seam may stop."""
         self.check_work_dir()
-        self.work.mkdir(parents=True, exist_ok=True)
-        for stale in self.work.glob(f".{path.name}.*.tmp"):
-            with contextlib.suppress(FileNotFoundError):
-                stale.unlink()
-        fd, tmp = tempfile.mkstemp(dir=self.work, prefix=f".{path.name}.", suffix=".tmp")
+        try:
+            self.work.mkdir(parents=True, exist_ok=True)
+            for stale in self.work.glob(f".{path.name}.*.tmp"):
+                with contextlib.suppress(FileNotFoundError):
+                    if time.time() - stale.lstat().st_mtime > STALE_TEMP_S:
+                        stale.unlink()
+            fd, tmp = tempfile.mkstemp(dir=self.work, prefix=f".{path.name}.", suffix=".tmp")
+        except OSError as e:
+            raise UsageError(f"cannot write {self.rel(path)}: {e.strerror or e}") from None
         try:
             with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
                 half = len(text) // 2
@@ -103,6 +139,15 @@ class InitFlow:
                 os.fsync(fh.fileno())
             os.chmod(tmp, 0o644)
             os.replace(tmp, path)
+        except FileNotFoundError:  # the temp file vanished: another run swept or cleared it
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(tmp)
+            raise UsageError(f"cannot write {self.rel(path)}: another init run is working in "
+                             f"{self.rel(self.work)}/ — try again") from None
+        except OSError as e:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(tmp)
+            raise UsageError(f"cannot write {self.rel(path)}: {e.strerror or e}") from None
         except BaseException:
             with contextlib.suppress(FileNotFoundError):
                 os.unlink(tmp)
@@ -113,23 +158,29 @@ class InitFlow:
     # --- state --------------------------------------------------------------------------
 
     def load_state(self) -> dict | None:
-        """The state (None when there is none); a corrupt state, or a proposal that is no
-        longer JSON, is exit 2 naming the file and the restart."""
+        """The state (None when there is none), the phases it lacks at the end of `PHASES`
+        filled in as pending (in memory); a corrupt state (`state_problem`), or a proposal that
+        is no longer JSON, is exit 2 naming the file and the restart."""
         self.check_work_dir()
         state = self.read_json(self.state_path, STATE_SCHEMA)
-        if state is not None and not (isinstance(state.get("phases"), dict) and all(
-                isinstance(state["phases"].get(p), dict) for p in PHASES)):
-            raise UsageError(f"{self.rel(self.state_path)}: not a valid init state (phases) — "
-                             f"start over: {RESTART}")
+        if state is not None:
+            problem = state_problem(state)
+            if problem:
+                raise UsageError(f"{self.rel(self.state_path)}: not a valid init state "
+                                 f"({problem}) — start over: {RESTART}")
+            for p in PHASES:
+                state["phases"].setdefault(p, pending())
         self.read_json(self.output("map"))
         return state
 
     def new_state(self) -> dict:
         return {"schema": STATE_SCHEMA, "engine": __version__, "started_at": utc_now(),
-                "phase": None, "phases": {p: {"status": "pending", "started_at": None,
-                                              "finished_at": None, "sha256": None}
-                                          for p in PHASES},
-                "modules": {}}
+                "phase": None, "phases": {p: pending() for p in PHASES}, "modules": {}}
+
+    @staticmethod
+    def statuses(state: dict | None) -> dict:
+        """{phase: status} of the phases this engine knows ({} without a state)."""
+        return {p: state["phases"][p]["status"] for p in PHASES} if state else {}
 
     def save_state(self, state: dict) -> None:
         self.write(self.state_path, serialize(state))
@@ -228,9 +279,18 @@ class InitFlow:
             return {"proposal": mapper.build(self.root, self.config, files, found, texts),
                     "preflight": doc, "state": None}
         if restart and self.work.exists():
-            shutil.rmtree(self.work)
+            try:
+                shutil.rmtree(self.work)
+            except OSError as e:
+                raise UsageError(f"cannot write {self.rel(self.work)}/: {e.strerror or e}") \
+                    from None
         state = self.new_state()
         self.save_state(state)
+        try:  # a fresh state has not passed gate 3: an older confirmed.json no longer counts
+            self.output("gate-map").unlink(missing_ok=True)
+        except OSError as e:
+            raise UsageError(f"cannot write {self.rel(self.output('gate-map'))}: "
+                             f"{e.strerror or e}") from None
         self.run_phases(state, ["preflight", "map"])
         return {"proposal": self.read_json(self.output("map")), "state": state}
 
@@ -320,7 +380,10 @@ class InitFlow:
         text = serialize(proposal)
         target = self.output("gate-map")
         old = target.read_text(encoding="utf-8") if target.is_file() else None
-        status = "confirmed" if old is None else "unchanged" if old == text else "updated"
+        if state["phases"]["gate-map"]["status"] != "done" or old is None:
+            status = "confirmed"  # gate 3 passes now (also after an interrupted confirm)
+        else:
+            status = "unchanged" if old == text else "updated"
         if not dry_run and status != "unchanged":
             self.mark(state, "gate-map", "running")
             self.write(target, text)

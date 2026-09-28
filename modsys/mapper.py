@@ -9,8 +9,10 @@ A candidate is a unit — a directory:
      `lib/`, `app/`, `packages/`, `services/`, `apps/` — or, when none holds one, the top-level
      directories that hold code (a code file: an extension of the preflight language table).
 Names: the manifest name without a scope (`@org/`) or path, else the directory name, normalized
-to the `create` rule (lowercase words joined by '-', max 48); names two units share get their
-parent directory as a prefix.
+to the `create` rule (lowercase words joined by '-', max 48). Every unit's name is unique: units
+that share one fall back, each, to its own directory name, then parent + directory, then the
+whole path (a fallback that collides again falls back further); units that still share one
+after the 48-character cut keep their first name, numbered from the second on (`-2`, `-3`, …).
 
 Signals, all deterministic:
   imports     Python `import` / `from … import` (relative ones too) and JS/TS `import … from`,
@@ -125,22 +127,42 @@ def units(files: list[str], manifests: list[dict], skip: set[str]) -> list[dict]
     return out
 
 
+def _name_steps(unit: dict) -> list[str]:
+    """The names a unit may take, in order: the manifest name (else the directory name), the
+    directory name, parent + directory, the whole path — each normalized, repeats dropped."""
+    parts = unit["dir"].split("/")
+    manifest = unit["manifest"]
+    first = manifest["name"] if manifest and manifest["name"] else parts[-1]
+    return list(dict.fromkeys(module_name(raw) for raw in (first, parts[-1],
+                                                           "-".join(parts[-2:]),
+                                                           "-".join(parts))))
+
+
 def names(found: list[dict]) -> list[str]:
-    """One module name per unit; names that collide get the parent directory as a prefix, then
-    the whole path."""
-    base = [module_name(u["manifest"]["name"]) if u["manifest"] and u["manifest"]["name"]
-            else module_name(u["dir"]) for u in found]
-    out = list(base)
-    for step in (1, 2):
-        counts = {n: out.count(n) for n in out}
-        if all(c == 1 for c in counts.values()):
+    """One unique module name per unit (see the module docstring): while names collide, every
+    unit sharing one moves to its next `_name_steps` name; units still sharing one then keep
+    their first name, the second and later ones numbered — never taking another unit's name."""
+    steps = [_name_steps(u) for u in found]
+    at = [0] * len(found)
+    while True:
+        out = [s[i] for s, i in zip(steps, at)]
+        clash = [i for i, n in enumerate(out) if out.count(n) > 1 and at[i] + 1 < len(steps[i])]
+        if not clash:
             break
-        for i, u in enumerate(found):
-            if counts[out[i]] > 1:
-                parts = u["dir"].split("/")
-                prefix = parts[:-1][-1:] if step == 1 else parts[:-1]
-                out[i] = module_name("-".join(prefix + [base[i]])) if prefix else out[i]
-    return out
+        for i in clash:
+            at[i] += 1
+    taken = {n for n in out if out.count(n) == 1}
+    result = []
+    for i, name in enumerate(out):
+        if out.count(name) > 1:
+            name = base = steps[i][0]
+            number = 1
+            while name in taken:
+                number += 1
+                name = f"{base[:NAME_MAX - len(str(number)) - 1].rstrip('-')}-{number}"
+        taken.add(name)
+        result.append(name)
+    return result
 
 
 # --- imports --------------------------------------------------------------------------------
@@ -222,20 +244,23 @@ class Resolver:
 
 def import_edges(root, found: list[dict], files: list[str], texts: dict) -> dict[str, dict]:
     """Per unit directory: {"intra": n, "cross": {other dir: n}} — resolved import statements
-    whose source file is in the unit (`texts`: what the preflight scan read; any other code
-    file is read here, once)."""
+    whose source file is in the unit (`texts`: what the preflight scan read, None for a file
+    that is not UTF-8; any other code file is read here, once)."""
     resolver = Resolver(files, found)
     out = {u["dir"]: {"intra": 0, "cross": {}} for u in found}
     for path in files:
         unit = resolver.unit_of(path)
         if unit is None or PurePosixPath(path).suffix.lower() not in SCANNED:
             continue
-        text = texts.get(path)
-        if text is None:
+        if path in texts:
+            text = texts[path]
+        else:
             try:
                 text = preflight._read(root / path).decode("utf-8")
             except (OSError, UnicodeDecodeError):
                 continue
+        if text is None:
+            continue  # the scan read it: not UTF-8
         for statement in specifiers(path, text):
             for target in resolver.resolve(path, statement):
                 if target == unit:
@@ -270,9 +295,14 @@ def owners_of(root, files: list[str], texts: dict) -> dict[str, frozenset] | Non
     source = next((c for c in CODEOWNERS if (root / c).is_file()), None)
     if source is None:
         return None
-    try:
-        text = texts.get(source) or preflight._read(root / source).decode("utf-8")
-    except (OSError, UnicodeDecodeError):
+    if source in texts:  # the scan read it (None: not UTF-8); an empty file is read once
+        text = texts[source]
+    else:
+        try:
+            text = preflight._read(root / source).decode("utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+    if text is None:
         return None
     rules = owner_rules(text)
     out = {}
