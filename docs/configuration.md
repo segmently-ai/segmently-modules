@@ -52,7 +52,7 @@ the `[fields.<name>]` section below.
 | `statuses` | `["active", "draft", "planned", "temporary"]` | allowed module `status` values (lint MS003; the writers refuse others) |
 | `relations` | `["depends-on", "complements", "implemented-in", "shares-contract", "superseded-by"]` | allowed `related_modules[].relation` values (MS006) |
 | `stub_pattern` | see note below | a regular expression; a module dir whose `MODULE.md` head matches is a pointer stub of a retired module |
-| `dir_whitelist` | `[]` | directories under `modules_dir` that are not modules (no MS014) |
+| `dir_whitelist` | `[]` | directories under `modules_dir` that are not modules (no MS014; a dot-directory never needs it) |
 | `updated_at_path` | `""` | e.g. `"metadata.last_updated"`: stamped with the UTC time on every registry write; empty = off |
 
 The default `stub_pattern`, exactly as it must be written in TOML:
@@ -368,7 +368,7 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS011 | error | a deprecated field is present |
 | MS012 | warning | an undeclared field is present |
 | MS013 | error | a value does not match its field type (or an entry is not an object) |
-| MS014 | error | a directory under `modules_dir` is neither registered nor a pointer stub |
+| MS014 | error | a directory under `modules_dir` is neither registered nor a pointer stub (dot-directories are never modules and are skipped) |
 | MS015 | warning | `context_files.roles` names a role that is not configured |
 | MS020 | info | more keywords than `[budgets] keywords_soft` |
 | MS021 | info | a keyword shared by `[budgets] keyword_shared_warn` modules or more (plain `lint` only) |

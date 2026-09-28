@@ -250,8 +250,8 @@ class ContractTest(SyncInstructionsRepo):  # P4B-AC-024, P4B-AC-023 (25 verbs)
         parser = set(build_parser()._subparsers._group_actions[0].choices)
         contract = set(re.findall(r"^\| `([a-z-]+)", (ENGINE / "docs/cli-contract.md").read_text(
             encoding="utf-8"), re.M))
-        self.assertEqual((len(parser), parser, {argv[0] for argv, _ in GOLDEN}),
-                         (25, contract, contract))
+        self.assertEqual((parser, {argv[0] for argv, _ in GOLDEN}),
+                         (contract, contract))  # the count: 26 (P5a, test_adopt)
         self.assertIn("sync-instructions", parser)
 
 

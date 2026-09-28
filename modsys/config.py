@@ -226,7 +226,10 @@ def _pack_layer(pack: dict) -> dict:
     return layer
 
 
-def load_config(config_dir: Path, root: Path | None = None) -> dict:
+def load_config(config_dir: Path, root: Path | None = None, extra: dict | None = None,
+                extra_source: str = "") -> dict:
+    """The merged config. `extra`: one more layer right after the team config (before the user
+    config) — `adopt` lints against the config it is about to write this way."""
     packs = discover_packs(config_dir, root)
     layers = [core_defaults()] + [_pack_layer(p) for p in reversed(packs)]
     for name in ("config.toml", "config.user.toml"):
@@ -235,6 +238,9 @@ def load_config(config_dir: Path, root: Path | None = None) -> dict:
             layer = read_toml(path)
             validate_layer(layer, path)
             layers.append(layer)
+        if name == "config.toml" and extra is not None:
+            validate_layer(extra, extra_source)
+            layers.append(extra)
     config = merge_layers(layers)
     config["_packs"] = [p["id"] for p in packs]
     config["_pack_dirs"] = {p["id"]: str(p["path"].parent) for p in packs}

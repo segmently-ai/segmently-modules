@@ -155,9 +155,9 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
     mdir = root / cfg["paths"]["modules_dir"]
     whitelist = set(cfg["registry"]["dir_whitelist"])
     if mdir.is_dir():
-        for d in sorted(mdir.iterdir()):
-            if (d.is_dir() and d.name not in whitelist and d.name not in modules
-                    and not stub_head(root, cfg, d.name)):
+        for d in sorted(mdir.iterdir()):  # a dot-directory is never a module (MS014 skips it)
+            if (d.is_dir() and not d.name.startswith(".") and d.name not in whitelist
+                    and d.name not in modules and not stub_head(root, cfg, d.name)):
                 add("MS014", "error", d.name, f"{cfg['paths']['modules_dir']}/{d.name}/ is "
                                               f"not registered and is not a pointer stub")
 

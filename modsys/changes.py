@@ -23,6 +23,10 @@ _GIT_LOCATION_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_
                       "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_PREFIX")
 CODE_MAP_SCHEMA = {"id": "str", "module": "str", "pattern": "str", "globs": "list[str]",
                    "exclusive": "bool"}
+# dependency and build directories: never code of the repository's own modules (a walk outside
+# git skips them; `adopt` never takes them for a code-map prefix)
+DEPENDENCY_DIRS = ("node_modules", ".venv", "venv", "__pycache__", "dist", "build", "target",
+                   "vendor")
 
 
 def git_env() -> dict:
