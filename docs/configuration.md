@@ -168,8 +168,8 @@ overrides each key (`--fail-on`, `--base`, `--fail-under`).
 
 ## `[init]`
 
-`modsys init map` — start from existing code: preflight, then map the code into candidate
-modules (see the README, "Start from existing code").
+`modsys init` — start from existing code: preflight, map, the fan-out, reconcile, verify,
+finish (every phase: [init.md](init.md)).
 
 | Key | Default | Meaning |
 |---|---|---|

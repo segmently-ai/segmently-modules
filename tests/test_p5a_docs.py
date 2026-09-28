@@ -58,7 +58,7 @@ class P5aDocsTest(unittest.TestCase):  # P5A-AC-042
             self.assertIn(needle, adopt)
         start = text.split("## Start from existing code", 1)[1].split(" ## ", 1)[0]
         for needle in ("modsys init map", "modsys init confirm", "modsys init status",
-                       "modsys init resume", "arrives with a later engine version"):
+                       "modsys init resume"):  # P5b D12: the whole flow is there now
             self.assertIn(needle, start)
         reference = text.split("## Reference", 1)[1]
         for anchor in ("(#adopt-an-existing-registry)", "(#start-from-existing-code)"):

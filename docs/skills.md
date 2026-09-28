@@ -63,6 +63,14 @@ work that may be a new module or a child, a change that contradicts a doc claim 
 confirmed, text whose only home is a frozen file); `module-create` and `module-split` stop for a
 yes before they write.
 
+`module-init` stops twice: after `init map`, for you to confirm, merge, split, rename or drop the
+candidate modules (gate 3), and after `init verify`, before anything lands in the repository
+(gate 7); it asks you about keyword ties, reports duplicate names, keeps its routing task writer
+blind to the keywords, and never commits. `module-adopt` never changes the registry or a doc: it
+explains what `adopt` inferred, asks only what `adopt` never guesses (a role's `applies_when`, a
+field's `deprecated`, a budget) and hands lint fixes to `module-lint`. The whole init flow:
+[init.md](init.md).
+
 `module-sync` reads the plan from one command — per touched module the docs to update, the
 drift and the `sync_hint` of every field ([configuration.md](configuration.md#fieldsname)):
 

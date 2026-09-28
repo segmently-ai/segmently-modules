@@ -301,19 +301,45 @@ source directories, imports, CODEOWNERS and the files that change together:
 modsys init map        # the starter files, then .modsys/init/preflight.json and proposal.json
 # edit .modsys/init/proposal.json: each candidate's include, name and paths (merge, split, drop)
 modsys init confirm    # gate 3: checks the proposal and freezes it as confirmed.json
-modsys init status     # the phases and the next step
+modsys init fanout     # one work item per module: .modsys/init/work/<module>.json with its prompt
+modsys init status     # the phases, the modules and the next step
 ```
 
-`init map` stops at gate 3; an interrupted run continues with `modsys init resume`. Code outside
-every package root gets candidates by the source-directory rule too (a top-level `tools/`, say).
-When `init map` notes code files outside every candidate, a manifest in a fixture, docs site or
-functions folder sits inside a source directory and keeps that directory's code out: add it to
-`[init] exclude` and run `modsys init map --restart`. The rest of
-the flow — writing each confirmed module's registry entry and docs — arrives with a later
-engine version: for now, create the confirmed modules with `modsys create` (their names, paths
-and keywords are in `confirmed.json`) and wire the paths with `modsys code-map add`. `init map`
-refuses a registry that already has modules: use `adopt` (above). Excluded paths and the
-history depth: `[init]` in [docs/configuration.md](docs/configuration.md#init).
+Then one writer per module documents its code into `.modsys/init/staging/<module>/` — three
+ways to drive them, over the same state:
+
+- **The `module-init` skill** in an agent session: it runs the whole flow, dispatches one
+  subagent per module (`[init] max_parallel` at a time) and stops at both gates for you.
+- **One agent, one module at a time**: `modsys init next` claims a module and prints its
+  prompt; the agent writes the files; `modsys init done <module>` checks them.
+- **CI**: an executor command gets each prompt on stdin —
+  `modsys init run --executor "<command>"`.
+
+```bash
+modsys init reconcile  # the staging registry: import edges, shared keywords, duplicate names
+modsys eval routing --prompt   # the task writer's prompt: purpose paragraphs and files, never keywords
+# a writer puts [{"task": …, "module": …}] into .modsys/init/routing-tasks.json
+modsys init verify     # lint, invented components, the routing hit rate — nothing moved yet
+modsys init finish     # gate 7: the docs, the registry, the code-map rules, the agents' block
+```
+
+In CI, without a person — gate 3 as proposed, gate 7 as a pull request:
+
+```bash
+modsys init map
+modsys init resume --non-interactive --executor "my-writer" --open-pr
+```
+
+`init finish` never commits (it prints the `git add` line); `--open-pr` makes one commit on a
+new branch and opens the pull request with `gh`. An interrupted or failed run continues with
+`modsys init resume`. Code outside every package root gets candidates by the source-directory
+rule too (a top-level `tools/`, say). When `init map` notes code files outside every candidate,
+a manifest in a fixture, docs site or functions folder sits inside a source directory and keeps
+that directory's code out: add it to `[init] exclude` and run `modsys init map --restart`.
+Modules created by hand after gate 3 are kept as they are. `init map` refuses a registry that
+already has modules: use `adopt` (above). Every phase, the executor contract, the prompt
+templates and verify's checks: [docs/init.md](docs/init.md); the `[init]` keys:
+[docs/configuration.md](docs/configuration.md#init).
 
 ## CI gate
 
@@ -379,7 +405,9 @@ MS060–MS065: [docs/writing-a-pack.md](docs/writing-a-pack.md).
 - [docs/configuration.md](docs/configuration.md) — config layers, every section and key, packs,
   lint codes, the `adopt` rules and the `[init]` keys.
 - [Adopt an existing registry](#adopt-an-existing-registry) and
-  [Start from existing code](#start-from-existing-code) — `modsys adopt`, `modsys init map`.
+  [Start from existing code](#start-from-existing-code) — `modsys adopt`, `modsys init map`;
+  [docs/init.md](docs/init.md) — every phase of `modsys init`, the executor, `modsys eval
+  routing`.
 - [docs/cli-contract.md](docs/cli-contract.md) — every verb's JSON `data`, exit codes, the files
   the engine creates, pipeline stages.
 - [docs/writing-a-pack.md](docs/writing-a-pack.md) — packs: roles, templates, agent skills,
