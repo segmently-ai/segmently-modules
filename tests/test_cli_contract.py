@@ -59,6 +59,8 @@ GOLDEN = [
     (("eject", "notes"), {"skill", "pack", "version", "dir", "files", "dry_run"}),
     (("eject", "notes", "--diff"), {"skill", "pack", "ejected_from", "upstream_version",
                                     "behind", "files", "diff", "reason"}),
+    (("eject", "notes", "--rebase", "--dry-run"), {"skill", "pack", "rebased_from",
+                                                   "rebased_to", "files_changed", "dry_run"}),
     (("agents-md", "--target", "CLAUDE.md", "--dry-run"), {"targets", "check", "dry_run"}),
 ]
 
@@ -78,6 +80,25 @@ class CliContractTest(unittest.TestCase):
                         self.assertIsInstance(env["data"], list)
                     else:
                         self.assertEqual(set(env["data"]), keys)
+
+    def test_the_init_actions(self):  # P5A-AC-029, P5A-AC-042: on a repository without modules
+        keys = {"map": {"action", "root", "files", "preflight", "proposal", "candidates",
+                        "unassigned", "hints", "phase", "next", "dry_run"},
+                "status": {"action", "phase", "phases", "next"},
+                "resume": {"action", "ran", "phase", "next", "message"},
+                "confirm": {"action", "confirmed", "included", "excluded", "status",
+                            "dry_run"}}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "code"
+            (root / "src/shelf").mkdir(parents=True)
+            (root / "src/shelf/books.py").write_text("BOOKS = []\n")
+            for action in ("map", "status", "resume", "confirm"):
+                with self.subTest(action=action):
+                    code, env, err = run_json("init", action, "--root", str(root))
+                    self.assertEqual((code, err), (0, ""))
+                    self.assertEqual((set(env), env["schema"]), ({"schema", "data"},
+                                                                 "modsys.init/1"))
+                    self.assertEqual(set(env["data"]), keys[action])
 
     def test_every_verb_is_documented_and_covered(self):
         verbs = set(build_parser()._subparsers._group_actions[0].choices)

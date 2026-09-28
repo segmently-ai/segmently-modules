@@ -47,7 +47,11 @@ modsys create reminders --non-interactive \
 ```
 
 `--keywords` takes a comma-separated list (repeatable); `--keyword` (repeatable) adds one
-keyword at a time — use it for a keyword that itself contains a comma.
+keyword at a time — use it for a keyword that itself contains a comma. Each `create` is its own
+write: when one in a batch like this fails, the modules before it stay created — fix that one and
+run it again. `create` warns (on stderr; it still creates the module) about keywords that route
+poorly: 3 characters or fewer, a generic word such as `data` or `list`, or a word whose plain
+plural or singular is missing (`task` without `tasks`).
 
 Matching (`match`, `context`, `discover --task`) is exact-token: a keyword matches a whole word
 in the task text, case-insensitive, with no stemming or plural handling — the keyword `todo`
@@ -123,8 +127,39 @@ modsys ci --base "$BASE"     # exit 0: lint passed, drift passed, coverage repor
 
 Agents never edit the registry or module docs mid-run: they `propose`, and one
 `sync --apply-proposals` (or `proposals apply`) applies every queued item under the registry
-lock. `registry`/`propose` refuse values lint would report as errors (an unknown status, an
-edge without a description or to an unknown module).
+lock. Without `--run-id` it applies every pending proposal file; `--run-id r1` applies only that
+run's (the file `propose --run-id r1` queued) — in a pipeline that runs several agents, pass it:
+
+```bash
+modsys sync --from-diff "$BASE..HEAD" --apply-proposals              # every pending run
+modsys sync --from-diff "$BASE..HEAD" --apply-proposals --run-id r1  # only run r1
+```
+
+The registry writers `registry` and `propose` refuse values lint would report as errors (an
+unknown status, an edge without a description or to an unknown module).
+
+### When something goes wrong
+
+A refusal writes nothing and says what to fix; a lint finding names its code. Two of each:
+
+```bash
+modsys registry set reminders status '"shipped"'   # exit 2, nothing written
+modsys code-map add notes --glob "src/notes/**" --module notes   # exit 2, nothing written
+modsys lint --fail-on warning                      # exit 1 after a hand edit (below)
+```
+
+```text
+modsys: error: field 'status': status 'shipped' not in ['active', 'draft', 'planned', 'temporary'] (lint MS003)
+modsys: error: code-map add: 'notes' is not a registry module or child (modsys list shows the modules)
+WARNING MS052 *: [[code_map]] 'remind': module 'remiders' is not a registry module or child; the rule maps nothing
+WARNING MS053 *: [[code_map]] 'reminder-jobs' (-> reminders) and 'src' (-> tasks) both map 1 file(s), e.g. src/tasks/jobs.py — mark the more specific rule exclusive = true or narrow its globs
+```
+
+The fixes: a status from the list (`'"active"'`); `modsys create notes …` first, then the rule;
+for MS052 (a hand-edited rule in `.modsys/config.toml`), correct its `module` — the typo
+`remiders`; for MS053 (a hand-added rule `reminder-jobs` with the glob `src/*/jobs.py`), make it
+`exclusive = true` or narrow its glob, so one file maps to one module — then
+`modsys lint --fail-on warning` exits 0 again.
 
 A child module for a sub-area, with its own code rule:
 
@@ -163,9 +198,12 @@ rules, not a file list.
 
 ```bash
 cd existing-app
-modsys init                      # keeps your .gitignore, appends two lines
+modsys init                      # keeps your .gitignore, appends its lines
 modsys coverage                  # everything unmapped: the baseline
 ```
+
+(To have modsys propose the modules from the code first, see
+[Start from existing code](#start-from-existing-code); by hand:)
 
 1. **One module per feature** (`modsys create orders …`, `modsys create invoices …`), plus one
    per shared layer that has its own rules (`modsys create db …`).
@@ -208,6 +246,47 @@ modsys coverage                  # everything unmapped: the baseline
    modsys list                      # same modules, now read from the module files
    modsys index build --check       # in CI: exit 1 when the generated index is stale
    ```
+
+## Adopt an existing registry
+
+A repository whose registry and module docs another tool wrote — no `.modsys/` yet — needs a
+team config so the engine reads it without surprises (its roles, extra fields, a timestamp key,
+where the code lives). `adopt` infers it and never changes the registry or a doc:
+
+```bash
+modsys adopt --dry-run     # the config it would write, each key with an `# adopt:` line saying why
+modsys adopt               # writes .modsys/config.toml; lint runs in report mode
+modsys lint --fail-on warning
+git add .modsys/config.toml && git commit -m "modsys: read the existing registry"
+```
+
+Review the report first: roles (`order`, `standard` when 80 % of the modules carry one),
+fields (`type`, `scope`, `kind = "code_pointer"` when their values name repository paths), the
+directories under the modules dir that are not modules, the registry's `updated_at` key, one
+`[[code_map]]` rule when half the modules have `<prefix>/<module>/`, and — commented out, for
+the team to decide — doc budgets its docs exceed. A registry elsewhere: `--registry
+docs/modules/registry.json`. With a config already there, `adopt` writes what is still missing
+to `.modsys/adopt.proposed.toml` instead — merge it by hand. The rules and thresholds:
+[docs/configuration.md](docs/configuration.md#adopting-an-existing-registry).
+
+## Start from existing code
+
+A codebase without modules yet: `init map` proposes them from the code — package manifests,
+source directories, imports, CODEOWNERS and the files that change together:
+
+```bash
+modsys init map        # the starter files, then .modsys/init/preflight.json and proposal.json
+# edit .modsys/init/proposal.json: each candidate's include, name and paths (merge, split, drop)
+modsys init confirm    # gate 3: checks the proposal and freezes it as confirmed.json
+modsys init status     # the phases and the next step
+```
+
+`init map` stops at gate 3; an interrupted run continues with `modsys init resume`. The rest of
+the flow — writing each confirmed module's registry entry and docs — arrives with a later
+engine version: for now, create the confirmed modules with `modsys create` (their names, paths
+and keywords are in `confirmed.json`) and wire the paths with `modsys code-map add`. `init map`
+refuses a registry that already has modules: use `adopt` (above). Excluded paths and the
+history depth: `[init]` in [docs/configuration.md](docs/configuration.md#init).
 
 ## CI gate
 
@@ -269,7 +348,9 @@ MS060–MS065: [docs/writing-a-pack.md](docs/writing-a-pack.md).
 ## Reference
 
 - [docs/configuration.md](docs/configuration.md) — config layers, every section and key, packs,
-  lint codes.
+  lint codes, the `adopt` rules and the `[init]` keys.
+- [Adopt an existing registry](#adopt-an-existing-registry) and
+  [Start from existing code](#start-from-existing-code) — `modsys adopt`, `modsys init map`.
 - [docs/cli-contract.md](docs/cli-contract.md) — every verb's JSON `data`, exit codes, the files
   the engine creates, pipeline stages.
 - [docs/writing-a-pack.md](docs/writing-a-pack.md) — packs: roles, templates, agent skills,

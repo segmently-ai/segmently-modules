@@ -123,6 +123,16 @@ show <module>`; `modsys show <module>` prints the module's keywords on its `keys
 | `description_max` | `200` | longest description |
 | `default_status` | `"planned"` | status of a new module when none is given |
 
+`create` also checks the keywords it is given and warns — it never refuses and never changes
+what it writes (`--non-interactive` included; a `modsys: warning: …` line on stderr, with
+`--json` the list `data.warnings`). It warns about a keyword of 3 characters or fewer (`api`,
+`ui`), a generic word (`common`, `data`, `helper`, `info`, `item`, `list`, `misc`, `stuff`,
+`util`; any case), and a single lowercase word of 4 letters or more whose plain singular or
+plural is not a keyword too (matching is exact-token: `book` does not match "books"). The plural
+rule is a hint by suffix, not linguistics: `ies` ↔ a consonant + `y` (`categories` ↔
+`category`), `sses` / `xes` / `zes` / `ches` / `shes` ↔ the word without `es`, otherwise `s`; a
+word ending in `ss`, `us` or `is` counts as singular (`class` → `classes`).
+
 ## `[coverage]`
 
 `modsys coverage` counts every git-tracked file plus every new file git does not ignore,
@@ -216,6 +226,28 @@ one does not parse), the agents' instruction files that exist (`AGENTS.md`, `CLA
 directories that hold files (`adr/`, `adrs/`, `doc/adr/`, `docs/adr/`, `docs/adrs/`,
 `docs/decisions/`, `docs/architecture/decisions/`, `architecture/decisions/`), the top-level
 directories and `git: {head, commits}` (`null` outside git).
+
+## Adopting an existing registry
+
+`modsys adopt` reads a registry written by other tooling as it is and infers the config the
+engine needs to read it (the README walks through it; every verb's JSON: `cli-contract.md`).
+Every key it writes is followed by `# adopt:` lines with the evidence; the rules, all computed
+in integers:
+
+| Inferred | When | Written |
+|---|---|---|
+| `[paths]` | the registry is not at the configured path (`--registry PATH`, root-relative), or every module it lists has `<modules_dir>/<name>/module.json` | `registry` and `modules_dir` (the registry file's directory); `registry_layout = "per-module"` |
+| `[roles.<r>]` | a `context_files.roles` key of a module or child that no layer configures | `order` = the highest configured order + 10 per new role (most-used first, then by name); `standard = true` when at least 80 % of the top-level modules carry the role (`count * 5 >= total * 4`), else `false`; `applies_when` and `description` are never guessed |
+| `[fields.<k>]` | an entry key that is neither a core field nor declared by a layer | `type` from the observed values (several types: a list, the most frequent first); `scope` = where the key was seen (`module`, `submodule` or both); `kind = "code_pointer"` when at least 80 % of its string values name paths of the repository (`path:line` and `path#L3` allowed; absolute paths, `~`, `..` and globs never count). A key holding a float, a `null` or a list of mixed types cannot be declared: it is listed in `inferred.skipped` (lint keeps MS012 for it); `deprecated` is never guessed |
+| `[registry] dir_whitelist` | a directory under the modules dir that is neither a registry module nor a pointer stub (dot-directories never count) | the directories, active |
+| `[registry] updated_at_path` | a registry-level key at most 2 levels deep (outside `modules`) named `…updated…` or `…modified…` holding an ISO-8601 date or timestamp | the shallowest, then by name |
+| `[[code_map]]` | at least 50 % of the top-level modules (`count * 2 >= total`) have `<prefix>/<module>` — a directory, or a `code_pointer` value under it; prefixes up to 3 segments, never the modules dir, the config dir, a dot-directory or `node_modules`, `.venv`, `venv`, `__pycache__`, `dist`, `build`, `target`, `vendor`; none when a layer already has rules | one rule `<prefix>/{module}/**`, `id` = the prefix with `/` → `-`; the widest coverage wins, then fewer segments, then the name; the others are named as alternatives |
+| `[budgets]` | the doc budgets would flag docs (MS030, MS031, MS032) | COMMENTED OUT: the observed maximum and how many findings it would clear — a team decision |
+
+`adopt` never writes `[packs]` (its next steps name `[packs] builtin = ["core"]`) and never
+edits an existing config: with a `config.toml` present it writes what is still missing to
+`adopt.proposed.toml` for the team to merge by hand. Then lint runs in report mode against the
+result (exit 0 whatever it finds).
 
 ## `[roles.<name>]`
 
