@@ -27,7 +27,7 @@ Switches (anything else on the command line is ignored, so a test can pass odd a
   --pids D            write D/<pid> at the start
   --tasks-mode MODE   eval-tasks: `unknown` (one task names `nosuch`), `partial` (the last module
                       gets none), `invalid` (not JSON), `nothing` (no file), `fail` (exit 3),
-                      `half` (half the tasks name the next module: hit rate 0.5)"""
+                      `half` (six tasks per module, three name the next one: hit rate 0.5)"""
 import hashlib
 import json
 import os
@@ -153,12 +153,14 @@ def write_tasks(path: Path, mode: str | None) -> int:
     names = sorted(targets)
     if mode == "partial":
         names = names[:-1]
+    per = 6 if mode == "half" else 5
     tasks = [{"task": f"change how the {kws[i % len(kws)]} and the {kws[(i + 1) % len(kws)]} "
                       f"work", "module": name}
-             for name in names for kws in [targets[name]] for i in range(5)]
-    if mode == "half":
-        for i, task in enumerate(tasks[:len(tasks) // 2]):
-            task["module"] = names[(names.index(task["module"]) + 1) % len(names)]
+             for name in names for kws in [targets[name]] for i in range(per)]
+    if mode == "half":  # three of each module's six name the next module: hit rate 0.5
+        for i, task in enumerate(tasks):
+            if i % 6 < 3:
+                task["module"] = names[(names.index(task["module"]) + 1) % len(names)]
     if mode == "unknown":
         tasks.append({"task": "change how the nothing works", "module": "nosuch"})
     path.write_text(json.dumps(tasks, indent=2) + "\n", encoding="utf-8")

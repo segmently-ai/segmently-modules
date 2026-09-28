@@ -635,6 +635,34 @@ class ReconfirmTest(InitRepo):  # P5B-AC-050 (P5a SI-13)
         self.assertEqual({f: (self.work / f).read_bytes() for f in files}, before)
 
 
+class StatusTest(Phase4Repo):  # P5B-AC-027
+    def test_every_phase_and_module(self):
+        data = self.init("status")
+        self.assertEqual(set(data), {"action", "phase", "phases", "next", "modules", "counts",
+                                     "pr"})
+        self.assertEqual(list(data["phases"]), ["preflight", "map", "gate-map", "fanout",
+                                                "reconcile", "eval-tasks", "verify", "finish"])
+        self.assertEqual((data["phase"], data["pr"]), ("fanout", None))
+        self.init("next")
+        state = self.state()
+        state["modules"]["y"].update(status="failed", attempts=2,
+                                     error="exit 3: y broke\nthe rest of the tail")
+        (self.work / "state.json").write_text(json.dumps(state))
+        data = self.init("status")
+        self.assertEqual(data["modules"], {
+            "x": {"status": "running", "attempts": 1, "error": None},
+            "y": {"status": "failed", "attempts": 2, "error": "exit 3: y broke\nthe rest of "
+                                                             "the tail"},
+            "z": {"status": "pending", "attempts": 0, "error": None}})
+        self.assertEqual(data["counts"], {"pending": 1, "running": 1, "done": 0, "failed": 1})
+        lines = run("init", "status", *self.R)[1].splitlines()
+        self.assertEqual(lines[8:12], ["x                        running",
+                                       "y                        failed  (attempt 2) exit 3: y "
+                                       "broke", "z                        pending",
+                                       "modules    0 done, 1 running, 1 pending, 1 failed"])
+        self.assertTrue(lines[-1].startswith("next: modsys init resume"), lines[-1])
+
+
 class InitContractTest(InitRepo):  # P5A-AC-046 (init)
     def test_garbage_config_interrupt_and_options_after_the_action(self):
         self.init("map")

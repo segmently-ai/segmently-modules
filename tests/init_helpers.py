@@ -68,12 +68,12 @@ def tree_sha(path: Path) -> str:
 
 def protected_sha(root: Path) -> str:
     """sha256 over `modules/`, the registry, CLAUDE.md / AGENTS.md and the team config — what
-    only `init finish` may change (P5B-AC-011)."""
+    only `init finish` may change (P5B-AC-011); the writers' `*.lock` files do not count."""
     h = hashlib.sha256()
     for rel in ("modules", "CLAUDE.md", "AGENTS.md", ".modsys/config.toml"):
         path = root / rel
-        files = sorted(p for p in path.rglob("*") if p.is_file()) if path.is_dir() else \
-            [path] if path.is_file() else []
+        files = sorted(p for p in path.rglob("*") if p.is_file() and p.suffix != ".lock") \
+            if path.is_dir() else [path] if path.is_file() else []
         for p in files:
             h.update(p.relative_to(root).as_posix().encode() + b"\0" + p.read_bytes() + b"\0")
     return h.hexdigest()

@@ -137,7 +137,7 @@ def starter_config(layout: str) -> str:
 ACTIONS = ("map", "confirm", "status", "resume", "fanout", "next", "done", "run", "reconcile",
            "eval-tasks", "verify", "finish")
 FORCE_ACTIONS = ("reconcile", "eval-tasks", "finish")
-PR_ACTIONS = ("finish",)
+PR_ACTIONS = ("finish", "resume")
 BRANCH = "modsys/init"
 EXECUTOR_ACTIONS = ("run", "resume", "eval-tasks")
 NON_INTERACTIVE_ACTIONS = ("run", "resume", "finish")  # the others never prompt (SI-25)
@@ -186,7 +186,8 @@ def register(sub, common) -> None:
                    help="finish: an instruction file for the managed block (repeatable; "
                         "default: CLAUDE.md and AGENTS.md when they exist)")
     p.add_argument("--open-pr", action="store_true",
-                   help="finish: commit on a new branch, push it and open a pull request (gh)")
+                   help="finish, resume: commit on a new branch, push it and open a pull request "
+                        "(gh)")
     p.add_argument("--base", help="--open-pr: the pull request's base (default: the current "
                                   "branch)")
     p.add_argument("--branch", help=f"--open-pr: the new branch (default: {BRANCH})")
@@ -468,31 +469,19 @@ def run_action(args, root: Path, config_dir: Path) -> int:
         phase4.reset()
         result = runner.run()
         return _report_run(flow, work, result, args.json)
+    from modsys.init_resume import Chain
+    argv = executor_argv(args.executor, root) if args.executor is not None else None
+    chain = Chain(flow, phase4, argv, args.non_interactive, args.open_pr, args.base,
+                  args.branch or BRANCH)
+    code = chain.run()
+    if code != EXIT_OK:
+        for message in chain.messages:
+            print(f"modsys: resume: {message}", file=sys.stderr)
     state = flow.load_state()
-    if state is not None and state["phases"]["gate-map"]["status"] == "done":
-        argv = executor_argv(args.executor, root) if args.executor is not None else None
-        ran, message = [], None
-        if state["phases"]["fanout"]["status"] != "done":
-            phase4.fanout()
-            ran.append("fanout")
-        reset = phase4.reset()
-        if reset:
-            message = f"back to pending (their staging cleared): {', '.join(reset)}"
-        code = EXIT_OK
-        if argv is not None:
-            result = Runner(phase4, argv).run()
-            ran.append("run")
-            code = _run_failures(result)
-        state = flow.load_state()
-        data = {"action": "resume", "ran": ran, "phase": state["phase"],
-                "next": flow.next_step(state, work), "message": message}
-        emit("init", data, args.json, _render_resume)
-        return code
-    state, ran = flow.resume()
-    data = {"action": "resume", "ran": ran, "phase": state["phase"],
-            "next": flow.next_step(state, work), "message": None}
+    data = {"action": "resume", "ran": chain.ran, "phase": state["phase"] if state else None,
+            "next": flow.next_step(state, work), "message": "; ".join(chain.messages) or None}
     emit("init", data, args.json, _render_resume)
-    return EXIT_OK
+    return code
 
 
 def _run_failures(result: dict) -> int:
