@@ -304,10 +304,11 @@ modsys init confirm    # gate 3: checks the proposal and freezes it as confirmed
 modsys init status     # the phases and the next step
 ```
 
-`init map` stops at gate 3; an interrupted run continues with `modsys init resume`. When it
-notes code files outside every candidate although a package manifest exists, a manifest in a
-fixture, docs site or functions folder has made its folder a unit and switched off the
-source-directory rule: add it to `[init] exclude` and run `modsys init map --restart`. The rest of
+`init map` stops at gate 3; an interrupted run continues with `modsys init resume`. Code outside
+every package root gets candidates by the source-directory rule too (a top-level `tools/`, say).
+When `init map` notes code files outside every candidate, a manifest in a fixture, docs site or
+functions folder sits inside a source directory and keeps that directory's code out: add it to
+`[init] exclude` and run `modsys init map --restart`. The rest of
 the flow — writing each confirmed module's registry entry and docs — arrives with a later
 engine version: for now, create the confirmed modules with `modsys create` (their names, paths
 and keywords are in `confirmed.json`) and wire the paths with `modsys code-map add`. `init map`

@@ -21,22 +21,22 @@ EXPECTED = {'schema': 'modsys.init-proposal/1',
  'candidates': [{'name': 'storefront',
                  'include': True,
                  'paths': ['apps/storefront/**'],
-                 'confidence': 0.73,
+                 'confidence': 0.7,
                  'rationale': ['a package root: apps/storefront/package.json names it '
                                "'storefront'",
                                'imports: 0 within the unit, 3 to other candidates (cohesion '
                                '0.0)',
                                'one owner set in CODEOWNERS: @bookshop/web',
-                               'co-change: at most 0.3333 with another candidate (ui-kit)'],
+                               'co-change: at most 0.5 with another candidate (tools)'],
                  'signals': {'manifest': 1.0,
                              'cohesion': 0.0,
                              'owners': 1.0,
-                             'isolation': 0.6667,
+                             'isolation': 0.5,
                              'intra_imports': 0,
                              'cross_imports': 3,
                              'owner_sets': [['@bookshop/web']],
-                             'co_change': 0.3333,
-                             'co_change_partner': 'ui-kit'},
+                             'co_change': 0.5,
+                             'co_change_partner': 'tools'},
                  'edges': [{'to': 'cart', 'imports': 1},
                            {'to': 'catalog', 'imports': 1},
                            {'to': 'ui-kit', 'imports': 1}],
@@ -61,7 +61,7 @@ EXPECTED = {'schema': 'modsys.init-proposal/1',
                              'co_change': 1.0,
                              'co_change_partner': 'catalog'},
                  'edges': [{'to': 'catalog', 'imports': 1}],
-                 'keywords': ['cart', 'bookshop', 'basket', 'lines', 'totals']},
+                 'keywords': ['cart', 'basket', 'lines', 'totals']},
                 {'name': 'catalog',
                  'include': True,
                  'paths': ['packages/catalog/**'],
@@ -82,41 +82,27 @@ EXPECTED = {'schema': 'modsys.init-proposal/1',
                              'co_change': 1.0,
                              'co_change_partner': 'cart'},
                  'edges': [],
-                 'keywords': ['catalog',
-                              'bookshop',
-                              'books',
-                              'isbn',
-                              'book',
-                              'titles',
-                              'authors']},
+                 'keywords': ['catalog', 'books', 'isbn', 'book', 'titles', 'authors']},
                 {'name': 'ui-kit',
                  'include': True,
                  'paths': ['packages/ui-kit/**'],
-                 'confidence': 0.73,
+                 'confidence': 0.7,
                  'rationale': ['a package root: packages/ui-kit/package.json names it '
                                "'@bookshop/ui-kit'",
                                'imports: 1 within the unit, 0 to other candidates (cohesion '
                                '1.0)',
-                               'co-change: at most 0.3333 with another candidate (storefront)'],
+                               'co-change: at most 0.5 with another candidate (tools)'],
                  'signals': {'manifest': 1.0,
                              'cohesion': 1.0,
                              'owners': 0.0,
-                             'isolation': 0.6667,
+                             'isolation': 0.5,
                              'intra_imports': 1,
                              'cross_imports': 0,
                              'owner_sets': [['@bookshop/design'], ['@bookshop/forms']],
-                             'co_change': 0.3333,
-                             'co_change_partner': 'storefront'},
+                             'co_change': 0.5,
+                             'co_change_partner': 'tools'},
                  'edges': [],
-                 'keywords': ['ui',
-                              'kit',
-                              'bookshop',
-                              'button',
-                              'form',
-                              'buttons',
-                              'forms',
-                              'price',
-                              'labels']},
+                 'keywords': ['button', 'form', 'buttons', 'forms', 'price', 'labels']},
                 {'name': 'payments',
                  'include': True,
                  'paths': ['services/payments/**'],
@@ -170,8 +156,27 @@ EXPECTED = {'schema': 'modsys.init-proposal/1',
                               'books',
                               'reader',
                               'like',
-                              'next']}],
- 'unassigned': ['tools/report.js', 'tools/seed.py'],
+                              'next']},
+                {'name': 'tools',
+                 'include': True,
+                 'paths': ['tools/**'],
+                 'confidence': 0.3,
+                 'rationale': ['a top-level directory that holds code, outside every package '
+                               'root',
+                               'one owner set in CODEOWNERS: @bookshop/ops, @bookshop/web',
+                               'co-change: at most 0.5 with another candidate (storefront)'],
+                 'signals': {'manifest': 0.0,
+                             'cohesion': 0.0,
+                             'owners': 1.0,
+                             'isolation': 0.5,
+                             'intra_imports': 0,
+                             'cross_imports': 0,
+                             'owner_sets': [['@bookshop/ops', '@bookshop/web']],
+                             'co_change': 0.5,
+                             'co_change_partner': 'storefront'},
+                 'edges': [],
+                 'keywords': ['tools']}],
+ 'unassigned': [],
  'hints': [{'kind': 'merge',
             'candidates': ['payments', 'recommendations'],
             'reason': 'they import each other and change together (Jaccard 3/3 of the recent '
@@ -235,21 +240,21 @@ class MonorepoTest(MapRepo):  # P5A-AC-037 (row 5.3)
     def written(self) -> dict:
         return json.loads((self.work / "proposal.json").read_text(encoding="utf-8"))
 
-    def test_the_pinned_proposal(self):
+    def test_the_pinned_proposal(self):  # P5B-AC-052: seven candidates (D15)
         self.assertEqual(self.written(), {**EXPECTED, "root": str(self.root)})
         doc = self.written()
         self.assertEqual(rows(doc), [
             ("storefront", ["apps/storefront/**"]), ("cart", ["packages/cart/**"]),
             ("catalog", ["packages/catalog/**"]), ("ui-kit", ["packages/ui-kit/**"]),
             ("payments", ["services/payments/**"]),
-            ("recommendations", ["services/recommendations/**"])])
+            ("recommendations", ["services/recommendations/**"]), ("tools", ["tools/**"])])
         edges = sorted((c["name"], e["to"]) for c in doc["candidates"] for e in c["edges"])
         self.assertEqual(edges, [("cart", "catalog"), ("payments", "recommendations"),
                                  ("recommendations", "payments"), ("storefront", "cart"),
                                  ("storefront", "catalog"), ("storefront", "ui-kit")])
         self.assertEqual([(h["kind"], h["candidates"]) for h in doc["hints"]],
                          [("merge", ["payments", "recommendations"]), ("split", ["ui-kit"])])
-        self.assertEqual(doc["unassigned"], ["tools/report.js", "tools/seed.py"])
+        self.assertEqual(doc["unassigned"], [])  # tools/ is a candidate of rule 2 now
         self.assertNotIn("formatPrice", json.dumps(doc))  # one name exported by two packages
 
     def test_determinism(self):
@@ -265,7 +270,7 @@ class MonorepoTest(MapRepo):  # P5A-AC-037 (row 5.3)
     def test_the_unedited_proposal_confirms(self):
         code, env, err = run_json("init", "confirm", "--root", str(self.root))
         self.assertEqual((code, err), (0, ""))
-        self.assertEqual(len(env["data"]["included"]), 6)
+        self.assertEqual(len(env["data"]["included"]), 7)
 
 
 class CandidatesTest(MapRepo):  # P5A-AC-033
@@ -503,11 +508,11 @@ class ConfidenceAndKeywordsTest(MapRepo):  # P5A-AC-036
         for needle in ("packages/catalog/package.json", "1 within the unit", "@bookshop/web",
                        "(cart)"):
             self.assertIn(needle, why)
-        self.assertEqual(catalog["keywords"], ["catalog", "bookshop", "books", "isbn", "book",
-                                               "titles", "authors"])
-        self.assertEqual(EXPECTED["unassigned"], ["tools/report.js", "tools/seed.py"])
-        for never in ("README.md", ".github/CODEOWNERS", "package.json"):
-            self.assertNotIn(never, EXPECTED["unassigned"])
+        self.assertEqual(catalog["keywords"], ["catalog", "books", "isbn", "book", "titles",
+                                               "authors"])  # P5B-AC-049: no scope token
+        self.assertEqual(EXPECTED["unassigned"], [])
+        tools = next(c for c in EXPECTED["candidates"] if c["name"] == "tools")
+        self.assertEqual((tools["paths"], tools["signals"]["manifest"]), (["tools/**"], 0.0))
 
 
 class InitKeysTest(MapRepo):  # P5A-AC-032 (the effect of [init] exclude and co_change_commits)
@@ -574,6 +579,112 @@ class CostTest(MapRepo):  # P5A-AC-045 (the spies; the timings are recorded at t
         self.assertEqual([p for p in set(reads) if reads.count(p) > 1], [])
         for rel in odd:
             self.assertIn(root / rel, reads)
+
+
+class OutsideTheUnitsTest(MapRepo):  # P5B-AC-043 (D15(a), SI-26)
+    def check(self, files: dict) -> tuple[list[tuple], list[str]]:
+        root = write_files(self.base / f"u{len(list(self.base.iterdir()))}", files)
+        doc = proposal(root)
+        flow = InitFlow(root, root / ".modsys", load_config(root / ".modsys", root))
+        self.assertEqual(flow.validate(doc), [])  # the unedited proposal passes gate 3
+        names = [c["name"] for c in doc["candidates"]]
+        self.assertEqual(len(set(names)), len(names))
+        for c in doc["candidates"]:
+            if not c["signals"]["manifest"]:  # a unit of rule 2
+                self.assertEqual(c["paths"], [c["paths"][0]])
+                self.assertTrue(c["paths"][0].endswith("/**"))
+        self.doc = doc
+        return rows(doc), doc["unassigned"]
+
+    def rationale(self, name: str) -> str:
+        return next(c for c in self.doc["candidates"] if c["name"] == name)["rationale"][0]
+
+    def test_the_decision_table(self):
+        js, py = "export const a = 1;\n", "X = 1\n"
+        self.assertEqual(self.check({"src/a/x.py": py, "src/b/y.py": py}),
+                         ([("a", ["src/a/**"]), ("b", ["src/b/**"])], []))
+        self.assertEqual(self.rationale("a"), "a source directory under src/")  # unchanged
+        self.assertEqual(self.check({"packages/cart/package.json": '{"name": "cart"}',
+                                     "packages/cart/index.ts": js, "tools/seed.py": py}),
+                         ([("cart", ["packages/cart/**"]), ("tools", ["tools/**"])], []))
+        self.assertEqual(self.rationale("tools"),
+                         "a top-level directory that holds code, outside every package root")
+        tools = self.doc["candidates"][1]
+        self.assertEqual((tools["signals"]["manifest"], tools["confidence"]), (0.0, 0.0))
+        self.assertEqual(self.check({"docs/package.json": '{"name": "site"}', "docs/site.js": js,
+                                     "modsys/cli.py": py, "evals/run.py": py}),
+                         ([("site", ["docs/**"]), ("evals", ["evals/**"]),
+                           ("modsys", ["modsys/**"])], []))
+        self.assertEqual(self.check({"services/payments/pyproject.toml":
+                                     '[project]\nname = "payments"\n',
+                                     "services/payments/pay.py": py,
+                                     "services/legacy/old.py": py}),
+                         ([("payments", ["services/payments/**"]),
+                           ("legacy", ["services/legacy/**"])], []))
+        self.assertEqual(self.rationale("legacy"),
+                         "a source directory under services/, outside every package root")
+        self.assertEqual(self.check({"tests/fixtures/shop/package.json": '{"name": "shop"}',
+                                     "tests/fixtures/shop/a.js": js, "tests/test_x.py": py}),
+                         ([("shop", ["tests/fixtures/shop/**"])], ["tests/test_x.py"]))
+        self.assertEqual(self.check({"packages/a/package.json": '{"name": "a"}',
+                                     "packages/a/index.js": js, "packages/shared.ts": js}),
+                         ([("a", ["packages/a/**"])], ["packages/shared.ts"]))
+        self.assertEqual(self.check({"packages/a/package.json": '{"name": "a"}',
+                                     "packages/a/index.js": js, "index.js": js}),
+                         ([("a", ["packages/a/**"])], ["index.js"]))
+        self.assertEqual(self.check({"apps/web/package.json": '{"name": "web"}',
+                                     "apps/web/app.ts": js, "web/main.ts": js}),
+                         ([("apps-web", ["apps/web/**"]), ("web", ["web/**"])], []))
+
+    def test_the_signals_and_exclude(self):
+        root = write_files(self.base / "shop", {
+            ".github/CODEOWNERS": "/tools/ @ops\n",
+            "packages/cart/package.json": '{"name": "cart"}',
+            "packages/cart/index.ts": "import { x } from '../../tools/x';\n",
+            "tools/x.ts": "export const x = 1;\n", "tools/y.ts": "import { x } from './x';\n"})
+        tools = next(c for c in proposal(root)["candidates"] if c["name"] == "tools")
+        self.assertEqual((tools["signals"]["intra_imports"], tools["signals"]["owners"],
+                          tools["confidence"]), (1, 1.0, 0.4))
+        (root / ".modsys").mkdir()
+        (root / ".modsys/config.toml").write_text('[init]\nexclude = ["packages/**"]\n')
+        doc = proposal(root)
+        self.assertEqual((rows(doc), doc["candidates"][0]["rationale"][0]),
+                         ([("tools", ["tools/**"])], "a top-level directory that holds code"))
+
+
+class SeedKeywordsTest(MapRepo):  # P5B-AC-049 (D15(d) M-12, SI-29)
+    def seeds(self, manifest_name: str | None, directory: str = "packages/p") -> list[str]:
+        files = {f"{directory}/index.ts": "export const a = 1;\n"}
+        if manifest_name is not None:
+            files[f"{directory}/package.json"] = json.dumps({"name": manifest_name})
+        root = write_files(self.base / f"k{len(list(self.base.iterdir()))}", files)
+        return proposal(root)["candidates"][0]["keywords"]
+
+    def test_the_table(self):
+        self.assertEqual(self.seeds("@bookshop/cart"), ["cart"])
+        self.assertEqual(self.seeds("@bookshop/ui-kit"), [])
+        self.assertEqual(mapper.keywords("ui-kit", {"name": "@bookshop/ui-kit", "keywords":
+                                                    ["button", "ui"], "description": ""}),
+                         ["button"])
+        self.assertEqual(mapper.keywords("api", None), [])
+        self.assertEqual(mapper.keywords("auth", None), ["auth"])
+        self.assertEqual(self.seeds(None, "services/Book_Shelf"), ["book", "shelf"])
+        self.assertEqual(self.seeds(None, "src/ui"), [])
+        self.assertEqual(mapper.keywords("orders", {"name": "@orders/orders", "keywords": [],
+                                                    "description": "Orders of the shop"}),
+                         ["shop"])  # the scope token is dropped wherever it comes from
+        self.assertEqual(mapper.keywords("cart", {"name": "shop/cart", "keywords": [],
+                                                  "description": ""}),
+                         ["cart", "shop"])  # only an npm scope (`@org/`) is a scope
+
+    def test_the_other_keys_are_unchanged(self):
+        root = build(self.base / "shop")
+        doc = proposal(root)
+        for c in doc["candidates"]:
+            expected = next(e for e in EXPECTED["candidates"] if e["name"] == c["name"])
+            self.assertEqual({k: v for k, v in c.items() if k != "keywords"},
+                             {k: v for k, v in expected.items() if k != "keywords"})
+            self.assertFalse([k for k in c["keywords"] if len(k) <= 3 or k == "bookshop"])
 
 
 if __name__ == "__main__":

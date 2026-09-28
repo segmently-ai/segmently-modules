@@ -73,9 +73,9 @@ class ConfirmTest(unittest.TestCase):  # P5A-AC-028
         data = self.confirm()
         self.assertEqual((sorted(data["included"]), data["excluded"]),
                          (sorted(["catalog", "cart", "ui-kit", "storefront", "payments",
-                                  "recommendations"]), []))
+                                  "recommendations", "tools"]), []))  # P5B-AC-043: + tools
         data = self.confirm(lambda by, cs: by["storefront"].update(include=False))
-        self.assertEqual((len(data["included"]), data["excluded"]), (5, ["storefront"]))
+        self.assertEqual((len(data["included"]), data["excluded"]), (6, ["storefront"]))
         for name in ("design-kit", "d" * 48):
             with self.subTest(name=name):
                 data = self.confirm(lambda by, cs: by["ui-kit"].update(name=name))

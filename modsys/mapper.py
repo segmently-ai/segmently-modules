@@ -5,9 +5,14 @@ A candidate is a unit — a directory:
   1. every package root of the manifests (a manifest at the repository root is never a unit);
      a package root inside another unit is not a candidate of its own (the outer one's
      rationale names it); a manifest that does not parse still makes its directory a unit;
-  2. with no package manifest below the root: the source directories one level under `src/`,
-     `lib/`, `app/`, `packages/`, `services/`, `apps/` — or, when none holds one, the top-level
-     directories that hold code (a code file: an extension of the preflight language table).
+  2. the code files outside every package root: the source directories one level under
+     `src/`, `lib/`, `app/`, `packages/`, `services/`, `apps/` — or, when none holds one, the
+     top-level directories that hold code (a code file: an extension of the preflight language
+     table). A directory of this rule is a candidate only when it neither contains nor lies
+     inside a package root (the code files of a directory that contains one stay `unassigned`);
+     with manifests present, its rationale says it is "outside every package root".
+The package roots come first (by directory), then the units of rule 2. Seed `keywords` never
+hold a token of 3 characters or fewer nor the npm scope of the manifest name (`@org/…`: `org`).
 Names: the manifest name without a scope (`@org/`) or path, else the directory name, normalized
 to the `create` rule (lowercase words joined by '-', max 48). Every unit's name is unique: units
 that share one fall back, each, to its own directory name, then parent + directory, then the
@@ -103,15 +108,13 @@ def _code_dirs(files: list[str], skip: set[str]) -> list[tuple[str, str]]:
 
 
 def units(files: list[str], manifests: list[dict], skip: set[str]) -> list[dict]:
-    """The candidate units: {dir, manifest (or None), rationale}, by directory."""
+    """The candidate units: {dir, manifest (or None), rationale} — the package roots by
+    directory (rule 1), then rule 2 over the code files outside every package root."""
     by_dir: dict[str, dict] = {}
     for m in manifests:  # manifests come sorted by path: the first per directory wins
         d = _dir(m["path"])
         if d and not d.split("/")[0].startswith(".") and d.split("/")[0] not in skip:
             by_dir.setdefault(d, m)
-    if not by_dir:
-        return [{"dir": d, "manifest": None, "rationale": [why]}
-                for d, why in _code_dirs(files, skip)]
     out = []
     for d in sorted(by_dir):
         if any(d.startswith(o + "/") for o in by_dir if o != d):
@@ -124,6 +127,13 @@ def units(files: list[str], manifests: list[dict], skip: set[str]) -> list[dict]
             rationale.append(f"it holds the nested package root(s) {', '.join(nested)} — part "
                              f"of this unit, not candidates of their own")
         out.append({"dir": d, "manifest": m, "rationale": rationale})
+    roots = sorted(by_dir)
+    outside = [f for f in files if not any(f.startswith(r + "/") for r in roots)]
+    for d, why in _code_dirs(outside, skip):
+        if any(r == d or r.startswith(d + "/") or d.startswith(r + "/") for r in roots):
+            continue  # it contains (or lies inside) a package root: its code stays unassigned
+        out.append({"dir": d, "manifest": None,
+                    "rationale": [f"{why}, outside every package root" if roots else why]})
     return out
 
 
@@ -346,15 +356,20 @@ def co_changed(inter: int, union: int) -> bool:
 
 def keywords(name: str, manifest: dict | None) -> list[str]:
     """Seed words: the tokens of the name, the manifest name and keywords, then description
-    words of 4+ letters that are not generic — first appearance, de-duplicated."""
+    words of 4+ letters that are not generic — first appearance, de-duplicated; never a token
+    of 3 characters or fewer, nor the npm scope of the manifest name (`@org/…`)."""
     words = _WORD.findall(name.lower())
+    scope: set[str] = set()
     if manifest:
-        words += _WORD.findall((manifest["name"] or "").lower())
+        raw = (manifest["name"] or "").lower()
+        if raw.startswith("@") and "/" in raw:
+            scope = set(_WORD.findall(raw.split("/", 1)[0]))
+        words += _WORD.findall(raw)
         for keyword in manifest.get("keywords") or []:
             words += _WORD.findall(keyword.lower())
         words += [w for w in _WORD.findall((manifest.get("description") or "").lower())
                   if len(w) >= 4 and w.isalpha() and w not in GENERIC_KEYWORDS]
-    return list(dict.fromkeys(words))
+    return [w for w in dict.fromkeys(words) if len(w) > 3 and w not in scope]
 
 
 def build(root, config: dict, files: list[str], manifests: list[dict],

@@ -28,7 +28,7 @@ modsys CLI of THIS checkout (`python -m modsys`, the checkout on PYTHONPATH):
               code-map rule -> adopt writes .modsys/config.toml -> list / show equal the
               reference's -> a second adopt writes adopt.proposed.toml, config.toml kept -> the
               tree outside .modsys/ is byte-identical to the start
-  init-map    the bookshop_monorepo fixture with its built history -> init -> init map (six
+  init-map    the bookshop_monorepo fixture with its built history -> init -> init map (seven
               candidates) -> exclude one, rename one in proposal.json -> init confirm -> init
               status: gate 3 passed -> init resume exits 1 (phase 4 comes later) -> a fresh copy:
               init map stopped by the test seam -> init resume -> the same outputs
@@ -788,7 +788,8 @@ def monorepo_builder():
     return module.build
 
 
-CANDIDATES = ["storefront", "cart", "catalog", "ui-kit", "payments", "recommendations"]
+CANDIDATES = ["storefront", "cart", "catalog", "ui-kit", "payments", "recommendations",
+              "tools"]
 NO_P4 = "phase 4 (fan-out) is not available in this engine version"
 
 
@@ -810,7 +811,7 @@ def init_map(sc: Scenario) -> None:
     def map_it():
         data, _ = sc.modsys("init", "map")
         check(data["candidates"] == CANDIDATES, f"candidates {data['candidates']}")
-        check((data["unassigned"], data["hints"]) == (2, 2), f"{data}")
+        check((data["unassigned"], data["hints"]) == (0, 2), f"{data}")
         first["outputs"] = outputs()
 
     def edit():
@@ -847,7 +848,7 @@ def init_map(sc: Scenario) -> None:
               "the resumed outputs differ from an uninterrupted run")
 
     for name, fn in [("the bookshop monorepo with its history", fixture), ("init", init),
-                     ("init map: six candidates", map_it),
+                     ("init map: seven candidates", map_it),
                      ("exclude one candidate, rename another", edit),
                      ("init confirm", confirm), ("init status: gate 3 passed", status),
                      ("init resume: phase 4 comes later (exit 1)", resume),

@@ -363,19 +363,20 @@ class ActionDataTest(InitRepo):  # P5A-AC-029
         self.assertIn(NO_P4, out.splitlines())
 
 
-    def test_a_note_when_code_stays_outside_the_manifest_units(self):
-        note = ("note: 3 code file(s) are outside every candidate — a manifest in a fixture, "
+    def test_a_note_when_code_stays_outside_the_manifest_units(self):  # P5B-AC-043 (SI-26)
+        note = ("note: 1 code file(s) are outside every candidate — a manifest in a fixture, "
                 "docs site or functions folder can hide source directories: add it to [init] "
                 "exclude and run modsys init map --restart")
-        (self.root / "site").mkdir()
-        (self.root / "site/package.json").write_text('{"name": "site"}\n')
+        site = self.root / "src/x/fixtures/site"  # src/x contains a unit: src/x/main.py stays out
+        site.mkdir(parents=True)
+        (site / "package.json").write_text('{"name": "site"}\n')
         code, out, err = run("init", "map", "--dry-run", *self.R)
         self.assertEqual((code, err), (0, ""))
         self.assertIn(note, out.splitlines())
         data = self.init("map", "--dry-run")
-        self.assertEqual((data["candidates"], data["unassigned"]), (["site"], 3))
+        self.assertEqual((data["candidates"], data["unassigned"]), (["site", "y", "z"], 1))
         self.assertNotIn("note", json.dumps(data))
-        (self.root / "site/package.json").unlink()  # no manifest unit: the source directories
+        (site / "package.json").unlink()  # no manifest unit: the source directories
         self.assertNotIn("note:", run("init", "map", "--dry-run", *self.R)[1])
 
 
