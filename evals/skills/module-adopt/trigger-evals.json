@@ -1,0 +1,82 @@
+[
+  {
+    "query": "Our repository already has a module registry and docs that another tool generated; get modsys to read them as they are.",
+    "should_trigger": true
+  },
+  {
+    "query": "We migrated from our old docs tooling and kept its registry.json; set modsys up on top of it without rewriting anything.",
+    "should_trigger": true
+  },
+  {
+    "query": "Adopt the existing module registry in this repo into modsys and tell me which config it needs.",
+    "should_trigger": true
+  },
+  {
+    "query": "modsys lint complains about undeclared fields and an unknown role in our existing registry; infer the config it needs.",
+    "should_trigger": true
+  },
+  {
+    "query": "There is a registry at docs/modules/registry.json from another team; make modsys work with it.",
+    "should_trigger": true
+  },
+  {
+    "query": "Take over this repository's existing module docs with modsys; the registry must stay exactly as it is.",
+    "should_trigger": true
+  },
+  {
+    "query": "We have a config already, but modsys still reports fields from our old registry; propose what to add to the config.",
+    "should_trigger": true
+  },
+  {
+    "query": "Import our existing warehouse module registry into modsys and explain every inferred setting and its evidence.",
+    "should_trigger": true
+  },
+  {
+    "query": "Make modsys understand the statuses and relation types our legacy registry uses without editing the registry.",
+    "should_trigger": true
+  },
+  {
+    "query": "Configure modsys for a repo whose modules, roles and docs were all written before modsys existed here.",
+    "should_trigger": true
+  },
+  {
+    "query": "This codebase has no module registry at all yet; map the code into modules and write their docs with modsys.",
+    "should_trigger": false
+  },
+  {
+    "query": "CI fails on modsys lint with MS053 overlaps between two code-map rules; fix what is safe and explain the rest.",
+    "should_trigger": false
+  },
+  {
+    "query": "Create a new module for the loyalty points feature with its docs, keywords and a code-map rule.",
+    "should_trigger": false
+  },
+  {
+    "query": "I just changed how orders are shipped; sync the shipping module docs and keywords with the change.",
+    "should_trigger": false
+  },
+  {
+    "query": "Before we plan the inventory rework, give me a quick brief on the inventory and orders modules.",
+    "should_trigger": false
+  },
+  {
+    "query": "Which modules does the diff on this branch touch, and which of their docs should be updated?",
+    "should_trigger": false
+  },
+  {
+    "query": "The orders MODULE.md is far over budget; split it into children for returns and invoices.",
+    "should_trigger": false
+  },
+  {
+    "query": "Refresh the QA acceptance baseline of the orders module with the new P1 criteria.",
+    "should_trigger": false
+  },
+  {
+    "query": "Explain in depth how stock counts flow from inventory to orders, with file:line evidence and doc gaps.",
+    "should_trigger": false
+  },
+  {
+    "query": "Fix the failing unit test in the shipping service that expects the wrong delivery date format.",
+    "should_trigger": false
+  }
+]

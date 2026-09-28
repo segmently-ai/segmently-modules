@@ -1,0 +1,49 @@
+{
+  "skill_name": "module-adopt",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Our warehouse repository already has module docs under modules/ and a registry that another tool generated. Make modsys read it as it is — do not change the registry or the docs.",
+      "expected_output": "adopt ran; .modsys/config.toml declares the curator role and the owner_team field with their evidence; the user was asked whether the curator role applies to a tag; the registry and docs are unchanged; the lint report was shown by code and nothing was committed.",
+      "files": [
+        "evals/skills/module-adopt/cases.py"
+      ],
+      "assertions": [
+        "The file .modsys/config.toml exists and declares [roles.curator] and [fields.owner_team]",
+        "The registry and every module doc are byte-identical to the start (sha256)",
+        "The user was asked whether the curator role should apply to a tag (applies_when)",
+        "The lint findings, if any, were reported grouped by code and none was fixed",
+        "No commit was made (git rev-list --count HEAD is unchanged)"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "This repository keeps its module registry at docs/modules/registry.json, with one module.json per module next to the docs. Set modsys up to read that registry without moving anything.",
+      "expected_output": "adopt ran with the registry path; the config names the registry, the modules dir and the per-module layout; nothing outside .modsys/ changed; nothing was committed.",
+      "files": [
+        "evals/skills/module-adopt/cases.py"
+      ],
+      "assertions": [
+        "The file .modsys/config.toml sets registry = \"docs/modules/registry.json\", modules_dir = \"docs/modules\" and registry_layout = \"per-module\"",
+        "modsys list --json run in the repository lists inventory, orders and shipping",
+        "Every file outside .modsys/ is byte-identical to the start (sha256)",
+        "No commit was made (git rev-list --count HEAD is unchanged)"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "We already have a .modsys/config.toml here, but modsys still complains about fields in our module registry. Adopt the registry and tell me what to add to the config.",
+      "expected_output": "adopt wrote .modsys/adopt.proposed.toml with the stock_paths field and left config.toml as it was; the proposal was explained and a manual merge offered; the registry is unchanged; nothing was committed.",
+      "files": [
+        "evals/skills/module-adopt/cases.py"
+      ],
+      "assertions": [
+        "The file .modsys/adopt.proposed.toml exists and declares [fields.stock_paths]",
+        "The file .modsys/config.toml is byte-identical to the start unless the transcript shows the user approving each change",
+        "The response explains the proposal file and how to merge it by hand",
+        "The registry and every module doc are byte-identical to the start (sha256)",
+        "No commit was made (git rev-list --count HEAD is unchanged)"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "skill_name": "module-init",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Set up module docs for this bookshop codebase with modsys. It has no module registry yet.",
+      "expected_output": "init map ran; the candidates were shown in a short table with the hints and the unassigned code; the agent stopped at gate 3 and asked; nothing was written into the modules dir.",
+      "files": [
+        "tests/fixtures/build_monorepo.py",
+        "tests/fixtures/bookshop_monorepo"
+      ],
+      "assertions": [
+        "The file .modsys/init/proposal.json exists and .modsys/init/confirmed.json does not",
+        "The response shows the candidate modules in a table and asks the user to confirm or edit them",
+        "The modules directory holds no module doc (only the registry file, if any)",
+        "No commit was made (git rev-list --count HEAD is unchanged)"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Set up modsys module docs for this repository. Go with the proposal as it is and finish without asking me again — I approve both gates in advance. Work on one module at a time.",
+      "expected_output": "the whole flow ran through init finish with the sequential driver; the registry lints clean, the invented-component check is clean, the routing hit rate is at least 0.8; nothing was committed.",
+      "files": [
+        "tests/fixtures/build_monorepo.py",
+        "tests/fixtures/bookshop_monorepo"
+      ],
+      "assertions": [
+        "modsys init status --json reports the phase finish as done",
+        "modsys lint --fail-on warning exits 0 in the repository",
+        "The file .modsys/init/verify.json has an empty invented list and passed true",
+        "The routing hit rate in .modsys/init/verify.json is at least 0.8",
+        "The transcript shows modsys init next and modsys init done for the modules",
+        "No commit was made (git rev-list --count HEAD is unchanged)"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "An earlier session started setting up modsys module docs in this repository and was interrupted after the work items were written and two modules were done. Continue it and stop before the final step.",
+      "expected_output": "the agent ran init status first, resumed from the recorded phase, wrote only the modules that were not done, reached gate 7 and asked; nothing was committed.",
+      "files": [
+        "tests/fixtures/build_monorepo.py",
+        "tests/fixtures/bookshop_monorepo",
+        "tests/init_fake_executor.py"
+      ],
+      "assertions": [
+        "The first modsys command in the transcript is modsys init status --json",
+        "The two modules that were done at the start still have attempts 1 in .modsys/init/state.json and their staging files are byte-identical",
+        "Every module is done in .modsys/init/state.json",
+        "The phase finish is not done and the response asks whether to finish",
+        "No commit was made (git rev-list --count HEAD is unchanged)"
+      ]
+    }
+  ]
+}

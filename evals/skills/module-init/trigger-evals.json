@@ -1,0 +1,82 @@
+[
+  {
+    "query": "We have a large Python monorepo with no module docs at all; generate a module registry and docs for it with modsys.",
+    "should_trigger": true
+  },
+  {
+    "query": "Set up modsys on this existing codebase from scratch — figure out the modules from the code and document each one.",
+    "should_trigger": true
+  },
+  {
+    "query": "Bootstrap module documentation for our bookshop services: map the packages into modules and write their docs.",
+    "should_trigger": true
+  },
+  {
+    "query": "Can you run the modsys init flow on this repository? There is no registry yet, just the code.",
+    "should_trigger": true
+  },
+  {
+    "query": "The modsys init we started yesterday stopped halfway through the fan-out; please continue it from where it was.",
+    "should_trigger": true
+  },
+  {
+    "query": "I want per-module docs for every package in this workspace so agents know where things live; nothing exists yet.",
+    "should_trigger": true
+  },
+  {
+    "query": "Turn this undocumented codebase into modules with MODULE.md files and a registry, and let me confirm the modules first.",
+    "should_trigger": true
+  },
+  {
+    "query": "Resume the interrupted module docs generation for this repo and take it to the final review step.",
+    "should_trigger": true
+  },
+  {
+    "query": "Our team never wrote module docs. Map the storefront, cart and catalog code into modules and document them.",
+    "should_trigger": true
+  },
+  {
+    "query": "Generate the initial modsys registry for this repository, check routing works, and show me before anything lands.",
+    "should_trigger": true
+  },
+  {
+    "query": "Add a new module called wishlist for the saved-for-later books feature, with its docs and registry entry.",
+    "should_trigger": false
+  },
+  {
+    "query": "CI says modsys lint failed with MS004 and MS015 on the catalog module; explain the findings and fix the safe ones.",
+    "should_trigger": false
+  },
+  {
+    "query": "We already have a module registry written by another tool; make modsys read it without changing anything.",
+    "should_trigger": false
+  },
+  {
+    "query": "I finished the refund changes in payments; bring the module docs and keywords up to date before I open the PR.",
+    "should_trigger": false
+  },
+  {
+    "query": "The catalog MODULE.md is over the size budget; split the module into search and listing children.",
+    "should_trigger": false
+  },
+  {
+    "query": "Which modules will this change to the checkout flow touch, and which docs do I need to read first?",
+    "should_trigger": false
+  },
+  {
+    "query": "Review this UI change to the storefront book page against the designer docs of the modules it touches.",
+    "should_trigger": false
+  },
+  {
+    "query": "Write acceptance criteria for the new gift card feature before we start coding it.",
+    "should_trigger": false
+  },
+  {
+    "query": "How does the recommendations engine score books? Explain it in depth with file and line references.",
+    "should_trigger": false
+  },
+  {
+    "query": "Rename the payment gateway class and update its three call sites in the payments service.",
+    "should_trigger": false
+  }
+]

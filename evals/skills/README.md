@@ -52,3 +52,22 @@ may live there). The Bash sandbox refuses to start — every Bash-granting case 
 run error — when a credential store under your home holds a symbolic link, e.g. Docker Desktop's
 `~/.docker/cli-plugins/`; run the evals where that is not the case (a CI runner, another
 account).
+
+## The skill-creator evals of `module-init` and `module-adopt`
+
+These two skills are measured the way the `skill-creator` plugin measures a skill, by in-session
+subagents at a release gate — never by `claude plugin eval` and never by the unit suite:
+
+| File | What it holds |
+|---|---|
+| `module-init/evals.json`, `module-adopt/evals.json` | `{skill_name, evals: [{id, prompt, expected_output, files, assertions}]}` — three outcome cases each; `assertions` are the statements a grader checks (commands where it can) |
+| `module-init/trigger-evals.json`, `module-adopt/trigger-evals.json` | twenty `{query, should_trigger}` each: ten requests the skill is for, ten near misses — nine that another built-in skill owns, one that no skill should take |
+| `module-adopt/cases.py` | builds the three repositories of `module-adopt`'s cases: `python3 evals/skills/module-adopt/cases.py <id> <new dir>` |
+
+`module-init`'s cases run on a git copy of `tests/fixtures/bookshop_monorepo`
+(`tests/fixtures/build_monorepo.py`); the third starts from an init stopped after the fan-out
+with two modules written (`tests/init_fake_executor.py`). Each case runs once with the skill and
+once without it (the same prompt and `modsys`, with its `README.md` and `docs/`), a grader
+writes `grading.json`, and skill-creator's `aggregate_benchmark` sums the runs. The trigger
+check asks a judge that sees only the built-in skills' names and descriptions which skill each
+query needs. `tests/test_skill_creator_evals.py` checks the files' shape.
