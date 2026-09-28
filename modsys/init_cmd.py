@@ -3,7 +3,10 @@ key commented out, with worked examples), an empty registry (the single file, or
 per-module index) and the `.gitignore` lines for the files the engine creates. Only what is
 missing is created (an existing `.gitignore` gets only its missing lines, appended in the
 file's own newline style and through a symlink to its target); a second run changes nothing.
-Root: `--root`, else the git top-level of the current directory, else the current directory."""
+Root: `--root`, else the git top-level of the current directory, else the current directory.
+
+Actions (`modsys.init_flow`): `map` (the starter files that are missing, then preflight and map;
+stops at gate 3), `confirm` (gate 3), `status`, `resume` — one envelope `modsys.init/1` each."""
 import subprocess
 from pathlib import Path
 
@@ -11,7 +14,7 @@ from modsys.changes import git_env
 from modsys.config import REGISTRY_LAYOUTS, load_config
 from modsys.layout import build_index
 from modsys.merge import merge
-from modsys.output import EXIT_OK, UsageError, emit
+from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.store import serialize
 
 _HEADER = '''\
@@ -123,12 +126,27 @@ def starter_config(layout: str) -> str:
     return _HEADER + _PATHS[layout] + _BODY
 
 
+ACTIONS = ("map", "confirm", "status", "resume")
+
+
 def register(sub, common) -> None:
     p = sub.add_parser("init", parents=[common],
-                       help="set up modsys here: starter config, empty registry, .gitignore lines")
+                       help="set up modsys here: starter config, empty registry, .gitignore lines "
+                            "(map|confirm|status|resume: start from existing code)",
+                       description="Without an action: the starter config, an empty registry and "
+                                   "the .gitignore lines. map: those, then preflight and map of "
+                                   "the existing code into <config_dir>/init/proposal.json "
+                                   "(stops at gate 3; refused when the registry has modules). "
+                                   "confirm: gate 3 — validate the edited proposal and freeze "
+                                   "it. status: the phases and the next step. resume: re-run "
+                                   "an interrupted phase.")
+    p.add_argument("action", nargs="?", metavar="ACTION",
+                   help="map, confirm, status or resume (none: the starter files only)")
     p.add_argument("--layout", choices=REGISTRY_LAYOUTS,
                    help="registry layout for a new setup (default: the configured one, else single)")
     p.add_argument("--dry-run", action="store_true", help="report what would change, write nothing")
+    p.add_argument("--restart", action="store_true",
+                   help="map: clear <config_dir>/init/ and start over")
     p.set_defaults(func=run)
 
 
@@ -182,6 +200,10 @@ def plan_init(root: Path, config_dir: Path, requested: str | None) -> tuple[str,
     gitignore = root / ".gitignore"
     wanted = [f"{config['paths']['registry']}.lock",
               config["paths"]["proposals_dir"].rstrip("/") + "/"]
+    try:  # the init work directory (`init map`), when the config dir lies inside the root
+        wanted.append((config_dir / "init").relative_to(root).as_posix() + "/")
+    except ValueError:
+        pass
     if not gitignore.exists():
         files.append((gitignore, "created", "\n".join(wanted) + "\n"))
     else:
@@ -214,22 +236,125 @@ def _rel(root: Path, path: Path) -> str:
         return str(path)
 
 
-def run(args) -> int:
-    root = init_root(args.root)
-    config_dir = Path(args.config_dir or root / ".modsys").resolve()
-    layout, files = plan_init(root, config_dir, args.layout)
-    if not args.dry_run:
+def starter(root: Path, config_dir: Path, layout: str | None,
+            dry_run: bool) -> tuple[str, list]:
+    """Plain `init`: create what is missing (unless `dry_run`); (layout, [{path, status}])."""
+    layout, files = plan_init(root, config_dir, layout)
+    if not dry_run:
         for path, status, text in files:
             if status == "created":
                 _create(path, text)
             elif status == "updated":
                 with open(path, "ab") as fh:  # append: keeps the bytes, mode and a symlink
                     fh.write(text.encode("utf-8"))
-    data = {"root": str(root), "layout": layout,
-            "files": [{"path": _rel(root, p), "status": s} for p, s, _ in files],
-            "dry_run": args.dry_run}
+    return layout, [{"path": _rel(root, p), "status": s} for p, s, _ in files]
+
+
+def _check_flags(args) -> None:
+    action = args.action
+    if action is not None and action not in ACTIONS:
+        raise UsageError(f"unknown init action {action!r} (actions: {', '.join(ACTIONS)})")
+    if args.restart and action != "map":
+        raise UsageError("--restart works with map only (modsys init map --restart)")
+    if args.layout and action not in (None, "map"):
+        raise UsageError(f"--layout works with plain init and init map, not init {action}")
+    if args.dry_run and action in ("status", "resume"):
+        raise UsageError(f"init {action} takes no --dry-run (it never writes)"
+                         if action == "status" else "init resume takes no --dry-run")
+
+
+def run(args) -> int:
+    _check_flags(args)
+    root = init_root(args.root)
+    config_dir = Path(args.config_dir or root / ".modsys").resolve()
+    if args.action is not None:
+        return run_action(args, root, config_dir)
+    layout, files = starter(root, config_dir, args.layout, args.dry_run)
+    data = {"root": str(root), "layout": layout, "files": files, "dry_run": args.dry_run}
     emit("init", data, args.json, _render)
     return EXIT_OK
+
+
+def run_action(args, root: Path, config_dir: Path) -> int:
+    from modsys.init_flow import NO_P4, InitFlow  # the flow imports the phases
+    flow = InitFlow(root, config_dir, load_config(config_dir, root))
+    work = flow.rel(flow.work)
+    if args.action == "map":
+        flow.check_map(args.restart)
+        _, files = starter(root, config_dir, args.layout, args.dry_run)
+        if not args.dry_run:  # the starter config may have changed what the phases read
+            flow = InitFlow(root, config_dir, load_config(config_dir, root))
+        result = flow.map(args.restart, args.dry_run)
+        proposal, state = result["proposal"], result["state"]
+        data = {"action": "map", "root": str(root), "files": files,
+                "preflight": f"{work}/preflight.json", "proposal": f"{work}/proposal.json",
+                "candidates": [c["name"] for c in proposal["candidates"]],
+                "unassigned": len(proposal["unassigned"]), "hints": len(proposal["hints"]),
+                "phase": state["phase"] if state else None,
+                "next": flow.next_step(state, work) if state else
+                f"run modsys init map without --dry-run to write {work}/",
+                "dry_run": args.dry_run}
+        emit("init", data, args.json, _render_map)
+        return EXIT_OK
+    if args.action == "confirm":
+        result = flow.confirm(args.dry_run)
+        data = {"action": "confirm", "confirmed": f"{work}/confirmed.json", **result,
+                "dry_run": args.dry_run}
+        emit("init", data, args.json, _render_confirm)
+        return EXIT_OK
+    if args.action == "status":
+        state = flow.load_state()
+        data = {"action": "status", "phase": state["phase"] if state else None,
+                "phases": {p: s["status"] for p, s in state["phases"].items()} if state else {},
+                "next": flow.next_step(state, work)}
+        emit("init", data, args.json, _render_status)
+        return EXIT_OK
+    state = flow.load_state()
+    if state is not None and state["phases"]["gate-map"]["status"] == "done":
+        data = {"action": "resume", "ran": [], "phase": state["phase"],
+                "next": flow.next_step(state, work), "message": NO_P4}
+        emit("init", data, args.json, _render_resume)
+        return EXIT_FINDINGS
+    state, ran = flow.resume()
+    data = {"action": "resume", "ran": ran, "phase": state["phase"],
+            "next": flow.next_step(state, work), "message": None}
+    emit("init", data, args.json, _render_resume)
+    return EXIT_OK
+
+
+def _render_map(d) -> None:
+    for f in d["files"]:
+        print(f"{_VERBS[f['status']][d['dry_run']]:<13} {f['path']}")
+    verb = "would write" if d["dry_run"] else "wrote"
+    print(f"{verb:<13} {d['preflight']}")
+    print(f"{verb:<13} {d['proposal']}")
+    print(f"candidates    {', '.join(d['candidates']) or '(none)'}")
+    print(f"unassigned    {d['unassigned']} code file(s); hints {d['hints']}")
+    print(f"next: {d['next']}")
+
+
+def _render_confirm(d) -> None:
+    verb = {"confirmed": "confirmed", "updated": "updated", "unchanged": "unchanged"}[d["status"]]
+    if d["dry_run"] and d["status"] != "unchanged":
+        verb = "would confirm"
+    print(f"{verb:<13} {d['confirmed']} ({len(d['included'])} included, {len(d['excluded'])} "
+          f"excluded)")
+    print(f"modules       {', '.join(d['included'])}")
+
+
+def _render_status(d) -> None:
+    if not d["phases"]:
+        print("no init state")
+    for phase, status in d["phases"].items():
+        print(f"{phase:<10} {status}")
+    print(f"next: {d['next']}")
+
+
+def _render_resume(d) -> None:
+    print(f"ran           {', '.join(d['ran'])}" if d["ran"] else "nothing to run")
+    if d["message"]:
+        print(d["message"])
+    print(f"next: {d['next']}")
 
 
 def _render(d) -> None:

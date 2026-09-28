@@ -154,6 +154,16 @@ overrides each key (`--fail-on`, `--base`, `--fail-under`).
 | `agents` | unset | the agents `modsys packs sync` writes pack skills for when no `--agent` flag is given: `claude` (`.claude/skills/`) and / or `codex` (`.agents/skills/`); any other name is refused (exit 2 naming the file). Like every array, a higher layer ADDS to a lower one's list; `--agent` flags replace it |
 | `builtin` | `[]` | the engine's built-in packs to enable: `core` (the core agent skills), `ui` (a `designer` role and a UI review skill), `qa` (a `qa_acceptance` role and acceptance-criteria skills). Set it in `config.toml` or `config.user.toml` (the two lists add up; a repeated id counts once; a pack cannot set it); an unknown id is refused (exit 2 naming the file and the known ids). An enabled built-in pack is a pack layer below every repository pack; its version is the engine version. A repository pack with the same id (`.modsys/packs/ui/`) replaces it, enabled or not |
 
+## `[init]`
+
+`modsys init map` — start from existing code: preflight, then map the code into candidate
+modules (see the README, "Start from existing code").
+
+| Key | Default | Meaning |
+|---|---|---|
+| `exclude` | `[]` | globs (the `[[code_map]]` grammar) of files the init file set leaves out — preflight counts, candidates, `unassigned` and the file claims `init confirm` checks; a list of strings (anything else is exit 2 naming the file and the key); like every array, the user config's list adds to the team's |
+| `co_change_commits` | `500` | how many recent commits `init map` reads for the co-change signal (`git log`); an integer `>= 0` (`0` turns the signal off: no `git log` runs); `true` / `false`, text or a fraction is exit 2 naming the file and the key |
+
 ## `[roles.<name>]`
 
 Roles are the audiences of per-module docs (`roles/<role>.md`). Defaults: `developer` (10),

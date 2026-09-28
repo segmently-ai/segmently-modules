@@ -119,5 +119,49 @@ class LayerValidationTest(unittest.TestCase):  # per-layer config + pack meta va
         self.assertEqual(config["hooks"], {"run": 5})
 
 
+
+class InitConfigTest(unittest.TestCase):  # P5A-AC-032 (the keys; their effect: test_map)
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name).resolve()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_defaults_and_the_layers_add_up(self):
+        from modsys.preflight import list_files
+        self.assertEqual(load_config(self.root / ".modsys")["init"],
+                         {"exclude": [], "co_change_commits": 500})
+        write(self.root / ".modsys/config.toml", '[init]\nexclude = ["a/**"]\n')
+        write(self.root / ".modsys/config.user.toml", '[init]\nexclude = ["b/**"]\n')
+        for rel in ("a/x.py", "b/y.py", "c/z.py", "tools/t.py"):
+            write(self.root / rel, "x = 1\n")
+        config = load_config(self.root / ".modsys")
+        self.assertEqual(config["init"]["exclude"], ["a/**", "b/**"])
+        files = list_files(self.root, config)
+        self.assertEqual([f for f in files if not f.startswith(".")], ["c/z.py", "tools/t.py"])
+        write(self.root / ".modsys/config.user.toml", '[init]\nexclude = ["tools/**"]\n')
+        self.assertNotIn("tools/t.py", list_files(self.root, load_config(self.root / ".modsys")))
+
+    def test_bad_values_are_config_errors(self):
+        from tests.helpers import run
+        for text, key in [('exclude = "tools/**"', "exclude"), ("exclude = [1]", "exclude"),
+                          ("co_change_commits = -1", "co_change_commits"),
+                          ("co_change_commits = true", "co_change_commits"),
+                          ('co_change_commits = "500"', "co_change_commits"),
+                          ("co_change_commits = 1.5", "co_change_commits")]:
+            with self.subTest(text=text):
+                write(self.root / ".modsys/config.toml", f"[init]\n{text}\n")
+                with self.assertRaises(UsageError) as caught:
+                    load_config(self.root / ".modsys")
+                self.assertIn(f"config.toml: [init] {key}", str(caught.exception))
+                for argv in (("init", "status"), ("adopt", "--dry-run"),
+                             ("eject", "notes", "--rebase"), ("lint",)):  # P5A-AC-046
+                    code, out, err = run(*argv, "--json", "--root", str(self.root))
+                    self.assertEqual((code, out), (2, ""), argv)
+                    self.assertIn(f"[init] {key}", err)
+                    self.assertNotIn("Traceback", err)
+
+
 if __name__ == "__main__":
     unittest.main()

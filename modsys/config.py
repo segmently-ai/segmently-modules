@@ -44,6 +44,7 @@ LAYER_SCHEMA = {
     "coverage": {"include": "list[str]", "exclude": "list[str]"},
     "ci": {"fail_on": "str", "base": "str", "coverage_fail_under": "number"},
     "packs": {"agents": "list[str]", "builtin": "list[str]"},
+    "init": {"exclude": "list[str]", "co_change_commits": "int"},
 }
 CI_FAIL_ON = ("error", "never", "warning")
 ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str",
@@ -108,7 +109,17 @@ def validate_layer(layer: dict, source) -> None:
     top = layer.get("match", {}).get("top")
     if top is not None and top < 0:
         raise UsageError(f"{source}: [match] top: expected an integer >= 0, got {top!r}")
-    from modsys.changes import validate_code_map  # lazy: keeps config import-light
+    commits = layer.get("init", {}).get("co_change_commits")
+    if commits is not None and commits < 0:
+        raise UsageError(f"{source}: [init] co_change_commits: expected an integer >= 0, got "
+                         f"{commits!r}")
+    from modsys.changes import glob_to_regex, validate_code_map  # lazy: keeps config light
+    for glob in layer.get("init", {}).get("exclude") or []:
+        try:
+            glob_to_regex(glob)
+        except re.error as e:
+            raise UsageError(f"{source}: [init] exclude: glob {glob!r} is not a valid pattern: "
+                             f"{e}") from None
     from modsys.hooks import validate_hooks  # hooks imports proposals -> store; keep lazy
     validate_hooks(layer, source, _check_table)
     validate_code_map(layer, source, _check_table)

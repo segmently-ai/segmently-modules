@@ -644,11 +644,13 @@ class WritesAndRacesTest(AdoptRepo):  # P5A-AC-044
 class AdoptContractTest(AdoptRepo):  # P5A-AC-046, P5A-AC-042
     def test_garbage_config_interrupt_and_options_after_the_verb(self):
         self.registry({"a": entry("a")})
-        self.write(".modsys/config.toml", "code_map = 5\n")
-        code, out, err = run("adopt", "--json", *self.R)
-        self.assertEqual((code, out), (2, ""))
-        self.assertIn("config.toml", err)
-        self.assertNotIn("Traceback", err)
+        for text in ("code_map = 5\n", "[init]\nexclude = 5\n"):
+            with self.subTest(config=text):
+                self.write(".modsys/config.toml", text)
+                code, out, err = run("adopt", "--json", *self.R)
+                self.assertEqual((code, out), (2, ""))
+                self.assertIn("config.toml", err)
+                self.assertNotIn("Traceback", err)
         (self.root / ".modsys/config.toml").unlink()
         with mock.patch("modsys.adopt_cmd.lint_registry", side_effect=KeyboardInterrupt):
             self.assertEqual(run("adopt", "--dry-run", *self.R),

@@ -13,7 +13,7 @@ from modsys.workspace import Workspace
 from tests.helpers import git, run, run_json
 
 EMPTY_REGISTRY = '{\n  "modules": {}\n}\n'
-IGNORE_LINES = ["modules/registry.json.lock", ".modsys/proposals/"]
+IGNORE_LINES = ["modules/registry.json.lock", ".modsys/proposals/", ".modsys/init/"]  # P5a D3
 
 
 def snapshot(root: Path) -> dict:
@@ -63,7 +63,8 @@ class InitTest(unittest.TestCase):
         _, env, _ = self.init()
         self.assertIn({"path": ".gitignore", "status": "updated"}, env["data"]["files"])
         self.assertEqual((self.root / ".gitignore").read_text(),
-                         "node_modules/\n.modsys/proposals/\nmodules/registry.json.lock\n")
+                         "node_modules/\n.modsys/proposals/\nmodules/registry.json.lock\n"
+                         ".modsys/init/\n")  # P5a D3: the init work directory
         self.assertIn({"path": ".gitignore", "status": "exists"}, self.init()[1]["data"]["files"])
 
     def test_existing_registry_is_kept(self):
@@ -186,6 +187,36 @@ class StarterConfigTest(unittest.TestCase):
     def test_the_exclusive_comment_says_matched_and_routed(self):  # M-7, P31-R2 wording
         self.assertIn("matched and routed", starter_config("single"))
         self.assertNotIn("a file matched by an exclusive rule", starter_config("single"))
+
+
+
+class InitIgnoreLineTest(InitTest):  # P5A-AC-024
+    def test_a_repository_initialised_before(self):
+        (self.root / ".gitignore").write_text("modules/registry.json.lock\r\n"
+                                              ".modsys/proposals/\r\n")
+        self.init()
+        (self.root / ".gitignore").write_bytes(b"node_modules/\r\nmodules/registry.json.lock\r\n"
+                                               b".modsys/proposals/\r\n")
+        code, env, _ = self.init()
+        self.assertEqual([(f["path"], f["status"]) for f in env["data"]["files"]],
+                         [(".modsys/config.toml", "exists"), ("modules/registry.json", "exists"),
+                          (".gitignore", "updated")])
+        self.assertEqual((self.root / ".gitignore").read_bytes(),
+                         b"node_modules/\r\nmodules/registry.json.lock\r\n.modsys/proposals/\r\n"
+                         b".modsys/init/\r\n")
+        before = snapshot(self.root)
+        self.assertEqual({f["status"] for f in self.init()[1]["data"]["files"]}, {"exists"})
+        self.assertEqual(snapshot(self.root), before)
+        self.assertFalse((self.root / ".modsys/init").exists())
+
+    def test_the_config_dir_decides_the_line(self):
+        self.init("--config-dir", str(self.root / "cfg"))
+        self.assertEqual((self.root / ".gitignore").read_text().splitlines()[2], "cfg/init/")
+        outside = Path(self._tmp.name).resolve() / "outside"
+        (self.root / ".gitignore").unlink()
+        self.init("--config-dir", str(outside))
+        self.assertEqual((self.root / ".gitignore").read_text().splitlines(), IGNORE_LINES[:2])
+        self.assertEqual(snapshot(outside).keys(), {"config.toml"})
 
 
 if __name__ == "__main__":

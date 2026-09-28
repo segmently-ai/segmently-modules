@@ -93,7 +93,7 @@ class InitGitignoreAndLayoutTest(unittest.TestCase):  # P32-AC-025
         ignore.write_bytes(b"node_modules/\r\n")
         self.assertEqual(run("init", *self.R)[0], 0)
         self.assertEqual(ignore.read_bytes(), b"node_modules/\r\nmodules/registry.json.lock\r\n"
-                                              b".modsys/proposals/\r\n")
+                                              b".modsys/proposals/\r\n.modsys/init/\r\n")  # P5a D3
 
     def test_a_symlinked_gitignore_stays_a_symlink(self):
         shared = self.root / "shared" / "ignore.txt"
@@ -101,8 +101,8 @@ class InitGitignoreAndLayoutTest(unittest.TestCase):  # P32-AC-025
         (self.root / ".gitignore").symlink_to(shared)
         self.assertEqual(run("init", *self.R)[0], 0)
         self.assertTrue((self.root / ".gitignore").is_symlink())
-        self.assertEqual(shared.read_text(),
-                         "node_modules/\nmodules/registry.json.lock\n.modsys/proposals/\n")
+        self.assertEqual(shared.read_text(), "node_modules/\nmodules/registry.json.lock\n"
+                                             ".modsys/proposals/\n.modsys/init/\n")  # P5a D3
 
     def test_single_to_per_module_names_index_split(self):
         run("init", *self.R)

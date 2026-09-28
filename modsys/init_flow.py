@@ -1,0 +1,330 @@
+"""`modsys init map|confirm|status|resume`: start from existing code — the init state machine.
+
+The work directory is `<config_dir>/init/` (git-ignored by `modsys init`):
+  state.json      {schema: "modsys.init-state/1", engine, started_at, phase, phases: {preflight,
+                  map, gate-map: {status: pending|running|done, started_at, finished_at,
+                  sha256}}, modules: {}} — `phase` = the phase most recently started; `sha256` =
+                  the phase's output as written (map's is how an edited proposal is recognised)
+  preflight.json  phase 1 (`modsys.preflight`)
+  proposal.json   phase 2 (`modsys.mapper`) — edit it at gate 3: `include`, `name`, `paths`
+  confirmed.json  gate 3: the validated proposal, frozen by `init confirm`
+Every write is a temp file + an atomic rename, so an interrupted phase leaves no partial output:
+a phase whose status is not `done` re-runs from its start (`init resume`, or `init map` again).
+Phase 4 (fan-out) and later arrive with a later engine version; `map` and `confirm` never
+prompt."""
+import contextlib
+import hashlib
+import json
+import os
+import shutil
+import tempfile
+from pathlib import Path
+
+from modsys import __version__, mapper, preflight
+from modsys.changes import glob_to_regex
+from modsys.create import NAME
+from modsys.output import UsageError
+from modsys.registry import load_registry
+from modsys.store import serialize, utc_now
+
+STATE_SCHEMA = "modsys.init-state/1"
+PHASES = ("preflight", "map", "gate-map")
+OUTPUTS = {"preflight": "preflight.json", "map": "proposal.json", "gate-map": "confirmed.json"}
+TEST_STOP = "MODSYS_INIT_TEST_STOP"  # test seam: "<phase>" or "<phase>:renamed"
+NO_P4 = "phase 4 (fan-out) is not available in this engine version"
+RESTART = "modsys init map --restart"
+
+
+def sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+class InitFlow:
+    def __init__(self, root: Path, config_dir: Path, config: dict):
+        self.root, self.config_dir, self.config = root, config_dir, config
+        self.work = config_dir / "init"
+        self.state_path = self.work / "state.json"
+
+    def rel(self, path: Path) -> str:
+        try:
+            return path.relative_to(self.root).as_posix()
+        except ValueError:
+            return str(path)
+
+    def output(self, phase: str) -> Path:
+        return self.work / OUTPUTS[phase]
+
+    def files(self) -> list[str]:
+        """The file set (`preflight.list_files`) without the init work directory itself."""
+        inside = self.rel(self.work) + "/"
+        return [f for f in preflight.list_files(self.root, self.config)
+                if not f.startswith(inside)]
+
+    # --- files --------------------------------------------------------------------------
+
+    def check_work_dir(self) -> None:
+        if self.work.is_symlink():
+            raise UsageError(f"{self.rel(self.work)} is a symlink — the init work directory must "
+                             f"be a real directory (nothing written, its target left alone)")
+
+    def read_json(self, path: Path, schema: str | None = None) -> dict | None:
+        """The document at `path` (None when missing); unreadable, not JSON, not an object or
+        of another schema is exit 2 naming the file and the restart."""
+        if not os.path.lexists(path):
+            return None
+        try:
+            doc = json.loads(path.read_bytes().decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
+            raise UsageError(f"{self.rel(path)}: cannot read it as JSON ({e}) — fix it, or start "
+                             f"over: {RESTART}") from None
+        if not isinstance(doc, dict) or (schema and doc.get("schema") != schema):
+            raise UsageError(f"{self.rel(path)}: not a {schema or 'JSON object'} document — "
+                             f"start over: {RESTART}")
+        return doc
+
+    def write(self, path: Path, text: str, seam: str | None = None) -> None:
+        """Temp file + atomic rename in the work directory; stale temp files of `path` (a crash)
+        are removed first. `seam`: the phase the test seam may stop."""
+        self.check_work_dir()
+        self.work.mkdir(parents=True, exist_ok=True)
+        for stale in self.work.glob(f".{path.name}.*.tmp"):
+            with contextlib.suppress(FileNotFoundError):
+                stale.unlink()
+        fd, tmp = tempfile.mkstemp(dir=self.work, prefix=f".{path.name}.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+                half = len(text) // 2
+                fh.write(text[:half])
+                fh.flush()
+                if seam and os.environ.get(TEST_STOP) == seam:
+                    raise KeyboardInterrupt  # the test seam: stopped after a partial write
+                fh.write(text[half:])
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.chmod(tmp, 0o644)
+            os.replace(tmp, path)
+        except BaseException:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(tmp)
+            raise
+        if seam and os.environ.get(TEST_STOP) == f"{seam}:renamed":
+            raise KeyboardInterrupt  # the test seam: renamed into place, state not marked yet
+
+    # --- state --------------------------------------------------------------------------
+
+    def load_state(self) -> dict | None:
+        """The state (None when there is none); a corrupt state, or a proposal that is no
+        longer JSON, is exit 2 naming the file and the restart."""
+        self.check_work_dir()
+        state = self.read_json(self.state_path, STATE_SCHEMA)
+        if state is not None and not (isinstance(state.get("phases"), dict) and all(
+                isinstance(state["phases"].get(p), dict) for p in PHASES)):
+            raise UsageError(f"{self.rel(self.state_path)}: not a valid init state (phases) — "
+                             f"start over: {RESTART}")
+        self.read_json(self.output("map"))
+        return state
+
+    def new_state(self) -> dict:
+        return {"schema": STATE_SCHEMA, "engine": __version__, "started_at": utc_now(),
+                "phase": None, "phases": {p: {"status": "pending", "started_at": None,
+                                              "finished_at": None, "sha256": None}
+                                          for p in PHASES},
+                "modules": {}}
+
+    def save_state(self, state: dict) -> None:
+        self.write(self.state_path, serialize(state))
+
+    def mark(self, state: dict, phase: str, status: str, sha: str | None = None) -> None:
+        entry = state["phases"][phase]
+        if status == "running":
+            entry.update(status="running", started_at=utc_now(), finished_at=None, sha256=None)
+            state["phase"] = phase
+        else:
+            entry.update(status="done", finished_at=utc_now(), sha256=sha)
+        self.save_state(state)
+
+    @staticmethod
+    def next_step(state: dict | None, work_rel: str) -> str:
+        if state is None:
+            return "run modsys init map"
+        phases = state["phases"]
+        for phase in ("preflight", "map"):
+            if phases[phase]["status"] == "running":
+                return (f"phase {phase} was interrupted: modsys init resume re-runs it from its "
+                        f"start")
+            if phases[phase]["status"] != "done":
+                return f"phase {phase} has not run: modsys init resume"
+        if phases["gate-map"]["status"] != "done":
+            return (f"gate 3: edit {work_rel}/proposal.json (each candidate's include, name and "
+                    f"paths), then run modsys init confirm")
+        return (f"gate 3 passed ({work_rel}/confirmed.json); phase 4 (fan-out) comes with a later "
+                f"engine version")
+
+    # --- phases -------------------------------------------------------------------------
+
+    def compute(self, files: list[str]) -> tuple[dict, list[dict]]:
+        found = preflight.manifests(self.root, files)
+        return preflight.build(self.root, files, found), found
+
+    def run_phases(self, state: dict, todo: list[str]) -> None:
+        """Run `todo` (a suffix of preflight, map) in order; each marks running, writes its
+        output atomically, then marks done with the output's sha256."""
+        files = found = None
+        if "preflight" in todo:
+            self.mark(state, "preflight", "running")
+            files = self.files()
+            doc, found = self.compute(files)
+            text = serialize(doc)
+            self.write(self.output("preflight"), text, seam="preflight")
+            self.mark(state, "preflight", "done", sha256_text(text))
+        if "map" in todo:
+            self.mark(state, "map", "running")
+            if files is None:
+                files = self.files()
+                found = preflight.manifests(self.root, files)
+            text = serialize(mapper.build(self.root, self.config, files, found))
+            self.write(self.output("map"), text, seam="map")
+            self.mark(state, "map", "done", sha256_text(text))
+
+    # --- actions ------------------------------------------------------------------------
+
+    def refuse_modules(self) -> None:
+        registry = self.root / self.config["paths"]["registry"]
+        if registry.is_file():
+            count = len(load_registry(registry).modules)
+            if count:
+                raise UsageError(f"{self.rel(registry)} already has {count} module(s) — init map "
+                                 f"starts from code without modules. To make the engine read "
+                                 f"that registry run modsys adopt; to see how much code the "
+                                 f"modules cover run modsys coverage")
+
+    def check_map(self, restart: bool) -> None:
+        """The refusals of `init map` before anything is written."""
+        self.refuse_modules()
+        self.check_work_dir()
+        if restart:
+            return
+        state = self.load_state()
+        if state is None:
+            return
+        if state["phases"]["gate-map"]["status"] == "done":
+            raise UsageError(f"gate 3 passed ({self.rel(self.output('gate-map'))}); init map "
+                             f"would start over — run {RESTART} to do that")
+        recorded = state["phases"]["map"]
+        if self.output("map").is_file() and recorded["status"] == "done" and \
+                sha256_text(self.output("map").read_text(encoding="utf-8")) != recorded["sha256"]:
+            raise UsageError(f"{self.rel(self.output('map'))} was edited: init map would lose "
+                             f"the edits — run modsys init confirm, or {RESTART} to discard "
+                             f"them")
+
+    def map(self, restart: bool, dry_run: bool) -> dict:
+        """Phases 1 and 2 from their start (the starter files are the caller's); stops at
+        gate 3. `dry_run` computes both in memory and writes nothing."""
+        if dry_run:
+            files = self.files()
+            doc, found = self.compute(files)
+            return {"proposal": mapper.build(self.root, self.config, files, found),
+                    "preflight": doc, "state": None}
+        if restart and self.work.exists():
+            shutil.rmtree(self.work)
+        state = self.new_state()
+        self.save_state(state)
+        self.run_phases(state, ["preflight", "map"])
+        return {"proposal": self.read_json(self.output("map")), "state": state}
+
+    def resume(self) -> tuple[dict, list[str]]:
+        """(state, the phases run): re-runs every phase before gate 3 that is not done."""
+        state = self.load_state()
+        if state is None:
+            raise UsageError("no init state to resume — run modsys init map")
+        todo = [p for p in ("preflight", "map") if state["phases"][p]["status"] != "done"]
+        if "preflight" in todo:
+            todo = ["preflight", "map"]
+        if todo:
+            self.run_phases(state, todo)
+        return state, todo
+
+    def validate(self, proposal: dict) -> list[str]:
+        """Every problem of an (edited) proposal, at once; [] when it can be confirmed."""
+        problems = []
+        candidates = proposal.get("candidates")
+        if not isinstance(candidates, list) or not all(isinstance(c, dict) for c in candidates):
+            return ["candidates must be a list of objects"]
+        included = []
+        for i, c in enumerate(candidates):
+            label = c.get("name") if isinstance(c.get("name"), str) else f"#{i + 1}"
+            if not isinstance(c.get("name"), str):
+                problems.append(f"candidate #{i + 1} has no name")
+            if not isinstance(c.get("include"), bool):
+                problems.append(f"candidate '{label}': include must be true or false")
+                continue
+            if not c["include"]:
+                continue
+            included.append(c)
+            if isinstance(c.get("name"), str) and (not NAME.fullmatch(c["name"])
+                                                   or len(c["name"]) > 48):
+                problems.append(f"candidate '{label}': the name breaks the create rule "
+                                f"(lowercase words joined by '-', max 48)")
+            paths = c.get("paths")
+            if not isinstance(paths, list) or not paths or \
+                    not all(isinstance(p, str) and p for p in paths):
+                problems.append(f"candidate '{label}' has no paths (a list of globs)")
+        if not included and not problems:
+            return ["no candidate is included"]
+        names = [c["name"] for c in included if isinstance(c.get("name"), str)]
+        for name in sorted({n for n in names if names.count(n) > 1}):
+            problems.append(f"duplicate name '{name}': {names.count(name)} included candidates")
+        globbed = [c for c in included if isinstance(c.get("paths"), list) and c["paths"]
+                   and all(isinstance(p, str) and p for p in c["paths"])]
+        if globbed:
+            files = self.files()
+            claims: dict[str, list[str]] = {}
+            for c in globbed:
+                for glob in c["paths"]:
+                    rx = glob_to_regex(glob)
+                    hits = [f for f in files if rx.match(f)]
+                    if not hits:
+                        problems.append(f"candidate '{c.get('name')}': glob '{glob}' matches no "
+                                        f"file")
+                    for f in hits:
+                        owners = claims.setdefault(f, [])
+                        if c.get("name") not in owners:
+                            owners.append(c.get("name"))
+            pairs: dict[tuple, list[str]] = {}
+            for f, owners in claims.items():
+                for a in owners:
+                    for b in owners:
+                        if str(a) < str(b):
+                            pairs.setdefault((a, b), []).append(f)
+            for (a, b), shared in sorted(pairs.items(), key=lambda kv: (str(kv[0][0]),
+                                                                         str(kv[0][1]))):
+                problems.append(f"candidates '{a}' and '{b}' both claim {len(shared)} file(s), "
+                                f"e.g. {shared[0]}")
+        return problems
+
+    def confirm(self, dry_run: bool) -> dict:
+        """Gate 3: validate proposal.json and freeze it as confirmed.json."""
+        state = self.load_state()
+        if state is None or not os.path.lexists(self.output("map")):
+            raise UsageError("nothing to confirm — run modsys init map first")
+        if state["phases"]["map"]["status"] != "done":
+            raise UsageError(f"phase map has not finished ({state['phases']['map']['status']}) "
+                             f"— run modsys init resume")
+        proposal = self.read_json(self.output("map"), mapper.SCHEMA)
+        problems = self.validate(proposal)
+        if problems:
+            raise UsageError(f"{self.rel(self.output('map'))} cannot be confirmed: "
+                             + "; ".join(problems))
+        text = serialize(proposal)
+        target = self.output("gate-map")
+        old = target.read_text(encoding="utf-8") if target.is_file() else None
+        status = "confirmed" if old is None else "unchanged" if old == text else "updated"
+        if not dry_run and status != "unchanged":
+            self.mark(state, "gate-map", "running")
+            self.write(target, text)
+            self.mark(state, "gate-map", "done", sha256_text(text))
+        names = [c["name"] for c in proposal["candidates"]]
+        return {"included": [n for n, c in zip(names, proposal["candidates"]) if c["include"]],
+                "excluded": [n for n, c in zip(names, proposal["candidates"])
+                             if not c["include"]],
+                "status": status}
