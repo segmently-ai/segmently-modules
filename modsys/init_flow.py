@@ -162,19 +162,20 @@ class InitFlow:
 
     # --- phases -------------------------------------------------------------------------
 
-    def compute(self, files: list[str]) -> tuple[dict, list[dict]]:
-        counts = preflight.scan(self.root, files)
+    def compute(self, files: list[str]) -> tuple[dict, list[dict], dict]:
+        """(preflight.json's document, the manifests, the texts the import scan reuses)."""
+        counts = preflight.scan(self.root, files, keep=mapper.scanned)
         found = preflight.manifests(self.root, files, counts["texts"])
-        return preflight.build(self.root, files, found, counts), found
+        return preflight.build(self.root, files, found, counts), found, counts["texts"]
 
     def run_phases(self, state: dict, todo: list[str]) -> None:
         """Run `todo` (a suffix of preflight, map) in order; each marks running, writes its
         output atomically, then marks done with the output's sha256."""
-        files = found = None
+        files = found = texts = None
         if "preflight" in todo:
             self.mark(state, "preflight", "running")
             files = self.files()
-            doc, found = self.compute(files)
+            doc, found, texts = self.compute(files)
             text = serialize(doc)
             self.write(self.output("preflight"), text, seam="preflight")
             self.mark(state, "preflight", "done", sha256_text(text))
@@ -183,7 +184,7 @@ class InitFlow:
             if files is None:
                 files = self.files()
                 found = preflight.manifests(self.root, files)
-            text = serialize(mapper.build(self.root, self.config, files, found))
+            text = serialize(mapper.build(self.root, self.config, files, found, texts))
             self.write(self.output("map"), text, seam="map")
             self.mark(state, "map", "done", sha256_text(text))
 
@@ -223,8 +224,8 @@ class InitFlow:
         gate 3. `dry_run` computes both in memory and writes nothing."""
         if dry_run:
             files = self.files()
-            doc, found = self.compute(files)
-            return {"proposal": mapper.build(self.root, self.config, files, found),
+            doc, found, texts = self.compute(files)
+            return {"proposal": mapper.build(self.root, self.config, files, found, texts),
                     "preflight": doc, "state": None}
         if restart and self.work.exists():
             shutil.rmtree(self.work)

@@ -33,6 +33,14 @@ class PackagingTest(unittest.TestCase):
                    if (package / f).is_file()}
         self.assertEqual(sorted(set(files) - shipped), [])
 
+    def test_the_fixtures_stay_test_data(self):  # P5A-AC-049
+        data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+        self.assertEqual(list(data["tool"]["setuptools"]["package-data"]), ["modsys"])
+        self.assertTrue(all(not g.startswith("..")
+                            for g in data["tool"]["setuptools"]["package-data"]["modsys"]))
+        self.assertTrue((ENGINE / "tests/fixtures/bookshop_monorepo/package.json").is_file())
+        self.assertFalse(list((ENGINE / "modsys").rglob("bookshop_monorepo")))
+
 
 if __name__ == "__main__":
     unittest.main()

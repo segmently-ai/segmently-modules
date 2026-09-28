@@ -1,0 +1,6 @@
+# Who reviews what
+*                            @bookshop/web
+/services/                   @bookshop/backend
+/packages/ui-kit/            @bookshop/design
+/packages/ui-kit/src/forms/  @bookshop/forms
+/tools/                      @bookshop/ops @bookshop/web

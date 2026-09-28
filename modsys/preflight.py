@@ -91,7 +91,7 @@ def _read(path: Path) -> bytes:
 def scan(root: Path, files: list[str], keep=lambda rel: False) -> dict:
     """Read every file of `files` at most once: {files, lines, bytes, text_bytes, languages:
     {language: [files, lines]}, texts: {path: text}} — `texts` holds the manifests and the
-    text files `keep(path)` asks for."""
+    text files `keep(path)` asks for that are valid UTF-8 (the map's import scan reuses them)."""
     out = {"files": len(files), "lines": 0, "bytes": 0, "text_bytes": 0, "languages": {},
            "texts": {}}
     for rel in files:
@@ -119,7 +119,10 @@ def scan(root: Path, files: list[str], keep=lambda rel: False) -> dict:
             row[0] += 1
             row[1] += lines
         if manifest_kind(rel) or keep(rel):
-            out["texts"][rel] = text
+            try:
+                out["texts"][rel] = data.decode("utf-8")
+            except UnicodeDecodeError:
+                pass  # not UTF-8: read by nobody else either
     return out
 
 

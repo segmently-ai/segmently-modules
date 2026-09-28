@@ -1,0 +1,5 @@
+[project]
+name = "recommendations"
+version = "1.0.0"
+description = "Books a reader may like next"
+keywords = ["recommendation"]

@@ -1,0 +1,6 @@
+{
+  "name": "@bookshop/catalog",
+  "version": "1.0.0",
+  "description": "Book titles and authors",
+  "keywords": ["books", "isbn"]
+}

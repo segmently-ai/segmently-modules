@@ -1,0 +1,6 @@
+{
+  "name": "@bookshop/cart",
+  "version": "1.0.0",
+  "description": "Cart lines and totals",
+  "keywords": ["cart", "basket"]
+}

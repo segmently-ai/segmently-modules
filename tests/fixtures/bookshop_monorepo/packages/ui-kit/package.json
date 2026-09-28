@@ -1,0 +1,6 @@
+{
+  "name": "@bookshop/ui-kit",
+  "version": "1.0.0",
+  "description": "Buttons, forms and price labels",
+  "keywords": ["button", "form"]
+}

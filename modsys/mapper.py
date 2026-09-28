@@ -10,18 +10,59 @@ A candidate is a unit — a directory:
      directories that hold code (a code file: an extension of the preflight language table).
 Names: the manifest name without a scope (`@org/`) or path, else the directory name, normalized
 to the `create` rule (lowercase words joined by '-', max 48); names two units share get their
-parent directory as a prefix. Each candidate: `{name, include: true, paths: ["<dir>/**"],
-confidence, rationale, signals, edges, keywords}`."""
+parent directory as a prefix.
+
+Signals, all deterministic:
+  imports     Python `import` / `from … import` (relative ones too) and JS/TS `import … from`,
+              `export … from`, `require(…)`, `import(…)` with a string literal. Relative
+              specifiers resolve to files (extensions, `index` files, `__init__.py`); a
+              workspace package name (`@org/pkg`, `@org/pkg/sub`) to its unit; a Python
+              absolute import by its first segment to the one unit holding that package
+              (`<unit>/P/__init__.py`, `<unit>/P.py`, `<unit>/src/P/`). Anything else is
+              external and ignored; a file that is not UTF-8 is skipped.
+  CODEOWNERS  the first of `.github/CODEOWNERS`, `CODEOWNERS`, `docs/CODEOWNERS`; the last
+              matching rule wins; a rule with `!`, `[`, `]` or `\\` is skipped.
+  co-change   `git log --name-only` over the last `[init] co_change_commits` commits (0: off);
+              per unit pair the Jaccard index of the commit sets that touch them.
+Per candidate `confidence` = round(0.4 × manifest + 0.2 × cohesion + 0.2 × owners + 0.2 ×
+isolation, 2) from `signals`: manifest 1 for a package root; cohesion = intra-unit share of the
+resolved imports whose source file is in the unit (0 without imports); owners 1 when every
+owned file of the unit has one identical owner set; isolation = 1 − the highest Jaccard with
+another unit (0 without history). `hints` (never a change to the candidates): `merge` for two
+units with Jaccard >= 0.6 that import each other, `split` for a unit whose files have disjoint
+owner sets. `unassigned`: the code files no candidate claims."""
+import os
 import re
+import subprocess
 from pathlib import PurePosixPath
 
-from modsys.changes import DEPENDENCY_DIRS
+from modsys import preflight
+from modsys.changes import DEPENDENCY_DIRS, git_env, glob_to_regex, work_tree_error
+from modsys.create import GENERIC_KEYWORDS
 from modsys.preflight import language
 
 SCHEMA = "modsys.init-proposal/1"
 CONTAINERS = ("src", "lib", "app", "packages", "services", "apps")
 NAME_MAX = 48
-MANIFEST_WEIGHT = 0.4
+WEIGHTS = {"manifest": 0.4, "cohesion": 0.2, "owners": 0.2, "isolation": 0.2}
+SCANNED = (".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
+JS_EXTENSIONS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts")
+CODEOWNERS = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")
+_PY_IMPORT = re.compile(r"^[ \t]*import[ \t]+([\w.]+(?:[ \t]+as[ \t]+\w+)?"
+                        r"(?:[ \t]*,[ \t]*[\w.]+(?:[ \t]+as[ \t]+\w+)?)*)", re.M)
+_PY_FROM = re.compile(r"^[ \t]*from[ \t]+(\.*)([\w.]*)[ \t]+import[ \t]+\(?[ \t]*([\w, \t]*)",
+                      re.M)
+_JS = [re.compile(r"\bimport\s+(?:[^'\";]*?\s+from\s+)?['\"]([^'\"\n]+)['\"]"),
+       re.compile(r"\bexport\s+[^'\";]*?\s+from\s+['\"]([^'\"\n]+)['\"]"),
+       re.compile(r"\brequire\(\s*['\"]([^'\"\n]+)['\"]\s*\)"),
+       re.compile(r"\bimport\(\s*['\"]([^'\"\n]+)['\"]\s*\)")]
+_WORD = re.compile(r"[a-z0-9]+")
+
+
+def scanned(path: str) -> bool:
+    """A file the map reads: code for the import scan (Python, JavaScript, TypeScript) and the
+    CODEOWNERS files — the preflight scan keeps their text, so no file is read twice."""
+    return PurePosixPath(path).suffix.lower() in SCANNED or path in CODEOWNERS
 
 
 def module_name(raw: str) -> str:
@@ -37,10 +78,17 @@ def _dir(path: str) -> str:
     return "" if parent == "." else parent
 
 
+def _join(base: str, rel: str) -> str:
+    return f"{base}/{rel}" if base else rel
+
+
+def _hidden(path: str) -> bool:
+    return any(part.startswith(".") or part in DEPENDENCY_DIRS for part in path.split("/")[:-1])
+
+
 def _code_dirs(files: list[str], skip: set[str]) -> list[tuple[str, str]]:
     """Rule 2: (unit directory, rationale) of the source directories."""
-    code = [f for f in files if language(f) and not any(
-        part.startswith(".") or part in DEPENDENCY_DIRS for part in f.split("/")[:-1])]
+    code = [f for f in files if language(f) and not _hidden(f)]
     units = []
     for container in CONTAINERS:
         subs = sorted({f.split("/")[1] for f in code
@@ -95,16 +143,256 @@ def names(found: list[dict]) -> list[str]:
     return out
 
 
-def build(root, config: dict, files: list[str], manifests: list[dict]) -> dict:
-    """proposal.json's document."""
+# --- imports --------------------------------------------------------------------------------
+
+def specifiers(path: str, text: str) -> list[tuple]:
+    """The import statements of one file: ("py", dots, module, names) or ("js", specifier)."""
+    if path.endswith(".py"):
+        out = []
+        for m in _PY_IMPORT.finditer(text):
+            out += [("py", 0, part.split()[0], []) for part in m.group(1).split(",")
+                    if part.strip()]
+        for m in _PY_FROM.finditer(text):
+            out.append(("py", len(m.group(1)), m.group(2),
+                        [n.strip() for n in m.group(3).split(",") if n.strip()]))
+        return out
+    return [("js", m.group(1)) for rx in _JS for m in rx.finditer(text)]
+
+
+class Resolver:
+    """Import statements -> the unit (directory) they reach, or None (external)."""
+
+    def __init__(self, files: list[str], found: list[dict]):
+        self.files = set(files)
+        self.dirs = [u["dir"] for u in found]
+        self.packages = {u["manifest"]["name"]: u["dir"] for u in found
+                         if u["manifest"] and u["manifest"]["name"]
+                         and u["manifest"]["kind"] in ("package.json", "composer.json")}
+        holders: dict[str, set] = {}
+        for f in files:
+            parts = f.split("/")
+            for d in self.dirs:
+                if not f.startswith(d + "/"):
+                    continue
+                rest = parts[len(d.split("/")):]
+                if len(rest) == 2 and rest[1] == "__init__.py":
+                    holders.setdefault(rest[0], set()).add(d)
+                elif len(rest) == 1 and rest[0].endswith(".py"):
+                    holders.setdefault(rest[0][:-3], set()).add(d)
+                elif len(rest) >= 3 and rest[0] == "src" and rest[-1].endswith(".py"):
+                    holders.setdefault(rest[1], set()).add(d)
+        self.python = {p: ds.pop() for p, ds in holders.items() if len(ds) == 1}
+
+    def unit_of(self, path: str) -> str | None:
+        return next((d for d in self.dirs if path.startswith(d + "/")), None)
+
+    def file(self, base: str) -> str | None:
+        """A relative specifier's file: itself, with an extension, or its index file."""
+        for candidate in [base] + [base + e for e in JS_EXTENSIONS + (".py",)] + \
+                [f"{base}/index{e}" for e in JS_EXTENSIONS] + [f"{base}/__init__.py"]:
+            if candidate in self.files:
+                return candidate
+        return None
+
+    def resolve(self, source: str, statement: tuple) -> set[str]:
+        here = _dir(source)
+        if statement[0] == "js":
+            spec = statement[1]
+            if spec.startswith(("./", "../")):
+                target = self.file(os.path.normpath(os.path.join(here, spec)).replace("\\", "/"))
+                return {self.unit_of(target)} - {None} if target else set()
+            parts = spec.split("/")
+            package = "/".join(parts[:2]) if spec.startswith("@") else parts[0]
+            return {self.packages[package]} if package in self.packages else set()
+        _, dots, module, imported = statement
+        if dots:
+            base = here
+            for _ in range(dots - 1):
+                base = _dir(base)
+            if module:
+                targets = [self.file(_join(base, module.replace(".", "/")))]
+            else:  # `from . import a, b`: the modules a and b, else the package itself
+                targets = [self.file(_join(base, n)) for n in imported]
+                if not any(targets):
+                    targets = [self.file(_join(base, "__init__"))]
+            return {self.unit_of(t) for t in targets if t} - {None}
+        first = module.split(".")[0]
+        return {self.python[first]} if first in self.python else set()
+
+
+def import_edges(root, found: list[dict], files: list[str], texts: dict) -> dict[str, dict]:
+    """Per unit directory: {"intra": n, "cross": {other dir: n}} — resolved import statements
+    whose source file is in the unit (`texts`: what the preflight scan read; any other code
+    file is read here, once)."""
+    resolver = Resolver(files, found)
+    out = {u["dir"]: {"intra": 0, "cross": {}} for u in found}
+    for path in files:
+        unit = resolver.unit_of(path)
+        if unit is None or PurePosixPath(path).suffix.lower() not in SCANNED:
+            continue
+        text = texts.get(path)
+        if text is None:
+            try:
+                text = preflight._read(root / path).decode("utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+        for statement in specifiers(path, text):
+            for target in resolver.resolve(path, statement):
+                if target == unit:
+                    out[unit]["intra"] += 1
+                else:
+                    out[unit]["cross"][target] = out[unit]["cross"].get(target, 0) + 1
+    return out
+
+
+# --- CODEOWNERS -------------------------------------------------------------------------------
+
+def owner_rules(text: str) -> list[tuple]:
+    """(regex, owners) of every supported CODEOWNERS line, in file order."""
+    rules = []
+    for line in text.splitlines():
+        line = line.split(" #")[0].strip()
+        if not line or line.startswith("#"):
+            continue
+        pattern, *owners = line.split()
+        if any(c in pattern for c in "![]\\"):
+            continue  # a syntax outside the documented subset: skipped
+        anchored = pattern.startswith("/") or "/" in pattern.strip("/")
+        body = glob_to_regex(pattern.strip("/")).pattern.removesuffix(r"\Z")
+        rx = ("" if anchored else "(?:.*/)?") + body + r"(?:/.*)?\Z"
+        rules.append((re.compile(rx), frozenset(owners)))
+    return rules
+
+
+def owners_of(root, files: list[str], texts: dict) -> dict[str, frozenset] | None:
+    """File -> its owner set (the last matching rule); None without a CODEOWNERS file (looked
+    up on disk: outside git the file set skips `.github/`)."""
+    source = next((c for c in CODEOWNERS if (root / c).is_file()), None)
+    if source is None:
+        return None
+    try:
+        text = texts.get(source) or preflight._read(root / source).decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    rules = owner_rules(text)
+    out = {}
+    for f in files:
+        owners = frozenset()
+        for rx, who in rules:
+            if rx.match(f):
+                owners = who
+        out[f] = owners
+    return out
+
+
+# --- co-change ------------------------------------------------------------------------------
+
+def co_change(root, commits: int) -> list[set[str]] | None:
+    """The file sets of the last `commits` commits (`git log --name-only`, one run); None when
+    the signal is off (0), outside git or before the first commit."""
+    if commits <= 0 or work_tree_error(root) is not None:
+        return None
+    proc = subprocess.run(["git", "-c", "core.quotepath=off", "-C", str(root), "log",
+                           "--name-only", "--no-renames", "--relative", "--format=%x1e%H",
+                           "-n", str(commits)], capture_output=True, encoding="utf-8",
+                          errors="replace", env=git_env())
+    if proc.returncode != 0:
+        return None
+    return [set(line for line in chunk.splitlines()[1:] if line.strip())
+            for chunk in proc.stdout.split("\x1e") if chunk.strip()]
+
+
+def jaccard(a: set, b: set) -> tuple[int, int]:
+    """(intersection, union) of two commit sets; two empty sets have Jaccard 0."""
+    return len(a & b), len(a | b)
+
+
+def co_changed(inter: int, union: int) -> bool:
+    """Jaccard >= 0.6, compared exactly in integers."""
+    return union > 0 and 5 * inter >= 3 * union
+
+
+# --- the proposal ---------------------------------------------------------------------------
+
+def keywords(name: str, manifest: dict | None) -> list[str]:
+    """Seed words: the tokens of the name, the manifest name and keywords, then description
+    words of 4+ letters that are not generic — first appearance, de-duplicated."""
+    words = _WORD.findall(name.lower())
+    if manifest:
+        words += _WORD.findall((manifest["name"] or "").lower())
+        for keyword in manifest.get("keywords") or []:
+            words += _WORD.findall(keyword.lower())
+        words += [w for w in _WORD.findall((manifest.get("description") or "").lower())
+                  if len(w) >= 4 and w.isalpha() and w not in GENERIC_KEYWORDS]
+    return list(dict.fromkeys(words))
+
+
+def build(root, config: dict, files: list[str], manifests: list[dict],
+          texts: dict | None = None) -> dict:
+    """proposal.json's document; `texts`: the code texts the preflight scan already read."""
+    texts = texts or {}
     skip = {config["paths"]["modules_dir"].split("/")[0], *DEPENDENCY_DIRS}
     found = units(files, manifests, skip)
-    candidates = []
-    for unit, name in zip(found, names(found)):
-        manifest = 1.0 if unit["manifest"] else 0.0
-        candidates.append({"name": name, "include": True, "paths": [f"{unit['dir']}/**"],
-                           "confidence": round(MANIFEST_WEIGHT * manifest, 2),
-                           "rationale": unit["rationale"],
-                           "signals": {"manifest": manifest}, "edges": [], "keywords": []})
-    return {"schema": SCHEMA, "root": str(root), "candidates": candidates, "unassigned": [],
-            "hints": []}
+    unit_names = names(found)
+    by_dir = dict(zip((u["dir"] for u in found), unit_names))
+    edges = import_edges(root, found, files, texts)
+    owners = owners_of(root, files, texts)
+    history = co_change(root, config["init"]["co_change_commits"])
+    touched = {u["dir"]: {i for i, commit in enumerate(history or [])
+                          if any(f.startswith(u["dir"] + "/") for f in commit)} for u in found}
+    candidates, hints = [], []
+    for unit, name in zip(found, unit_names):
+        d = unit["dir"]
+        own = [f for f in files if f.startswith(d + "/")]
+        intra, cross = edges[d]["intra"], sum(edges[d]["cross"].values())
+        cohesion = round(intra / (intra + cross), 4) if intra + cross else 0.0
+        sets = sorted({owners[f] for f in own if owners[f]}, key=sorted) if owners else []
+        single = 1.0 if len(sets) == 1 else 0.0
+        partner, best = None, (0, 1)
+        for other in found:
+            if other["dir"] != d:
+                inter, union = jaccard(touched[d], touched[other["dir"]])
+                if union and inter * best[1] > best[0] * union:
+                    partner, best = by_dir[other["dir"]], (inter, union)
+        top = best[0] / best[1]
+        isolation = round(1 - top, 4) if history else 0.0
+        signals = {"manifest": 1.0 if unit["manifest"] else 0.0, "cohesion": cohesion,
+                   "owners": single, "isolation": isolation, "intra_imports": intra,
+                   "cross_imports": cross, "owner_sets": [sorted(s) for s in sets],
+                   "co_change": round(top, 4), "co_change_partner": partner}
+        confidence = round(sum(WEIGHTS[k] * signals[k] for k in WEIGHTS), 2)
+        rationale = list(unit["rationale"])
+        if intra + cross:
+            rationale.append(f"imports: {intra} within the unit, {cross} to other candidates "
+                             f"(cohesion {cohesion})")
+        if single:
+            rationale.append(f"one owner set in CODEOWNERS: {', '.join(sorted(sets[0]))}")
+        if history:
+            rationale.append(f"co-change: at most {round(top, 4)} with another candidate"
+                             + (f" ({partner})" if partner else ""))
+        candidates.append({"name": name, "include": True, "paths": [f"{d}/**"],
+                           "confidence": confidence, "rationale": rationale, "signals": signals,
+                           "edges": [{"to": by_dir[t], "imports": n}
+                                     for t, n in sorted(edges[d]["cross"].items(),
+                                                        key=lambda kv: by_dir[kv[0]])],
+                           "keywords": keywords(name, unit["manifest"])})
+        if len(sets) > 1 and all(not (a & b) for i, a in enumerate(sets) for b in sets[i + 1:]):
+            hints.append({"kind": "split", "candidates": [name],
+                          "reason": f"its files have disjoint owner sets in CODEOWNERS: "
+                                    + "; ".join(", ".join(sorted(s)) for s in sets)})
+    for i, a in enumerate(found):
+        for b in found[i + 1:]:
+            inter, union = jaccard(touched[a["dir"]], touched[b["dir"]])
+            both = (edges[a["dir"]]["cross"].get(b["dir"])
+                    and edges[b["dir"]]["cross"].get(a["dir"]))
+            if history and co_changed(inter, union) and both:
+                pair = sorted([by_dir[a["dir"]], by_dir[b["dir"]]])
+                hints.append({"kind": "merge", "candidates": pair,
+                              "reason": f"they import each other and change together "
+                                        f"(Jaccard {inter}/{union} of the recent commits)"})
+    claimed = [f"{u['dir']}/" for u in found]
+    unassigned = [f for f in files if language(f) and not _hidden(f)
+                  and f.split("/")[0] not in skip and not f.startswith(tuple(claimed))]
+    hints.sort(key=lambda h: (h["kind"], h["candidates"]))
+    return {"schema": SCHEMA, "root": str(root), "candidates": candidates,
+            "unassigned": unassigned, "hints": hints}
