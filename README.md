@@ -227,6 +227,25 @@ modsys coverage                  # everything unmapped: the baseline
    `app/db/` tree — without that rule they silently map to `db`, not `orders`. `db` keeps the
    base classes, sessions and the rest.
 
+   Files of one feature that are not named after it (`app/jobs/nightly_totals.py`,
+   `app/api/order_export.py` for `orders`) take ONE rule with a `--glob` per path (`--glob`
+   repeats):
+
+   ```bash
+   modsys code-map add orders-extra --module orders --glob "app/jobs/nightly_totals.py" --glob "app/api/order_export.py"
+   ```
+
+   `exclusive` wins only over NON-exclusive rules. Two exclusive rules that route one file to
+   different modules are still an MS053 overlap:
+
+   ```bash
+   modsys code-map add repositories --pattern "app/repositories/{module}.py" --exclusive
+   modsys code-map add db-repositories --module db --glob "app/repositories/**" --exclusive  # MS053
+   ```
+
+   Both claim `app/repositories/orders.py` (for `orders` and for `db`): keep one of them
+   exclusive, or narrow the other's globs.
+
    Check the rules against real files, one per layer: `modsys discover --files
    app/db/queries/sql/orders.sql` (its `file` line should read `-> orders`, not `-> db`) — the
    same command used to verify the child-module split above.
@@ -256,15 +275,19 @@ where the code lives). `adopt` infers it and never changes the registry or a doc
 ```bash
 modsys adopt --dry-run     # the config it would write, each key with an `# adopt:` line saying why
 modsys adopt               # writes .modsys/config.toml; lint runs in report mode
+modsys init                # adds the .gitignore lines (lock file, proposals, init); keeps the config
 modsys lint --fail-on warning
-git add .modsys/config.toml && git commit -m "modsys: read the existing registry"
+git add .modsys/config.toml .gitignore && git commit -m "modsys: read the existing registry"
 ```
 
 Review the report first: roles (`order`, `standard` when 80 % of the modules carry one),
 fields (`type`, `scope`, `kind = "code_pointer"` when their values name repository paths), the
 directories under the modules dir that are not modules, the registry's `updated_at` key, one
-`[[code_map]]` rule when half the modules have `<prefix>/<module>/`, and — commented out, for
-the team to decide — doc budgets its docs exceed. A registry elsewhere: `--registry
+`[[code_map]]` rule when half the modules have `<prefix>/<module>/` (below half, the best
+candidate is written commented out and reported as `code_map_suggestion`), and — commented out,
+for the team to decide — doc budgets its docs exceed. `adopt` writes that one file only:
+`modsys init` adds the `.gitignore` lines for the lock file, proposals and init, and keeps your
+config (`adopt`'s next steps say so while lines are missing). A registry elsewhere: `--registry
 docs/modules/registry.json`. With a config already there, `adopt` writes what is still missing
 to `.modsys/adopt.proposed.toml` instead — merge it by hand. The rules and thresholds:
 [docs/configuration.md](docs/configuration.md#adopting-an-existing-registry).
@@ -281,7 +304,10 @@ modsys init confirm    # gate 3: checks the proposal and freezes it as confirmed
 modsys init status     # the phases and the next step
 ```
 
-`init map` stops at gate 3; an interrupted run continues with `modsys init resume`. The rest of
+`init map` stops at gate 3; an interrupted run continues with `modsys init resume`. When it
+notes code files outside every candidate although a package manifest exists, a manifest in a
+fixture, docs site or functions folder has made its folder a unit and switched off the
+source-directory rule: add it to `[init] exclude` and run `modsys init map --restart`. The rest of
 the flow — writing each confirmed module's registry entry and docs — arrives with a later
 engine version: for now, create the confirmed modules with `modsys create` (their names, paths
 and keywords are in `confirmed.json`) and wire the paths with `modsys code-map add`. `init map`

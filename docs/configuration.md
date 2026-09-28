@@ -131,7 +131,8 @@ what it writes (`--non-interactive` included; a `modsys: warning: …` line on s
 plural is not a keyword too (matching is exact-token: `book` does not match "books"). The plural
 rule is a hint by suffix, not linguistics: `ies` ↔ a consonant + `y` (`categories` ↔
 `category`), `sses` / `xes` / `zes` / `ches` / `shes` ↔ the word without `es`, otherwise `s`; a
-word ending in `ss`, `us` or `is` counts as singular (`class` → `classes`).
+word ending in `ss`, `us` or `is` counts as singular (`class` → `classes`). The hint never
+suggests a generic word (`utils` gets no "add `util`").
 
 ## `[coverage]`
 
@@ -177,7 +178,8 @@ modules (see the README, "Start from existing code").
 Preflight (`<config_dir>/init/preflight.json`) lists the file set — `git ls-files --cached
 --others --exclude-standard` in a git repository, else every file below the root except in
 dot-directories and in `node_modules`, `.venv`, `venv`, `__pycache__`, `dist`, `build`,
-`target`, `vendor` — minus `[init] exclude`, and counts it: every file toward `files`, its size
+`target`, `vendor` — minus `[init] exclude` and any path whose name is not valid UTF-8 (possible
+on Linux; left out, as no output could name it), and counts it: every file toward `files`, its size
 toward `bytes` (a file that cannot be read counts toward `files` only; a symlink is never
 followed and adds 0 bytes). A text file — at most 1,048,576 bytes, no NUL byte in its first
 8,192 — adds `len(text.splitlines())` to `lines` and its size to `token_estimate` (text bytes
@@ -241,7 +243,7 @@ in integers:
 | `[fields.<k>]` | an entry key that is neither a core field nor declared by a layer | `type` from the observed values (several types: a list, the most frequent first); `scope` = where the key was seen (`module`, `submodule` or both); `kind = "code_pointer"` when at least 80 % of its string values name paths of the repository (`path:line` and `path#L3` allowed; absolute paths, `~`, `..` and globs never count). A key holding a float, a `null` or a list of mixed types cannot be declared: it is listed in `inferred.skipped` (lint keeps MS012 for it); `deprecated` is never guessed |
 | `[registry] dir_whitelist` | a directory under the modules dir that is neither a registry module nor a pointer stub (dot-directories never count) | the directories, active |
 | `[registry] updated_at_path` | a registry-level key at most 2 levels deep (outside `modules`) named `…updated…` or `…modified…` holding an ISO-8601 date or timestamp | the shallowest, then by name |
-| `[[code_map]]` | at least 50 % of the top-level modules (`count * 2 >= total`) have `<prefix>/<module>` — a directory, or a `code_pointer` value under it; prefixes up to 3 segments, never the modules dir, the config dir, a dot-directory or `node_modules`, `.venv`, `venv`, `__pycache__`, `dist`, `build`, `target`, `vendor`; none when a layer already has rules | one rule `<prefix>/{module}/**`, `id` = the prefix with `/` → `-`; the widest coverage wins, then fewer segments, then the name; the others are named as alternatives |
+| `[[code_map]]` | at least 50 % of the top-level modules (`count * 2 >= total`) have `<prefix>/<module>` — a directory, or a `code_pointer` value under it; prefixes up to 3 segments, never the modules dir, the config dir, a dot-directory or `node_modules`, `.venv`, `venv`, `__pycache__`, `dist`, `build`, `target`, `vendor`; none when a layer already has rules | one rule `<prefix>/{module}/**`, `id` = the prefix with `/` → `-`; the widest coverage wins, then fewer segments, then the name; the others are named as alternatives. When no prefix reaches 50 %: the best one (same order) COMMENTED OUT, with its `covered` of `total` evidence — reported as `inferred.code_map_suggestion` (`{pattern, covered, total}`; `null` when a rule was inferred or no prefix covers a module); the threshold stays 50 %, so a second `adopt` reports the same suggestion and never makes it a rule |
 | `[budgets]` | the doc budgets would flag docs (MS030, MS031, MS032) | COMMENTED OUT: the observed maximum and how many findings it would clear — a team decision |
 
 `adopt` never writes `[packs]` (its next steps name `[packs] builtin = ["core"]`) and never
@@ -357,7 +359,7 @@ modsys code-map add catalog-search --glob "src/catalog/search/**" --module catal
 | `pattern` | a glob with a `{module}` segment: `{module}` captures ONE path segment and must name a top-level module (`src/{module}/**`, `app/repositories/{module}.py`) |
 | `globs` | a list of globs routed to `module` |
 | `module` | required with `globs`: a top-level module or a child (`parent/child`), never empty; with a `pattern` it overrides the capture |
-| `exclusive` | `true`: a file this rule matches is mapped ONLY by the exclusive rules that match it — other rules skip the file (docs and `code_pointer` mapping are unaffected) |
+| `exclusive` | `true`: a file this rule matches is mapped ONLY by the exclusive rules that match it — other rules skip the file (docs and `code_pointer` mapping are unaffected). An exclusive rule wins only over non-exclusive rules: two exclusive rules that route one file to different modules are still an MS053 overlap |
 
 A `pattern` MUST contain a literal `{module}` segment — even when `module` is also set (which
 then overrides the value the segment would have captured, per the row above). `pattern =
@@ -479,7 +481,7 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS060 | warning | an unknown key in a pack's `pack.toml` — at the top level (neither a meta key nor a config section), in a `[roles.<name>]` or in a `[skills.<id>]` table (plain `lint` only) |
 | MS061 | error | a pack role's `template` file does not exist in the pack, or resolves outside the pack directory (plain `lint` only) |
 | MS062 | error | a pack skill, or an ejected copy in `<config_dir>/overrides/skills/<skill>/` (the one `packs sync` then copies), agents cannot load: its `path` does not exist, is not a directory or is outside the pack; it contains a symlink; it has no `SKILL.md`; the front matter is missing, has no `name` or one that differs from the skill id, has an unquoted `name` / `description` value that agents' strict YAML loaders reject (a `: ` inside, a trailing `:`, or a leading `@`, `%`, `*`, `&`, `!`, `[`, `{` or backtick), or has no `description` of 1–1024 characters (plain `lint` only) |
-| MS063 | warning / info | an ejected skill (`modsys eject`) is behind its pack — the pack's files, or a repository pack's version, changed since the eject (a built-in pack's version is the engine's: an upgrade alone does not count) (warning; `modsys eject <skill> --diff` shows the change); a pack file it cannot read (warning, naming the file) — or no pack declares it any more (info: the ejected copy is its only source) (plain `lint` only) |
+| MS063 | warning / info | an ejected skill (`modsys eject`) is behind its pack — the pack's files, or a repository pack's version, changed since the eject (a built-in pack's version is the engine's: an upgrade alone does not count) (warning; `modsys eject <skill> --diff` shows the change); a pack file it cannot read (warning, naming the file); a symlink at the ejected path (warning: it is in the way, never an ejected copy — remove it) — or no pack declares it any more (info: the ejected copy is its only source) (plain `lint` only) |
 | MS064 | warning | a skill's `reads_roles` names a role no layer configures, or a disabled one (plain `lint` only) |
 | MS065 | warning | two packs declare the same skill id: the lower-precedence one is shadowed (plain `lint` only) |
 | MS066 | info | a repository pack takes a built-in pack's id (`core`, `qa`, `ui`) and replaces that built-in pack, enabled or not; info never fails a gate (plain `lint` only) |

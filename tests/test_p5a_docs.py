@@ -78,5 +78,39 @@ class P5aDocsTest(unittest.TestCase):  # P5A-AC-042
             self.assertIn(needle, wrong)
 
 
+class FixWaveDocsTest(unittest.TestCase):  # the P5a final review and E-B docs items
+    NEEDLES = {
+        "docs/cli-contract.md": (
+            "code_map, code_map_suggestion, budgets, skipped}",
+            "`code_map_suggestion`: `{pattern, covered, total}`",
+            "`next_steps` names `modsys init` when `.gitignore` lacks the engine's lines",
+            "except `adopt`'s new `config.toml`: its temp file is hard-linked into place",
+            "role docs only with `--role R` (that role's) or `--all-roles` (every role's)",
+            "only when gate 3 already passed with these bytes",
+            "reads the later ones as pending"),
+        "docs/configuration.md": (
+            "reported as `inferred.code_map_suggestion` (`{pattern, covered, total}`",
+            "a symlink at the ejected path (warning: it is in the way",
+            "An exclusive rule wins only over non-exclusive rules: two exclusive rules that route "
+            "one file to different modules are still an MS053 overlap",
+            "any path whose name is not valid UTF-8", "The hint never suggests a generic word"),
+        "modsys/defaults/packs/core/skills/module-lint/references/lint-codes.md": (
+            "a symlink at the ejected path (warning: in the way)",),
+        "README.md": (
+            'modsys code-map add orders-extra --module orders --glob "app/jobs/nightly_totals.py" '
+            '--glob "app/api/order_export.py"',
+            "`exclusive` wins only over NON-exclusive rules",
+            "modsys init # adds the .gitignore lines (lock file, proposals, init); keeps the "
+            "config", "reported as `code_map_suggestion`",
+            "add it to `[init] exclude` and run `modsys init map --restart`")}
+
+    def test_the_needles(self):
+        for rel, needles in self.NEEDLES.items():
+            text = flat(rel)
+            for needle in needles:
+                with self.subTest(doc=rel, needle=needle[:40]):
+                    self.assertIn(needle, text)
+
+
 if __name__ == "__main__":
     unittest.main()
