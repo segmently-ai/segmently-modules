@@ -131,8 +131,8 @@ class InitConfigTest(unittest.TestCase):  # P5A-AC-032 (the keys; their effect: 
     def test_defaults_and_the_layers_add_up(self):
         from modsys.preflight import list_files
         self.assertEqual(load_config(self.root / ".modsys")["init"],
-                         {"exclude": [], "co_change_commits": 500,
-                          "max_parallel": 4})  # P5B-AC-009 (D1)
+                         {"exclude": [], "co_change_commits": 500, "max_parallel": 4,
+                          "routing_min_hit_rate": 0.8})  # P5B-AC-009 (D1), P5B-AC-017 (D3)
         write(self.root / ".modsys/config.toml", '[init]\nexclude = ["a/**"]\n')
         write(self.root / ".modsys/config.user.toml", '[init]\nexclude = ["b/**"]\n')
         for rel in ("a/x.py", "b/y.py", "c/z.py", "tools/t.py"):

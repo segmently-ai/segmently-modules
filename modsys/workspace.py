@@ -33,6 +33,9 @@ class Workspace:
     config: dict
     fields: dict[str, FieldDef]
     _registry: Registry | None = field(default=None, repr=False)
+    # root-relative path -> the file that stands in for it (`init`'s staging docs, read at their
+    # final paths before `init finish` moves them); empty for every verb but `init` / `eval`
+    overlay: dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def load(cls, root: Path, config_dir: Path | None = None) -> "Workspace":
@@ -54,6 +57,16 @@ class Workspace:
             return path.relative_to(self.root).as_posix()
         except ValueError:
             return str(path)
+
+    def disk(self, rel: str) -> Path:
+        """The file a root-relative path is read from (the overlay's stand-in, else the path)."""
+        return self.overlay.get(rel, self.root / rel)
+
+    def exists(self, rel: str) -> bool:
+        """`rel` exists on disk, or in the overlay (a file, or a directory above one)."""
+        rel = rel.rstrip("/")
+        return (self.root / rel).exists() or rel in self.overlay or \
+            any(k.startswith(rel + "/") for k in self.overlay)
 
     @property
     def registry(self) -> Registry:

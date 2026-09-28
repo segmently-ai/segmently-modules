@@ -942,11 +942,10 @@ class AdoptContractTest(AdoptRepo):  # P5A-AC-046, P5A-AC-042
                              str(self.root / ".modsys"), "--json")
         self.assertEqual((code, err, json.loads(out)["schema"]), (0, "", "modsys.adopt/1"))
 
-    def test_twenty_six_verbs_everywhere(self):
+    def test_twenty_six_verbs_everywhere(self):  # the count: test_eval_routing (27, P5b D3)
         parser = set(build_parser()._subparsers._group_actions[0].choices)
         contract = set(re.findall(r"^\| `([a-z-]+)", CONTRACT.read_text(encoding="utf-8"), re.M))
-        self.assertEqual((len(parser), parser, {argv[0] for argv, _ in GOLDEN}),
-                         (26, contract, contract))
+        self.assertEqual((parser, {argv[0] for argv, _ in GOLDEN}), (contract, contract))
         self.assertIn("adopt", parser)
 
     def test_help(self):

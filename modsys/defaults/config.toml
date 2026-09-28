@@ -56,6 +56,7 @@ base = "HEAD"                 # drift is measured against this ref; in CI pass t
 exclude = []                  # globs the init file set leaves out (preflight, map, confirm)
 co_change_commits = 500       # init map: how many recent commits the co-change signal reads; 0 = off
 max_parallel = 4              # init run / the module-init skill: work items written at a time
+routing_min_hit_rate = 0.8    # init verify / eval routing: the lowest routing hit rate that passes
 
 [roles.developer]
 order = 10

@@ -1,0 +1,212 @@
+"""`modsys eval routing` — does a task reach its module? (D3, verb 27, `modsys.eval/1`)
+
+  routing --tasks FILE [--top N] [--min-hit-rate R]
+      FILE = a JSON list of {task, module}. Each task is ranked with `context`'s scoring (the
+      same `match` rows, `--top` of them, default 3, 1–20); a hit = the expected module, or one
+      of its children, among them (a parent never counts for a child). `hit_rate` = hits /
+      tasks rounded DOWN to 3 decimals; the run passes when hits >= threshold × tasks
+      (unrounded) — threshold: `--min-hit-rate`, else `[init] routing_min_hit_rate` (0.8);
+      exit 1 below it
+  routing --prompt [--per-module N]
+      the prompt that asks for N tasks per module (default 5, 1–20), rendered from the template
+      `init/routing_prompt.md`: per module only the first paragraph under `## Purpose` of its
+      doc and its code files (the files its rules and code pointers route to it, the first 200)
+      — never its keywords, its description or the registry file
+
+While `init` is between reconcile and finish, both read the registry as `init finish` will leave
+it (`modsys.init_overlay`)."""
+import json
+import re
+from fractions import Fraction
+from pathlib import Path
+
+from modsys.changes import repo_files, require_work_tree, routes, target_names
+from modsys.create import resolve_template
+from modsys.init_work import fill
+from modsys.match import match_modules
+from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
+from modsys.registry import as_dict
+from modsys.workspace import Workspace
+
+ACTIONS = ("routing",)
+TOP, TOP_MAX, PER_MODULE, PER_MODULE_MAX, FILES_CAP = 3, 20, 5, 20, 200
+_COMMENT = re.compile(r"<!--.*?-->", re.S)
+
+
+def register(sub, common) -> None:
+    p = sub.add_parser("eval", parents=[common],
+                       help="measure the registry: routing (does a task reach its module?)",
+                       description="routing --tasks FILE: rank each {task, module} of FILE with "
+                                   "context's scoring and report the hit rate (a hit: the module "
+                                   "among the top --top, default 3); exit 1 below --min-hit-rate, "
+                                   "else [init] routing_min_hit_rate (0.8). routing --prompt: the "
+                                   "prompt that asks for --per-module tasks per module (default "
+                                   "5) from each module's purpose paragraph and files alone.")
+    p.add_argument("action", nargs="?", metavar="ACTION", help="routing")
+    p.add_argument("--tasks", type=Path, metavar="FILE",
+                   help="a JSON list of {task, module} to route")
+    p.add_argument("--prompt", action="store_true",
+                   help="print the prompt that asks for routing tasks")
+    p.add_argument("--top", type=int, help=f"--tasks: a hit is among this many (1–{TOP_MAX}, "
+                                           f"default {TOP})")
+    p.add_argument("--min-hit-rate", type=float, metavar="R",
+                   help="--tasks: the threshold, 0–1 (default: [init] routing_min_hit_rate)")
+    p.add_argument("--per-module", type=int, metavar="N",
+                   help=f"--prompt: tasks per module (1–{PER_MODULE_MAX}, default {PER_MODULE})")
+    p.set_defaults(func=run)
+
+
+def workspace(args) -> Workspace:
+    """The workspace to measure: the overlay while an init is between reconcile and finish."""
+    from modsys.init_overlay import current
+    ws = Workspace.from_args(args)
+    return current(ws.root, ws.config_dir) or ws
+
+
+def load_tasks(path: Path, modules: set[str]) -> list[dict]:
+    """The tasks of FILE; anything else is exit 2 naming the file (and the item)."""
+    try:
+        text = path.read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError) as e:
+        raise UsageError(f"cannot read {path}: {getattr(e, 'strerror', None) or e}") from None
+    try:
+        tasks = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise UsageError(f"{path}: invalid JSON ({e})") from None
+    if not isinstance(tasks, list):
+        raise UsageError(f"{path}: not a list of {{task, module}} objects")
+    if not tasks:
+        raise UsageError(f"no tasks in {path}")
+    for i, t in enumerate(tasks, 1):
+        if not isinstance(t, dict) or not isinstance(t.get("task"), str) or not t["task"].strip() \
+                or not isinstance(t.get("module"), str):
+            raise UsageError(f"{path}: task #{i} is not a {{task, module}} object with a "
+                             f"non-empty task text")
+        if t["module"] not in modules:
+            raise UsageError(f"unknown module '{t['module']}' in {path}")
+    return tasks
+
+
+def hit(expected: str, got: list[str]) -> bool:
+    """The expected module is among `got`, or one of its children is."""
+    return any(g == expected or g.partition("/")[0] == expected and "/" in g for g in got)
+
+
+def routing(ws, tasks: list[dict], top: int, threshold: float) -> dict:
+    """The routing report of `tasks` over the workspace's registry."""
+    cfg = ws.config["match"]
+    per = {t: {"module": t, "tasks": 0, "hits": 0, "misses": []}
+           for t in sorted(target_names(ws.registry.modules))}
+    hits = 0
+    for t in tasks:
+        got = [r["module"] for r in match_modules(ws.registry.modules, t["task"], cfg, top,
+                                                  cfg["min_score"])]
+        row = per[t["module"]]
+        row["tasks"] += 1
+        if hit(t["module"], got):
+            row["hits"] += 1
+            hits += 1
+        else:
+            row["misses"].append({"task": t["task"], "got": got})
+    n = len(tasks)
+    return {"hit_rate": (hits * 1000 // n) / 1000, "top": top, "tasks": n,
+            "per_module": list(per.values()), "hits": hits, "min_hit_rate": threshold,
+            "passed": hits >= Fraction(str(threshold)) * n}
+
+
+def purpose(ws, doc: str | None) -> str | None:
+    """The first paragraph under `## Purpose` of a doc (blockquotes and comments skipped)."""
+    if not isinstance(doc, str):
+        return None
+    try:
+        text = ws.disk(doc).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    lines = _COMMENT.sub("", text).splitlines()
+    try:
+        start = next(i for i, line in enumerate(lines) if line.strip() == "## Purpose") + 1
+    except StopIteration:
+        return None
+    para = []
+    for line in lines[start:]:
+        if line.startswith("#"):
+            break
+        if not line.strip() or line.lstrip().startswith(">"):
+            if para:
+                break
+            continue
+        para.append(line.strip())
+    return " ".join(para) or None
+
+
+def routing_prompt(ws, per_module: int) -> tuple[list[str], str]:
+    """(the modules, the prompt): per module its purpose paragraph and its code files."""
+    require_work_tree(ws.root, "eval routing --prompt")
+    modules = ws.registry.modules
+    targets = sorted(target_names(modules))
+    files: dict[str, list[str]] = {t: [] for t in targets}
+    for path, target, via in routes(ws, repo_files(ws.root)):
+        if via != "docs" and path not in files[target]:
+            files[target].append(path)
+    blocks = []
+    for t in targets:
+        parent, _, child = t.partition("/")
+        entry = as_dict(modules[parent])
+        holder = as_dict(as_dict(entry.get("submodules")).get(child)) if child else entry
+        text = purpose(ws, as_dict(holder.get("context_files")).get("universal"))
+        own = files[t]
+        head = (f"Files ({len(own)}, the first {FILES_CAP}):" if len(own) > FILES_CAP
+                else f"Files ({len(own)}):")
+        listed = "\n".join(f"- `{f}`" for f in own[:FILES_CAP]) or "- (none routed to it)"
+        blocks.append(f"## `{t}`\n\n{text or 'no purpose paragraph'}\n\n{head}\n{listed}\n")
+    prompt = fill(resolve_template(ws, "init/routing_prompt.md"),
+                  {"count": len(targets), "per_module": per_module,
+                   "modules": "\n".join(blocks)})
+    return targets, prompt if prompt.endswith("\n") else prompt + "\n"
+
+
+def threshold_of(args, ws) -> float:
+    if args.min_hit_rate is not None:
+        if not 0 <= args.min_hit_rate <= 1:
+            raise UsageError(f"--min-hit-rate must be from 0 to 1, got {args.min_hit_rate}")
+        return args.min_hit_rate
+    return ws.config["init"]["routing_min_hit_rate"]
+
+
+def run(args) -> int:
+    if args.action is None:
+        raise UsageError(f"eval needs an action ({', '.join(ACTIONS)})")
+    if args.action not in ACTIONS:
+        raise UsageError(f"unknown eval action {args.action!r} (actions: {', '.join(ACTIONS)})")
+    if (args.tasks is None) == (not args.prompt):
+        raise UsageError("eval routing: exactly one of --tasks, --prompt")
+    if args.prompt and (args.top is not None or args.min_hit_rate is not None):
+        raise UsageError("--top and --min-hit-rate work with --tasks")
+    if args.tasks is not None and args.per_module is not None:
+        raise UsageError("--per-module works with --prompt")
+    if args.top is not None and not 1 <= args.top <= TOP_MAX:
+        raise UsageError(f"--top must be from 1 to {TOP_MAX}, got {args.top}")
+    if args.per_module is not None and not 1 <= args.per_module <= PER_MODULE_MAX:
+        raise UsageError(f"--per-module must be from 1 to {PER_MODULE_MAX}, got "
+                         f"{args.per_module}")
+    ws = workspace(args)
+    if args.prompt:
+        per = args.per_module or PER_MODULE
+        modules, prompt = routing_prompt(ws, per)
+        data = {"mode": "prompt", "per_module": per, "modules": modules, "prompt": prompt}
+        emit("eval", data, args.json, lambda d: print(d["prompt"], end=""))
+        return EXIT_OK
+    threshold = threshold_of(args, ws)
+    tasks = load_tasks(args.tasks, target_names(ws.registry.modules))
+    data = routing(ws, tasks, args.top or TOP, threshold)
+    emit("eval", data, args.json, render)
+    return EXIT_OK if data["passed"] else EXIT_FINDINGS
+
+
+def render(d) -> None:
+    print(f"hit rate {d['hit_rate']} ({d['hits']}/{d['tasks']}, top {d['top']})")
+    for row in d["per_module"]:
+        print(f"{row['module']}  {row['hits']}/{row['tasks']}")
+        for miss in row["misses"]:
+            print(f"  miss  \"{miss['task']}\" → {', '.join(miss['got']) or '(no module)'}")
+    print(f"threshold {d['min_hit_rate']}: {'passed' if d['passed'] else 'FAILED'}")

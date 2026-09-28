@@ -44,7 +44,8 @@ LAYER_SCHEMA = {
     "coverage": {"include": "list[str]", "exclude": "list[str]"},
     "ci": {"fail_on": "str", "base": "str", "coverage_fail_under": "number"},
     "packs": {"agents": "list[str]", "builtin": "list[str]"},
-    "init": {"exclude": "list[str]", "co_change_commits": "int", "max_parallel": "int"},
+    "init": {"exclude": "list[str]", "co_change_commits": "int", "max_parallel": "int",
+             "routing_min_hit_rate": "number"},
 }
 CI_FAIL_ON = ("error", "never", "warning")
 ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str",
@@ -74,6 +75,10 @@ def validate_layer(layer: dict, source) -> None:
             not (_is_int(init["max_parallel"]) and init["max_parallel"] >= 1):
         raise UsageError(f"{source}: [init] max_parallel must be an integer >= 1, got "
                          f"{init['max_parallel']!r}")
+    rate = init.get("routing_min_hit_rate", 0.5) if isinstance(init, dict) else 0.5
+    if not (isinstance(rate, (int, float)) and not isinstance(rate, bool) and 0 <= rate <= 1):
+        raise UsageError(f"{source}: [init] routing_min_hit_rate must be a number from 0 to 1, "
+                         f"got {rate!r}")
     for section, schema in LAYER_SCHEMA.items():
         if section in layer:
             _check_table(_require_table(layer[section], section, source), schema, section, source)
