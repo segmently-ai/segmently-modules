@@ -18,7 +18,8 @@ team config it needs is inferred, every key followed by `# adopt:` lines with th
   [[code_map]]       one `<prefix>/{module}/**` rule when >= 50 % of the top-level modules have
                      `<prefix>/<module>` (a directory, or a code-pointer value under it); prefixes
                      up to 3 segments, never the modules / config / dot / dependency dirs; none
-                     when a layer has rules
+                     when a layer has rules. When no prefix reaches 50 %, the best one is written
+                     COMMENTED OUT (`inferred.code_map_suggestion`), never as a rule
   [budgets]          COMMENTED OUT: the observed maximum where the doc budgets would flag docs
 
 Thresholds are integer comparisons (80 %: `count * 5 >= total * 4`; 50 %: `count * 2 >=
@@ -40,7 +41,7 @@ from modsys.changes import DEPENDENCY_DIRS
 from modsys.code_map_cmd import _toml_string
 from modsys.config import load_config
 from modsys.fields import CORE_FIELDS, load_field_defs
-from modsys.init_cmd import _HEADER
+from modsys.init_cmd import _HEADER, ignore_lines
 from modsys.layout import load_per_module
 from modsys.lint import _docs, _line_count, lint_registry
 from modsys.output import EXIT_OK, UsageError, emit
@@ -48,8 +49,11 @@ from modsys.registry import as_dict, load_registry, stub_head
 from modsys.store import atomic_write
 from modsys.workspace import Workspace, find_root
 
-STARTER_CLAUSE = "(only [packs] builtin is set)"
-ADOPT_CLAUSE = "(adopt set the keys below; each `# adopt:` line says why)"
+STARTER_OPENING = ("modsys team config — commit it. Every key is optional: uncomment what you "
+                   "need (only [packs] builtin is set).")
+ADOPT_OPENING = ("modsys team config, written by modsys adopt — review it, then commit it. adopt "
+                 "set the keys below (each `# adopt:` line says why); commented-out keys are "
+                 "for the team to decide.")
 LINT_SHOWN = 50
 PROPOSAL = "adopt.proposed.toml"
 _BARE_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -61,8 +65,9 @@ _SHOWN_NAMES = 10
 
 
 def adopt_header() -> str:
-    """The starter header with its "only [packs] builtin" clause replaced, re-wrapped."""
-    flat = " ".join(_HEADER.replace("##", " ").split()).replace(STARTER_CLAUSE, ADOPT_CLAUSE)
+    """The starter header with its opening replaced (the adopted keys are active; only what is
+    commented out is left to the team), re-wrapped."""
+    flat = " ".join(_HEADER.replace("##", " ").split()).replace(STARTER_OPENING, ADOPT_OPENING)
     lines, line = [], "##"
     for word in flat.split(" "):
         if len(line) + 1 + len(word) > 96:
@@ -189,6 +194,7 @@ class Inference:
         self.top = [n for n, e in self.modules.items() if isinstance(e, dict)]
         self.sections: list[list[str]] = []
         self.registry_keys: list[tuple[str, object, list[str]]] = []  # one [registry] table
+        self.suggestion_lines: list[str] = []
         self.budget_lines: list[str] = []
         self.data: dict = {}
 
@@ -358,7 +364,7 @@ class Inference:
         return out
 
     def infer_code_map(self) -> None:
-        self.data["code_map"] = None
+        self.data["code_map"] = self.data["code_map_suggestion"] = None
         if self.config.get("code_map") or not self.top:
             return
         pointers = self.pointer_values()
@@ -376,11 +382,14 @@ class Inference:
             covered = [m for m in self.top if (self.root / prefix / m).is_dir()
                        or any(v == f"{prefix}/{m}" or v.startswith(f"{prefix}/{m}/")
                               for v in pointers[m])]
-            if at_least_50(len(covered), len(self.top)):
+            if covered:
                 scores.append((-len(covered), prefix.count("/"), prefix, covered))
+        scores.sort()
+        if scores and not at_least_50(len(scores[0][3]), len(self.top)):
+            self.suggest(scores[0][2], scores[0][3])
+        scores = [s for s in scores if at_least_50(len(s[3]), len(self.top))]
         if not scores:
             return
-        scores.sort()
         _, _, prefix, covered = scores[0]
         pattern = f"{prefix}/{{module}}/**"
         alternatives = [{"pattern": f"{p}/{{module}}/**", "covered": len(c)}
@@ -395,6 +404,19 @@ class Inference:
                                                          for a in alternatives))
         self.section("[[code_map]]", [("id", rule_id, [f"the prefix {prefix}"]),
                                       ("pattern", pattern, evidence)])
+
+    def suggest(self, prefix: str, covered: list[str]) -> None:
+        """The best prefix below the 50 % threshold, written commented out for the team."""
+        pattern = f"{prefix}/{{module}}/**"
+        self.data["code_map_suggestion"] = {"pattern": pattern, "covered": len(covered),
+                                            "total": len(self.top)}
+        self.suggestion_lines = [
+            "## adopt: no code-map rule reaches 50 % of the top-level modules. A team decision: "
+            "uncomment", "## the best candidate to route code by it.", "# [[code_map]]",
+            f"# id = {_toml_string(prefix.replace('/', '-'))}",
+            f"# pattern = {_toml_string(pattern)}",
+            f"# adopt: {len(covered)} of {len(self.top)} top-level modules have {prefix}/<module> "
+            f"({_names(covered)}): below the 50 % threshold"]
 
     def infer_budgets(self) -> None:
         budgets = self.config["budgets"]
@@ -433,6 +455,8 @@ class Inference:
 
     def text(self) -> str:
         blocks = ["\n".join(lines) for lines in self.sections if lines]
+        if self.suggestion_lines:
+            blocks.append("\n".join(self.suggestion_lines))
         if self.budget_lines:
             blocks.append("\n".join(self.budget_lines))
         body = "\n\n".join(blocks) if blocks else "# adopt: nothing to add"
@@ -444,11 +468,14 @@ def _registry_path(root: Path, config: dict, arg: str | None) -> tuple[str, bool
     if arg is None:
         return config["paths"]["registry"], False
     path = Path(arg)
-    if path.is_absolute():
-        try:
-            path = Path(os.path.normpath(path)).relative_to(root)
-        except ValueError:
-            raise UsageError(f"--registry {arg} is outside the repository {root}") from None
+    if path.is_absolute():  # as given, else its directory resolved (a symlinked root)
+        norm = Path(os.path.normpath(path))
+        for candidate in (norm, norm.parent.resolve() / norm.name):
+            with contextlib.suppress(ValueError):
+                path = candidate.relative_to(root)
+                break
+        else:
+            raise UsageError(f"--registry {arg} is outside the repository {root}")
     rel = Path(os.path.normpath(path)).as_posix()
     if rel in (".", "..") or rel.startswith("../"):
         raise UsageError(f"--registry {arg} is outside the repository {root}")
@@ -496,15 +523,30 @@ def plan_adopt(root: Path, config_dir: Path, registry_arg: str | None) -> dict:
             "text": inference.text()}
 
 
-def lint_report(root: Path, config_dir: Path, text: str) -> dict:
-    """Lint in report mode against the config merged with the inferred layer."""
-    layer = tomllib.loads(text)
-    config = load_config(config_dir, root, extra=layer, extra_source="adopt")
+def merged_config(root: Path, config_dir: Path, text: str) -> dict:
+    """The active config with the inferred layer (`text`) merged in."""
+    return load_config(config_dir, root, extra=tomllib.loads(text), extra_source="adopt")
+
+
+def lint_report(root: Path, config_dir: Path, config: dict) -> dict:
+    """Lint in report mode against `config` (the merged one)."""
     ws = Workspace(root, config_dir, config, load_field_defs(config))
     findings = lint_registry(ws)
     counts = Counter(f.code for f in findings)
     return {"counts": dict(sorted(counts.items())),
             "findings": [asdict(f) for f in findings[:LINT_SHOWN]]}
+
+
+def ignores_missing(root: Path, config_dir: Path, config: dict) -> bool:
+    """True when `<root>/.gitignore` is missing or lacks a line `modsys init` would add."""
+    try:
+        text = (root / ".gitignore").read_bytes().decode("utf-8", "replace")
+    except FileNotFoundError:
+        text = ""
+    except OSError:
+        return False  # unreadable: `modsys init` reports it itself
+    have = {line.strip() for line in text.splitlines()}
+    return any(line not in have for line in ignore_lines(root, config_dir, config))
 
 
 def write_config(path: Path, text: str, rel: str, replace: bool) -> None:
@@ -556,11 +598,15 @@ def run(args) -> int:
         steps.append(f"run modsys adopt without --dry-run to write {rel}")
     else:
         steps.append(f"review {rel} (each `# adopt:` line says why), then commit it")
+    config = merged_config(root, config_dir, plan["text"])
+    if ignores_missing(root, config_dir, config):  # adopt itself writes one file only
+        steps.append("modsys init — adds the .gitignore lines for the lock file, proposals and "
+                     "init (it keeps your config)")
     steps.append(f'enable the core agent skills: [packs] builtin = ["core"] in {config_rel}')
     if not plan["modules"]:
         steps.append("the registry has no modules yet: to start from the code, run "
                      "modsys init map")
-    report = lint_report(root, config_dir, plan["text"])
+    report = lint_report(root, config_dir, config)
     if report["counts"]:
         steps.append("the lint findings above remain: modsys lint (and docs/configuration.md "
                      "for each code)")
@@ -585,6 +631,10 @@ def _render(d) -> None:
           f"{len(i['budgets'])} budget(s) (commented out); {len(i['skipped'])} key(s) skipped")
     for s in i["skipped"]:
         print(f"  skipped {s['key']}: {s['reason']}")
+    hint = i["code_map_suggestion"]
+    if hint:
+        print(f"  code map suggestion (commented out): {hint['pattern']} — {hint['covered']} of "
+              f"{hint['total']} top-level modules, below 50 %")
     print(f"{'would write' if d['dry_run'] else 'wrote'} {d['config_path']}")
     counts = d["lint"]["counts"]
     print("lint (report mode): " + (", ".join(f"{c} ×{n}" for c, n in counts.items())

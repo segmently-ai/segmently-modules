@@ -62,7 +62,8 @@ def counterpart(word: str) -> str:
 def keyword_warnings(keywords: list[str]) -> list[str]:
     """Why a keyword may route poorly — never a refusal: a short keyword (3 characters or
     fewer), a generic word (`GENERIC_KEYWORDS`), or a single lowercase word of 4+ letters whose
-    plain singular / plural counterpart is missing (matching is exact-token)."""
+    plain singular / plural counterpart is missing (matching is exact-token) and is not itself a
+    generic word (`utils` never suggests `util`)."""
     have = {k.strip() for k in keywords if isinstance(k, str)}
     out = []
     for keyword in dict.fromkeys(k for k in keywords if isinstance(k, str)):
@@ -75,7 +76,7 @@ def keyword_warnings(keywords: list[str]) -> list[str]:
                        f"a domain word")
         elif _WORD.fullmatch(word):
             other = counterpart(word)
-            if other not in have:
+            if other not in have and other not in GENERIC_KEYWORDS:
                 form = "singular" if plural(word) else "plural"
                 out.append(f"keyword '{keyword}' has no {form} '{other}': matching is exact, "
                            f"so a task that says '{other}' does not match it — add it if tasks "

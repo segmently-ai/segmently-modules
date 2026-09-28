@@ -169,6 +169,18 @@ def init_root(arg) -> Path:
     return Path(top).resolve() if proc.returncode == 0 and top else cwd
 
 
+def ignore_lines(root: Path, config_dir: Path, config: dict) -> list[str]:
+    """The `.gitignore` lines `init` keeps: the registry lock, the proposals dir and the init
+    work directory (`init map`, when the config dir lies inside the root)."""
+    wanted = [f"{config['paths']['registry']}.lock",
+              config["paths"]["proposals_dir"].rstrip("/") + "/"]
+    try:
+        wanted.append((config_dir / "init").relative_to(root).as_posix() + "/")
+    except ValueError:
+        pass
+    return wanted
+
+
 def plan_init(root: Path, config_dir: Path, requested: str | None) -> tuple[str, list]:
     """(layout, [(path, status, new text or None)]); writes nothing."""
     config_path = config_dir / "config.toml"
@@ -198,12 +210,7 @@ def plan_init(root: Path, config_dir: Path, requested: str | None) -> tuple[str,
                 else serialize({"modules": {}}))
         files.append((registry, "created", text))
     gitignore = root / ".gitignore"
-    wanted = [f"{config['paths']['registry']}.lock",
-              config["paths"]["proposals_dir"].rstrip("/") + "/"]
-    try:  # the init work directory (`init map`), when the config dir lies inside the root
-        wanted.append((config_dir / "init").relative_to(root).as_posix() + "/")
-    except ValueError:
-        pass
+    wanted = ignore_lines(root, config_dir, config)
     if not gitignore.exists():
         files.append((gitignore, "created", "\n".join(wanted) + "\n"))
     else:

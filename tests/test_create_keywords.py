@@ -109,6 +109,22 @@ class KeywordWarningsTest(unittest.TestCase):  # P5A-AC-006 (D0b)
                     self.assertIn(needle, warning)
                     self.assertIn("keyword '", warning)
 
+    GENERIC_COUNTERPARTS = [  # the plural hint never suggests a word flagged as generic
+        (["utils"], []), (["helpers"], []), (["items"], []), (["lists"], []),
+        (["utils", "util"], ["'util' is a generic word"]),
+    ]
+
+    def test_no_plural_hint_to_a_generic_word(self):
+        for keywords, needles in self.GENERIC_COUNTERPARTS:
+            with self.subTest(keywords=keywords):
+                code, env, err = run_json(*self.argv(keywords + NEUTRAL), "--dry-run",
+                                          "--non-interactive", *self.R)
+                self.assertEqual((code, err), (0, ""))
+                warnings = env["data"]["warnings"]
+                self.assertEqual(len(warnings), len(needles), warnings)
+                for warning, needle in zip(warnings, needles):
+                    self.assertIn(needle, warning)
+
     def test_warnings_never_block(self):
         keywords = ["api", "book", "data"] + NEUTRAL
         code, env, err = run_json(*self.argv(NEUTRAL), "--dry-run", "--non-interactive", *self.R)

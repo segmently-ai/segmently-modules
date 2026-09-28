@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys.adopt_cmd import ADOPT_CLAUSE, STARTER_CLAUSE, adopt_header
+from modsys.adopt_cmd import ADOPT_OPENING, STARTER_OPENING, adopt_header
 from modsys.cli import build_parser
 from modsys.config import load_config
 from modsys.init_cmd import _HEADER
@@ -100,8 +100,13 @@ class AdoptOutputsTest(AdoptRepo):  # P5A-AC-015
     def check_text(self, text: str) -> None:
         self.assertTrue(text.startswith(adopt_header()))
         flat = " ".join(_HEADER.replace("##", " ").split())
-        self.assertEqual(" ".join(adopt_header().replace("##", " ").split()),
-                         flat.replace(STARTER_CLAUSE, ADOPT_CLAUSE))
+        header = " ".join(adopt_header().replace("##", " ").split())
+        self.assertEqual(header, flat.replace(STARTER_OPENING, ADOPT_OPENING))
+        self.assertTrue(header.startswith(
+            "modsys team config, written by modsys adopt — review it, then commit it. adopt set "
+            "the keys below (each `# adopt:` line says why); commented-out keys are for the team "
+            "to decide. Layers (later wins): "), header)
+        self.assertNotIn("uncomment what you need", header)  # the adopted keys are active
         layer = tomllib.loads(text)
         self.assertNotIn("packs", layer)
         lines = text.splitlines()
@@ -131,8 +136,8 @@ class AdoptOutputsTest(AdoptRepo):  # P5A-AC-015
         self.assertEqual(set(data), {"root", "registry", "layout", "inferred", "config_path",
                                      "config", "lint", "next_steps", "dry_run"})
         self.assertEqual(set(data["inferred"]), {"paths", "roles", "fields", "dir_whitelist",
-                                                 "updated_at_path", "code_map", "budgets",
-                                                 "skipped"})
+                                                 "updated_at_path", "code_map",
+                                                 "code_map_suggestion", "budgets", "skipped"})
         steps = " ".join(data["next_steps"])
         self.assertIn("review .modsys/config.toml", steps)
         self.assertIn('[packs] builtin = ["core"]', steps)
@@ -385,6 +390,43 @@ class CodeMapInferenceTest(AdoptRepo):  # P5A-AC-019
                                           'module = "catalog"\n')
         self.assertIsNone(self.adopt("--dry-run")["inferred"]["code_map"])
 
+    def test_a_suggestion_below_50_percent(self):
+        self.assertIsNone(self.rule(100, {"src": 49}))  # 49 %: no rule
+        data = self.adopt()
+        suggestion = {"pattern": "src/{module}/**", "covered": 49, "total": 100}
+        self.assertEqual(data["inferred"]["code_map_suggestion"], suggestion)
+        config = self.root / ".modsys/config.toml"
+        text = config.read_text()
+        self.assertEqual(text, data["config"])
+        block = text.split("# [[code_map]]\n", 1)[1].splitlines()
+        self.assertEqual(block[:2], ['# id = "src"', '# pattern = "src/{module}/**"'])
+        self.assertTrue(block[2].startswith("# adopt: 49 of 100 top-level modules have "
+                                            "src/<module> (m0, "), block[2])
+        self.assertTrue(block[2].endswith("): below the 50 % threshold"), block[2])
+        self.assertNotIn("code_map", tomllib.loads(text))  # commented out, never a rule
+        self.assertEqual(run_json("code-map", "list", *self.R)[1]["data"], [])
+        lint = run_json("lint", "--fail-on", "never", *self.R)[1]["data"]
+        config.write_text("".join(line for line in text.splitlines(keepends=True)
+                                  if "code_map" not in line and "src" not in line))
+        self.assertEqual(run_json("lint", "--fail-on", "never", *self.R)[1]["data"], lint)
+        config.write_text(text)
+        again = self.adopt("--dry-run")["inferred"]  # the fixed point: the same suggestion
+        self.assertEqual((again["code_map"], again["code_map_suggestion"]), (None, suggestion))
+        self.assertIn("  code map suggestion (commented out): src/{module}/** — 49 of 100 "
+                      "top-level modules, below 50 %",
+                      run("adopt", "--dry-run", *self.R)[1].splitlines())
+        config.write_text(text + '\n[[code_map]]\nid = "x"\nglobs = ["x/**"]\nmodule = "m0"\n')
+        self.assertIsNone(self.adopt("--dry-run")["inferred"]["code_map_suggestion"])
+
+    def test_no_suggestion_at_50_percent_or_without_a_candidate(self):
+        self.assertEqual(self.rule(100, {"src": 50})["covered"], 50)
+        for total, dirs in ((100, {"src": 50}), (3, {})):
+            with self.subTest(total=total, dirs=dirs):
+                self.rule(total, dirs)
+                data = self.adopt("--dry-run")
+                self.assertIsNone(data["inferred"]["code_map_suggestion"])
+                self.assertNotIn("# [[code_map]]", data["config"])
+
     def test_code_pointer_values_count(self):
         self.registry({"a": entry("a", code=["pkg/a/main.py"]), "b": entry("b"),
                        "c": entry("c", code=["pkg/c"])})
@@ -477,6 +519,17 @@ class PathsAndLayoutTest(AdoptRepo):  # P5A-AC-021
                          ("modules/registry.json", {}))  # absolute inside the root: accepted
 
 
+    def test_an_absolute_registry_under_a_symlinked_root(self):
+        self.registry({"a": entry("a")})
+        alias = self.root.parent / "alias"
+        alias.symlink_to(self.root)  # the same repository through another path
+        data = self.adopt("--dry-run", "--registry", str(alias / "modules/registry.json"))
+        self.assertEqual((data["registry"], data["inferred"]["paths"]),
+                         ("modules/registry.json", {}))
+        self.assertIn("outside the repository",
+                      self.refused("--registry", str(alias.parent / "registry.json")))
+
+
 class LintReportTest(AdoptRepo):  # P5A-AC-022
     def modules(self, n: int, docs=False) -> None:
         shutil.rmtree(self.root / "modules", ignore_errors=True)
@@ -510,6 +563,32 @@ class LintReportTest(AdoptRepo):  # P5A-AC-022
         self.assertEqual(self.toml(data)["fields"], {"other": {"type": "int",
                                                                "scope": ["module"]}})
         self.assertEqual(data["lint"]["counts"], {"MS004": 1})  # config + proposal merged
+
+
+class GitignoreStepTest(AdoptRepo):  # E-B: the adopter's .gitignore lines
+    STEP = ("modsys init — adds the .gitignore lines for the lock file, proposals and init (it "
+            "keeps your config)")
+
+    def test_init_after_adopt_keeps_the_config_and_adds_only_the_ignore_lines(self):
+        self.registry({"a": entry("a", odd="x")}, rel="docs/modules/registry.json")
+        self.write(".gitignore", "node_modules/\n")
+        data = self.adopt("--registry", "docs/modules/registry.json")
+        self.assertIn(self.STEP, data["next_steps"])
+        before = manifest(self.root, skip="")
+        code, env, err = run_json("init", *self.R)
+        self.assertEqual((code, err), (0, ""))
+        after = manifest(self.root, skip="")
+        self.assertEqual({p for p in before.keys() | after.keys()
+                          if before.get(p) != after.get(p)}, {".gitignore"})
+        self.assertEqual((self.root / ".gitignore").read_text(), "node_modules/\n"
+                         "docs/modules/registry.json.lock\n.modsys/proposals/\n.modsys/init/\n")
+        self.assertNotIn(self.STEP, self.adopt("--dry-run")["next_steps"])
+
+    def test_the_step_names_a_missing_gitignore_too(self):
+        self.registry({"a": entry("a")})
+        self.assertIn(self.STEP, self.adopt("--dry-run")["next_steps"])
+        code, out, _ = run("adopt", "--dry-run", *self.R)
+        self.assertIn(f"next: {self.STEP}", out.splitlines())
 
 
 class FixtureEquivalenceTest(unittest.TestCase):  # P5A-AC-023 (row 5.1)
@@ -565,7 +644,7 @@ class EdgeInputsTest(AdoptRepo):  # P5A-AC-043
         self.assertEqual(data["inferred"], {"paths": {}, "roles": [], "fields": [],
                                             "skipped": [], "dir_whitelist": [],
                                             "updated_at_path": None, "code_map": None,
-                                            "budgets": []})
+                                            "code_map_suggestion": None, "budgets": []})
         self.assertIn("modsys init map", " ".join(data["next_steps"]))
 
     def test_odd_names_and_non_ascii_evidence(self):
@@ -583,8 +662,9 @@ class EdgeInputsTest(AdoptRepo):  # P5A-AC-043
         shutil.copytree(FIXTURE, self.root, dirs_exist_ok=True)
         shutil.rmtree(self.root / ".modsys")
         self.write("modules/_shared/x.md")
-        self.adopt()
+        first = self.adopt()["inferred"]
         again = self.adopt("--dry-run")["inferred"]
+        self.assertEqual(again.pop("code_map_suggestion"), first["code_map_suggestion"])
         self.assertEqual({k: v for k, v in again.items() if v not in ([], {}, None)}, {})
 
     def test_a_missing_doc_and_a_config_dir_that_is_a_file(self):
