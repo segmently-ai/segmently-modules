@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E-A — deterministic adoption eval. Builds four repositories in temp dirs and drives the
+"""E-A — deterministic adoption eval. Builds six repositories in temp dirs and drives the
 modsys CLI of THIS checkout (`python -m modsys`, the checkout on PYTHONPATH):
 
   greenfield  git init -> init -> 3 modules -> code-map add -> a relation -> lint -> coverage
@@ -23,6 +23,15 @@ modsys CLI of THIS checkout (`python -m modsys`, the checkout on PYTHONPATH):
               (the designer and qa_acceptance templates) -> a code change: sync-instructions
               names the module, MS050 and the keywords hint -> eject module-sync -> packs sync
               from the edited copy -> packs new core is refused (a reserved id)
+  adopt       a git copy of the bookshop fixture without its declarations (and a reference copy
+              with them) -> adopt --dry-run writes nothing and names the role, the field and the
+              code-map rule -> adopt writes .modsys/config.toml -> list / show equal the
+              reference's -> a second adopt writes adopt.proposed.toml, config.toml kept -> the
+              tree outside .modsys/ is byte-identical to the start
+  init-map    the bookshop_monorepo fixture with its built history -> init -> init map (six
+              candidates) -> exclude one, rename one in proposal.json -> init confirm -> init
+              status: gate 3 passed -> init resume exits 1 (phase 4 comes later) -> a fresh copy:
+              init map stopped by the test seam -> init resume -> the same outputs
 
 Every step asserts an exit code and a data check. Prints the scorecard JSON
 {scenario: {steps: [{name, ok, detail}], commands, ok}} (commands = modsys invocations) and
@@ -59,11 +68,12 @@ class Scenario:
                     if not k.startswith(("GIT_", "MODSYS_"))}
         self.env.update(GIT_IDENTITY, PYTHONPATH=str(ENGINE))
 
-    def modsys(self, *args: str, expect: int = 0):
-        """Run one verb with --json; returns (data, stderr). Wrong exit code -> StepFailed."""
+    def modsys(self, *args: str, expect: int = 0, env: dict | None = None):
+        """Run one verb with --json; returns (data, stderr). Wrong exit code -> StepFailed.
+        `env`: extra environment for this one command."""
         self.commands += 1
         proc = subprocess.run([sys.executable, "-m", "modsys", *args, "--json"], cwd=self.root,
-                              env=self.env, capture_output=True, text=True)
+                              env={**self.env, **(env or {})}, capture_output=True, text=True)
         if proc.returncode != expect:
             raise StepFailed(f"modsys {' '.join(args)}: exit {proc.returncode}, expected "
                              f"{expect}: {proc.stderr.strip()[:300]}")
@@ -701,8 +711,153 @@ def skills(sc: Scenario) -> None:
         sc.step(name, fn)
 
 
+# --- adopt --------------------------------------------------------------------------------
+
+
+def tree(root: Path, skip: str = ".modsys") -> dict:
+    """{path: bytes} of every file outside `skip` and `.git`."""
+    return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*"))
+            if p.is_file() and p.relative_to(root).parts[0] not in (skip, ".git")}
+
+
+def adopt(sc: Scenario) -> None:
+    ref = sc.root.parent / "reference"
+    start = {}
+
+    def copies():
+        for root in (sc.root, ref):
+            shutil.copytree(BOOKSHOP, root, dirs_exist_ok=True)
+            for rel in ("src/checkout/cart.py", "src/payments/gateway.py"):
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text("VALUE = 1\n", encoding="utf-8")
+        (ref / ".modsys/config.toml").write_text('[[code_map]]\nid = "src"\n'
+                                                'pattern = "src/{module}/**"\n')
+        shutil.rmtree(sc.root / ".modsys")
+        sc.git("init", "-q", "-b", "main")
+        sc.commit("bookshop, declarations removed", ".")
+        start["tree"] = tree(sc.root)
+
+    def dry_run():
+        data, _ = sc.modsys("adopt", "--dry-run")
+        check(not (sc.root / ".modsys").exists() and tree(sc.root) == start["tree"],
+              "adopt --dry-run wrote something")
+        i = data["inferred"]
+        found = ([r["name"] for r in i["roles"]], [f["name"] for f in i["fields"]],
+                 (i["code_map"] or {}).get("pattern"))
+        check(found == (["designer"], ["file_paths"], "src/{module}/**"), f"inferred {found}")
+
+    def write():
+        data, _ = sc.modsys("adopt")
+        check(data["config_path"] == ".modsys/config.toml"
+              and (sc.root / ".modsys/config.toml").is_file(), f"adopt {data['config_path']}")
+
+    def same_as_reference():
+        for argv in (("list",), ("show", "catalog", "--all-roles")):
+            mine, _ = sc.modsys(*argv)
+            theirs, _ = sc.modsys(*argv, "--root", str(ref))
+            check(mine == theirs, f"{' '.join(argv)} differs from the reference copy")
+
+    def again():
+        config = (sc.root / ".modsys/config.toml").read_bytes()
+        data, _ = sc.modsys("adopt")
+        check(data["config_path"] == ".modsys/adopt.proposed.toml"
+              and (sc.root / ".modsys/adopt.proposed.toml").is_file(), f"{data['config_path']}")
+        check((sc.root / ".modsys/config.toml").read_bytes() == config, "config.toml changed")
+
+    def untouched():
+        check(tree(sc.root) == start["tree"], "a file outside .modsys/ changed")
+
+    for name, fn in [("a copy without declarations and a reference copy", copies),
+                     ("adopt --dry-run writes nothing and names the declarations", dry_run),
+                     ("adopt writes .modsys/config.toml", write),
+                     ("list and show equal the reference copy's", same_as_reference),
+                     ("a second adopt writes adopt.proposed.toml", again),
+                     ("the tree outside .modsys/ is unchanged", untouched)]:
+        sc.step(name, fn)
+
+
+# --- init-map -----------------------------------------------------------------------------
+
+def monorepo_builder():
+    """`tests/fixtures/build_monorepo.py` (loaded by path: the eval imports nothing else)."""
+    import importlib.util
+    path = ENGINE / "tests" / "fixtures" / "build_monorepo.py"
+    spec = importlib.util.spec_from_file_location("build_monorepo", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.build
+
+
+CANDIDATES = ["storefront", "cart", "catalog", "ui-kit", "payments", "recommendations"]
+NO_P4 = "phase 4 (fan-out) is not available in this engine version"
+
+
+def init_map(sc: Scenario) -> None:
+    work = sc.root / ".modsys/init"
+    first = {}
+
+    def outputs() -> tuple[bytes, bytes]:
+        return (work / "preflight.json").read_bytes(), (work / "proposal.json").read_bytes()
+
+    def fixture():
+        sc.root.rmdir()
+        monorepo_builder()(sc.root)
+
+    def init():
+        data, _ = sc.modsys("init")
+        check([f["status"] for f in data["files"]] == ["created"] * 3, f"init {data['files']}")
+
+    def map_it():
+        data, _ = sc.modsys("init", "map")
+        check(data["candidates"] == CANDIDATES, f"candidates {data['candidates']}")
+        check((data["unassigned"], data["hints"]) == (2, 2), f"{data}")
+        first["outputs"] = outputs()
+
+    def edit():
+        doc = json.loads((work / "proposal.json").read_text(encoding="utf-8"))
+        by_name = {c["name"]: c for c in doc["candidates"]}
+        by_name["storefront"]["include"] = False
+        by_name["ui-kit"]["name"] = "design-kit"
+        (work / "proposal.json").write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+
+    def confirm():
+        data, _ = sc.modsys("init", "confirm")
+        check((data["status"], data["excluded"], "design-kit" in data["included"])
+              == ("confirmed", ["storefront"], True), f"confirm {data}")
+
+    def status():
+        data, _ = sc.modsys("init", "status")
+        check("gate 3 passed" in data["next"], f"status {data['next']}")
+
+    def resume():
+        data, _ = sc.modsys("init", "resume", expect=1)
+        check(data["message"] == NO_P4, f"resume {data['message']}")
+
+    def interrupted():
+        fresh = sc.root.parent / "fresh"
+        monorepo_builder()(fresh)
+        sc.modsys("init", "map", "--root", str(fresh), expect=130,
+                  env={"MODSYS_INIT_TEST_STOP": "map"})
+        data, _ = sc.modsys("init", "resume", "--root", str(fresh))
+        check(data["ran"] == ["map"], f"resume ran {data['ran']}")
+        again = tuple((fresh / ".modsys/init" / n).read_bytes()
+                      for n in ("preflight.json", "proposal.json"))
+        root = str(sc.root).encode()
+        check(again == tuple(o.replace(root, str(fresh).encode()) for o in first["outputs"]),
+              "the resumed outputs differ from an uninterrupted run")
+
+    for name, fn in [("the bookshop monorepo with its history", fixture), ("init", init),
+                     ("init map: six candidates", map_it),
+                     ("exclude one candidate, rename another", edit),
+                     ("init confirm", confirm), ("init status: gate 3 passed", status),
+                     ("init resume: phase 4 comes later (exit 1)", resume),
+                     ("an interrupted init map, then init resume: the same outputs",
+                      interrupted)]:
+        sc.step(name, fn)
+
+
 SCENARIOS = {"greenfield": greenfield, "brownfield": brownfield, "packs": packs,
-             "skills": skills}
+             "skills": skills, "adopt": adopt, "init-map": init_map}
 
 
 def run_scenario(name: str, build) -> dict:

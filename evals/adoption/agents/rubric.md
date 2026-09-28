@@ -17,7 +17,8 @@ compare runs of the same persona across phases.
 A run that wires code with `modsys code-map add` instead of editing `.modsys/config.toml` by
 hand, or gates with `modsys ci` instead of separate `lint` / `lint --changed` / `coverage`
 calls, is scored exactly the same: every metric above counts what the run did, not which of
-the documented paths it took.
+the documented paths it took. For brownfield, record in the run's notes whether it used
+`modsys init map` (the docs offer it for an existing codebase); it does not change the score.
 
 Scorecard (one row per run):
 
@@ -50,3 +51,21 @@ Bash (heredoc bodies stripped), Read, Grep and Glob input of the transcript, not
 self-report.
 
 **PASS (pack-author)** = all 5 goal steps verified, 0 source peeks, 0 blockers, commands ≤ 35.
+
+## adopter
+
+Four goal steps, each verified by the scorer in the final repository (`{WORKDIR}`, built by
+`agents/adopter_repo.py`), not taken from the log:
+
+1. `modules/registry.json` and every module doc under `modules/` are byte-identical to the
+   repository as built (`git diff --quiet <the first commit> -- modules` exits 0);
+2. `.modsys/config.toml` exists and is committed (`git ls-files --error-unmatch
+   .modsys/config.toml` exits 0, and `git status --porcelain -- .modsys/config.toml` is empty);
+3. `modsys lint --fail-on warning` exits 0;
+4. `modsys show inventory --json` lists `src/inventory/` under `code` (the registry's
+   `stock_paths` field), and `modsys list --json` lists `inventory`, `orders`, `shipping` and
+   `loyalty`.
+
+Commands and source peeks are counted as above (the transcript scan, not the self-report).
+
+**PASS (adopter)** = all 4 goal steps verified, 0 source peeks, 0 blockers, commands ≤ 35.

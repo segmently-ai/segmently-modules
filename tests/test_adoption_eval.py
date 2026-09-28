@@ -7,6 +7,7 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / "evals" / "adoption" / "run_eval.py"
 
@@ -26,13 +27,16 @@ class AdoptionEvalTest(unittest.TestCase):
         failed = [(name, s["name"], s["detail"]) for name, result in card.items()
                   for s in result["steps"] if not s["ok"]]
         self.assertEqual((proc.returncode, failed), (0, []))
-        self.assertEqual(set(card), {"greenfield", "brownfield", "packs", "skills"})
+        self.assertEqual(set(card), {"greenfield", "brownfield", "packs", "skills", "adopt",
+                                     "init-map"})  # P5a D7: + adopt, init-map
         for result in card.values():
             self.assertTrue(result["ok"])
-            self.assertGreater(result["commands"], 10)
+            self.assertGreater(result["commands"], 5)
         self.assertEqual({name: (len(r["steps"]), r["commands"]) for name, r in card.items()},
                          {"greenfield": (20, 26), "brownfield": (12, 20), "packs": (16, 15),
-                          "skills": (11, 11)})  # P4B-AC-021: the earlier counts unchanged
+                          "skills": (11, 11), "adopt": (6, 7), "init-map": (8, 7)})
+        self.assertIn("adoption eval: adopt ok (6 steps, 7 commands)", proc.stderr)
+        self.assertIn("adoption eval: init-map ok (8 steps, 7 commands)", proc.stderr)
 
     def test_a_failed_step_stops_the_scenario_and_is_scored(self):
         run_eval = load_eval()
@@ -83,6 +87,22 @@ class AdoptionEvalTest(unittest.TestCase):
         self.assertFalse(card["skills"]["ok"])
         self.assertTrue(all(card[name]["ok"] for name in ("greenfield", "brownfield", "packs")))
         self.assertIn("adoption eval: skills FAILED (9 steps, ", proc.stderr)
+
+    def test_a_failing_adopt_or_init_map_step_stops_that_scenario(self):  # P5A-AC-038/039
+        run_eval = load_eval()  # in-process: the seam is the same, the other scenarios idle
+        for step, build, last in (
+                ("adopt:adopt writes .modsys/config.toml", run_eval.adopt,
+                 ["adopt --dry-run writes nothing and names the declarations",
+                  "adopt writes .modsys/config.toml"]),
+                ("init-map:init confirm", run_eval.init_map,
+                 ["exclude one candidate, rename another", "init confirm"])):
+            with self.subTest(step=step), \
+                    mock.patch.dict(os.environ, {"MODSYS_EVAL_FAIL_STEP": step}):
+                result = run_eval.run_scenario(step.split(":")[0], build)
+                self.assertEqual((result["ok"], [s["name"] for s in result["steps"]][-2:]),
+                                 (False, last))
+                self.assertEqual(result["steps"][-1]["detail"],
+                                 "forced by MODSYS_EVAL_FAIL_STEP (test seam)")
 
     def test_an_unexpected_error_is_a_failed_step(self):
         run_eval = load_eval()
