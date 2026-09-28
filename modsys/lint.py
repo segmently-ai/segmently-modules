@@ -3,7 +3,8 @@ keyword budgets and hygiene · MS030-MS032 doc budgets · MS040 component paths 
 MS052 a [[code_map]] rule whose `module` is not in the registry · MS053 two [[code_map]] rules
 route one file to two different modules · MS060-MS062, MS064, MS065 pack checks (unknown
 pack.toml keys, role templates, skills agents cannot load, skills reading unconfigured roles,
-shadowed skill ids) · MS063 ejected skills behind their pack ·
+shadowed skill ids) · MS063 ejected skills behind their pack · MS066 a repository pack that
+replaces a built-in pack (info) ·
 with --changed: MS050 code changed but no doc of its module · MS051 frozen legacy snapshot
 modified or deleted (report narrowed to the changed modules)."""
 import re
@@ -14,7 +15,8 @@ from pathlib import Path
 
 from modsys.changes import (changed_files, code_map_routes, diff_names, map_files, repo_files,
                             target_names, work_tree_error)
-from modsys.config import PACK_META_KEYS, ROLE_SCHEMA, discover_packs, enabled_roles
+from modsys.config import (BUILTIN_PACKS, PACK_META_KEYS, ROLE_SCHEMA, discover_packs,
+                           enabled_roles)
 from modsys.fields import value_matches
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.query import role_paths
@@ -226,7 +228,8 @@ def pack_findings(ws) -> list[Finding]:
     `pack.toml` keys, MS061 role templates that are missing or outside the pack, MS062 skills
     agents cannot load (a pack's, or an ejected copy's), MS063 ejected skills whose pack moved
     on (or dropped them), MS064 `reads_roles` naming a role no layer enables, MS065 a skill id
-    shadowed by a higher-precedence pack."""
+    shadowed by a higher-precedence pack, MS066 (info) a repository pack whose id is a built-in
+    pack's — it replaces that pack, enabled or not."""
     out: list[Finding] = []
     for pack in discover_packs(ws.config_dir):
         data, toml, pack_dir, pid = pack["data"], ws.rel(pack["path"]), pack["path"].parent, \
@@ -238,6 +241,9 @@ def pack_findings(ws) -> list[Finding]:
                 unknown += [(k, f"in [{table}.{name}]") for k in as_dict(spec) if k not in schema]
         out += [Finding("MS060", "warning", "*", f"pack '{pid}': unknown key '{key}' {where}",
                         toml) for key, where in unknown]
+        if not pack["builtin"] and pid in BUILTIN_PACKS:
+            out.append(Finding("MS066", "info", "*", f"repository pack '{pid}' replaces the "
+                               f"built-in pack '{pid}'", toml))
         for role, spec in as_dict(data.get("roles")).items():
             template = as_dict(spec).get("template")
             if not isinstance(template, str):

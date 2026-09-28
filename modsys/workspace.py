@@ -39,7 +39,7 @@ class Workspace:
         """A workspace for programmatic callers (pipelines, hooks, tests) — no argparse needed."""
         root = Path(root).resolve()
         config_dir = Path(config_dir or root / ".modsys").resolve()
-        config = load_config(config_dir)
+        config = load_config(config_dir, root)
         return cls(root, config_dir, config, load_field_defs(config))
 
     @classmethod

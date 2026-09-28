@@ -16,3 +16,5 @@ ${context_lines}
 ${show_lines}
 3. Read every file those commands list, then do the task.
 4. After the change, `modsys discover --from-diff <base>..HEAD` names the module docs to update.
+   `<base>` is the commit the work branched off: the output of `git merge-base <target> HEAD`,
+   where `<target>` is the branch the work will merge into.

@@ -350,6 +350,24 @@ class LintCodesReferenceTest(unittest.TestCase):  # module-lint explains every c
         self.assertEqual(sorted(documented), sorted(set(re.findall(r"MS\d{3}", source))))
 
 
+class ScaffoldBaseTest(unittest.TestCase):  # P5A-AC-004 (D0a)
+    def test_the_scaffold_says_what_the_base_is(self):
+        scaffold = (ENGINE / "modsys/defaults/scaffold/SKILL.md").read_text("utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = copy_fixture(tmp)
+            code, _, err = run("packs", "new", "team", "--skill", "api-review", "--root",
+                               str(root))
+            self.assertEqual((code, err), (0, ""))
+            skill = root / ".modsys/packs/team/skills/api-review"
+            rendered = (skill / "SKILL.md").read_text("utf-8")
+            self.assertIsNone(source_problem(skill, "api-review"))
+        for text in (scaffold, rendered):
+            flat = " ".join(text.split())
+            self.assertIn("modsys discover --from-diff <base>..HEAD", flat)
+            self.assertIn(MERGE_BASE, flat)
+            self.assertIsNone(TARGET_AS_BASE.search(flat))
+
+
 class SplitInOneChangeTest(unittest.TestCase):  # P4B-AC-015, SI-9
     def test_adding_legacy_copies_is_not_ms051(self):
         with tempfile.TemporaryDirectory() as tmp:

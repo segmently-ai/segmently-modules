@@ -154,7 +154,7 @@ def init_root(arg) -> Path:
 def plan_init(root: Path, config_dir: Path, requested: str | None) -> tuple[str, list]:
     """(layout, [(path, status, new text or None)]); writes nothing."""
     config_path = config_dir / "config.toml"
-    config = load_config(config_dir)
+    config = load_config(config_dir, root)
     current = config["paths"]["registry_layout"]
     layout = requested or current
     registry = root / config["paths"]["registry"]  # path is the same in either layout

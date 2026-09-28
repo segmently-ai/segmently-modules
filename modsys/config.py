@@ -126,6 +126,16 @@ def _check_builtin(ids, source) -> None:
                          f"(built-in packs: {', '.join(BUILTIN_PACKS)})")
 
 
+def shown(path: Path, root: Path | None):
+    """`path` as a message names it: root-relative (posix) inside `root`, else as given."""
+    if root is not None:
+        try:
+            return Path(path).relative_to(root).as_posix()
+        except ValueError:
+            pass
+    return path
+
+
 def read_toml(path: Path) -> dict:
     try:
         with path.open("rb") as f:
@@ -146,25 +156,28 @@ def builtin_packs_root() -> Path:
     return Path(str(resources.files("modsys").joinpath("defaults/packs")))
 
 
-def enabled_builtins(config_dir: Path) -> list[str]:
+def enabled_builtins(config_dir: Path, root: Path | None = None) -> list[str]:
     """`[packs] builtin` of the team config and the user config — appended, de-duplicated. Read
-    before the merge: it decides which built-in packs are config layers at all."""
+    before the merge: it decides which built-in packs are config layers at all. A refusal names
+    the file root-relative when `root` is given and holds it."""
     ids: list[str] = []
     for name in ("config.toml", "config.user.toml"):
         path = config_dir / name
         if path.exists():
-            packs = _require_table(read_toml(path).get("packs", {}), "packs", path)
-            _check_table(packs, LAYER_SCHEMA["packs"], "packs", path)
-            _check_builtin(packs.get("builtin"), path)
+            source = shown(path, root)
+            packs = _require_table(read_toml(path).get("packs", {}), "packs", source)
+            _check_table(packs, LAYER_SCHEMA["packs"], "packs", source)
+            _check_builtin(packs.get("builtin"), source)
             ids += [i for i in packs.get("builtin", []) if i not in ids]
     return ids
 
 
-def discover_packs(config_dir: Path) -> list[dict]:
+def discover_packs(config_dir: Path, root: Path | None = None) -> list[dict]:
     """Active packs, highest precedence first: the repository's packs (lowest priority number,
     then id), then the built-in packs `[packs] builtin` enables, by id — below every repository
     pack whatever its priority. A repository pack with a built-in id replaces that built-in pack.
-    A built-in pack's version is the engine version."""
+    A built-in pack's version is the engine version. `root`: the `[packs] builtin` refusals name
+    their files root-relative."""
     from modsys.skills import validate_skills  # skills imports this module
     packs = []
     for pack_toml in sorted((config_dir / "packs").glob("*/pack.toml")):
@@ -176,14 +189,15 @@ def discover_packs(config_dir: Path) -> list[dict]:
         if not isinstance(pack_id, str) or not pack_id:
             raise UsageError(f"{pack_toml}: id must be a non-empty string, got {pack_id!r}")
         if isinstance(data.get("packs"), dict) and "builtin" in data["packs"]:
-            raise UsageError(f"{pack_toml}: [packs] builtin: a pack cannot enable built-in "
-                             f"packs — set it in {config_dir / 'config.toml'}")
+            team = shown(config_dir / "config.toml", root)
+            raise UsageError(f"{shown(pack_toml, root)}: [packs] builtin: a pack cannot enable "
+                             f"built-in packs — set it in {team}")
         validate_skills(data, pack_toml)
         packs.append({"id": pack_id, "priority": priority, "path": pack_toml, "data": data,
                       "builtin": False})
     packs.sort(key=lambda p: (p["priority"], p["id"]))
     taken = {p["id"] for p in packs}
-    for pack_id in sorted(set(enabled_builtins(config_dir)) - taken):
+    for pack_id in sorted(set(enabled_builtins(config_dir, root)) - taken):
         pack_toml = builtin_packs_root() / pack_id / "pack.toml"
         data = {**read_toml(pack_toml), "id": pack_id, "version": __version__}
         validate_skills(data, pack_toml)
@@ -212,8 +226,8 @@ def _pack_layer(pack: dict) -> dict:
     return layer
 
 
-def load_config(config_dir: Path) -> dict:
-    packs = discover_packs(config_dir)
+def load_config(config_dir: Path, root: Path | None = None) -> dict:
+    packs = discover_packs(config_dir, root)
     layers = [core_defaults()] + [_pack_layer(p) for p in reversed(packs)]
     for name in ("config.toml", "config.user.toml"):
         path = config_dir / name

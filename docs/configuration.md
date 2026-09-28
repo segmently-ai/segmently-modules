@@ -387,6 +387,7 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS063 | warning / info | an ejected skill (`modsys eject`) is behind its pack — the pack's files, or a repository pack's version, changed since the eject (a built-in pack's version is the engine's: an upgrade alone does not count) (warning; `modsys eject <skill> --diff` shows the change); a pack file it cannot read (warning, naming the file) — or no pack declares it any more (info: the ejected copy is its only source) (plain `lint` only) |
 | MS064 | warning | a skill's `reads_roles` names a role no layer configures, or a disabled one (plain `lint` only) |
 | MS065 | warning | two packs declare the same skill id: the lower-precedence one is shadowed (plain `lint` only) |
+| MS066 | info | a repository pack takes a built-in pack's id (`core`, `qa`, `ui`) and replaces that built-in pack, enabled or not; info never fails a gate (plain `lint` only) |
 
 MS053 compares every pair of `[[code_map]]` rules over the repository's files (git-tracked +
 new, not ignored; `[coverage]` filters do not apply) after `exclusive` precedence: a pair is

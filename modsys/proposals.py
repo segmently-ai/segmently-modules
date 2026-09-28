@@ -156,10 +156,15 @@ def _read_proposal(path: Path) -> dict:
 
 
 def pending(ws, run_id: str | None = None) -> list[tuple[Path, dict]]:
+    """Every queued proposal file (optionally one run's), by name; an unreadable file is exit 2
+    `cannot read <path>: <reason>`."""
     d = proposals_dir(ws)
     out = []
     for path in sorted(d.glob("*.json")) if d.is_dir() else []:
-        doc = _read_proposal(path)
+        try:
+            doc = _read_proposal(path)
+        except OSError as e:
+            raise UsageError(f"cannot read {ws.rel(path)}: {e.strerror or e}") from None
         if run_id is None or doc.get("run_id") == run_id:
             out.append((path, doc))
     return out

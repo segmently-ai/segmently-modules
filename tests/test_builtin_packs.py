@@ -121,8 +121,7 @@ class BuiltinConfigTest(FakeBuiltins):  # P4B-AC-005
     def test_a_pack_cannot_enable_a_builtin_pack(self):
         self.repo_pack("team", '[packs]\nbuiltin = ["core"]\n')
         self.assertIn(".modsys/packs/team/pack.toml: [packs] builtin: a pack cannot enable "
-                      "built-in packs — set it in "
-                      f"{self.root.resolve() / '.modsys' / 'config.toml'}\n",
+                      "built-in packs — set it in .modsys/config.toml\n",  # P5a D0a (M10)
                       self.refused("packs", "list"))
 
     def test_the_refusal_names_the_config_dir_in_use(self):  # fix wave M10
@@ -132,7 +131,7 @@ class BuiltinConfigTest(FakeBuiltins):  # P4B-AC-005
         (pack / "pack.toml").write_text('id = "team"\n[packs]\nbuiltin = ["core"]\n')
         err = self.refused("packs", "list", "--config-dir", str(cfg))
         self.assertIn("cfg/packs/team/pack.toml: [packs] builtin: a pack cannot enable built-in "
-                      f"packs — set it in {cfg.resolve() / 'config.toml'}\n", err)
+                      "packs — set it in cfg/config.toml\n", err)  # P5a D0a (M10): root-relative
         self.assertNotIn(".modsys", err)
 
 

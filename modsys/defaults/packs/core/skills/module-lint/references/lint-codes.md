@@ -36,3 +36,4 @@ Every code the `lint` and `ci` verbs report. **Safe** = a mechanical fix the ski
 | MS063 | an ejected skill is behind its pack (its files changed since the eject, or a repository pack's version did), a pack file it cannot read, or no pack declares it (`*`) | Ask: review `modsys eject <skill> --diff --json`; taking changes by hand does not clear it. Either delete the copy and run `packs sync` (the pack's version returns), or move the copy out of `overrides/skills/`, eject again and re-apply the team's edits to the new copy |
 | MS064 | a skill reads a role that is not configured or disabled (`*`) | Ask the pack's owner |
 | MS065 | two packs declare one skill id; one is shadowed (`*`) | Ask: rename one of the skills |
+| MS066 | a repository pack takes a built-in pack's id and replaces that pack (`*`, info) | Nothing to fix when the team owns that pack on purpose; otherwise ask to rename the repository pack |
