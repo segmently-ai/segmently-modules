@@ -69,11 +69,15 @@ class Work:
         doc = self.flow.read_json(self.flow.output("gate-map"))
         return [c for c in (doc or {}).get("candidates", []) if c.get("include") is True]
 
-    def registry_modules(self) -> dict:
+    def registry_raw(self) -> dict:
+        """The registry as the engine reads it (`{"modules": {}}` when there is none yet)."""
         path = self.root / self.ws.config["paths"]["registry"]
         if self.ws.config["paths"]["registry_layout"] == "single" and not path.is_file():
-            return {}
-        return self.ws.registry.modules
+            return {"modules": {}}
+        return self.ws.registry.raw
+
+    def registry_modules(self) -> dict:
+        return self.registry_raw()["modules"]
 
     def roles(self) -> list[str]:
         """The roles `create` scaffolds for a module without tags: the standard ones."""

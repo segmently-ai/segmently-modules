@@ -14,7 +14,8 @@ The work directory is `<config_dir>/init/` (git-ignored by `modsys init`):
   proposal.json   phase 2 (`modsys.mapper`) — edit it at gate 3: `include`, `name`, `paths`
   confirmed.json  gate 3: the validated proposal, frozen by `init confirm` (refused once the
                   fan-out has started: `init map --restart` changes the module set)
-  work/, staging/ phase 4 (`modsys.init_work`)
+  work/, staging/ phase 4 (`modsys.init_work`); staging/registry.json and reconcile.json:
+                  phase 5 (`modsys.init_reconcile`)
 Every write is a temp file + an atomic rename, so an interrupted phase leaves no partial output:
 a phase whose status is not `done` re-runs from its start (`init resume`, or `init map` again).
 `map` and `confirm` never prompt."""
@@ -37,7 +38,8 @@ from modsys.store import DEFAULT_LOCK_TIMEOUT_S, file_lock, serialize, utc_now
 STATE_SCHEMA = "modsys.init-state/1"
 PHASES = ("preflight", "map", "gate-map", "fanout", "reconcile", "eval-tasks", "verify",
           "finish")
-OUTPUTS = {"preflight": "preflight.json", "map": "proposal.json", "gate-map": "confirmed.json"}
+OUTPUTS = {"preflight": "preflight.json", "map": "proposal.json", "gate-map": "confirmed.json",
+           "reconcile": "reconcile.json"}
 TEST_STOP = "MODSYS_INIT_TEST_STOP"  # test seam: "<phase>" or "<phase>:renamed"
 RESTART = "modsys init map --restart"
 STATUSES = ("pending", "running", "done")
@@ -254,7 +256,11 @@ class InitFlow:
             return (f"{done} of {len(modules)} module(s) done: modsys init run --executor "
                     f"\"<command>\" (every pending module), or claim one with modsys init next, "
                     f"write its files, then modsys init done <module>")
-        return "every module is done"
+        if phases["reconcile"]["status"] != "done":
+            return ("every module is done: modsys init reconcile builds the staging registry "
+                    "(edges, keyword collisions, duplicates)")
+        return (f"reconcile done: the items to judge are in {work_rel}/reconcile.json "
+                f"(judgement)")
 
     # --- phases -------------------------------------------------------------------------
 

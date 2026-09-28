@@ -8,8 +8,8 @@ Root: `--root`, else the git top-level of the current directory, else the curren
 Actions (`modsys.init_flow`, `modsys.init_work`): `map` (the starter files that are missing,
 then preflight and map; stops at gate 3), `confirm` (gate 3), `status`, `resume`, `fanout` (one
 work item per confirmed module), `next` (claim one), `done MODULE` (check its staging output),
-`run --executor CMD` (every pending item through one command) — one envelope `modsys.init/1`
-each."""
+`run --executor CMD` (every pending item through one command), `reconcile` (the staging
+registry) — one envelope `modsys.init/1` each."""
 import subprocess
 import sys
 from pathlib import Path
@@ -132,7 +132,8 @@ def starter_config(layout: str) -> str:
     return _HEADER + _PATHS[layout] + _BODY
 
 
-ACTIONS = ("map", "confirm", "status", "resume", "fanout", "next", "done", "run")
+ACTIONS = ("map", "confirm", "status", "resume", "fanout", "next", "done", "run", "reconcile")
+FORCE_ACTIONS = ("reconcile",)
 EXECUTOR_ACTIONS = ("run", "resume")
 NON_INTERACTIVE_ACTIONS = ("run", "resume")  # the others never prompt: no flag (SI-25)
 
@@ -140,8 +141,8 @@ NON_INTERACTIVE_ACTIONS = ("run", "resume")  # the others never prompt: no flag 
 def register(sub, common) -> None:
     p = sub.add_parser("init", parents=[common],
                        help="set up modsys here: starter config, empty registry, .gitignore lines "
-                            "(map|confirm|fanout|next|done|run|status|resume: start from existing "
-                            "code)",
+                            "(map|confirm|fanout|next|done|run|reconcile|status|resume: start "
+                            "from existing code)",
                        description="Without an action: the starter config, an empty registry and "
                                    "the .gitignore lines. map: those, then preflight and map of "
                                    "the existing code into <config_dir>/init/proposal.json "
@@ -152,9 +153,10 @@ def register(sub, common) -> None:
                                    "module (its work item and prompt). done MODULE: check the "
                                    "files written into its staging directory. run --executor "
                                    "CMD: run every pending item through CMD ([init] "
-                                   "max_parallel at a time). status: the phases, the modules "
-                                   "and the next step. resume: re-run an interrupted phase and "
-                                   "continue.")
+                                   "max_parallel at a time). reconcile: the staging registry — "
+                                   "edges, keyword collisions, duplicates. status: the phases, "
+                                   "the modules and the next step. resume: re-run an "
+                                   "interrupted phase and continue.")
     p.add_argument("action", nargs="?", metavar="ACTION",
                    help=f"{', '.join(ACTIONS)} (none: the starter files only)")
     p.add_argument("module", nargs="?", metavar="MODULE",
@@ -164,6 +166,9 @@ def register(sub, common) -> None:
                         "shell line, never run by a shell; stdin: the prompt)")
     p.add_argument("--non-interactive", action="store_true",
                    help="run, resume: never wait for a person")
+    p.add_argument("--force", action="store_true",
+                   help="reconcile: rebuild the staging registry from entry.json, discarding "
+                        "edits made to it")
     p.add_argument("--layout", choices=REGISTRY_LAYOUTS,
                    help="registry layout for a new setup (default: the configured one, else single)")
     p.add_argument("--dry-run", action="store_true", help="report what would change, write nothing")
@@ -294,13 +299,16 @@ def _check_flags(args) -> None:
         raise UsageError('init run needs --executor "<command>"')
     if args.executor is not None and action not in EXECUTOR_ACTIONS:
         raise UsageError(f"--executor works with {', '.join(f'init {a}' for a in EXECUTOR_ACTIONS)}")
+    if args.force and action not in FORCE_ACTIONS:
+        raise UsageError(f"--force works with {', '.join(f'init {a}' for a in FORCE_ACTIONS)}")
     if args.non_interactive and action not in NON_INTERACTIVE_ACTIONS:
         raise UsageError(f"init {action or '(no action)'} never prompts: drop --non-interactive")
     if args.restart and action != "map":
         raise UsageError("--restart works with map only (modsys init map --restart)")
     if args.layout and action not in (None, "map"):
         raise UsageError(f"--layout works with plain init and init map, not init {action}")
-    if args.dry_run and action in ("status", "resume", "fanout", "next", "done", "run"):
+    if args.dry_run and action in ("status", "resume", "fanout", "next", "done", "run",
+                                   "reconcile"):
         raise UsageError(f"init {action} takes no --dry-run (it never writes)"
                          if action == "status" else f"init {action} takes no --dry-run")
 
@@ -393,6 +401,15 @@ def run_action(args, root: Path, config_dir: Path) -> int:
             print(f"modsys: {args.module}: {problem}", file=sys.stderr)
         emit("init", data, args.json, _render_done)
         return EXIT_FINDINGS if problems else EXIT_OK
+    if args.action == "reconcile":
+        from modsys.init_reconcile import Reconcile
+        result = Reconcile(phase4).run(args.force)
+        state = result.pop("state")
+        data = {"action": "reconcile", "staging_registry": f"{work}/staging/registry.json",
+                "reconcile": f"{work}/reconcile.json", **result,
+                "next": flow.next_step(state, work)}
+        emit("init", data, args.json, _render_reconcile)
+        return EXIT_OK
     if args.action == "run":
         runner = Runner(phase4, executor_argv(args.executor, root))
         phase4.reset()
@@ -457,6 +474,22 @@ def _render_run(d) -> None:
     c = d["counts"]
     print(f"modules  {c['done']} done, {c['running']} running, {c['pending']} pending, "
           f"{c['failed']} failed")
+    print(f"next: {d['next']}")
+
+
+def _render_reconcile(d) -> None:
+    print(f"wrote         {d['staging_registry']}")
+    print(f"wrote         {d['reconcile']}")
+    added = sum(e["source"] == "imports" for e in d["edges"])
+    print(f"edges         {len(d['edges'])} ({added} added from the imports)")
+    for c in d["collisions"]:
+        owner = c["owner"] or "a tie"
+        moved = f"; moved to negative_keywords of {', '.join(c['moved'])}" if c["moved"] else ""
+        print(f"collision     '{c['keyword']}' — owner {owner}{moved}")
+    for d_ in d["duplicates"]:
+        where = ", ".join(f"{x['file']}:{x['line']}" for x in d_["definitions"])
+        print(f"duplicate     {d_['name']} — {where}")
+    print(f"judgement     {len(d['judgement'])} item(s) left to decide")
     print(f"next: {d['next']}")
 
 
