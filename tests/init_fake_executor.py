@@ -2,6 +2,9 @@
 deterministic docs a writer agent could have written — no model, stdlib only. Run as
 `python3 tests/init_fake_executor.py [switches]` by `modsys init run --executor …` (stdin = the
 prompt; env MODSYS_INIT_MODULE, MODSYS_INIT_STAGING, MODSYS_INIT_WORK), or import `write_docs`.
+Run by `modsys init eval-tasks --executor …` (env MODSYS_INIT_TASKS), it writes that file: five
+tasks per module of the staging registry, each naming two of its keywords (`--tasks-mode`
+spoils them on purpose).
 
 The bookshop_monorepo modules get the texts of `CANNED` (one keyword, `price`, is shared by
 `catalog` and `cart`: the collision `init reconcile` finds); any other module gets texts built
@@ -21,7 +24,10 @@ Switches (anything else on the command line is ignored, so a test can pass odd a
   --outside PATH      also write PATH (root-relative) — a write outside the staging dir
   --peers K --live D  create D/<module>, then wait (up to 10 s) until D holds K files
   --sleep S           sleep S seconds before writing
-  --pids D            write D/<pid> at the start"""
+  --pids D            write D/<pid> at the start
+  --tasks-mode MODE   eval-tasks: `unknown` (one task names `nosuch`), `partial` (the last module
+                      gets none), `invalid` (not JSON), `nothing` (no file), `fail` (exit 3),
+                      `half` (half the tasks name the next module: hit rate 0.5)"""
 import hashlib
 import json
 import os
@@ -97,7 +103,7 @@ def switches(argv: list[str]) -> dict:
     """The known `--name value` switches of argv; everything else is ignored."""
     out, known = {}, {"--record", "--stop-after", "--stop-group", "--fail", "--lines",
                       "--keywords4", "--nothing", "--outside", "--peers", "--live", "--sleep",
-                      "--pids"}
+                      "--pids", "--tasks-mode"}
     for i, arg in enumerate(argv):
         if arg in known and i + 1 < len(argv):
             out[arg[2:]] = argv[i + 1]
@@ -128,9 +134,43 @@ def call_number(opts: dict) -> int:
             n += 1
 
 
+def write_tasks(path: Path, mode: str | None) -> int:
+    """The routing tasks of every module of the staging registry next to `path`."""
+    if mode == "fail":
+        print("the task writer gave up", file=sys.stderr)
+        return 3
+    if mode == "nothing":
+        return 0
+    if mode == "invalid":
+        path.write_text("{not json", encoding="utf-8")
+        return 0
+    registry = json.loads((path.parent / "staging/registry.json").read_text(encoding="utf-8"))
+    targets = {}
+    for name, entry in registry["modules"].items():
+        targets[name] = entry["keywords"]
+        for child, sub in (entry.get("submodules") or {}).items():
+            targets[f"{name}/{child}"] = sub["keywords"]
+    names = sorted(targets)
+    if mode == "partial":
+        names = names[:-1]
+    tasks = [{"task": f"change how the {kws[i % len(kws)]} and the {kws[(i + 1) % len(kws)]} "
+                      f"work", "module": name}
+             for name in names for kws in [targets[name]] for i in range(5)]
+    if mode == "half":
+        for i, task in enumerate(tasks[:len(tasks) // 2]):
+            task["module"] = names[(names.index(task["module"]) + 1) % len(names)]
+    if mode == "unknown":
+        tasks.append({"task": "change how the nothing works", "module": "nosuch"})
+    path.write_text(json.dumps(tasks, indent=2) + "\n", encoding="utf-8")
+    return 0
+
+
 def main() -> int:
     opts = switches(sys.argv[1:])
     stdin = sys.stdin.buffer.read()  # the prompt: this fake writes from the work item alone
+    if "MODSYS_INIT_TASKS" in os.environ:
+        record(opts, "tasks", stdin)
+        return write_tasks(Path(os.environ["MODSYS_INIT_TASKS"]), opts.get("tasks-mode"))
     module = os.environ["MODSYS_INIT_MODULE"]
     staging = Path(os.environ["MODSYS_INIT_STAGING"])
     if "pids" in opts:

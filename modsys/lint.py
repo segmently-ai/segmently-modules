@@ -83,9 +83,22 @@ def _line_count(path: Path) -> int:
         return sum(1 for _ in fh)
 
 
+def component_path(token: str) -> str | None:
+    """The repository path a backticked token names (MS040's rule), else None: it holds a `/`,
+    no space, no `*` and no URL; an import alias (`@…`) or a placeholder (`<`, `{`, `[`) is not
+    a path; `path:line` and `path#L3` name `path`."""
+    if token.strip().startswith("@") or any(c in token for c in "<{["):
+        return None
+    candidate = re.split(r"[:#]", token.strip())[0]
+    if "/" in candidate and " " not in candidate and "*" not in candidate and "://" not in token:
+        return candidate
+    return None
+
+
 def lint_registry(ws, overlap: bool = True) -> list[Finding]:
     """Every registry, doc and config finding. `overlap=False` skips MS053, the one check
-    that lists every repository file — `lint --changed` would drop it anyway (module `*`)."""
+    that lists every repository file — `lint --changed` would drop it anyway (module `*`). A
+    doc is read through `ws.disk` (the overlay of `init verify`; the path itself otherwise)."""
     out: list[Finding] = []
     cfg, root, modules = ws.config, ws.root, ws.registry.modules
     statuses, relations = cfg["registry"]["statuses"], cfg["registry"]["relations"]
@@ -112,7 +125,7 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
         for key, p in _context_paths(cf):
             if not isinstance(p, str):
                 add("MS004", "error", label, f"{prefix}.{key} is not a string: {p!r}")
-            elif not (root / p).exists():
+            elif not ws.exists(p):
                 add("MS004", "error", label, f"{prefix}.{key} path missing on disk", p)
 
     declared_roles = set(cfg.get("roles") or {})
@@ -181,8 +194,8 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
     heading = cfg["lint"]["component_table_heading"]
     for name, entry in _objects(modules):
         for label, universal, roles in _docs(entry, name):
-            if isinstance(universal, str) and (root / universal).is_file():
-                n = _line_count(root / universal)
+            if isinstance(universal, str) and ws.disk(universal).is_file():
+                n = _line_count(ws.disk(universal))
                 if n > budgets["module_doc_hard_stop"]:
                     add("MS031", "error", label, f"{n} lines > hard stop "
                         f"{budgets['module_doc_hard_stop']}: split into submodules", universal)
@@ -190,24 +203,21 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
                     add("MS030", "warning", label, f"{n} lines > split signal "
                         f"{budgets['module_doc_split_signal']}", universal)
                 in_section = False
-                for line in (root / universal).read_text(encoding="utf-8",
-                                                          errors="replace").splitlines():
+                for line in ws.disk(universal).read_text(encoding="utf-8",
+                                                         errors="replace").splitlines():
                     if line.startswith("#"):
                         in_section = heading in line
                         continue
                     if not in_section or not line.startswith("|"):
                         continue
                     for token in _BACKTICK.findall(line):
-                        if token.strip().startswith("@") or any(c in token for c in "<{["):
-                            continue  # import alias or placeholder, not a repo path
-                        candidate = re.split(r"[:#]", token.strip())[0]
-                        if ("/" in candidate and " " not in candidate and "*" not in candidate
-                                and "://" not in token and not (root / candidate).exists()):
+                        candidate = component_path(token)
+                        if candidate and not ws.exists(candidate):
                             add("MS040", "warning", label,
                                 f"component path missing on disk: {candidate}", universal)
             for p in roles:
-                if isinstance(p, str) and (root / p).is_file():
-                    n = _line_count(root / p)
+                if isinstance(p, str) and ws.disk(p).is_file():
+                    n = _line_count(ws.disk(p))
                     if n > budgets["role_doc_max"]:
                         add("MS032", "warning", label,
                             f"{n} lines > role budget {budgets['role_doc_max']}", p)

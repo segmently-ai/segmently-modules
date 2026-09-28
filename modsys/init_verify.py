@@ -1,0 +1,212 @@
+"""`init eval-tasks` and `init verify` — phase 6 (D3), over the registry as `init finish` will
+write it (`modsys.init_overlay`), nothing moved.
+
+  <config_dir>/init/routing-tasks.json  the routing tasks: `init eval-tasks --executor CMD` runs
+                                        CMD once with the routing prompt on stdin and
+                                        MODSYS_INIT_TASKS = this file's absolute path (the
+                                        executor writes it), or someone writes it by hand from
+                                        `modsys eval routing --prompt`
+  <config_dir>/init/verify.json         {lint: {summary, findings}, invented, routing,
+                                        staging_sha256, passed}
+
+Verify runs three checks: lint (clean = no error and no warning; info is fine), the invented-
+component check over the new modules' staging docs, and the routing eval when the tasks file
+exists (`routing: null` — "not measured" — otherwise). The invented-component check: every
+backticked repository path (MS040's rule: holds a `/`, no space, no `*`, no URL, no `<`, `{`,
+`[` or leading `@`; `:line` and `#L…` cut) exists — the staging docs count at their final
+paths —, and in a table whose header has a `Symbol` or `Name` column, a cell holding one
+backticked identifier names a symbol that occurs, as a whole identifier, in the file of the
+row's `Path` (or `File`) column; fenced code blocks and HTML comments are skipped.
+`staging_sha256` pins what was verified: `init finish` refuses a staging tree that changed."""
+import hashlib
+import json
+import re
+import subprocess
+from dataclasses import asdict
+
+from modsys.eval_cmd import PER_MODULE, load_tasks, routing, routing_prompt
+from modsys.changes import target_names
+from modsys.init_overlay import overlay_workspace
+from modsys.init_run import tail
+from modsys.lint import component_path, lint_registry, severity_counts
+from modsys.output import UsageError
+from modsys.store import serialize
+
+_BACKTICK = re.compile(r"`([^`\n]+)`")
+_FENCE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
+_SYMBOL = re.compile(r"`([A-Za-z_$][\w$]*)`")
+_SEPARATOR = re.compile(r"^\s*\|?(\s*:?-{3,}:?\s*\|)+\s*:?-*:?\s*$")
+TASKS = "routing-tasks.json"
+
+
+def tree_sha(path) -> str:
+    """sha256 over every file below `path`: its relative path and its bytes, sorted."""
+    h = hashlib.sha256()
+    for p in sorted(path.rglob("*")) if path.is_dir() else []:
+        if p.is_file() and not p.is_symlink():
+            h.update(p.relative_to(path).as_posix().encode("utf-8") + b"\0" + p.read_bytes()
+                     + b"\0")
+    return h.hexdigest()
+
+
+def cells(line: str) -> list[str]:
+    body = line.strip()
+    body = body[1:] if body.startswith("|") else body
+    body = body[:-1] if body.endswith("|") else body
+    return [c.strip() for c in body.split("|")]
+
+
+def invented(ws, docs: dict) -> list[dict]:
+    """{doc, line, kind: path | symbol | no-file, token} for every component a doc names that
+    is not there; `docs` = {final path: the file to read}."""
+    out = []
+    for rel, path in sorted(docs.items()):
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        fence, comment, header = None, False, None
+        for n, raw in enumerate(lines, 1):
+            m = _FENCE.match(raw)
+            if fence:
+                if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence):
+                    fence = None
+                continue
+            if m:
+                fence = m.group(1)
+                continue
+            text, rest = "", raw
+            while rest:  # the parts of the line outside HTML comments
+                if comment:
+                    end = rest.find("-->")
+                    if end < 0:
+                        rest = ""
+                    else:
+                        comment, rest = False, rest[end + 3:]
+                else:
+                    start = rest.find("<!--")
+                    if start < 0:
+                        text, rest = text + rest, ""
+                    else:
+                        text, rest, comment = text + rest[:start], rest[start + 4:], True
+            for token in _BACKTICK.findall(text):
+                target = component_path(token)
+                if target and not ws.exists(target):
+                    out.append({"doc": rel, "line": n, "kind": "path", "token": target})
+            if not text.lstrip().startswith("|"):
+                header = None
+                continue
+            if _SEPARATOR.match(text):
+                continue
+            if n < len(lines) and _SEPARATOR.match(lines[n]):  # the header of a table
+                names = [c.lower() for c in cells(text)]
+                header = (next((i for i, c in enumerate(names) if c in ("symbol", "name")), None),
+                          next((i for i, c in enumerate(names) if c in ("path", "file")), None))
+                continue
+            if header is None or header[0] is None:
+                continue
+            row = cells(text)
+            symbol = _SYMBOL.fullmatch(row[header[0]]) if header[0] < len(row) else None
+            if not symbol:
+                continue
+            cell = row[header[1]] if header[1] is not None and header[1] < len(row) else ""
+            target = next((p for t in _BACKTICK.findall(cell) if (p := component_path(t))), None)
+            if target and ws.exists(target) and not ws.disk(target).is_file():
+                target = None  # a directory: no file to check
+            if target is None:
+                out.append({"doc": rel, "line": n, "kind": "no-file", "token": symbol.group(1)})
+            elif ws.exists(target):
+                source = ws.disk(target).read_text(encoding="utf-8", errors="replace")
+                if not re.search(rf"(?<![\w$]){re.escape(symbol.group(1))}(?![\w$])", source):
+                    out.append({"doc": rel, "line": n, "kind": "symbol",
+                                "token": symbol.group(1)})
+    return sorted(out, key=lambda f: (f["doc"], f["line"], f["kind"], f["token"]))
+
+
+class Verify:
+    def __init__(self, work):
+        self.work, self.flow = work, work.flow
+        self.tasks_path = self.flow.work / TASKS
+        self.verify_path = self.flow.work / "verify.json"
+
+    def require_reconcile(self) -> dict:
+        state = self.work.require_fanout(self.flow.load_state())
+        if state["phases"]["reconcile"]["status"] != "done" or \
+                not (self.work.staging / "registry.json").is_file():
+            raise UsageError("reconcile has not run — run modsys init reconcile first")
+        return state
+
+    def overlay(self, state: dict):
+        return overlay_workspace(self.flow, self.work, state)
+
+    def eval_tasks(self, argv: list[str], force: bool) -> dict:
+        """Run the executor once on the routing prompt; it writes the tasks file."""
+        state = self.require_reconcile()
+        rel = self.flow.rel(self.tasks_path)
+        if self.tasks_path.exists() and not force:
+            return {"file": rel, "status": "exists", "tasks": None, "per_module": None,
+                    "problems": [], "state": state}
+        ws = self.overlay(state)
+        modules, prompt = routing_prompt(ws, PER_MODULE)
+        self.flow.mark(state, "eval-tasks", "running")
+        try:
+            self.tasks_path.unlink(missing_ok=True)
+        except OSError as e:
+            raise UsageError(f"cannot write {rel}: {e.strerror or e}") from None
+        env = {**__import__("os").environ, "MODSYS_INIT_TASKS": str(self.tasks_path)}
+        try:
+            proc = subprocess.run(argv, input=prompt.encode("utf-8"), stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.PIPE, cwd=self.flow.root, env=env)
+        except OSError as e:
+            raise UsageError(f"executor {argv[0]} cannot run: {e.strerror or e}") from None
+        problems = []
+        if proc.returncode != 0:
+            problems.append(f"the executor exited {proc.returncode}: {tail(proc.stderr)}")
+        elif not self.tasks_path.is_file():
+            problems.append(f"{TASKS}: not written")
+        else:
+            problems += self.task_problems(set(modules))
+        if problems:
+            return {"file": rel, "status": "failed", "tasks": None, "per_module": None,
+                    "problems": problems, "state": state}
+        tasks = json.loads(self.tasks_path.read_text(encoding="utf-8"))
+        self.flow.mark(state, "eval-tasks", "done",
+                       self.flow.sha(self.tasks_path.read_text(encoding="utf-8")))
+        per = {m: sum(t["module"] == m for t in tasks) for m in modules}
+        return {"file": rel, "status": "written", "tasks": len(tasks), "per_module": per,
+                "problems": [], "state": state}
+
+    def task_problems(self, modules: set[str]) -> list[str]:
+        try:
+            tasks = json.loads(self.tasks_path.read_bytes().decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return [f"{TASKS}: invalid JSON"]
+        if not isinstance(tasks, list) or not tasks:
+            return [f"{TASKS}: not a non-empty list of {{task, module}} objects"]
+        out = [f"{TASKS}: task #{i} is not a {{task, module}} object"
+               for i, t in enumerate(tasks, 1)
+               if not isinstance(t, dict) or not isinstance(t.get("task"), str)
+               or not t["task"].strip() or not isinstance(t.get("module"), str)]
+        if out:
+            return out
+        named = {t["module"] for t in tasks}
+        out += [f"unknown module '{m}'" for m in sorted(named - modules)]
+        out += [f"no task for module '{m}'" for m in sorted(modules - named)]
+        return out
+
+    def run(self) -> dict:
+        state = self.require_reconcile()
+        ws = self.overlay(state)
+        findings = lint_registry(ws)
+        lint = {"summary": severity_counts(findings), "findings": [asdict(f) for f in findings]}
+        routed = None
+        if self.tasks_path.is_file():
+            tasks = load_tasks(self.tasks_path, target_names(ws.registry.modules))
+            routed = routing(ws, tasks, 3, ws.config["init"]["routing_min_hit_rate"])
+        found = invented(ws, ws.overlay)
+        clean = not (lint["summary"]["error"] or lint["summary"]["warning"])
+        doc = {"lint": lint, "invented": found, "routing": routed,
+               "staging_sha256": tree_sha(self.work.staging),
+               "passed": clean and not found and (routed is None or routed["passed"])}
+        self.flow.mark(state, "verify", "running")
+        text = serialize(doc)
+        self.flow.write(self.verify_path, text)
+        self.flow.mark(state, "verify", "done", self.flow.sha(text))
+        return {**doc, "state": state}

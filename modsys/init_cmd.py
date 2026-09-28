@@ -9,7 +9,8 @@ Actions (`modsys.init_flow`, `modsys.init_work`): `map` (the starter files that 
 then preflight and map; stops at gate 3), `confirm` (gate 3), `status`, `resume`, `fanout` (one
 work item per confirmed module), `next` (claim one), `done MODULE` (check its staging output),
 `run --executor CMD` (every pending item through one command), `reconcile` (the staging
-registry) — one envelope `modsys.init/1` each."""
+registry), `eval-tasks --executor CMD` (the routing tasks), `verify` (lint, invented components,
+routing) — one envelope `modsys.init/1` each."""
 import subprocess
 import sys
 from pathlib import Path
@@ -132,17 +133,18 @@ def starter_config(layout: str) -> str:
     return _HEADER + _PATHS[layout] + _BODY
 
 
-ACTIONS = ("map", "confirm", "status", "resume", "fanout", "next", "done", "run", "reconcile")
-FORCE_ACTIONS = ("reconcile",)
-EXECUTOR_ACTIONS = ("run", "resume")
+ACTIONS = ("map", "confirm", "status", "resume", "fanout", "next", "done", "run", "reconcile",
+           "eval-tasks", "verify")
+FORCE_ACTIONS = ("reconcile", "eval-tasks")
+EXECUTOR_ACTIONS = ("run", "resume", "eval-tasks")
 NON_INTERACTIVE_ACTIONS = ("run", "resume")  # the others never prompt: no flag (SI-25)
 
 
 def register(sub, common) -> None:
     p = sub.add_parser("init", parents=[common],
                        help="set up modsys here: starter config, empty registry, .gitignore lines "
-                            "(map|confirm|fanout|next|done|run|reconcile|status|resume: start "
-                            "from existing code)",
+                            "(map|confirm|fanout|next|done|run|reconcile|eval-tasks|verify|"
+                            "status|resume: start from existing code)",
                        description="Without an action: the starter config, an empty registry and "
                                    "the .gitignore lines. map: those, then preflight and map of "
                                    "the existing code into <config_dir>/init/proposal.json "
@@ -154,21 +156,25 @@ def register(sub, common) -> None:
                                    "files written into its staging directory. run --executor "
                                    "CMD: run every pending item through CMD ([init] "
                                    "max_parallel at a time). reconcile: the staging registry — "
-                                   "edges, keyword collisions, duplicates. status: the phases, "
-                                   "the modules and the next step. resume: re-run an "
-                                   "interrupted phase and continue.")
+                                   "edges, keyword collisions, duplicates. eval-tasks --executor "
+                                   "CMD: CMD writes the routing tasks from the routing prompt. "
+                                   "verify: lint, invented components and the routing hit rate "
+                                   "over the staging tree. status: the phases, the modules and "
+                                   "the next step. resume: re-run an interrupted phase and "
+                                   "continue.")
     p.add_argument("action", nargs="?", metavar="ACTION",
                    help=f"{', '.join(ACTIONS)} (none: the starter files only)")
     p.add_argument("module", nargs="?", metavar="MODULE",
                    help="done: the module whose staging output to check")
     p.add_argument("--executor", metavar="CMD",
-                   help="run, resume: the command that writes one module's docs (split like a "
-                        "shell line, never run by a shell; stdin: the prompt)")
+                   help="run, resume, eval-tasks: the command that writes one module's docs, or "
+                        "the routing tasks (split like a shell line, never run by a shell; "
+                        "stdin: the prompt)")
     p.add_argument("--non-interactive", action="store_true",
                    help="run, resume: never wait for a person")
     p.add_argument("--force", action="store_true",
                    help="reconcile: rebuild the staging registry from entry.json, discarding "
-                        "edits made to it")
+                        "edits made to it; eval-tasks: write the tasks again")
     p.add_argument("--layout", choices=REGISTRY_LAYOUTS,
                    help="registry layout for a new setup (default: the configured one, else single)")
     p.add_argument("--dry-run", action="store_true", help="report what would change, write nothing")
@@ -295,8 +301,8 @@ def _check_flags(args) -> None:
         raise UsageError("init done needs the MODULE whose staging output to check")
     if args.module and action != "done":
         raise UsageError(f"init {action or '(no action)'} takes no MODULE")
-    if action == "run" and args.executor is None:
-        raise UsageError('init run needs --executor "<command>"')
+    if action in ("run", "eval-tasks") and args.executor is None:
+        raise UsageError(f'init {action} needs --executor "<command>"')
     if args.executor is not None and action not in EXECUTOR_ACTIONS:
         raise UsageError(f"--executor works with {', '.join(f'init {a}' for a in EXECUTOR_ACTIONS)}")
     if args.force and action not in FORCE_ACTIONS:
@@ -308,7 +314,7 @@ def _check_flags(args) -> None:
     if args.layout and action not in (None, "map"):
         raise UsageError(f"--layout works with plain init and init map, not init {action}")
     if args.dry_run and action in ("status", "resume", "fanout", "next", "done", "run",
-                                   "reconcile"):
+                                   "reconcile", "eval-tasks", "verify"):
         raise UsageError(f"init {action} takes no --dry-run (it never writes)"
                          if action == "status" else f"init {action} takes no --dry-run")
 
@@ -410,6 +416,27 @@ def run_action(args, root: Path, config_dir: Path) -> int:
                 "next": flow.next_step(state, work)}
         emit("init", data, args.json, _render_reconcile)
         return EXIT_OK
+    if args.action in ("eval-tasks", "verify"):
+        from modsys.init_verify import Verify
+        check = Verify(phase4)
+        if args.action == "eval-tasks":
+            result = check.eval_tasks(executor_argv(args.executor, root), args.force)
+            state = result.pop("state")
+            problems = result.pop("problems")
+            for problem in problems:
+                print(f"modsys: eval-tasks: {problem}", file=sys.stderr)
+            message = ("routing tasks exist — --force to regenerate"
+                       if result["status"] == "exists" else None)
+            data = {"action": "eval-tasks", **result, "message": message,
+                    "next": flow.next_step(flow.load_state(), work)}
+            emit("init", data, args.json, _render_eval_tasks)
+            return EXIT_FINDINGS if problems else EXIT_OK
+        result = check.run()
+        state = result.pop("state")
+        data = {"action": "verify", "verify": f"{work}/verify.json", **result,
+                "next": flow.next_step(flow.load_state(), work)}
+        emit("init", data, args.json, _render_verify)
+        return EXIT_OK if result["passed"] else EXIT_FINDINGS
     if args.action == "run":
         runner = Runner(phase4, executor_argv(args.executor, root))
         phase4.reset()
@@ -474,6 +501,42 @@ def _render_run(d) -> None:
     c = d["counts"]
     print(f"modules  {c['done']} done, {c['running']} running, {c['pending']} pending, "
           f"{c['failed']} failed")
+    print(f"next: {d['next']}")
+
+
+def _render_eval_tasks(d) -> None:
+    if d["status"] == "exists":
+        print(f"{d['message']} ({d['file']})")
+    elif d["status"] == "written":
+        print(f"wrote         {d['file']} ({d['tasks']} task(s), "
+              f"{len(d['per_module'])} module(s))")
+    else:
+        print(f"not written   {d['file']} (the problems are on stderr)")
+    print(f"next: {d['next']}")
+
+
+def _render_verify(d) -> None:
+    s = d["lint"]["summary"]
+    print(f"lint          {s['error']} error(s), {s['warning']} warning(s), {s['info']} info")
+    for f in d["lint"]["findings"]:
+        if f["severity"] != "info":
+            print(f"  {f['severity']:<8} {f['code']} {f['module']}: {f['message']}")
+    print(f"invented      {len(d['invented'])} component(s)")
+    for f in d["invented"]:
+        what = {"path": "path does not exist", "symbol": "symbol not found in its row's file",
+                "no-file": "no file to check"}[f["kind"]]
+        print(f"  {f['doc']}:{f['line']}: {what}: {f['token']}")
+    if d["routing"] is None:
+        print("routing: not measured")
+    else:
+        r = d["routing"]
+        print(f"routing       hit rate {r['hit_rate']} ({r['hits']}/{r['tasks']}, top "
+              f"{r['top']}; threshold {r['min_hit_rate']})")
+        for row in r["per_module"]:
+            for miss in row["misses"]:
+                print(f"  miss  {row['module']}: \"{miss['task']}\" → "
+                      f"{', '.join(miss['got']) or '(no module)'}")
+    print(f"{'passed' if d['passed'] else 'FAILED':<13} {d['verify']}")
     print(f"next: {d['next']}")
 
 

@@ -15,7 +15,8 @@ The work directory is `<config_dir>/init/` (git-ignored by `modsys init`):
   confirmed.json  gate 3: the validated proposal, frozen by `init confirm` (refused once the
                   fan-out has started: `init map --restart` changes the module set)
   work/, staging/ phase 4 (`modsys.init_work`); staging/registry.json and reconcile.json:
-                  phase 5 (`modsys.init_reconcile`)
+                  phase 5 (`modsys.init_reconcile`); routing-tasks.json, verify.json: phase 6
+                  (`modsys.init_verify`)
 Every write is a temp file + an atomic rename, so an interrupted phase leaves no partial output:
 a phase whose status is not `done` re-runs from its start (`init resume`, or `init map` again).
 `map` and `confirm` never prompt."""
@@ -39,7 +40,8 @@ STATE_SCHEMA = "modsys.init-state/1"
 PHASES = ("preflight", "map", "gate-map", "fanout", "reconcile", "eval-tasks", "verify",
           "finish")
 OUTPUTS = {"preflight": "preflight.json", "map": "proposal.json", "gate-map": "confirmed.json",
-           "reconcile": "reconcile.json"}
+           "reconcile": "reconcile.json", "eval-tasks": "routing-tasks.json",
+           "verify": "verify.json"}
 TEST_STOP = "MODSYS_INIT_TEST_STOP"  # test seam: "<phase>" or "<phase>:renamed"
 RESTART = "modsys init map --restart"
 STATUSES = ("pending", "running", "done")
@@ -226,8 +228,7 @@ class InitFlow:
             entry.update(status="done", finished_at=utc_now(), sha256=sha)
         self.save_state(state)
 
-    @staticmethod
-    def next_step(state: dict | None, work_rel: str) -> str:
+    def next_step(self, state: dict | None, work_rel: str) -> str:
         if state is None:
             return "run modsys init map"
         phases = state["phases"]
@@ -259,8 +260,22 @@ class InitFlow:
         if phases["reconcile"]["status"] != "done":
             return ("every module is done: modsys init reconcile builds the staging registry "
                     "(edges, keyword collisions, duplicates)")
-        return (f"reconcile done: the items to judge are in {work_rel}/reconcile.json "
-                f"(judgement)")
+        if phases["verify"]["status"] != "done":
+            if not (self.work / "routing-tasks.json").is_file():
+                return (f"routing tasks: modsys init eval-tasks --executor \"<command>\", or "
+                        f"write {work_rel}/routing-tasks.json from modsys eval routing --prompt "
+                        f"(the judgement items: {work_rel}/reconcile.json); then modsys init "
+                        f"verify — without tasks it reports routing: not measured")
+            return ("modsys init verify: lint, the invented-component check and the routing "
+                    "hit rate over the staging tree")
+        try:
+            passed = json.loads((self.work / "verify.json").read_text(encoding="utf-8"))["passed"]
+        except (OSError, ValueError, KeyError, TypeError):
+            passed = False
+        if passed:
+            return f"gate 7: a person reads {work_rel}/verify.json and decides"
+        return (f"verify failed ({work_rel}/verify.json): fix the staging docs or keywords (never "
+                f"the tasks), then modsys init verify")
 
     # --- phases -------------------------------------------------------------------------
 
