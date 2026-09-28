@@ -30,8 +30,8 @@ modsys CLI of THIS checkout (`python -m modsys`, the checkout on PYTHONPATH):
               tree outside .modsys/ is byte-identical to the start
   init-map    the bookshop_monorepo fixture with its built history -> init -> init map (seven
               candidates) -> exclude one, rename one in proposal.json -> init confirm -> init
-              status: gate 3 passed -> init resume exits 1 (phase 4 comes later) -> a fresh copy:
-              init map stopped by the test seam -> init resume -> the same outputs
+              status: gate 3 passed -> init resume runs the fan-out -> a fresh copy: init map
+              stopped by the test seam -> init resume -> the same outputs
 
 Every step asserts an exit code and a data check. Prints the scorecard JSON
 {scenario: {steps: [{name, ok, detail}], commands, ok}} (commands = modsys invocations) and
@@ -790,7 +790,6 @@ def monorepo_builder():
 
 CANDIDATES = ["storefront", "cart", "catalog", "ui-kit", "payments", "recommendations",
               "tools"]
-NO_P4 = "phase 4 (fan-out) is not available in this engine version"
 
 
 def init_map(sc: Scenario) -> None:
@@ -831,8 +830,9 @@ def init_map(sc: Scenario) -> None:
         check("gate 3 passed" in data["next"], f"status {data['next']}")
 
     def resume():
-        data, _ = sc.modsys("init", "resume", expect=1)
-        check(data["message"] == NO_P4, f"resume {data['message']}")
+        data, _ = sc.modsys("init", "resume")
+        check(data["ran"] == ["fanout"] and (work / "work/design-kit.json").is_file(),
+              f"resume {data}")
 
     def interrupted():
         fresh = sc.root.parent / "fresh"
@@ -851,7 +851,7 @@ def init_map(sc: Scenario) -> None:
                      ("init map: seven candidates", map_it),
                      ("exclude one candidate, rename another", edit),
                      ("init confirm", confirm), ("init status: gate 3 passed", status),
-                     ("init resume: phase 4 comes later (exit 1)", resume),
+                     ("init resume: the fan-out writes the work items", resume),
                      ("an interrupted init map, then init resume: the same outputs",
                       interrupted)]:
         sc.step(name, fn)

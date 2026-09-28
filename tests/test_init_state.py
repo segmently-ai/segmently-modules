@@ -14,7 +14,8 @@ from pathlib import Path
 from unittest import mock
 
 from modsys import __version__
-from modsys.init_flow import NO_P4, TEST_STOP, InitFlow
+from modsys.init_cmd import ACTIONS
+from modsys.init_flow import PHASES, TEST_STOP, InitFlow
 from tests.helpers import git, run, run_json
 
 ENGINE = Path(__file__).resolve().parents[1]
@@ -89,7 +90,9 @@ class ValidTransitionsTest(InitRepo):  # P5A-AC-025
         before = snapshot(self.root)
         data = self.init("status")  # row 0
         self.assertEqual(data, {"action": "status", "phase": None, "phases": {},
-                                "next": "run modsys init map"})
+                                "next": "run modsys init map", "modules": {},  # P5B-AC-027
+                                "counts": {"pending": 0, "running": 0, "done": 0, "failed": 0},
+                                "pr": None})
         self.assertEqual(snapshot(self.root), before)
         data = self.init("map")  # row 1
         self.assertEqual([(f["path"], f["status"]) for f in data["files"]],
@@ -118,16 +121,15 @@ class ValidTransitionsTest(InitRepo):  # P5A-AC-025
         self.assertEqual((self.state()["phase"], self.statuses()), ("gate-map", ("done",) * 3))
         data = self.init("status")  # row 6
         self.assertIn("gate 3 passed", data["next"])
-        self.assertIn("phase 4 (fan-out) comes with a later engine version", data["next"])
-        state = (self.work / "state.json").read_bytes()
-        data = self.init("resume", code=1)  # row 7
-        self.assertEqual((data["message"], data["ran"]), (NO_P4, []))
-        self.assertEqual((self.work / "state.json").read_bytes(), state)
+        self.assertIn("modsys init fanout", data["next"])  # P5B-AC-026: phase 4 exists now
         confirmed = (self.work / "confirmed.json").read_bytes()
         self.assertEqual(self.init("confirm")["status"], "unchanged")  # row 8
         self.assertEqual((self.work / "confirmed.json").read_bytes(), confirmed)
         self.edit_proposal(lambda c: c[2].update(name="zed"))
         self.assertEqual(self.init("confirm")["status"], "updated")  # row 9
+        data = self.init("resume")  # row 7, after gate 3: the fan-out runs (P5B-AC-026)
+        self.assertEqual((data["message"], data["ran"]), (None, ["fanout"]))
+        self.assertIn("modsys init next", data["next"])
         self.init("map", "--restart")  # row 10
         self.assertFalse((self.work / "confirmed.json").exists())
         self.assertEqual(self.outputs(), first)
@@ -141,7 +143,7 @@ class ValidTransitionsTest(InitRepo):  # P5A-AC-025
                                       "modules"})
         self.assertEqual((state["schema"], state["engine"], state["modules"]),
                          ("modsys.init-state/1", __version__, {}))
-        self.assertEqual(list(state["phases"]), ["preflight", "map", "gate-map"])
+        self.assertEqual(list(state["phases"]), list(PHASES))  # P5b: eight phases
         self.assertTrue(ISO.match(state["started_at"]))
         for phase, entry in state["phases"].items():
             self.assertEqual(set(entry), {"status", "started_at", "finished_at", "sha256"})
@@ -199,24 +201,30 @@ class InvalidTransitionsTest(InitRepo):  # P5A-AC-026
             with self.subTest(dry_run=action):
                 self.assertIn("--dry-run", self.refused(action, "--dry-run"))
         err = self.refused("bogus")
-        self.assertIn("unknown init action 'bogus' (actions: map, confirm, status, resume)", err)
+        self.assertIn(f"unknown init action 'bogus' (actions: {', '.join(ACTIONS)})", err)
         self.assertIn("--layout works with plain init and init map",
                       self.refused("status", "--layout", "single"))
 
 
 class StateEntriesTest(InitRepo):  # P5A-AC-026: a later engine's phases, damaged entries
-    def test_a_state_without_a_phase_a_later_engine_appends(self):
+    def test_a_state_without_a_phase_a_later_engine_appends(self):  # P5B: a P5a-era state
         self.init("map")
+        state = self.state()
+        state["phases"] = {p: state["phases"][p] for p in ("preflight", "map", "gate-map")}
+        (self.work / "state.json").write_text(json.dumps(state, indent=2) + "\n")
         before = (self.work / "state.json").read_bytes()
-        with mock.patch("modsys.init_flow.PHASES", ("preflight", "map", "gate-map", "fanout")):
-            self.assertEqual(self.init("status")["phases"], {
-                "preflight": "done", "map": "done", "gate-map": "pending", "fanout": "pending"})
-            self.assertEqual((self.work / "state.json").read_bytes(), before)
-            self.assertEqual(self.init("confirm")["status"], "confirmed")
+        later = dict.fromkeys(PHASES[3:], "pending")
+        self.assertEqual(self.init("status")["phases"], {
+            "preflight": "done", "map": "done", "gate-map": "pending", **later})
+        self.assertEqual((self.work / "state.json").read_bytes(), before)
+        self.assertEqual(self.init("confirm")["status"], "confirmed")
         self.assertEqual(self.state()["phases"]["fanout"], {
             "status": "pending", "started_at": None, "finished_at": None, "sha256": None})
-        self.assertEqual(self.init("status")["phases"], {  # an unknown phase key is ignored
-            "preflight": "done", "map": "done", "gate-map": "done"})
+        state = self.state()
+        state["phases"]["later-phase"] = {"status": "done"}
+        (self.work / "state.json").write_text(json.dumps(state))
+        self.assertEqual(list(self.init("status")["phases"]), list(PHASES))  # unknown: ignored
+        self.assertEqual(self.init("resume")["ran"], ["fanout"])
 
     def test_a_missing_earlier_phase_or_a_damaged_entry(self):
         self.init("map")
@@ -347,20 +355,22 @@ class ActionDataTest(InitRepo):  # P5A-AC-029
                                          "dry_run"})
             self.assertFalse((self.work / "confirmed.json").exists())
             self.init("confirm")
-        self.assertEqual(set(self.init("status")), {"action", "phase", "phases", "next"})
-        self.assertEqual(set(self.init("resume", code=1)), {"action", "ran", "phase", "next",
-                                                            "message"})
+        self.assertEqual(set(self.init("status")), {"action", "phase", "phases", "next",
+                                                    "modules", "counts", "pr"})  # P5B-AC-027
+        self.assertEqual(set(self.init("resume")), {"action", "ran", "phase", "next",
+                                                    "message"})
         self.assertEqual(set(self.init()), {"root", "layout", "files", "dry_run"})
 
     def test_text_output(self):
         self.init("map")
         out = run("init", "status", *self.R)[1].splitlines()
         self.assertEqual(out[:3], ["preflight  done", "map        done", "gate-map   pending"])
-        self.assertTrue(out[3].startswith("next: gate 3: edit "))
+        self.assertEqual(out[3:8], [f"{p:<10} pending" for p in PHASES[3:]])  # P5B-AC-027
+        self.assertTrue(out[8].startswith("next: gate 3: edit "))
         self.init("confirm")
         code, out, err = run("init", "resume", *self.R)
-        self.assertEqual((code, err), (1, ""))
-        self.assertIn(NO_P4, out.splitlines())
+        self.assertEqual((code, err), (0, ""))  # P5B-AC-026: the fan-out runs
+        self.assertEqual(out.splitlines()[0], "ran           fanout")
 
 
     def test_a_note_when_code_stays_outside_the_manifest_units(self):  # P5B-AC-043 (SI-26)
@@ -467,6 +477,24 @@ class WritesAndRacesTest(InitRepo):  # P5A-AC-044 (init)
         finally:
             os.chmod(self.work, 0o755)
         self.assertEqual(self.temps(), [])
+
+
+class ReconfirmTest(InitRepo):  # P5B-AC-050 (P5a SI-13)
+    def test_the_module_set_is_fixed_once_the_fan_out_started(self):
+        self.init("map")
+        self.init("confirm")
+        self.edit_proposal(lambda c: c[0].update(name="ex"))
+        self.assertEqual(self.init("confirm")["status"], "updated")  # fan-out pending: allowed
+        self.init("fanout")
+        files = ("confirmed.json", "state.json", "work/ex.json")
+        before = {f: (self.work / f).read_bytes() for f in files}
+        message = "the fan-out has started — to change the module set: modsys init map --restart"
+        for change in (None, lambda c: c[1].update(include=False)):
+            with self.subTest(edited=change is not None):
+                if change:
+                    self.edit_proposal(change)
+                self.assertIn(message, self.refused("confirm"))
+        self.assertEqual({f: (self.work / f).read_bytes() for f in files}, before)
 
 
 class InitContractTest(InitRepo):  # P5A-AC-046 (init)

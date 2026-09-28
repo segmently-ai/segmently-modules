@@ -1,8 +1,10 @@
 """`modsys templates`: which template file each generated doc comes from, and a copy-once
 override.
 
-  list               `MODULE.md`, `roles/<role>.md` of every enabled role (config order) and
-                     `agents-md.md`, each with the layer that wins (`resolve_template_source`)
+  list               `MODULE.md`, `roles/<role>.md` of every enabled role (config order),
+                     `agents-md.md` and the two `init` prompts (`init/module_prompt.md`,
+                     `init/routing_prompt.md`), each with the layer that wins
+                     (`resolve_template_source`)
   override TEMPLATE  copy the winning template's text to
                      `<config_dir>/overrides/templates/TEMPLATE`, where it wins from then on;
                      an existing override is never replaced (edit it instead)"""
@@ -15,13 +17,16 @@ from modsys.output import EXIT_OK, UsageError, emit
 from modsys.workspace import Workspace
 
 ACTIONS = ("list", "override")
+INIT_PROMPTS = ("init/module_prompt.md", "init/routing_prompt.md")  # `init` renders them
 
 
 def register(sub, common) -> None:
     p = sub.add_parser("templates", parents=[common],
                        help="list the templates docs are rendered from, or copy one to edit it",
-                       description="list: MODULE.md, roles/<role>.md of every enabled role and "
-                                   "agents-md.md, each with the layer that wins (override, "
+                       description="list: MODULE.md, roles/<role>.md of every enabled role, "
+                                   "agents-md.md and the init prompts (init/module_prompt.md, "
+                                   "init/routing_prompt.md), each with the layer that wins "
+                                   "(override, "
                                    "role-template:<pack>, pack:<pack>, engine, "
                                    "engine-fallback) and its file. override TEMPLATE: copy "
                                    "the winning template to <config_dir>/overrides/templates/"
@@ -38,7 +43,7 @@ def register(sub, common) -> None:
 def template_rows(ws) -> list[dict]:
     """[{template, role, source, path}] in the order `templates list` prints them."""
     wanted = ([("MODULE.md", None)] + [(f"roles/{r}.md", r) for r in enabled_roles(ws.config)]
-              + [("agents-md.md", None)])
+              + [("agents-md.md", None)] + [(t, None) for t in INIT_PROMPTS])
     rows = []
     for template, role in wanted:
         source, path = resolve_template_source(ws, template, role)

@@ -24,10 +24,9 @@ class P5aDocsTest(unittest.TestCase):  # P5A-AC-042
                        "{action, root, files: [{path, status}], preflight, proposal, "
                        "candidates: [name], unassigned, hints, phase, next, dry_run}",
                        "{action, confirmed, included: [name], excluded: [name], status, dry_run}",
-                       "{action, phase, phases: {phase: status}, next}",
+                       "{action, phase, phases: {phase: status}, next, modules",
                        "{action, ran: [phase], phase, next, message}",
-                       "phase 4 (fan-out) is not available in this engine version",
-                       "`init resume` after gate 3", "`<config_dir>/init/`",
+                       "`<config_dir>/init/`",
                        "`<config_dir>/adopt.proposed.toml`",
                        "only `modsys eject <skill> --rebase` rewrites it",
                        "`create NAME` | `{module, files, entry, warnings, dry_run}`",

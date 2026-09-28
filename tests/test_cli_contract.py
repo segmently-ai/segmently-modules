@@ -84,7 +84,8 @@ class CliContractTest(unittest.TestCase):
     def test_the_init_actions(self):  # P5A-AC-029, P5A-AC-042: on a repository without modules
         keys = {"map": {"action", "root", "files", "preflight", "proposal", "candidates",
                         "unassigned", "hints", "phase", "next", "dry_run"},
-                "status": {"action", "phase", "phases", "next"},
+                "status": {"action", "phase", "phases", "next", "modules", "counts",
+                           "pr"},  # P5B-AC-027
                 "resume": {"action", "ran", "phase", "next", "message"},
                 "confirm": {"action", "confirmed", "included", "excluded", "status",
                             "dry_run"}}

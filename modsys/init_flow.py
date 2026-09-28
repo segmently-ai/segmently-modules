@@ -1,19 +1,23 @@
-"""`modsys init map|confirm|status|resume`: start from existing code — the init state machine.
+"""`modsys init map|confirm|status|resume|…`: start from existing code — the init state machine.
 
 The work directory is `<config_dir>/init/` (git-ignored by `modsys init`):
   state.json      {schema: "modsys.init-state/1", engine, started_at, phase, phases: {preflight,
-                  map, gate-map: {status: pending|running|done, started_at, finished_at,
-                  sha256}}, modules: {}} — `phase` = the phase most recently started; `sha256` =
-                  the phase's output as written (map's is how an edited proposal is recognised).
-                  A state that lacks phases at the end of `PHASES` (written by an engine that
-                  had fewer) reads them as pending; unknown phase keys are ignored
+                  map, gate-map, fanout, reconcile, eval-tasks, verify, finish: {status:
+                  pending|running|done, started_at, finished_at, sha256}}, modules: {<module>:
+                  {status: pending|running|done|failed, attempts, error, existing?}}} — `phase` =
+                  the phase most recently started; `sha256` = the phase's output as written
+                  (map's is how an edited proposal is recognised). A state that lacks phases at
+                  the end of `PHASES` (written by an engine that had fewer: P5a wrote three)
+                  reads them as pending; unknown phase and state keys are ignored
+  state.json.lock the advisory lock every read-modify-write of the state takes
   preflight.json  phase 1 (`modsys.preflight`)
   proposal.json   phase 2 (`modsys.mapper`) — edit it at gate 3: `include`, `name`, `paths`
-  confirmed.json  gate 3: the validated proposal, frozen by `init confirm`
+  confirmed.json  gate 3: the validated proposal, frozen by `init confirm` (refused once the
+                  fan-out has started: `init map --restart` changes the module set)
+  work/, staging/ phase 4 (`modsys.init_work`)
 Every write is a temp file + an atomic rename, so an interrupted phase leaves no partial output:
 a phase whose status is not `done` re-runs from its start (`init resume`, or `init map` again).
-Phase 4 (fan-out) and later arrive with a later engine version; `map` and `confirm` never
-prompt."""
+`map` and `confirm` never prompt."""
 import contextlib
 import hashlib
 import json
@@ -28,16 +32,18 @@ from modsys.changes import glob_to_regex
 from modsys.create import NAME
 from modsys.output import UsageError
 from modsys.registry import load_registry
-from modsys.store import serialize, utc_now
+from modsys.store import DEFAULT_LOCK_TIMEOUT_S, file_lock, serialize, utc_now
 
 STATE_SCHEMA = "modsys.init-state/1"
-PHASES = ("preflight", "map", "gate-map")
+PHASES = ("preflight", "map", "gate-map", "fanout", "reconcile", "eval-tasks", "verify",
+          "finish")
 OUTPUTS = {"preflight": "preflight.json", "map": "proposal.json", "gate-map": "confirmed.json"}
 TEST_STOP = "MODSYS_INIT_TEST_STOP"  # test seam: "<phase>" or "<phase>:renamed"
-NO_P4 = "phase 4 (fan-out) is not available in this engine version"
 RESTART = "modsys init map --restart"
 STATUSES = ("pending", "running", "done")
+MODULE_STATUSES = ("pending", "running", "done", "failed")
 ENTRY_KEYS = ("status", "started_at", "finished_at", "sha256")
+LOCK_TIMEOUT_S = DEFAULT_LOCK_TIMEOUT_S  # seconds a state writer waits for state.json.lock
 STALE_TEMP_S = 5  # a temp file older than this is a crash's leftover, not a concurrent run's
 
 
@@ -66,6 +72,14 @@ def state_problem(state: dict) -> str | None:
             return f"phase '{p}'"
     if not isinstance(state.get("phase", 0), (str, type(None))):
         return "phase"
+    modules = state.get("modules")
+    if not isinstance(modules, dict):
+        return "modules"
+    for name, entry in modules.items():
+        if not isinstance(entry, dict) or entry.get("status") not in MODULE_STATUSES \
+                or not isinstance(entry.get("attempts"), int) \
+                or not isinstance(entry.get("error"), (str, type(None))):
+            return f"module '{name}'"
     return None
 
 
@@ -113,18 +127,26 @@ class InitFlow:
         return doc
 
     def write(self, path: Path, text: str, seam: str | None = None) -> None:
-        """Temp file + atomic rename in the work directory; stale temp files of `path` (a
-        crash's: older than `STALE_TEMP_S`, so a concurrent run's live one stays) are removed
-        first. A failed write is exit 2 `cannot write <path>: <reason>`. `seam`: the phase the
-        test seam may stop."""
+        """Temp file + atomic rename in the file's own directory (the work directory or one
+        below it — never through a symlinked directory); stale temp files of `path` (a crash's:
+        older than `STALE_TEMP_S`, so a concurrent run's live one stays) are removed first. A
+        failed write is exit 2 `cannot write <path>: <reason>`. `seam`: the phase the test
+        seam may stop."""
         self.check_work_dir()
+        here = path.parent
+        for d in [here, *here.parents]:
+            if d == self.work:
+                break
+            if d.is_symlink():
+                raise UsageError(f"{self.rel(d)} is a symlink — the init work directory must be "
+                                 f"real directories (nothing written, its target left alone)")
         try:
-            self.work.mkdir(parents=True, exist_ok=True)
-            for stale in self.work.glob(f".{path.name}.*.tmp"):
+            here.mkdir(parents=True, exist_ok=True)
+            for stale in here.glob(f".{path.name}.*.tmp"):
                 with contextlib.suppress(FileNotFoundError):
                     if time.time() - stale.lstat().st_mtime > STALE_TEMP_S:
                         stale.unlink()
-            fd, tmp = tempfile.mkstemp(dir=self.work, prefix=f".{path.name}.", suffix=".tmp")
+            fd, tmp = tempfile.mkstemp(dir=here, prefix=f".{path.name}.", suffix=".tmp")
         except OSError as e:
             raise UsageError(f"cannot write {self.rel(path)}: {e.strerror or e}") from None
         try:
@@ -156,6 +178,14 @@ class InitFlow:
             raise KeyboardInterrupt  # the test seam: renamed into place, state not marked yet
 
     # --- state --------------------------------------------------------------------------
+
+    sha = staticmethod(sha256_text)
+
+    def locked(self):
+        """The advisory lock of every read-modify-write of the state (`state.json.lock`); a
+        writer that waits past `LOCK_TIMEOUT_S` is exit 2 naming the lock."""
+        self.check_work_dir()
+        return file_lock(self.state_path, LOCK_TIMEOUT_S)
 
     def load_state(self) -> dict | None:
         """The state (None when there is none), the phases it lacks at the end of `PHASES`
@@ -208,8 +238,17 @@ class InitFlow:
         if phases["gate-map"]["status"] != "done":
             return (f"gate 3: edit {work_rel}/proposal.json (each candidate's include, name and "
                     f"paths), then run modsys init confirm")
-        return (f"gate 3 passed ({work_rel}/confirmed.json); phase 4 (fan-out) comes with a later "
-                f"engine version")
+        if phases["fanout"]["status"] == "running":
+            return "the fan-out was interrupted: modsys init fanout writes the work items again"
+        if phases["fanout"]["status"] != "done":
+            return (f"gate 3 passed ({work_rel}/confirmed.json): modsys init fanout writes one "
+                    f"work item per module")
+        modules = state["modules"]
+        done = sum(e["status"] == "done" for e in modules.values())
+        if done < len(modules):
+            return (f"{done} of {len(modules)} module(s) done: claim the next with modsys init "
+                    f"next, write its files, then modsys init done <module>")
+        return "every module is done"
 
     # --- phases -------------------------------------------------------------------------
 
@@ -365,10 +404,14 @@ class InitFlow:
         return problems
 
     def confirm(self, dry_run: bool) -> dict:
-        """Gate 3: validate proposal.json and freeze it as confirmed.json."""
+        """Gate 3: validate proposal.json and freeze it as confirmed.json — refused once the
+        fan-out has started (a work item exists): the module set is fixed from then on."""
         state = self.load_state()
         if state is None or not os.path.lexists(self.output("map")):
             raise UsageError("nothing to confirm — run modsys init map first")
+        if state["phases"]["fanout"]["status"] != "pending" or state["modules"] \
+                or any((self.work / "work").glob("*.json")):
+            raise UsageError(f"the fan-out has started — to change the module set: {RESTART}")
         if state["phases"]["map"]["status"] != "done":
             raise UsageError(f"phase map has not finished ({state['phases']['map']['status']}) "
                              f"— run modsys init resume")
