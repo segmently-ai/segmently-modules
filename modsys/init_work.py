@@ -206,29 +206,53 @@ class Work:
             raise UsageError("the fan-out has not run — run modsys init fanout first")
         return state
 
-    def clear(self, module: str) -> None:
+    def clear(self, module: str, make: bool = False) -> None:
+        """Remove a module's staging dir (`make`: then create it empty); a symlinked one — or a
+        symlinked staging root — is refused, its target left alone."""
         target = self.staging_dir(module)
-        if target.is_symlink():
-            raise UsageError(f"{self.flow.rel(target)} is a symlink — remove it (its target is "
-                             f"left alone)")
-        if target.exists():
-            try:
+        for path in (self.staging, target):
+            if path.is_symlink():
+                raise UsageError(f"{self.flow.rel(path)} is a symlink — remove it (its target "
+                                 f"is left alone)")
+        try:
+            if target.exists():
                 shutil.rmtree(target)
-            except OSError as e:
-                raise UsageError(f"cannot write {self.flow.rel(target)}/: {e.strerror or e}") \
-                    from None
+            if make:
+                target.mkdir(parents=True)
+        except OSError as e:
+            raise UsageError(f"cannot write {self.flow.rel(target)}/: {e.strerror or e}") \
+                from None
 
-    def claim(self) -> tuple[dict | None, dict]:
-        """The first pending module in name order, now running (attempts + 1, its staging dir
-        cleared, its last error dropped): (work item or None, counts)."""
+    def reset(self) -> list[str]:
+        """Every running or failed module back to pending, its staging dir removed (`attempts`
+        and the last error kept until the next claim); a done module is never touched."""
+        state = self.require_fanout(self.flow.load_state())
+        if not any(e["status"] in ("running", "failed") for e in state["modules"].values()):
+            return []
+        with self.flow.locked():
+            state = self.flow.load_state()
+            stale = sorted(m for m, e in state["modules"].items()
+                           if e["status"] in ("running", "failed"))
+            for module in stale:
+                self.clear(module)
+                state["modules"][module]["status"] = "pending"
+            self.flow.save_state(state)
+        return stale
+
+    def claim(self, module: str | None = None) -> tuple[dict | None, dict]:
+        """The first pending module in name order (or `module`, when it is pending), now
+        running (attempts + 1, its staging dir cleared and created, its last error dropped):
+        (work item or None, counts)."""
         self.require_fanout(self.flow.load_state())  # a refusal writes nothing, not even the lock
         with self.flow.locked():
             state = self.require_fanout(self.flow.load_state())
             pending = sorted(m for m, e in state["modules"].items() if e["status"] == "pending")
+            if module is not None:
+                pending = [module] if module in pending else []
             if not pending:
                 return None, counts(state)
             module = pending[0]
-            self.clear(module)
+            self.clear(module, make=True)
             entry = state["modules"][module]
             entry.update(status="running", attempts=entry["attempts"] + 1, error=None)
             self.flow.save_state(state)

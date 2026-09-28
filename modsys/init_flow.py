@@ -245,9 +245,15 @@ class InitFlow:
                     f"work item per module")
         modules = state["modules"]
         done = sum(e["status"] == "done" for e in modules.values())
+        stuck = sorted(m for m, e in modules.items() if e["status"] in ("running", "failed"))
+        if stuck:
+            return (f"modsys init resume (puts {len(stuck)} interrupted or failed module(s) back "
+                    f"to pending: {', '.join(stuck)}); then modsys init run --executor "
+                    f"\"<command>\", or modsys init next")
         if done < len(modules):
-            return (f"{done} of {len(modules)} module(s) done: claim the next with modsys init "
-                    f"next, write its files, then modsys init done <module>")
+            return (f"{done} of {len(modules)} module(s) done: modsys init run --executor "
+                    f"\"<command>\" (every pending module), or claim one with modsys init next, "
+                    f"write its files, then modsys init done <module>")
         return "every module is done"
 
     # --- phases -------------------------------------------------------------------------

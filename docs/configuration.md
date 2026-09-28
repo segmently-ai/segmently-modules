@@ -175,6 +175,7 @@ modules (see the README, "Start from existing code").
 |---|---|---|
 | `exclude` | `[]` | globs (the `[[code_map]]` grammar) of files the init file set leaves out — preflight counts, candidates, `unassigned` and the file claims `init confirm` checks; a list of strings (anything else is exit 2 naming the file and the key); like every array, the user config's list adds to the team's |
 | `co_change_commits` | `500` | how many recent commits `init map` reads for the co-change signal (`git log`); an integer `>= 0` (`0` turns the signal off: no `git log` runs); `true` / `false`, text or a fraction is exit 2 naming the file and the key |
+| `max_parallel` | `4` | how many work items `init run --executor` (and the `module-init` skill's subagents) write at a time; an integer `>= 1`, no upper bound (never more than the pending items); `0`, a negative number, `true` / `false`, a fraction or text is exit 2 `[init] max_parallel must be an integer >= 1` naming the file |
 
 Preflight (`<config_dir>/init/preflight.json`) lists the file set — `git ls-files --cached
 --others --exclude-standard` in a git repository, else every file below the root except in

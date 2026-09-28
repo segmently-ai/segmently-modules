@@ -1,14 +1,33 @@
 """A fake `init` executor for the tests and the adoption eval: it writes, from a work item alone,
 deterministic docs a writer agent could have written — no model, stdlib only. Run as
-`python3 tests/init_fake_executor.py` by `modsys init run --executor …` (stdin = the prompt;
-env MODSYS_INIT_MODULE, MODSYS_INIT_STAGING, MODSYS_INIT_WORK), or import `write_docs`.
+`python3 tests/init_fake_executor.py [switches]` by `modsys init run --executor …` (stdin = the
+prompt; env MODSYS_INIT_MODULE, MODSYS_INIT_STAGING, MODSYS_INIT_WORK), or import `write_docs`.
 
 The bookshop_monorepo modules get the texts of `CANNED` (one keyword, `price`, is shared by
 `catalog` and `cart`: the collision `init reconcile` finds); any other module gets texts built
-from its name. `storefront` writes one edge of its own (to `catalog`, `complements`)."""
+from its name. `storefront` writes one edge of its own (to `catalog`, `complements`).
+
+Switches (anything else on the command line is ignored, so a test can pass odd arguments):
+  --record LOG        append a JSON line per start and end: {event, module, argv, stdin_sha256,
+                      env (the MODSYS_* variables), cwd, time, pid}
+  --stop-after N      calls are counted in LOG.calls/ (one file per call, created exclusively);
+                      the call after the Nth writes a partial MODULE.md and partial.tmp, then
+                      kills its parent (the `init run`) with SIGKILL
+  --stop-group N      the same, but it kills its whole process group: the `init run` and every
+                      executor it runs (start the run in a session of its own)
+  --fail MODULE       for MODULE: print 50 stderr lines (`--lines N`), exit 3
+  --keywords4 MODULE  for MODULE: an entry.json with 4 keywords
+  --nothing MODULE    for MODULE: write nothing, exit 0
+  --outside PATH      also write PATH (root-relative) — a write outside the staging dir
+  --peers K --live D  create D/<module>, then wait (up to 10 s) until D holds K files
+  --sleep S           sleep S seconds before writing
+  --pids D            write D/<pid> at the start"""
+import hashlib
 import json
 import os
+import signal
 import sys
+import time
 from pathlib import Path
 
 CANNED = {  # module -> (description, keywords, purpose paragraph)
@@ -74,11 +93,89 @@ def write_docs(root: Path, item: dict, staging: Path | None = None) -> None:
     (staging / "entry.json").write_text(json.dumps(entry, indent=2) + "\n", encoding="utf-8")
 
 
+def switches(argv: list[str]) -> dict:
+    """The known `--name value` switches of argv; everything else is ignored."""
+    out, known = {}, {"--record", "--stop-after", "--stop-group", "--fail", "--lines",
+                      "--keywords4", "--nothing", "--outside", "--peers", "--live", "--sleep",
+                      "--pids"}
+    for i, arg in enumerate(argv):
+        if arg in known and i + 1 < len(argv):
+            out[arg[2:]] = argv[i + 1]
+    return out
+
+
+def record(opts: dict, event: str, stdin: bytes) -> None:
+    if "record" not in opts:
+        return
+    line = {"event": event, "module": os.environ.get("MODSYS_INIT_MODULE"), "argv": sys.argv,
+            "stdin_sha256": hashlib.sha256(stdin).hexdigest(),
+            "env": {k: v for k, v in os.environ.items() if k.startswith("MODSYS_")},
+            "cwd": os.getcwd(), "time": time.time(), "pid": os.getpid()}
+    with open(opts["record"], "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(line) + "\n")
+
+
+def call_number(opts: dict) -> int:
+    """This call's number (1, 2, …), counted with exclusively created files."""
+    calls = Path(opts["record"] + ".calls")
+    calls.mkdir(exist_ok=True)
+    n = 1
+    while True:
+        try:
+            os.close(os.open(calls / str(n), os.O_CREAT | os.O_EXCL))
+            return n
+        except FileExistsError:
+            n += 1
+
+
 def main() -> int:
-    sys.stdin.read()  # the prompt: this fake writes from the work item alone
-    item = json.loads(Path(os.environ["MODSYS_INIT_WORK"]).read_text(encoding="utf-8"))
-    write_docs(Path.cwd(), item, Path(os.environ["MODSYS_INIT_STAGING"]))
-    return 0
+    opts = switches(sys.argv[1:])
+    stdin = sys.stdin.buffer.read()  # the prompt: this fake writes from the work item alone
+    module = os.environ["MODSYS_INIT_MODULE"]
+    staging = Path(os.environ["MODSYS_INIT_STAGING"])
+    if "pids" in opts:
+        Path(opts["pids"]).mkdir(exist_ok=True)
+        (Path(opts["pids"]) / str(os.getpid())).write_text(module)
+    record(opts, "start", stdin)
+    stop = opts.get("stop-after") or opts.get("stop-group")
+    if stop and call_number(opts) == int(stop) + 1:
+        staging.mkdir(parents=True, exist_ok=True)
+        (staging / "MODULE.md").write_text("# Half a doc\n", encoding="utf-8")
+        (staging / "partial.tmp").write_text("half", encoding="utf-8")
+        if "stop-group" in opts:
+            os.killpg(os.getpgrp(), signal.SIGKILL)
+        os.kill(os.getppid(), signal.SIGKILL)
+        record(opts, "end", stdin)
+        return 0
+    if "peers" in opts:
+        live = Path(opts["live"])
+        live.mkdir(exist_ok=True)
+        (live / module).write_text("")
+        deadline = time.time() + 10
+        while len(list(live.iterdir())) < int(opts["peers"]) and time.time() < deadline:
+            time.sleep(0.01)
+    if "sleep" in opts:
+        time.sleep(float(opts["sleep"]))
+    try:
+        if opts.get("fail") == module:
+            for i in range(int(opts.get("lines", 50))):
+                print(f"{module}: line {i + 1} of the failure", file=sys.stderr)
+            return 3
+        if opts.get("nothing") == module:
+            return 0
+        item = json.loads(Path(os.environ["MODSYS_INIT_WORK"]).read_text(encoding="utf-8"))
+        write_docs(Path.cwd(), item, staging)
+        if opts.get("keywords4") == module:
+            entry = json.loads((staging / "entry.json").read_text(encoding="utf-8"))
+            entry["keywords"] = entry["keywords"][:4]
+            (staging / "entry.json").write_text(json.dumps(entry), encoding="utf-8")
+        if "outside" in opts:
+            target = Path.cwd() / opts["outside"]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("# written by the executor\n", encoding="utf-8")
+        return 0
+    finally:
+        record(opts, "end", stdin)
 
 
 if __name__ == "__main__":

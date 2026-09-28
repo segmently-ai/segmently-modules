@@ -7,8 +7,9 @@ Root: `--root`, else the git top-level of the current directory, else the curren
 
 Actions (`modsys.init_flow`, `modsys.init_work`): `map` (the starter files that are missing,
 then preflight and map; stops at gate 3), `confirm` (gate 3), `status`, `resume`, `fanout` (one
-work item per confirmed module), `next` (claim one), `done MODULE` (check its staging output) —
-one envelope `modsys.init/1` each."""
+work item per confirmed module), `next` (claim one), `done MODULE` (check its staging output),
+`run --executor CMD` (every pending item through one command) — one envelope `modsys.init/1`
+each."""
 import subprocess
 import sys
 from pathlib import Path
@@ -131,13 +132,15 @@ def starter_config(layout: str) -> str:
     return _HEADER + _PATHS[layout] + _BODY
 
 
-ACTIONS = ("map", "confirm", "status", "resume", "fanout", "next", "done")
+ACTIONS = ("map", "confirm", "status", "resume", "fanout", "next", "done", "run")
+EXECUTOR_ACTIONS = ("run", "resume")
+NON_INTERACTIVE_ACTIONS = ("run", "resume")  # the others never prompt: no flag (SI-25)
 
 
 def register(sub, common) -> None:
     p = sub.add_parser("init", parents=[common],
                        help="set up modsys here: starter config, empty registry, .gitignore lines "
-                            "(map|confirm|fanout|next|done|status|resume: start from existing "
+                            "(map|confirm|fanout|next|done|run|status|resume: start from existing "
                             "code)",
                        description="Without an action: the starter config, an empty registry and "
                                    "the .gitignore lines. map: those, then preflight and map of "
@@ -147,13 +150,20 @@ def register(sub, common) -> None:
                                    "it. fanout: one work item per confirmed module "
                                    "(<config_dir>/init/work/). next: claim the next pending "
                                    "module (its work item and prompt). done MODULE: check the "
-                                   "files written into its staging directory. status: the "
-                                   "phases, the modules and the next step. resume: re-run an "
-                                   "interrupted phase and continue.")
+                                   "files written into its staging directory. run --executor "
+                                   "CMD: run every pending item through CMD ([init] "
+                                   "max_parallel at a time). status: the phases, the modules "
+                                   "and the next step. resume: re-run an interrupted phase and "
+                                   "continue.")
     p.add_argument("action", nargs="?", metavar="ACTION",
                    help=f"{', '.join(ACTIONS)} (none: the starter files only)")
     p.add_argument("module", nargs="?", metavar="MODULE",
                    help="done: the module whose staging output to check")
+    p.add_argument("--executor", metavar="CMD",
+                   help="run, resume: the command that writes one module's docs (split like a "
+                        "shell line, never run by a shell; stdin: the prompt)")
+    p.add_argument("--non-interactive", action="store_true",
+                   help="run, resume: never wait for a person")
     p.add_argument("--layout", choices=REGISTRY_LAYOUTS,
                    help="registry layout for a new setup (default: the configured one, else single)")
     p.add_argument("--dry-run", action="store_true", help="report what would change, write nothing")
@@ -280,11 +290,17 @@ def _check_flags(args) -> None:
         raise UsageError("init done needs the MODULE whose staging output to check")
     if args.module and action != "done":
         raise UsageError(f"init {action or '(no action)'} takes no MODULE")
+    if action == "run" and args.executor is None:
+        raise UsageError('init run needs --executor "<command>"')
+    if args.executor is not None and action not in EXECUTOR_ACTIONS:
+        raise UsageError(f"--executor works with {', '.join(f'init {a}' for a in EXECUTOR_ACTIONS)}")
+    if args.non_interactive and action not in NON_INTERACTIVE_ACTIONS:
+        raise UsageError(f"init {action or '(no action)'} never prompts: drop --non-interactive")
     if args.restart and action != "map":
         raise UsageError("--restart works with map only (modsys init map --restart)")
     if args.layout and action not in (None, "map"):
         raise UsageError(f"--layout works with plain init and init map, not init {action}")
-    if args.dry_run and action in ("status", "resume", "fanout", "next", "done"):
+    if args.dry_run and action in ("status", "resume", "fanout", "next", "done", "run"):
         raise UsageError(f"init {action} takes no --dry-run (it never writes)"
                          if action == "status" else f"init {action} takes no --dry-run")
 
@@ -313,6 +329,7 @@ def module_rows(state: dict | None) -> dict:
 
 def run_action(args, root: Path, config_dir: Path) -> int:
     from modsys.init_flow import RESTART, InitFlow  # the flow imports the phases
+    from modsys.init_run import Runner, executor_argv
     from modsys.init_work import Work, counts
     flow = InitFlow(root, config_dir, load_config(config_dir, root))
     work = flow.rel(flow.work)
@@ -376,20 +393,71 @@ def run_action(args, root: Path, config_dir: Path) -> int:
             print(f"modsys: {args.module}: {problem}", file=sys.stderr)
         emit("init", data, args.json, _render_done)
         return EXIT_FINDINGS if problems else EXIT_OK
+    if args.action == "run":
+        runner = Runner(phase4, executor_argv(args.executor, root))
+        phase4.reset()
+        result = runner.run()
+        return _report_run(flow, work, result, args.json)
     state = flow.load_state()
     if state is not None and state["phases"]["gate-map"]["status"] == "done":
-        ran = []
+        argv = executor_argv(args.executor, root) if args.executor is not None else None
+        ran, message = [], None
         if state["phases"]["fanout"]["status"] != "done":
-            state, ran = phase4.fanout()["state"], ["fanout"]
+            phase4.fanout()
+            ran.append("fanout")
+        reset = phase4.reset()
+        if reset:
+            message = f"back to pending (their staging cleared): {', '.join(reset)}"
+        code = EXIT_OK
+        if argv is not None:
+            result = Runner(phase4, argv).run()
+            ran.append("run")
+            code = _run_failures(result)
+        state = flow.load_state()
         data = {"action": "resume", "ran": ran, "phase": state["phase"],
-                "next": flow.next_step(state, work), "message": None}
+                "next": flow.next_step(state, work), "message": message}
         emit("init", data, args.json, _render_resume)
-        return EXIT_OK
+        return code
     state, ran = flow.resume()
     data = {"action": "resume", "ran": ran, "phase": state["phase"],
             "next": flow.next_step(state, work), "message": None}
     emit("init", data, args.json, _render_resume)
     return EXIT_OK
+
+
+def _run_failures(result: dict) -> int:
+    """The stderr lines of a run (failed modules, writes outside the work dir); its exit code."""
+    for row in result["modules"]:
+        if row["status"] == "failed":
+            print(f"modsys: {row['module']} failed: {row['error'].splitlines()[0]}",
+                  file=sys.stderr)
+    for path in result["outside"]:
+        print(f"modsys: wrote outside the staging dir: {path}", file=sys.stderr)
+    failed = result["outside"] or any(r["status"] == "failed" for r in result["modules"])
+    return EXIT_FINDINGS if failed else EXIT_OK
+
+
+def _report_run(flow, work: str, result: dict, as_json: bool) -> int:
+    from modsys.init_work import counts
+    code = _run_failures(result)
+    state = flow.load_state()
+    data = {"action": "run", "modules": result["modules"], "counts": counts(state),
+            "outside": result["outside"], "failed": code != EXIT_OK,
+            "next": flow.next_step(state, work)}
+    emit("init", data, as_json, _render_run)
+    return code
+
+
+def _render_run(d) -> None:
+    if not d["modules"]:
+        print("nothing pending")
+    for row in d["modules"]:
+        error = f" {row['error'].splitlines()[0]}" if row["error"] else ""
+        print(f"{row['status']:<8} {row['module']}  (attempt {row['attempts']}){error}")
+    c = d["counts"]
+    print(f"modules  {c['done']} done, {c['running']} running, {c['pending']} pending, "
+          f"{c['failed']} failed")
+    print(f"next: {d['next']}")
 
 
 def _render_map(d, note: str | None = None) -> None:

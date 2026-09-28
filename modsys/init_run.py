@@ -1,0 +1,168 @@
+"""`init run --executor "<cmd>"` — phase 4 for CI (D1, driver 3): every pending work item runs
+through one command, `[init] max_parallel` at a time.
+
+The command is split with `shlex` (never a shell: `>`, `|` and `$HOME` are plain arguments);
+its first word is looked up on PATH, or — when it holds a `/` — resolved against the root, and
+checked before any item runs. Per item: stdin = the prompt (UTF-8, then EOF), cwd = the root,
+the caller's environment plus MODSYS_INIT_MODULE, MODSYS_INIT_STAGING and MODSYS_INIT_WORK
+(absolute paths); stdout is discarded. Exit 0 and a complete staging output (`init done`'s
+check) -> `done`; else `failed`, with `error` = `exit <n>: ` + the last 20 lines of stderr (at
+most 2,000 characters) or the check's problems. There is no timeout: stop a hung run with
+Ctrl-C (its children are terminated, their items stay `running`) and `init resume`. A git
+work tree is compared before and after (`git status`, file hashes): a change outside
+`<config_dir>/init/` fails the run (exit 1) naming each path."""
+import contextlib
+import hashlib
+import os
+import shlex
+import shutil
+import subprocess
+import tempfile
+import time
+from pathlib import Path
+
+from modsys.changes import git_env, work_tree_error
+from modsys.output import UsageError
+
+TAIL_LINES, TAIL_CHARS = 20, 2000
+POLL_S = 0.05
+
+
+def pause() -> None:
+    """The wait between two polls of the running executors (tests patch it)."""
+    time.sleep(POLL_S)
+
+
+def executor_argv(value: str | None, root: Path) -> list[str]:
+    """The executor's argv, its first word checked (exit 2 before any item runs)."""
+    if value is None or not value.strip():
+        raise UsageError("--executor is empty")
+    try:
+        argv = shlex.split(value)
+    except ValueError as e:
+        raise UsageError(f"--executor: {e}") from None
+    head = argv[0]
+    if "/" in head:
+        path = Path(head) if Path(head).is_absolute() else root / head
+        if not path.is_file():
+            raise UsageError(f"executor not found: {head}")
+        if not os.access(path, os.X_OK):
+            raise UsageError(f"executor is not executable: {head}")
+        argv[0] = os.path.normpath(path)
+    elif shutil.which(head) is None:
+        raise UsageError(f"executor not found: {head}")
+    return argv
+
+
+def tail(data: bytes) -> str:
+    """The last 20 lines of an output, at most 2,000 characters."""
+    lines = data.decode("utf-8", errors="replace").splitlines()[-TAIL_LINES:]
+    return "\n".join(lines)[-TAIL_CHARS:]
+
+
+def outside_snapshot(root: Path, inside: str) -> dict | None:
+    """{path: (git status code, sha256)} of every changed or untracked file outside `inside`
+    (a root-relative directory); None outside a git work tree."""
+    if work_tree_error(root) is not None:
+        return None
+    proc = subprocess.run(["git", "-C", str(root), "status", "--porcelain=v1", "-z",
+                           "--untracked-files=all"], capture_output=True, env=git_env())
+    out, parts = {}, proc.stdout.split(b"\0")
+    i = 0
+    while i < len(parts):
+        entry = parts[i].decode("utf-8", "surrogateescape")
+        i += 1
+        if len(entry) < 4:
+            continue
+        code, path = entry[:2], entry[3:]
+        if code[0] in "RC":
+            i += 1  # the rename's source path follows
+        if path == inside.rstrip("/") or path.startswith(inside):
+            continue
+        with contextlib.suppress(OSError):
+            data = (root / path).read_bytes()
+            out[path] = (code, hashlib.sha256(data).hexdigest())
+            continue
+        out[path] = (code, None)
+    return out
+
+
+class Runner:
+    """Runs the pending items of a `Work` through one executor."""
+
+    def __init__(self, work, argv: list[str]):
+        self.work, self.flow, self.argv = work, work.flow, argv
+        self.max_parallel = work.ws.config["init"]["max_parallel"]
+
+    def start(self, module: str) -> tuple:
+        item = self.work.item(module)
+        stdin = tempfile.TemporaryFile()
+        stdin.write(item["prompt"].encode("utf-8"))
+        stdin.seek(0)
+        stderr = tempfile.TemporaryFile()
+        env = {**os.environ, "MODSYS_INIT_MODULE": module,
+               "MODSYS_INIT_STAGING": str(self.work.staging_dir(module)),
+               "MODSYS_INIT_WORK": str(self.work.item_path(module))}
+        try:
+            proc = subprocess.Popen(self.argv, stdin=stdin, stdout=subprocess.DEVNULL,
+                                    stderr=stderr, cwd=self.flow.root, env=env)
+        except OSError as e:
+            stdin.close()
+            stderr.close()
+            raise UsageError(f"executor {self.argv[0]} cannot run: {e.strerror or e}") from None
+        return proc, stdin, stderr
+
+    def finish(self, module: str, proc, stdin, stderr) -> dict:
+        stderr.seek(0)
+        err = stderr.read()
+        stdin.close()
+        stderr.close()
+        if proc.returncode != 0:
+            error = f"exit {proc.returncode}: {tail(err)}"
+        else:
+            problems = self.work.problems(module)
+            error = "; ".join(problems) if problems else None
+        with self.flow.locked():
+            state = self.flow.load_state()
+            entry = state["modules"][module]
+            entry.update(status="failed" if error else "done", error=error)
+            self.flow.save_state(state)
+        return {"module": module, **{k: entry[k] for k in ("status", "attempts", "error")}}
+
+    def run(self) -> dict:
+        """Every pending item, `max_parallel` at a time; the rows in name order."""
+        state = self.work.require_fanout(self.flow.load_state())
+        pending = sorted(m for m, e in state["modules"].items() if e["status"] == "pending")
+        inside = self.flow.rel(self.flow.work) + "/"
+        before = outside_snapshot(self.flow.root, inside) if pending else None
+        running: dict[str, tuple] = {}
+        rows = []
+        try:
+            while pending or running:
+                while pending and len(running) < self.max_parallel:
+                    module = pending.pop(0)
+                    self.work.claim(module)
+                    running[module] = self.start(module)
+                finished = [m for m, (p, _, _) in running.items() if p.poll() is not None]
+                for module in finished:
+                    rows.append(self.finish(module, *running.pop(module)))
+                if not finished:
+                    pause()
+        except BaseException:  # Ctrl-C: stop the children; their items stay running
+            for proc, stdin, stderr in running.values():
+                with contextlib.suppress(OSError):
+                    proc.terminate()
+            for proc, stdin, stderr in running.values():
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                stdin.close()
+                stderr.close()
+            raise
+        after = outside_snapshot(self.flow.root, inside) if before is not None else None
+        outside = sorted(p for p in set(before or {}) | set(after or {})
+                         if (before or {}).get(p) != (after or {}).get(p))
+        rows.sort(key=lambda r: r["module"])
+        return {"modules": rows, "outside": outside}

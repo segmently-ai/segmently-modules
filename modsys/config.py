@@ -44,7 +44,7 @@ LAYER_SCHEMA = {
     "coverage": {"include": "list[str]", "exclude": "list[str]"},
     "ci": {"fail_on": "str", "base": "str", "coverage_fail_under": "number"},
     "packs": {"agents": "list[str]", "builtin": "list[str]"},
-    "init": {"exclude": "list[str]", "co_change_commits": "int"},
+    "init": {"exclude": "list[str]", "co_change_commits": "int", "max_parallel": "int"},
 }
 CI_FAIL_ON = ("error", "never", "warning")
 ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str",
@@ -69,6 +69,11 @@ def _check_table(table: dict, schema: dict, section: str, source) -> None:
 def validate_layer(layer: dict, source) -> None:
     """Type-check the known keys of one config layer (a pack, config.toml or
     config.user.toml) before it is merged; `source` names the file in errors."""
+    init = layer.get("init")
+    if isinstance(init, dict) and "max_parallel" in init and \
+            not (_is_int(init["max_parallel"]) and init["max_parallel"] >= 1):
+        raise UsageError(f"{source}: [init] max_parallel must be an integer >= 1, got "
+                         f"{init['max_parallel']!r}")
     for section, schema in LAYER_SCHEMA.items():
         if section in layer:
             _check_table(_require_table(layer[section], section, source), schema, section, source)
