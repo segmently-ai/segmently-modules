@@ -164,6 +164,59 @@ modules (see the README, "Start from existing code").
 | `exclude` | `[]` | globs (the `[[code_map]]` grammar) of files the init file set leaves out — preflight counts, candidates, `unassigned` and the file claims `init confirm` checks; a list of strings (anything else is exit 2 naming the file and the key); like every array, the user config's list adds to the team's |
 | `co_change_commits` | `500` | how many recent commits `init map` reads for the co-change signal (`git log`); an integer `>= 0` (`0` turns the signal off: no `git log` runs); `true` / `false`, text or a fraction is exit 2 naming the file and the key |
 
+Preflight (`<config_dir>/init/preflight.json`) lists the file set — `git ls-files --cached
+--others --exclude-standard` in a git repository, else every file below the root except in
+dot-directories and in `node_modules`, `.venv`, `venv`, `__pycache__`, `dist`, `build`,
+`target`, `vendor` — minus `[init] exclude`, and counts it: every file toward `files`, its size
+toward `bytes` (a file that cannot be read counts toward `files` only; a symlink is never
+followed and adds 0 bytes). A text file — at most 1,048,576 bytes, no NUL byte in its first
+8,192 — adds `len(text.splitlines())` to `lines` and its size to `token_estimate` (text bytes
+// 4); a code file adds to its `languages` row, by extension:
+
+| Extension | Language |
+|---|---|
+| `.c` | C |
+| `.cc` | C++ |
+| `.cjs` | JavaScript |
+| `.cpp` | C++ |
+| `.cs` | C# |
+| `.cts` | TypeScript |
+| `.dart` | Dart |
+| `.ex` | Elixir |
+| `.exs` | Elixir |
+| `.go` | Go |
+| `.h` | C |
+| `.hpp` | C++ |
+| `.java` | Java |
+| `.js` | JavaScript |
+| `.jsx` | JavaScript |
+| `.kt` | Kotlin |
+| `.lua` | Lua |
+| `.m` | Objective-C |
+| `.mjs` | JavaScript |
+| `.mts` | TypeScript |
+| `.php` | PHP |
+| `.py` | Python |
+| `.r` | R |
+| `.rb` | Ruby |
+| `.rs` | Rust |
+| `.scala` | Scala |
+| `.sh` | Shell |
+| `.sql` | SQL |
+| `.svelte` | Svelte |
+| `.swift` | Swift |
+| `.ts` | TypeScript |
+| `.tsx` | TypeScript |
+| `.vue` | Vue |
+
+It also lists the package manifests (`package.json`, `pyproject.toml`, `setup.cfg`, `go.mod`,
+`Cargo.toml`, `composer.json`, `*.csproj`: `{path, kind, name, workspaces}`, `name: null` when
+one does not parse), the agents' instruction files that exist (`AGENTS.md`, `CLAUDE.md`,
+`GEMINI.md`, `.cursorrules`, `.windsurfrules`, `.github/copilot-instructions.md`), the ADR
+directories that hold files (`adr/`, `adrs/`, `doc/adr/`, `docs/adr/`, `docs/adrs/`,
+`docs/decisions/`, `docs/architecture/decisions/`, `architecture/decisions/`), the top-level
+directories and `git: {head, commits}` (`null` outside git).
+
 ## `[roles.<name>]`
 
 Roles are the audiences of per-module docs (`roles/<role>.md`). Defaults: `developer` (10),

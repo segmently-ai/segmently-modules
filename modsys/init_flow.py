@@ -163,8 +163,9 @@ class InitFlow:
     # --- phases -------------------------------------------------------------------------
 
     def compute(self, files: list[str]) -> tuple[dict, list[dict]]:
-        found = preflight.manifests(self.root, files)
-        return preflight.build(self.root, files, found), found
+        counts = preflight.scan(self.root, files)
+        found = preflight.manifests(self.root, files, counts["texts"])
+        return preflight.build(self.root, files, found, counts), found
 
     def run_phases(self, state: dict, todo: list[str]) -> None:
         """Run `todo` (a suffix of preflight, map) in order; each marks running, writes its

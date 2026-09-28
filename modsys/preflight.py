@@ -3,10 +3,17 @@
 The file set: `git ls-files --cached --others --exclude-standard` in a git work tree (ONE
 listing), else a walk that skips dot-directories and the dependency / build directories
 (`DEPENDENCY_DIRS`); minus `[init] exclude` globs (the `[[code_map]]` glob grammar); a listed
-path missing on disk is dropped. `build` turns it into `preflight.json`:
-`{schema, root, git: {head, commits} | null, files, manifests: [{path, kind, name,
-workspaces}]}` — a manifest (package.json, pyproject.toml, setup.cfg, go.mod, Cargo.toml,
-composer.json, *.csproj) that does not parse has `name: null` and `workspaces: []`."""
+path missing on disk is dropped. `scan` reads every file once; `build` turns both into
+`preflight.json`: `{schema, root, git: {head, commits} | null, files, lines, bytes,
+token_estimate, languages: [{language, files, lines}], manifests: [{path, kind, name,
+workspaces}], agent_docs, adrs, top_dirs}`, every list sorted.
+
+Counting: every file counts toward `files`; its size toward `bytes` unless it cannot be read (a
+symlink is never followed: 0 bytes). A text file — at most 1,048,576 bytes (`BIG`), no NUL in
+bytes 0–8191 (`SNIFF`) — counts its `len(text.splitlines())` toward `lines` and its bytes toward
+`token_estimate` (`text bytes // 4`); a code file of a text kind also counts in its `languages`
+row (`LANGUAGES`, by extension). A manifest (package.json, pyproject.toml, setup.cfg, go.mod,
+Cargo.toml, composer.json, *.csproj) that does not parse has `name: null`, `workspaces: []`."""
 import configparser
 import json
 import os
@@ -18,6 +25,12 @@ from pathlib import Path, PurePosixPath
 from modsys.changes import DEPENDENCY_DIRS, git_env, glob_to_regex, work_tree_error
 
 SCHEMA = "modsys.init-preflight/1"
+BIG = 1_048_576  # bytes: a larger file counts toward files and bytes only
+SNIFF = 8192  # a NUL in the first SNIFF bytes: binary (files and bytes only)
+AGENT_DOCS = ("AGENTS.md", "CLAUDE.md", "GEMINI.md", ".cursorrules", ".windsurfrules",
+              ".github/copilot-instructions.md")  # the agents' instruction files
+ADR_DIRS = ("adr", "adrs", "doc/adr", "docs/adr", "docs/adrs", "docs/decisions",
+            "docs/architecture/decisions", "architecture/decisions")
 MANIFESTS = ("package.json", "pyproject.toml", "setup.cfg", "go.mod", "Cargo.toml",
              "composer.json")  # plus any *.csproj
 # extension -> language: the code files of the file set (lines count; map's units and
@@ -70,15 +83,57 @@ def list_files(root: Path, config: dict) -> list[str]:
                    and not any(rx.match(p) for rx in exclude)})
 
 
-def read_manifest(path: Path, kind: str) -> dict:
-    """{name, workspaces, keywords, description} of one manifest; a file that does not parse
-    (or has no name) gives `name: None` and empty lists — never an error."""
+def _read(path: Path) -> bytes:
+    """The one place preflight reads a file's bytes (tests count the calls)."""
+    return path.read_bytes()
+
+
+def scan(root: Path, files: list[str], keep=lambda rel: False) -> dict:
+    """Read every file of `files` at most once: {files, lines, bytes, text_bytes, languages:
+    {language: [files, lines]}, texts: {path: text}} — `texts` holds the manifests and the
+    text files `keep(path)` asks for."""
+    out = {"files": len(files), "lines": 0, "bytes": 0, "text_bytes": 0, "languages": {},
+           "texts": {}}
+    for rel in files:
+        path = root / rel
+        if path.is_symlink():
+            continue  # a file of the set, never followed
+        try:
+            size = path.stat().st_size
+            if size > BIG:
+                out["bytes"] += size
+                continue
+            data = _read(path)
+        except OSError:
+            continue  # unreadable: it counts toward files only
+        out["bytes"] += len(data)
+        if b"\0" in data[:SNIFF]:
+            continue
+        text = data.decode("utf-8", errors="replace")
+        lines = len(text.splitlines())
+        out["lines"] += lines
+        out["text_bytes"] += len(data)
+        lang = language(rel)
+        if lang:
+            row = out["languages"].setdefault(lang, [0, 0])
+            row[0] += 1
+            row[1] += lines
+        if manifest_kind(rel) or keep(rel):
+            out["texts"][rel] = text
+    return out
+
+
+def read_manifest(path: Path, kind: str, text: str | None = None) -> dict:
+    """{name, workspaces, keywords, description} of one manifest (`text`: its content, when the
+    scan already read it); a file that does not parse (or has no name) gives `name: None` and
+    empty lists — never an error."""
     out = {"name": None, "workspaces": [], "keywords": [], "description": ""}
     if kind == "csproj":
         out["name"] = path.stem
         return out
     try:
-        text = path.read_bytes().decode("utf-8")
+        if text is None:
+            text = _read(path).decode("utf-8")
         if kind in ("package.json", "composer.json"):
             data = json.loads(text)
             spaces = data.get("workspaces") if kind == "package.json" else None
@@ -111,10 +166,11 @@ def read_manifest(path: Path, kind: str) -> dict:
     return out
 
 
-def manifests(root: Path, files: list[str]) -> list[dict]:
+def manifests(root: Path, files: list[str], texts: dict | None = None) -> list[dict]:
     """Every manifest of the file set, by path: {path, kind, name, workspaces, keywords,
-    description} (preflight.json keeps the first four)."""
-    return [{"path": f, "kind": kind, **read_manifest(root / f, kind)}
+    description} (preflight.json keeps the first four); `texts`: what the scan read."""
+    texts = texts or {}
+    return [{"path": f, "kind": kind, **read_manifest(root / f, kind, texts.get(f))}
             for f in files if (kind := manifest_kind(f))]
 
 
@@ -132,8 +188,18 @@ def git_info(root: Path) -> dict | None:
     return {"head": head.stdout.strip(), "commits": int(count.stdout.strip() or 0)}
 
 
-def build(root: Path, files: list[str], found: list[dict]) -> dict:
-    """preflight.json's document for the file set `files` and its manifests `found`."""
-    return {"schema": SCHEMA, "root": str(root), "git": git_info(root), "files": len(files),
+def build(root: Path, files: list[str], found: list[dict], counts: dict) -> dict:
+    """preflight.json's document: the file set `files`, its manifests `found` and the `scan`
+    `counts`."""
+    present = set(files)
+    return {"schema": SCHEMA, "root": str(root), "git": git_info(root), "files": counts["files"],
+            "lines": counts["lines"], "bytes": counts["bytes"],
+            "token_estimate": counts["text_bytes"] // 4,
+            "languages": [{"language": lang, "files": n, "lines": lines}
+                          for lang, (n, lines) in sorted(counts["languages"].items())],
             "manifests": [{k: m[k] for k in ("path", "kind", "name", "workspaces")}
-                          for m in found]}
+                          for m in found],
+            "agent_docs": sorted(d for d in AGENT_DOCS if d in present),
+            "adrs": sorted(f"{d}/" for d in ADR_DIRS
+                           if any(f.startswith(f"{d}/") for f in files)),
+            "top_dirs": sorted({f.split("/")[0] for f in files if "/" in f})}
