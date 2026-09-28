@@ -9,7 +9,7 @@ from pathlib import Path
 from tests.helpers import git, run, run_json
 
 AGENTS = Path(__file__).resolve().parents[1] / "evals" / "adoption" / "agents"
-BROWNFIELD_SHA256 = "325786765e3807a0bc135217d4017730ab7f49f363e6b819769e385ff89ac0c0"
+BROWNFIELD_SHA256 = "89d72954459985c3018f749dd281e5bbf3aaa2d570a60b38c399220b6ff2c89e"
 
 
 class AgentFixturesTest(unittest.TestCase):
@@ -17,7 +17,7 @@ class AgentFixturesTest(unittest.TestCase):
         return (AGENTS / name).read_text(encoding="utf-8")
 
     def test_prompts_carry_placeholders_rules_and_the_log_format(self):
-        for name, goals in (("greenfield.md", 5), ("brownfield.md", 4)):
+        for name, goals in (("greenfield.md", 5), ("brownfield.md", 6)):  # P5b D11: + 5, 6
             with self.subTest(prompt=name):
                 text = self.read(name)
                 for needle in ("{WORKDIR}", "{VENV}", "{DOCS}", "source peek", "--help",
@@ -67,8 +67,17 @@ class AgentFixturesTest(unittest.TestCase):
             self.assertIn(check, rubric)
         self.assertIn("whether it used `modsys init map`", rubric)
 
-    def test_the_brownfield_prompt_is_unchanged(self):  # P5A-AC-040: D8 keeps it as it is
+    def test_the_brownfield_prompt_is_pinned(self):  # P5B-AC-036: D11's goal steps 5 and 6
         import hashlib
+        text = " ".join(self.read("brownfield.md").split())
+        for needle in ("5. The registry is lint-clean: `modsys lint --fail-on warning` exits 0",
+                       "6. Measure the routing: write a tasks file yourself",
+                       "whether you used `modsys init`", "about 45 commands"):
+            self.assertIn(needle, text)
+        rubric = " ".join(self.read("rubric.md").split())
+        for needle in ("(greenfield: 5, brownfield: 6)", "PASS needs 6/6",
+                       "`modsys eval routing --tasks <file>` or `modsys init verify`"):
+            self.assertIn(needle, rubric)
         self.assertEqual(hashlib.sha256((AGENTS / "brownfield.md").read_bytes()).hexdigest(),
                          BROWNFIELD_SHA256)
 

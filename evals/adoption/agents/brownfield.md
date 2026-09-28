@@ -46,6 +46,10 @@ layer is split by feature.
    commit it, let the drift gate catch the docs that did not change (for the module you changed
    only), update the docs through the proposals flow (agents never edit docs directly), and
    show the gate passing.
+5. The registry is lint-clean: `modsys lint --fail-on warning` exits 0 in the final repository.
+6. Measure the routing: write a tasks file yourself — about five tasks per module, in the words
+   a developer would type, each naming the module it belongs to — and report the routing hit
+   rate modsys measures for it (the share of tasks whose module comes out on top).
 
 **Friction log** — keep `{WORKDIR}/FRICTION.md` up to date as you go:
 
@@ -55,4 +59,6 @@ layer is split by feature.
   cosmetics).
 - `## Summary` — goal steps completed (by number), total commands, source peeks (each with the
   file and why, or "0"), the final mapping coverage, blockers / majors / minors one line each,
-  the top 3 improvements for the tool's authors, and any docs that were wrong or misleading.
+  the routing hit rate (and the command that measured it), whether you used `modsys init`
+  (which of its actions), the top 3 improvements for the tool's authors, and any docs that were
+  wrong or misleading.

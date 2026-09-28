@@ -5,7 +5,7 @@ compare runs of the same persona across phases.
 
 | Metric | How to count |
 |---|---|
-| Goal steps done | goal steps the log shows as done AND verified by a command (greenfield: 5, brownfield: 4) |
+| Goal steps done | goal steps the log shows as done AND verified by a command (greenfield: 5, brownfield: 6) |
 | Commands | ONE shell invocation the agent issued (one tool call / one prompt line) counts as one command — even when it chains several statements with `&&`, `;` or a pipe. A read through a dedicated read tool (not the shell) is a source peek or a doc read, not a command: count and report it separately, do not add it to this total. |
 | Source peeks | reads of modsys's source (package, site-packages, a checkout); the target is 0 |
 | Blockers / majors / minors | the log's own severities, re-checked by the scorer: a blocker is anything the agent could not get past without a source peek or outside help |
@@ -18,7 +18,13 @@ A run that wires code with `modsys code-map add` instead of editing `.modsys/con
 hand, or gates with `modsys ci` instead of separate `lint` / `lint --changed` / `coverage`
 calls, is scored exactly the same: every metric above counts what the run did, not which of
 the documented paths it took. For brownfield, record in the run's notes whether it used
-`modsys init map` (the docs offer it for an existing codebase); it does not change the score.
+`modsys init map` (the docs offer it for an existing codebase) and which other `modsys init`
+actions (`next` / `done`, `run`, `reconcile`, `verify`, `finish`); it does not change the score.
+
+Brownfield goal steps 5 and 6 are verified by the scorer in the final repository: 5 —
+`modsys lint --fail-on warning` exits 0; 6 — the tasks file the agent wrote exists (its own
+tasks, not the engine's), and the log holds the output of `modsys eval routing --tasks <file>`
+or `modsys init verify` with the hit rate the agent reported. PASS needs 6/6.
 
 Scorecard (one row per run):
 

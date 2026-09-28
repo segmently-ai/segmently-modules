@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E-A — deterministic adoption eval. Builds six repositories in temp dirs and drives the
+"""E-A — deterministic adoption eval. Builds seven repositories in temp dirs and drives the
 modsys CLI of THIS checkout (`python -m modsys`, the checkout on PYTHONPATH):
 
   greenfield  git init -> init -> 3 modules -> code-map add -> a relation -> lint -> coverage
@@ -32,15 +32,26 @@ modsys CLI of THIS checkout (`python -m modsys`, the checkout on PYTHONPATH):
               candidates) -> exclude one, rename one in proposal.json -> init confirm -> init
               status: gate 3 passed -> init resume runs the fan-out -> a fresh copy: init map
               stopped by the test seam -> init resume -> the same outputs
+  init        the bookshop_monorepo fixture with its history -> init map (tools switched off)
+              -> init confirm -> init fanout: six work items -> init run with the fake writer,
+              max_parallel = 1, killed after two modules -> init resume --executor
+              --non-interactive: every module done once -> init reconcile: the planted
+              duplicate and one collision -> init eval-tasks (the canned tasks) -> init verify
+              passes -> init finish --open-pr against a local bare remote and a gh stand-in:
+              one commit on modsys/init, the pull request body holds the verify summary and the
+              routing table
 
 Every step asserts an exit code and a data check. Prints the scorecard JSON
 {scenario: {steps: [{name, ok, detail}], commands, ok}} (commands = modsys invocations) and
 exits 1 when any step fails. Stdlib only; no network.
 
 Usage: python3 evals/adoption/run_eval.py
+Test seams: MODSYS_EVAL_FAIL_STEP="<scenario>:<step name>" forces that step to fail;
+MODSYS_EVAL_SCENARIOS="<scenario>,…" runs only those scenarios (an unknown name: exit 2).
 """
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -50,6 +61,7 @@ from pathlib import Path
 
 ENGINE = Path(__file__).resolve().parents[2]
 FAIL_STEP = "MODSYS_EVAL_FAIL_STEP"  # test seam: "<scenario>:<step name>" forces that step to fail
+ONLY = "MODSYS_EVAL_SCENARIOS"  # test seam: "<scenario>,…" runs only those (the time bound)
 GIT_IDENTITY = {"GIT_AUTHOR_NAME": "eval", "GIT_AUTHOR_EMAIL": "eval@example.invalid",
                 "GIT_COMMITTER_NAME": "eval", "GIT_COMMITTER_EMAIL": "eval@example.invalid",
                 "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
@@ -857,8 +869,139 @@ def init_map(sc: Scenario) -> None:
         sc.step(name, fn)
 
 
+# --- init ---------------------------------------------------------------------------------
+
+FAKE_WRITER = ENGINE / "tests" / "init_fake_executor.py"
+SIX = ["cart", "catalog", "payments", "recommendations", "storefront", "ui-kit"]
+GH_SHIM = """#!{python}
+import json, sys
+args = sys.argv[1:]
+body = open(args[args.index("--body-file") + 1]).read() if "--body-file" in args else None
+with open({log!r}, "a") as fh:
+    fh.write(json.dumps({{"argv": args, "body": body}}) + "\\n")
+print("https://example.invalid/bookshop/pull/1")
+"""
+
+
+def fake_writer(*flags: str) -> str:
+    """`--executor` for the test tree's fake writer: this interpreter, the paths quoted."""
+    return " ".join(shlex.quote(a) for a in (sys.executable, str(FAKE_WRITER), *flags))
+
+
+def init_flow(sc: Scenario) -> None:
+    work, tmp = sc.root / ".modsys/init", sc.root.parent
+    log, prs, remote = tmp / "writer.jsonl", tmp / "gh.jsonl", tmp / "remote.git"
+    seen = {}
+
+    def lines(path: Path) -> list[dict]:
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+    def statuses() -> dict:
+        doc = json.loads((work / "state.json").read_text(encoding="utf-8"))
+        return {m: e["status"] for m, e in doc["modules"].items()}
+
+    def starts() -> list[str]:
+        return [e["module"] for e in lines(log) if e["event"] == "start"]
+
+    def fixture():
+        sc.root.rmdir()
+        monorepo_builder()(sc.root)
+        seen["base"] = sc.git("rev-parse", "HEAD")
+
+    def map_it():
+        data, _ = sc.modsys("init", "map")
+        check(data["candidates"] == CANDIDATES, f"candidates {data['candidates']}")
+        doc = json.loads((work / "proposal.json").read_text(encoding="utf-8"))
+        for candidate in doc["candidates"]:
+            candidate["include"] = candidate["name"] != "tools"
+        (work / "proposal.json").write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+        sc.append(".modsys/config.toml", "\n[init]\nmax_parallel = 1\n")
+
+    def confirm():
+        data, _ = sc.modsys("init", "confirm")
+        check((data["status"], sorted(data["included"]), data["excluded"])
+              == ("confirmed", SIX, ["tools"]), f"confirm {data}")
+
+    def fanout():
+        sc.modsys("init", "fanout")
+        items = sorted(p.stem for p in (work / "work").glob("*.json"))
+        check(items == SIX and set(statuses().values()) == {"pending"}, f"work items {items}")
+
+    def killed():  # the fake writer SIGKILLs `init run` on its third call
+        sc.modsys("init", "run", "--executor",
+                  fake_writer("--record", str(log), "--stop-after", "2"), expect=-9)
+        got = statuses()
+        check(sorted(got.values()) == ["done", "done", "pending", "pending", "pending",
+                                       "running"], f"after the kill {got}")
+        seen["done"], seen["starts"] = {m for m, s in got.items() if s == "done"}, len(starts())
+
+    def resume():
+        data, _ = sc.modsys("init", "resume", "--executor", fake_writer("--record", str(log)),
+                            "--non-interactive")
+        check(data["ran"] == ["run", "reconcile", "eval-tasks", "verify"], f"resume {data}")
+        again = starts()[seen["starts"]:]
+        check(set(statuses().values()) == {"done"}
+              and sorted(again) == sorted(set(SIX) - seen["done"]),
+              f"started again: {again}, done before: {sorted(seen['done'])}")
+        seen["registry"] = (work / "staging/registry.json").read_bytes()
+
+    def reconcile():
+        data, _ = sc.modsys("init", "reconcile", "--force")
+        duplicates = [(d["name"], [x["module"] for x in d["definitions"]])
+                      for d in data["duplicates"]]
+        collisions = [(c["keyword"], c["owner"], c["moved"]) for c in data["collisions"]]
+        check((duplicates, collisions) == ([("formatPrice", ["catalog", "ui-kit"])],
+                                           [("price", "cart", ["catalog"])]),
+              f"duplicates {duplicates}, collisions {collisions}")
+        check((work / "staging/registry.json").read_bytes() == seen["registry"],
+              "the rebuilt staging registry differs from the resumed run's")
+
+    def eval_tasks():
+        data, _ = sc.modsys("init", "eval-tasks", "--executor", fake_writer(), "--force")
+        check((data["status"], data["tasks"], set(data["per_module"].values()))
+              == ("written", 30, {5}), f"eval-tasks {data}")
+
+    def verify():
+        data, _ = sc.modsys("init", "verify")
+        routing = data["routing"]
+        check((data["passed"], data["invented"], routing["hits"], routing["tasks"])
+              == (True, [], 30, 30), f"verify {data['lint']['summary']} {routing}")
+
+    def finish():
+        sc.git("init", "-q", "--bare", str(remote))
+        sc.git("remote", "add", "origin", str(remote))
+        shim = tmp / "bin" / "gh"
+        shim.parent.mkdir()
+        shim.write_text(GH_SHIM.format(python=sys.executable, log=str(prs)), encoding="utf-8")
+        shim.chmod(0o755)
+        data, _ = sc.modsys("init", "finish", "--open-pr",
+                            env={"PATH": f"{shim.parent}{os.pathsep}{sc.env.get('PATH', '')}"})
+        check(data["pr"] == "https://example.invalid/bookshop/pull/1", f"finish {data}")
+        count = sc.git("rev-list", "--count", f"{seen['base']}..modsys/init")
+        pushed = sc.git("--git-dir", str(remote), "rev-parse", "modsys/init")
+        check((count, pushed) == ("1", sc.git("rev-parse", "modsys/init")),
+              f"modsys/init: {count} commit(s) on the base, pushed {pushed}")
+        calls = lines(prs)
+        body = calls[0]["body"] if calls else ""
+        check(len(calls) == 1 and calls[0]["argv"][:2] == ["pr", "create"]
+              and "## Verify" in body and "- routing: hit rate 1.0 (30/30" in body
+              and "| Module | Hits | Tasks |" in body, f"gh calls {calls}")
+
+    for name, fn in [("the bookshop monorepo with its history", fixture),
+                     ("init map: seven candidates, tools switched off", map_it),
+                     ("init confirm: six modules", confirm),
+                     ("init fanout: six work items", fanout),
+                     ("init run, killed after two modules", killed),
+                     ("init resume: every module done once", resume),
+                     ("init reconcile: the duplicate and one collision", reconcile),
+                     ("init eval-tasks: the canned tasks", eval_tasks),
+                     ("init verify passes", verify),
+                     ("init finish --open-pr: one commit, one pull request", finish)]:
+        sc.step(name, fn)
+
+
 SCENARIOS = {"greenfield": greenfield, "brownfield": brownfield, "packs": packs,
-             "skills": skills, "adopt": adopt, "init-map": init_map}
+             "skills": skills, "adopt": adopt, "init-map": init_map, "init": init_flow}
 
 
 def run_scenario(name: str, build) -> dict:
@@ -877,9 +1020,16 @@ def run_scenario(name: str, build) -> dict:
 
 
 def main() -> int:
-    with ThreadPoolExecutor(max_workers=len(SCENARIOS)) as pool:  # independent temp repos
-        results = pool.map(lambda item: run_scenario(*item), SCENARIOS.items())
-        card = dict(zip(SCENARIOS, results))
+    names = [n for n in os.environ.get(ONLY, "").split(",") if n] or list(SCENARIOS)
+    unknown = sorted(set(names) - set(SCENARIOS))
+    if unknown:
+        print(f"adoption eval: unknown scenario(s) in {ONLY}: {', '.join(unknown)}",
+              file=sys.stderr)
+        return 2
+    chosen = {n: SCENARIOS[n] for n in SCENARIOS if n in names}
+    with ThreadPoolExecutor(max_workers=len(chosen)) as pool:  # independent temp repos
+        results = pool.map(lambda item: run_scenario(*item), chosen.items())
+        card = dict(zip(chosen, results))
     print(json.dumps(card, indent=2, ensure_ascii=False))
     for name, result in card.items():
         state = "ok" if result["ok"] else "FAILED"

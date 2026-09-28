@@ -9,9 +9,10 @@ it with a pack — using only what ships: a deterministic script (E-A) and blind
 python3 evals/adoption/run_eval.py      # from the engine checkout; exit 0 = every step passed
 ```
 
-It builds six repositories in temp dirs and drives this checkout's CLI (`python -m modsys`)
+It builds seven repositories in temp dirs and drives this checkout's CLI (`python -m modsys`)
 through adoption, a team pack, the built-in skills, adopting an existing registry and starting
-from existing code. No network: the brownfield app is generated.
+from existing code — up to the pull request. No network: the brownfield app is generated, the
+remote is a local bare repository and `gh` a stand-in.
 
 | Scenario | Steps |
 |---|---|
@@ -21,6 +22,7 @@ from existing code. No network: the brownfield app is generated.
 | skills | a git copy of `tests/fixtures/bookshop` → `[packs] builtin = ["core", "ui", "qa"]`: `packs list` shows the three built-in packs → plain `lint` without MS06x → `packs sync --agent claude --agent codex`: 12 skills × 2 agents `created` → `packs sync --check` exits 0 → `agents-md --target AGENTS.md` lists the 12 skills → `create reviews … --tag ui --tag qa` renders `roles/designer.md` and `roles/qa_acceptance.md` from the packs' templates (`templates list`: `role-template:ui` / `role-template:qa`) → a code change in `catalog`: `sync-instructions --from-diff` names `catalog` with an MS050 drift row and the `keywords` hint → `eject module-sync` → the edited ejected copy: `packs sync` 2 × `updated` (`source: ejected`) → `packs new core` is refused (a reserved id) |
 | adopt | a git copy of `tests/fixtures/bookshop` without `.modsys/` (+ `src/checkout/`, `src/payments/` files) and a reference copy with its declarations and a `src/{module}/**` rule → `adopt --dry-run` writes nothing and names the role `designer`, the field `file_paths` and the rule `src/{module}/**` → `adopt` writes `.modsys/config.toml` → `list` and `show catalog --all-roles` equal the reference copy's → a second `adopt` writes `.modsys/adopt.proposed.toml`, `config.toml` unchanged → every file outside `.modsys/` is byte-identical to the start |
 | init-map | `tests/fixtures/bookshop_monorepo` with its history (`tests/fixtures/build_monorepo.py`) → `init` → `init map`: the seven candidates → exclude one and rename one in `.modsys/init/proposal.json` → `init confirm` → `init status`: gate 3 passed → `init resume` runs the fan-out (the work items) → a fresh copy: `init map` stopped by the test seam, then `init resume` → `preflight.json` / `proposal.json` equal an uninterrupted run's |
+| init | `tests/fixtures/bookshop_monorepo` with its history → `init map` (`tools` switched off in the proposal, `[init] max_parallel = 1`) → `init confirm`: six modules → `init fanout`: six work items → `init run --executor` the fake writer (`tests/init_fake_executor.py`), killed by it after two modules → `init resume --executor … --non-interactive`: the other four modules written once each, then reconcile, the routing tasks and verify → `init reconcile --force`: the duplicate `formatPrice` and one collision (`price`) → `init eval-tasks --force`: 30 tasks → `init verify`: passed, 30/30 → `init finish --open-pr` with a local bare `origin` and a `gh` stand-in: one commit on `modsys/init`, pushed, one `gh pr create` whose body holds the verify summary and the routing table |
 
 Every step checks an exit code and the data. The scorecard on stdout:
 
@@ -30,13 +32,15 @@ Every step checks an exit code and the data. The scorecard on stdout:
  "packs": {"steps": ["…"], "commands": 15, "ok": true},
  "skills": {"steps": ["…"], "commands": 11, "ok": true},
  "adopt": {"steps": ["…"], "commands": 7, "ok": true},
- "init-map": {"steps": ["…"], "commands": 7, "ok": true}}
+ "init-map": {"steps": ["…"], "commands": 7, "ok": true},
+ "init": {"steps": ["…"], "commands": 9, "ok": true}}
 ```
 
 `commands` counts modsys invocations. A scenario stops at its first failed step; the other
 scenarios still run, and the script exits 1. `tests/test_adoption_eval.py` runs it with the
-unit tests; its failure-path test sets `MODSYS_EVAL_FAIL_STEP=<scenario>:<step name>`, a test
-seam that forces that one step to fail.
+unit tests; its failure-path tests set `MODSYS_EVAL_FAIL_STEP=<scenario>:<step name>`, a test
+seam that forces that one step to fail, and `MODSYS_EVAL_SCENARIOS=<scenario>,…`, a test seam
+that runs only the scenarios a test looks at (the file stays under 60 s).
 
 ## E-B — blind agents (`agents/`)
 
