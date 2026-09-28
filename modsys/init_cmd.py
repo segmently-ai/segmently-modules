@@ -118,8 +118,8 @@ _BODY = '''
 ## repository). Create one with `modsys packs new ID --role NAME --skill NAME`; `modsys packs
 ## sync` copies the skills into these agents' skill directories when no --agent is given.
 ## builtin: the engine's own packs (docs/skills.md) — "core" = the module skills (scout,
-## discover, research, sync, create, split, lint); "ui" = a designer role and a UI review skill;
-## "qa" = an acceptance-baseline role and acceptance-criteria skills.
+## discover, research, sync, create, split, lint, init, adopt); "ui" = a designer role and a UI
+## review skill; "qa" = an acceptance-baseline role and acceptance-criteria skills.
 [packs]
 builtin = ["core"]                   # or ["core", "ui", "qa"]
 # agents = ["claude", "codex"]

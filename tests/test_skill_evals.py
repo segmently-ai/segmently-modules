@@ -18,6 +18,10 @@ from modsys.config import builtin_packs_root
 from modsys.skills import file_hashes, front_matter
 from tests.test_builtin_content import SKILLS
 
+# the ten skills the `claude plugin eval` suite covers (P4b); module-init and module-adopt are
+# evaluated by the skill-creator files beside them (P5b D8, SI-22)
+P4B_SKILLS = [s for s in SKILLS if s not in ("module-init", "module-adopt")]
+
 ENGINE = Path(__file__).resolve().parents[1]
 SUITE = ENGINE / "evals" / "skills"
 PROMPT_KEYS = {"schema_version", "name", "description", "tags", "plugins", "runs",
@@ -46,7 +50,7 @@ def case_name(case: Path) -> str:
 
 class SuiteShapeTest(unittest.TestCase):  # P4B-AC-019
     def test_fourteen_cases(self):
-        expected = ({f"{s}/trigger" for s in SKILLS} | {f"{s}/outcome" for s in WRITERS}
+        expected = ({f"{s}/trigger" for s in P4B_SKILLS} | {f"{s}/outcome" for s in WRITERS}
                     | {"negative/unrelated"})
         self.assertEqual(set(cases()), expected)
         self.assertEqual(len(expected), 14)
@@ -67,7 +71,7 @@ class SuiteShapeTest(unittest.TestCase):  # P4B-AC-019
                 self.assertEqual({g["type"] for g in found.values()} - GRADER_TYPES, set())
 
     def test_trigger_and_negative_graders(self):
-        for skill in SKILLS:
+        for skill in P4B_SKILLS:
             with self.subTest(skill=skill):
                 found = graders(SUITE / skill / "trigger")
                 self.assertEqual(found["skill-fired"],

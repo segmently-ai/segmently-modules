@@ -49,6 +49,23 @@ CORE: dict[str, tuple[str, list[tuple[str, ...]], list[str]]] = {
                       "receives no section stays as `create` wrote it"]),  # fix wave M11
     "module-lint": ("fix-up", [("ci",), ("lint",), ("registry", "set")],
                     ["Leave the judgement calls to the user", "references/lint-codes.md"]),
+    "module-init": ("writer", [("init", "status"), ("init", "map"), ("init", "confirm"),
+                               ("init", "fanout"), ("init", "next"), ("init", "done"),
+                               ("init", "reconcile"), ("eval", "routing", "--prompt"),
+                               ("init", "verify"), ("init", "finish")],  # P5B-AC-028 (D6)
+                    ["Run `modsys init status --json` first and continue from the recorded phase",
+                     "**STOP — gate 3.**", "merges, splits, renames and exclusions",
+                     "never dispatch an item you did not claim", "at most `max_parallel`",
+                     "Without subagents, loop yourself", "Ask the user about each keyword tie",
+                     "report the duplicate names", "never shows the keywords",
+                     "never the tasks", "at most 2 rounds", "**STOP — gate 7.**",
+                     "Never commit yourself"]),
+    "module-adopt": ("writer", [("adopt", "--dry-run"), ("adopt",), ("lint",)],  # P5B-AC-029
+                     ["Explain each inference with its evidence", "`applies_when`",
+                      "`deprecated`", "a commented-out doc budget", "Group the findings by code",
+                      "Fix nothing here", "hand the fixes to `module-lint`",
+                      "`<config_dir>/adopt.proposed.toml`", "only after the user says yes",
+                      "never edits the registry or a module doc", "never commits"]),
 }
 PACK_SKILLS: dict[str, tuple[str, str, list[tuple[str, ...]], list[str]]] = {
     "designer-review": ("ui", "writer", [("discover",), ("show", "--role", "designer")],
@@ -348,6 +365,28 @@ class LintCodesReferenceTest(unittest.TestCase):  # module-lint explains every c
         ref = (builtin_packs_root() / "core/skills/module-lint/references/lint-codes.md")
         documented = re.findall(r"^\| (MS\d{3}) \|", ref.read_text("utf-8"), re.M)
         self.assertEqual(sorted(documented), sorted(set(re.findall(r"MS\d{3}", source))))
+
+
+class InitAndAdoptSkillsTest(unittest.TestCase):  # P5B-AC-028, P5B-AC-029 (D6, D7)
+    def test_the_siblings_they_name(self):
+        for sid, sibling in (("module-init", "module-adopt"), ("module-init", "module-create"),
+                             ("module-adopt", "module-init")):
+            text = (builtin_packs_root() / "core/skills" / sid / "SKILL.md").read_text("utf-8")
+            self.assertIn(f"`{sibling}`", section(text, "## When not to use"))
+
+    def test_module_adopt_runs_no_registry_writer(self):
+        files = skill_files(builtin_packs_root() / "core/skills/module-adopt")
+        cmds = [c for text in files.values() for c in commands(text)]
+        self.assertTrue(cmds)
+        self.assertEqual([v for v in WRITER_VERBS if uses(cmds, v)], [])
+
+    def test_module_init_parses_the_phases_it_runs(self):
+        files = skill_files(builtin_packs_root() / "core/skills/module-init")
+        self.assertEqual(sorted(files), ["SKILL.md", "references/phases.md"])
+        cmds = [argv(c) for text in files.values() for c in commands(text)]
+        self.assertTrue(all("--json" in a or "--dry-run" in a for a in cmds))
+        self.assertIn(["init", "done", "X", "--json"], cmds)
+        self.assertIn(["eval", "routing", "--prompt", "--json"], cmds)
 
 
 class ScaffoldBaseTest(unittest.TestCase):  # P5A-AC-004 (D0a)

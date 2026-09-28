@@ -11,7 +11,7 @@ edit module docs and registry fields, then ask you to review and commit.
 
 | Pack | Adds | Skills |
 |---|---|---|
-| `core` | — | `module-scout`, `module-discover`, `module-research`, `module-sync`, `module-create`, `module-split`, `module-lint` |
+| `core` | — | `module-scout`, `module-discover`, `module-research`, `module-sync`, `module-create`, `module-split`, `module-lint`, `module-init`, `module-adopt` |
 | `ui` | the `designer` role (`roles/designer.md`) | `designer-review` |
 | `qa` | the `qa_acceptance` role (`roles/qa_acceptance.md`) | `qa-acceptance`, `qa-acceptance-baseline` |
 
@@ -30,7 +30,7 @@ Then copy the skills where the agents read them, tell the agents about them, and
 
 ```bash
 modsys packs list                                          # core, qa, ui … built-in
-modsys packs sync --agent claude --agent codex             # 10 skills × 2 agents: created
+modsys packs sync --agent claude --agent codex             # 12 skills × 2 agents: created
 modsys agents-md --target CLAUDE.md --target AGENTS.md     # the managed block lists the skills
 git add .claude/skills .agents/skills CLAUDE.md AGENTS.md
 ```
@@ -52,10 +52,12 @@ locally (a conflict, left in place) or ejected (below).
 | `module-create` | a new module or child: gathers the answers, shows a dry run, waits for a yes, fills the docs | writes the new module | `create --dry-run`, `create`, `code-map add`, `lint` |
 | `module-split` | a module doc is over budget (MS030 / MS031): proposes children, stops for confirmation, moves sections verbatim | writes the children and the parent index | `show`, `create --parent`, `code-map add`, `lint` |
 | `module-lint` | the gate fails: explains each finding, fixes the safe ones, leaves decisions to you | writes safe fixes | `ci`, `lint`, `registry` |
+| `module-init` | a codebase without modules: maps the code, stops for you to confirm the candidates (gate 3), has one writer per module document it (subagents, or one at a time), reconciles, measures routing, stops again before anything lands (gate 7) | writes through `init`, after your yes | `init status`, `init map`, `init confirm`, `init fanout`, `init next`, `init done`, `init reconcile`, `eval routing --prompt`, `init verify`, `init finish` |
+| `module-adopt` | a registry and docs another tool wrote: infers the config, explains each inference, asks what it cannot guess, shows lint by code, fixes nothing (hands that to `module-lint`) | writes the config `adopt` infers | `adopt --dry-run`, `adopt`, `lint` |
 
 A typical task: `module-scout` while it is discussed, `module-discover` once it is agreed,
 the work, then `module-sync`; `module-create`, `module-split` and `module-lint` when the
-registry itself needs work. The writers never edit a frozen `*.legacy.md` file. `module-sync`
+registry itself needs work; `module-init` or `module-adopt` once, to start. The writers never edit a frozen `*.legacy.md` file. `module-sync`
 decides on its own and asks only in four cases (an update that fits two children equally, new
 work that may be a new module or a child, a change that contradicts a doc claim nobody
 confirmed, text whose only home is a frozen file); `module-create` and `module-split` stop for a
