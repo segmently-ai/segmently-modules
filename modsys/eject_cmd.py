@@ -14,7 +14,7 @@ from pathlib import Path
 
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.skill_sync import copy_file, sync_command
-from modsys.skills import (EJECTED, EJECTED_SCHEMA, ejected_dir, is_behind, pack_skills,
+from modsys.skills import (EJECTED, EJECTED_SCHEMA, behind_reason, ejected_dir, pack_skills,
                            read_ejected, source_hashes, source_problem)
 from modsys.workspace import Workspace
 
@@ -37,10 +37,19 @@ def register(sub, common) -> None:
     p.set_defaults(func=run)
 
 
+def in_the_way(ws, target: Path) -> None:
+    """Exit 2 when the ejected path is a symlink: never an ejected copy (its target is never
+    read, written or deleted)."""
+    if target.is_symlink():
+        raise UsageError(f"{ws.rel(target)} is in the way: a symlink, not an ejected copy — "
+                         f"remove it (its target is left alone), then run the command again")
+
+
 def eject(ws, skill_id: str, dry_run: bool) -> dict:
     """Copy the skill's files and write the record last; every refusal writes nothing and an
     interrupted copy removes the directory."""
     target = ejected_dir(ws.config_dir, skill_id)
+    in_the_way(ws, target)
     if os.path.lexists(target):
         raise UsageError(f"skill '{skill_id}' is already ejected: {ws.rel(target)}")
     skills = pack_skills(ws.config_dir)
@@ -97,10 +106,12 @@ def _unified(upstream: Path | None, ejected: Path | None, rel: str) -> str:
 
 
 def diff(ws, skill_id: str) -> dict:
-    """The pack's current files vs the ejected copy; `behind` = `is_behind` (lint MS063's
-    rule): the pack (or a repository pack's version) or its files differ from the snapshot
-    recorded at eject time. An unreadable file on either side is exit 2 `cannot read …`."""
+    """The pack's current files vs the ejected copy; `reason` = `behind_reason` (lint MS063's
+    rule, `behind` = a reason): the pack (or a repository pack's version) or its files differ
+    from the snapshot recorded at eject time. An unreadable file on either side is exit 2
+    `cannot read …`."""
     target = ejected_dir(ws.config_dir, skill_id)
+    in_the_way(ws, target)
     if not target.is_dir():
         raise UsageError(f"skill '{skill_id}' is not ejected (eject it first: modsys eject "
                          f"{skill_id})")
@@ -123,10 +134,10 @@ def diff(ws, skill_id: str) -> dict:
         if status != "same":
             chunks.append(_unified(skill.source / rel if rel in upstream else None,
                                    target / rel if rel in mine else None, rel))
+    reason = behind_reason(skill, record, upstream=upstream)
     return {"skill": skill_id, "pack": skill.pack, "ejected_from": record.get("version"),
-            "upstream_version": skill.version,
-            "behind": is_behind(skill, record, upstream=upstream), "files": rows,
-            "diff": "".join(chunks)}
+            "upstream_version": skill.version, "behind": reason is not None, "reason": reason,
+            "files": rows, "diff": "".join(chunks)}
 
 
 def run(args) -> int:
@@ -158,9 +169,14 @@ def _render_eject(d, agents: list[str] | None) -> None:
 
 
 def _render_diff(d) -> None:
-    state = "behind" if d["behind"] else "up to date"
-    print(f"{d['skill']}: ejected from {d['pack']} {d['ejected_from']}; the pack is now "
-          f"{d['upstream_version']} — {state}")
+    if d["reason"]:
+        state = f"behind ({d['reason']})"
+    elif d["ejected_from"] != d["upstream_version"]:  # a built-in pack: the engine moved on
+        state = "up to date (the engine version moved; the skill's files did not)"
+    else:
+        state = "up to date"
+    print(f"{d['skill']}: pack {d['pack']} {d['upstream_version']}, ejected at "
+          f"{d['ejected_from']} — {state}")
     for f in d["files"]:
         if f["status"] != "same":
             print(f"{f['status']:<14} {f['path']}")

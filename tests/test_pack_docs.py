@@ -36,7 +36,8 @@ class PackDocsTest(unittest.TestCase):  # P4A-AC-022
                                              "conflict, invalid}, failed}",
                        "{skill, pack, version, dir, files, dry_run}",
                        "{skill, pack, ejected_from, upstream_version, behind, files: [{path, "
-                       "status}], diff}", "{template, role, source, path}",
+                       "status}], diff, reason}",  # P5a D0d: + reason
+                       "{template, role, source, path}",
                        "{template, file, from, dry_run}", "{targets: [{path, status, same_as?}], "
                                                           "check, dry_run}",
                        "/.modsys-managed", ".modsys-ejected", "<config_dir>/overrides/templates/",

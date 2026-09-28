@@ -56,7 +56,7 @@ GOLDEN = [
     (("eject", "notes", "--dry-run"), {"skill", "pack", "version", "dir", "files", "dry_run"}),
     (("eject", "notes"), {"skill", "pack", "version", "dir", "files", "dry_run"}),
     (("eject", "notes", "--diff"), {"skill", "pack", "ejected_from", "upstream_version",
-                                    "behind", "files", "diff"}),
+                                    "behind", "files", "diff", "reason"}),
     (("agents-md", "--target", "CLAUDE.md", "--dry-run"), {"targets", "check", "dry_run"}),
 ]
 

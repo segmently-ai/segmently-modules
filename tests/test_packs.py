@@ -265,9 +265,10 @@ class PacksListTest(PacksRepo):  # P4A-AC-011
         self.assertEqual(skill["description"],
                          front_matter(self.skill_md("team", "api-review"))["description"])
         self.assertEqual(run("packs", "list", *self.R)[1].splitlines(), [
-            "bookshop 0.1.0 priority 50  .modsys/packs/bookshop", "  role   designer",
-            "team 0.1.0 priority 50  .modsys/packs/team", "  role   reviewer",
-            "  skill  api-review  reads reviewer"])
+            "bookshop 0.1.0 priority 50  .modsys/packs/bookshop",
+            "  Fixture pack: a custom role, a code-pointer field, a deprecated field",  # P5a D0d
+            "  role   designer", "team 0.1.0 priority 50  .modsys/packs/team",
+            "  Team review conventions", "  role   reviewer", "  skill  api-review  reads reviewer"])
 
     def test_an_ejected_copy_and_an_unreadable_skill(self):
         self.ok(*TEAM)
@@ -317,6 +318,47 @@ class PacksContractTest(PacksRepo):  # P4A-AC-023
             self.assertEqual(run(*TEAM, *self.R), (130, "", "modsys: interrupted\n"))
         self.assertEqual(len(calls), 2)
         self.assertFalse((self.root / ".modsys/packs/team").exists())  # the first file is gone
+
+
+class DescriptionsTest(PacksRepo):  # P5A-AC-010 (D0d, M-10)
+    def test_packs_list_shows_the_first_line(self):
+        self.ok(*TEAM)
+        pack = self.root / ".modsys/packs/team/pack.toml"
+        pack.write_text(pack.read_text().replace('description = "Team review conventions"',
+                                                 'description = """Team review conventions\n'
+                                                 'Second line."""'))
+        (self.root / ".modsys/packs/bare").mkdir()
+        (self.root / ".modsys/packs/bare/pack.toml").write_text('id = "bare"\n')
+        lines = run("packs", "list", *self.R)[1].splitlines()
+        self.assertEqual(lines[:2], ["bare (no version) priority 50  .modsys/packs/bare",
+                                     "bookshop 0.1.0 priority 50  .modsys/packs/bookshop"])
+        self.assertEqual(lines[2], "  Fixture pack: a custom role, a code-pointer field, a "
+                                   "deprecated field")
+        self.assertEqual(lines[lines.index("team 0.1.0 priority 50  .modsys/packs/team") + 1],
+                         "  Team review conventions")
+        self.assertNotIn("None", "\n".join(lines))
+        self.assertNotIn("Second line.", "\n".join(lines))
+
+    def test_multi_line_quoted_skill_descriptions_lose_their_quotes(self):
+        self.ok(*TEAM)
+        md = self.root / ".modsys/packs/team/skills/api-review/SKILL.md"
+        body = md.read_text().split("\n---\n", 1)[1]
+        for front, want in (('description: "Use when reviewing\n  API changes"',
+                             "Use when reviewing API changes"),
+                            ("description: 'Use it when it''s\n  an API change'",
+                             "Use it when it's an API change"),
+                            ("description: Use when reviewing\n  API changes",
+                             "Use when reviewing API changes"),
+                            ("description: >\n  Use when reviewing\n  API changes",
+                             "Use when reviewing API changes")):
+            with self.subTest(front=front):
+                md.write_text(f"---\nname: api-review\n{front}\n---\n{body}")
+                skill = self.ok("packs", "list")[1]["skills"][0]
+                self.assertEqual(skill["description"], want)
+                self.ok("agents-md", "--target", "CLAUDE.md")
+                self.assertIn(f"- `api-review` — {want}\n",
+                              (self.root / "CLAUDE.md").read_text())
+                self.assertIsNone(source_problem(md.parent, "api-review"))
 
 
 if __name__ == "__main__":

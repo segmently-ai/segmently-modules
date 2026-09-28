@@ -114,7 +114,8 @@ def front_matter(text: str) -> dict[str, str] | None:
     none (the first line is not `---`, or no later line is). A stdlib-only reader for what
     skills use: quoted scalars are unquoted; block scalars (`|`, `>`, with `-` / `+`) are
     joined from their indented lines (`>` folded with spaces) and never end in a newline; a
-    plain scalar's indented continuation lines are folded with spaces; the indented lines
+    plain scalar's indented continuation lines are folded with spaces (a quoted scalar over
+    several lines is folded the same way, then unquoted); the indented lines
     under a key without a value (e.g. `metadata:`) are skipped (the key reads as ""); comment
     lines are skipped. A UTF-8 BOM and `\\r\\n` line ends are accepted."""
     parsed = _front_matter(text)
@@ -142,8 +143,11 @@ def _front_matter(text: str) -> tuple[dict[str, str], set[str]] | None:
             body = [l[indent:].rstrip() if l.strip() else "" for l in extra]
             out[key] = ("\n".join(body) if style == "|" else _fold(body)).strip("\n")
         elif style == "plain":
-            out[key] = " ".join([value] + [l.strip() for l in extra if l.strip()])
-            plain.add(key)
+            joined = " ".join([value] + [l.strip() for l in extra if l.strip()])
+            quoted = _unquote(joined) if extra else None  # a quoted scalar over several lines
+            out[key] = joined if quoted is None else quoted
+            if quoted is None:
+                plain.add(key)
         else:
             out[key] = value
 
@@ -348,6 +352,22 @@ def ejected_copies(config_dir: Path) -> dict[str, Path]:
     return {d.name: d for d in sorted(root.iterdir()) if d.is_dir() and not d.is_symlink()}
 
 
+def ejected_symlinks(config_dir: Path) -> dict[str, Path]:
+    """The symlinks under `<config_dir>/overrides/skills/`, by name: never an ejected copy —
+    `eject` refuses them as in the way, `packs sync` reports a conflict, lint MS063; their
+    target is never read."""
+    root = config_dir / "overrides" / "skills"
+    if not root.is_dir():
+        return {}
+    return {d.name: d for d in sorted(root.iterdir()) if d.is_symlink()}
+
+
+def is_ejected(config_dir: Path, skill_id: str) -> bool:
+    """An ejected copy exists: a real directory (a symlink there is not one)."""
+    path = ejected_dir(config_dir, skill_id)
+    return path.is_dir() and not path.is_symlink()
+
+
 def read_ejected(directory: Path) -> dict | None:
     """The `.modsys-ejected` record of an ejected copy — {schema, skill, pack, version, files:
     {path: sha256}}, the upstream snapshot at eject time — or None when missing or malformed."""
@@ -372,7 +392,7 @@ def behind_reason(skill: PackSkill, record: dict,
     if upstream is None:
         upstream = file_hashes(skill.source) if skill.source.is_dir() else {}
     if skill.pack != record["pack"]:
-        return f"ejected from pack '{record['pack']}'"
+        return f"ejected from pack '{record['pack']}', now declared by pack '{skill.pack}'"
     if not skill.builtin and skill.version != record.get("version"):
         return f"ejected from {record.get('version')}, pack is now {skill.version}"
     if upstream != record["files"]:

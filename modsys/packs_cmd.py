@@ -8,7 +8,8 @@ skills.
         packs), with their roles and skills
   sync [--agent claude|codex]… [--check]
         copy every pack skill into the agents' skill directories (`skill_sync`); agents = the
-        flags, else `[packs] agents`"""
+        flags, else `[packs] agents`, else the agents whose directories already hold managed
+        skills (an earlier sync)"""
 import functools
 import os
 import re
@@ -21,10 +22,10 @@ from modsys.code_map_cmd import _toml_string
 from modsys.config import BUILTIN_PACKS, DEFAULT_PACK_PRIORITY, core_defaults, discover_packs
 from modsys.create import NAME, article
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
-from modsys.skill_sync import (NO_RECORD, STATUSES, apply_plan, conflict_kind, plan_sync, row,
-                               sync_command)
-from modsys.skills import (AGENT_DIRS, NAME_RULE, declared_skills, ejected_dir,
-                           read_front_matter, skill_id_ok)
+from modsys.skill_sync import (NO_RECORD, STATUSES, apply_plan, conflict_kind, managed_agents,
+                               plan_sync, row, sync_command)
+from modsys.skills import (AGENT_DIRS, NAME_RULE, declared_skills, ejected_dir, is_ejected,
+                           pack_skills, read_front_matter, skill_id_ok)
 from modsys.workspace import Workspace
 
 ACTIONS = ("new", "list", "sync")
@@ -200,7 +201,7 @@ def pack_rows(ws) -> list[dict]:
             skills.append({"id": sid, "path": spec["path"],
                            "reads_roles": list(spec.get("reads_roles", [])),
                            "description": meta.get("description") or None,
-                           "ejected": ejected_dir(ws.config_dir, sid).is_dir()})
+                           "ejected": is_ejected(ws.config_dir, sid)})
         version, description = data.get("version"), data.get("description")
         rows.append({"id": pack["id"], "version": version if isinstance(version, str) else None,
                      "priority": pack["priority"], "builtin": pack["builtin"],
@@ -218,7 +219,8 @@ def sync(ws, agents: list[str] | None, check: bool, dry_run: bool) -> dict:
     for agent in agents or []:
         if agent not in AGENT_DIRS:
             raise UsageError(f"unknown agent {agent!r} (agents: {', '.join(AGENT_DIRS)})")
-    chosen = list(dict.fromkeys(agents or (ws.config.get("packs") or {}).get("agents") or []))
+    chosen = list(dict.fromkeys(agents or (ws.config.get("packs") or {}).get("agents")
+                                or managed_agents(ws.root)))
     if not chosen:
         raise UsageError("choose --agent claude and/or --agent codex, or set [packs] agents")
     try:
@@ -320,9 +322,15 @@ def _hint(ws, r) -> str:
 def _render_sync(d, ws) -> None:
     if not d["skills"]:
         print("no pack skills (add one: modsys packs new ID --skill NAME)")
+    upstream = pack_skills(ws.config_dir)
     for r in d["skills"]:
         where = f"({r['pack']} {r['version']}" if r["version"] else f"({r['pack']}"
-        where += ", ejected copy)" if r["source"] == "ejected" else ")"
+        now = upstream.get(r["skill"]) if r["source"] == "ejected" else None
+        if now is not None and (now.pack, now.version) != (r["pack"], r["version"]):
+            where += (f", ejected copy; the pack is now {now.version})" if now.pack == r["pack"]
+                      else f", ejected copy; now pack {now.pack} {now.version})")
+        else:
+            where += ", ejected copy)" if r["source"] == "ejected" else ")"
         if r["pack"] is None and r["source"] is None:  # an orphan whose marker is unreadable
             where = "(no valid marker)"
         elif r["pack"] is None:  # an ejected copy without a record of a skill no pack declares
@@ -352,6 +360,8 @@ def _render_list(rows) -> None:
     for r in rows:
         rank = "built-in" if r["builtin"] else f"priority {r['priority']}"
         print(f"{r['id']} {r['version'] or '(no version)'} {rank}  {r['dir']}")
+        if r["description"] and r["description"].strip():
+            print(f"  {r['description'].strip().splitlines()[0]}")
         for role in r["roles"]:
             print(f"  role   {role}")
         for s in r["skills"]:

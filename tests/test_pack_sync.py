@@ -560,5 +560,53 @@ class PacksConfigAndContractTest(SyncRepo):  # D7 [packs], D10 init starter, P4A
                              (130, "", "modsys: interrupted\n"))
 
 
+class AgentsFromManagedCopiesTest(SyncRepo):  # P5A-AC-009 (D0d)
+    REFUSAL = ("modsys: error: choose --agent claude and/or --agent codex, or set [packs] "
+               "agents\n")
+
+    def agents(self, *argv) -> list[str]:
+        code, env, err = run_json("packs", "sync", *argv, *self.R)
+        self.assertEqual((code, err), (0, ""), env)
+        return env["data"]["agents"]
+
+    def refused(self) -> None:
+        before = self.snapshot(".claude"), self.snapshot(".agents")
+        code, out, err = run("packs", "sync", "--json", *self.R)
+        self.assertEqual((code, out, err), (2, "", self.REFUSAL))
+        self.assertEqual((self.snapshot(".claude"), self.snapshot(".agents")), before)
+
+    def test_the_decision_table(self):
+        self.refused()  # no marker anywhere
+        self.sync(agents=("codex",))
+        self.assertEqual(self.agents(), ["codex"])
+        (self.root / ".modsys/config.toml").write_text('[packs]\nagents = ["claude"]\n')
+        self.assertEqual(self.agents(), ["claude"])  # the config wins over the markers
+        self.assertEqual(self.agents("--agent", "codex"), ["codex"])  # the flags win
+        (self.root / ".modsys/config.toml").unlink()
+        self.assertEqual(self.agents(), ["claude", "codex"])  # both hold markers now
+        shutil.rmtree(self.root / ".agents")
+        self.assertEqual(self.agents("--check"), ["claude"])
+        self.assertEqual(self.agents("--dry-run"), ["claude"])
+
+    def test_only_valid_markers_count(self):
+        self.sync(agents=("codex",))
+        (self.root / ".claude/skills/notes").mkdir(parents=True)
+        (self.root / ".claude/skills/notes/SKILL.md").write_text("# by hand\n")
+        self.assertEqual(self.agents(), ["codex"])
+        self.dest(".modsys-managed", agent_dir=".agents/skills").write_text("{not json")
+        (self.root / ".claude/skills/notes/.modsys-managed").write_text("[]")
+        self.refused()
+
+    def test_mirrored_agent_directories(self):
+        self.sync()
+        (self.root / ".agents").mkdir()
+        os.symlink("../.claude/skills", self.root / ".agents/skills")
+        code, env, err = run_json("packs", "sync", *self.R)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(env["data"]["agents"], ["claude", "codex"])
+        self.assertEqual([(r["agent"], r.get("same_as")) for r in env["data"]["skills"]],
+                         [("claude", None), ("codex", "claude")])
+
+
 if __name__ == "__main__":
     unittest.main()

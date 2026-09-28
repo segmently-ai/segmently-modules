@@ -8,8 +8,11 @@ import tempfile
 import unittest
 from unittest import mock
 
+from pathlib import Path
+
 from modsys.skills import is_behind, pack_skills, read_ejected
 from tests.helpers import copy_fixture, init_git, run, run_json
+from tests.test_builtin_packs import FakeBuiltins
 
 SKILL = "---\nname: api-review\ndescription: {desc}\n---\n\n# api-review\n"
 
@@ -191,7 +194,7 @@ class EjectDiffTest(EjectRepo):  # P4A-AC-018
         self.ok("eject", "api-review")
         self.assertEqual(self.diff(), {"skill": "api-review", "pack": "team",
                                        "ejected_from": "0.1.0", "upstream_version": "0.1.0",
-                                       "behind": False,
+                                       "behind": False, "reason": None,  # P5a D0d
                                        "files": [{"path": "SKILL.md", "status": "same"}],
                                        "diff": ""})
         self.assertEqual(self.ms063(), [])
@@ -269,8 +272,9 @@ class EjectDiffTest(EjectRepo):  # P4A-AC-018
     def test_diff_and_lint_share_one_behind_rule(self):  # fix wave F1
         self.ok("eject", "api-review")
         digest = hashlib.sha256(self.upstream().read_bytes()).hexdigest()
-        with mock.patch("modsys.eject_cmd.is_behind", return_value=True) as rule:
-            self.assertTrue(self.diff()["behind"])
+        with mock.patch("modsys.eject_cmd.behind_reason", return_value="why") as rule:
+            data = self.diff()  # P5a D0d: --diff asks behind_reason once, for `reason` too
+        self.assertEqual((data["behind"], data["reason"]), (True, "why"))
         rule.assert_called_once()
         self.assertEqual(rule.call_args.kwargs["upstream"], {"SKILL.md": digest})
         skill = pack_skills(self.root / ".modsys")["api-review"]
@@ -284,8 +288,9 @@ class EjectDiffTest(EjectRepo):  # P4A-AC-018
         self.ok("eject", "api-review")
         self.set_pack("0.2.0", "Version two.")
         out = run("eject", "api-review", "--diff", *self.R)[1].splitlines()
-        self.assertEqual(out[:4], ["api-review: ejected from team 0.1.0; the pack is now 0.2.0 "
-                                   "— behind", "changed        SKILL.md",
+        self.assertEqual(out[:4], ["api-review: pack team 0.2.0, ejected at 0.1.0 — behind "
+                                   "(ejected from 0.1.0, pack is now 0.2.0)",  # P5a D0d
+                                   "changed        SKILL.md",
                                    "--- upstream/SKILL.md", "+++ ejected/SKILL.md"])
 
 
@@ -306,6 +311,109 @@ class EjectContractTest(EjectRepo):  # P4A-AC-023
         with mock.patch("modsys.eject_cmd.source_hashes", side_effect=KeyboardInterrupt):
             self.assertEqual(run("eject", "api-review", "--diff", *self.R),
                              (130, "", "modsys: interrupted\n"))
+
+
+class DiffReasonTest(EjectRepo):  # P5A-AC-011 (D0d, M-6)
+    def diff(self) -> tuple:
+        data = self.ok("eject", "api-review", "--diff")
+        head = run("eject", "api-review", "--diff", *self.R)[1].splitlines()[0]
+        return data["behind"], data["reason"], head
+
+    def test_the_decision_table(self):
+        self.ok("eject", "api-review")
+        self.assertEqual(self.diff(), (False, None, "api-review: pack team 0.1.0, ejected at "
+                                                    "0.1.0 — up to date"))
+        self.set_pack("0.2.0", "Reviews API changes.")
+        self.assertEqual(self.diff(), (True, "ejected from 0.1.0, pack is now 0.2.0",
+                                       "api-review: pack team 0.2.0, ejected at 0.1.0 — behind "
+                                       "(ejected from 0.1.0, pack is now 0.2.0)"))
+        self.set_pack("0.1.0", "Reviews API changes, version two.")
+        self.assertEqual(self.diff()[:2], (True, "the pack's files changed since the eject"))
+        self.set_pack("0.1.0", "Reviews API changes.")
+        team = self.root / ".modsys/packs/team"
+        team.rename(team.with_name("team2"))
+        toml = team.with_name("team2") / "pack.toml"
+        toml.write_text(toml.read_text().replace('id = "team"', 'id = "team2"'))
+        behind, reason, head = self.diff()
+        self.assertEqual((behind, reason), (True, "ejected from pack 'team', now declared by "
+                                                  "pack 'team2'"))
+        self.assertNotIn("ejected from team2", head)
+        self.assertEqual([m for _, m, _ in self.ms063()], [
+            "ejected skill 'api-review' is behind pack 'team2' (ejected from pack 'team', now "
+            "declared by pack 'team2') — review: modsys eject api-review --diff"])
+
+    def test_packs_sync_text_shows_both_versions(self):
+        self.ok("eject", "api-review")
+        self.set_pack("0.2.0", "Reviews API changes.")
+        before = self.ok("packs", "sync", "--agent", "claude")["skills"]
+        out = run("packs", "sync", "--agent", "claude", *self.R)[1].splitlines()
+        self.assertEqual(out[0], "unchanged  claude  .claude/skills/api-review  (team 0.1.0, "
+                                 "ejected copy; the pack is now 0.2.0)")
+        self.assertEqual([(r["pack"], r["version"], r["source"]) for r in before],
+                         [("team", "0.1.0", "ejected")])
+
+
+class BuiltinDiffReasonTest(FakeBuiltins):  # P5A-AC-011: a built-in pack, the engine moved on
+    def test_the_engine_version_alone(self):
+        self.enable("core")
+        self.ok("eject", "notes")
+        with mock.patch("modsys.config.__version__", "99.0.0"):
+            data = self.ok("eject", "notes", "--diff")
+            out = run("eject", "notes", "--diff", *self.R)[1].splitlines()
+        self.assertEqual((data["behind"], data["reason"]), (False, None))
+        self.assertEqual(out[0], "notes: pack core 99.0.0, ejected at 0.1.0.dev0 — up to date "
+                                 "(the engine version moved; the skill's files did not)")
+
+
+class SymlinkAtTheEjectedPathTest(EjectRepo):  # P5A-AC-012 (D0d, M-9)
+    def link(self, kind: str) -> Path:
+        target = self.root / "elsewhere"
+        if kind == "directory":
+            self.ok("eject", "api-review")
+            self.ejected.rename(target)
+        elif kind == "file":
+            target.write_text("a file\n")
+        self.ejected.parent.mkdir(parents=True, exist_ok=True)
+        os.symlink(target, self.ejected)
+        return target
+
+    def state(self, target: Path) -> dict:
+        return {p.relative_to(target).as_posix() if target.is_dir() else ".": p.read_bytes()
+                for p in ([*target.rglob("*")] if target.is_dir() else
+                          [target] if target.exists() else []) if p.is_file()}
+
+    def test_every_verb_treats_it_as_in_the_way(self):
+        where = ".modsys/overrides/skills/api-review"
+        for kind in ("directory", "file", "dangling"):
+            with self.subTest(kind=kind):
+                target = self.link(kind)
+                before = self.state(target)
+                self.assertFalse(self.ok("packs", "list")[1]["skills"][0]["ejected"])
+                for argv in (("eject", "api-review"), ("eject", "api-review", "--diff")):
+                    code, out, err = run(*argv, "--json", *self.R)
+                    self.assertEqual((code, out), (2, ""))
+                    self.assertIn(f"{where} is in the way: a symlink, not an ejected copy", err)
+                (self.root / ".modsys/packs/team/skills/notes").mkdir(parents=True)
+                (self.root / ".modsys/packs/team/skills/notes/SKILL.md").write_text(
+                    "---\nname: notes\ndescription: Notes.\n---\n")
+                toml = self.root / ".modsys/packs/team/pack.toml"
+                toml.write_text(toml.read_text() + '[skills.notes]\npath = "skills/notes"\n')
+                data = self.ok("packs", "sync", "--agent", "claude", code=1)
+                self.assertEqual([(r["skill"], r["status"], r["reason"]) for r in data["skills"]],
+                                 [("api-review", "conflict", f"{where} is a symlink, not an "
+                                                             f"ejected copy"),
+                                  ("notes", "created", None)])
+                self.assertFalse((self.root / ".claude/skills/api-review").exists())
+                self.assertEqual([(s, p) for s, _, p in self.ms063()], [("warning", where)])
+                self.assertEqual(self.state(target), before)
+                self.ejected.unlink()
+                shutil.rmtree(self.root / ".claude")
+                shutil.rmtree(self.root / ".modsys/packs/team/skills/notes")
+                self.set_pack("0.1.0", "Reviews API changes.")
+                if target.is_dir():
+                    shutil.rmtree(target)
+                elif target.exists():
+                    target.unlink()
 
 
 if __name__ == "__main__":

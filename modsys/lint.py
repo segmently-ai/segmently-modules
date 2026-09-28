@@ -23,7 +23,7 @@ from modsys.query import role_paths
 from modsys.registry import as_dict, as_list, stub_head
 from modsys.rules import edge_problems, status_problem
 from modsys.skills import (EJECTED, SKILL_KEYS, behind_reason, declared_skills, ejected_copies,
-                           inside, pack_skills, read_ejected, source_problem)
+                           ejected_symlinks, inside, pack_skills, read_ejected, source_problem)
 from modsys.workspace import Workspace
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "error": 2}
@@ -275,6 +275,11 @@ def pack_findings(ws) -> list[Finding]:
                                f"'{skill.pack}' is shadowed by pack '{skill.shadowed_by}' "
                                f"(higher precedence); rename one", toml))
     skills = pack_skills(ws.config_dir)
+    for sid, link in ejected_symlinks(ws.config_dir).items():  # the target is never read
+        out.append(Finding("MS063", "warning", "*", f"'{ws.rel(link)}' is a symlink, not an "
+                           f"ejected copy of skill '{sid}' — packs sync and eject treat it as "
+                           f"in the way; remove it (modsys eject {sid} makes a real copy)",
+                           ws.rel(link)))
     for sid, copy in ejected_copies(ws.config_dir).items():
         record, where = read_ejected(copy), ws.rel(copy)
         if record is None:

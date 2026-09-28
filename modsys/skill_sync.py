@@ -29,8 +29,8 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from modsys.skills import (AGENT_DIRS, EJECTED, MANAGED, ejected_copies, pack_skills,
-                           read_ejected, sha256_file, source_hashes, source_problem)
+from modsys.skills import (AGENT_DIRS, EJECTED, MANAGED, ejected_copies, ejected_symlinks,
+                           pack_skills, read_ejected, sha256_file, source_hashes, source_problem)
 
 MANAGED_SCHEMA = "modsys.managed/1"
 STATUSES = ("created", "updated", "unchanged", "removed", "conflict", "invalid")
@@ -62,6 +62,7 @@ class Source:
     dir: Path
     problem: str | None
     files: dict[str, str] = field(default_factory=dict)  # path -> sha256
+    blocked: str | None = None  # a symlink at the ejected path: a conflict, nothing is read
 
 
 @dataclass
@@ -85,7 +86,13 @@ def skill_sources(ws) -> dict[str, Source]:
     more; pack and version from its record), else the declaring pack's directory."""
     out = {}
     skills, ejected = pack_skills(ws.config_dir), ejected_copies(ws.config_dir)
+    links = ejected_symlinks(ws.config_dir)
     for sid in sorted(set(skills) | set(ejected)):
+        if sid in links and sid in skills:  # never materialized from the pack behind its back
+            out[sid] = Source(sid, skills[sid].pack, skills[sid].version, "ejected", links[sid],
+                              None, blocked=f"{ws.rel(links[sid])} is a symlink, not an "
+                                           f"ejected copy")
+            continue
         if sid in ejected:
             record = read_ejected(ejected[sid])
             if record is None:
@@ -167,6 +174,9 @@ def _same_file(path: Path, src: Path) -> bool:
 
 def plan_skill(agent: str, dest: Path, src: Source) -> Plan:
     plan = Plan(agent, src.skill, dest, "invalid", src)
+    if src.blocked:
+        plan.status, plan.reason = "conflict", src.blocked
+        return plan
     if src.problem:
         plan.reason = src.problem
         return plan
@@ -330,6 +340,19 @@ def apply_plan(plan: Plan) -> None:
             (plan.dest / rel).unlink()
         (plan.dest / MANAGED).unlink()
         _prune(plan.dest, plan.delete, True)
+
+
+def managed_agents(root: Path) -> list[str]:
+    """The agents whose skill directory already holds a skill `packs sync` manages (a valid
+    marker proves an earlier sync), in the engine's order — `packs sync` uses them when neither
+    `--agent` nor `[packs] agents` names any."""
+    out = []
+    for agent, rel in AGENT_DIRS.items():
+        base = root / rel
+        if base.is_dir() and any(d.is_dir() and not d.is_symlink() and read_marker(d)
+                                 for d in sorted(base.iterdir())):
+            out.append(agent)
+    return out
 
 
 def plan_sync(ws, agents: list[str]) -> list[Plan]:
