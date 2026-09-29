@@ -416,6 +416,9 @@ class InitAndAdoptSkillsTest(unittest.TestCase):  # P5B-AC-028, P5B-AC-029 (D6, 
         self.assertIn("A claim whose `item` has `previous_problems`", text)
         phases = " ".join((root / "references/phases.md").read_text("utf-8").split())
         self.assertIn("`previous_problems`", phases)
+        for body in (text, phases):  # final review I-1: a subagent given the path gets them too
+            self.assertIn("the work item file does not hold them", body)
+            self.assertIn("fix them first", body)
 
 
 class ScaffoldBaseTest(unittest.TestCase):  # P5A-AC-004 (D0a)

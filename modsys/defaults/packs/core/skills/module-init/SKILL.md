@@ -84,7 +84,9 @@ that was already in the registry, and never commits: the user reviews and commit
    path that does not exist, a symbol not in its row's file, too few keywords, an edge to an
    unknown module): have the same writer fix them while it has the context, then check again.
    A claim whose `item` has `previous_problems` (an earlier attempt was refused) goes to the
-   writer with them: its `prompt` already ends with them.
+   writer with them: give a subagent those problems together with its work item path — the
+   work item file does not hold them — and tell it to fix them first; without subagents, the
+   claim result's `item.prompt` already ends with them.
    An item that stays wrong: tell the user. The detailed rules for writers are in
    `references/phases.md`.
 

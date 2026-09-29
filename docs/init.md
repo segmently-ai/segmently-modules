@@ -225,7 +225,7 @@ then the engine):
 
 | Template | Renders |
 |---|---|
-| `init/module_prompt.md` | a work item's `prompt`: `${module}`, `${paths}`, `${files}`, `${files_note}`, `${neighbours}`, `${staging_dir}`, `${docs}`, `${roles}`, `${relations}`, `${description_min}`, `${description_max}`, `${min_keywords}`, `${ask_fields}` |
+| `init/module_prompt.md` | a work item's `prompt`: `${module}`, `${paths}`, `${files}`, `${files_note}`, `${neighbours}`, `${staging_dir}`, `${docs}`, `${roles}`, `${relations}`, `${description_min}`, `${description_max}`, `${min_keywords}`, `${ask_fields}`, `${modules_dir}`, `${module_doc}` (`[paths]`: the final doc paths `init done` checks) |
 | `init/routing_prompt.md` | the task writer's prompt: `${count}`, `${per_module}`, `${modules}` |
 
 ```bash

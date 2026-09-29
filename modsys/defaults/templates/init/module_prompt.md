@@ -46,15 +46,16 @@ A JSON object with exactly these keys:
 - Never backtick a path that does not exist — a test directory the module lacks, an import
   specifier such as `./lines`, a sibling doc written as `roles/qa.md`: write those in plain
   words, or give the full root-relative path of a file that exists (a sibling doc:
-  `modules/${module}/roles/qa.md` in the default modules directory).
+  `${modules_dir}/${module}/roles/qa.md`; the main doc: `${modules_dir}/${module}/${module_doc}`).
 - In `MODULE.md`, list the components in the table `| Name | Path | Purpose |`: `Name` holds one
   symbol in backticks (a function, class, type or constant defined in that file) or plain words
   for a whole file, `Path` the file in backticks.
 - Under `## Purpose`, write in your own words what the module is for, as a paragraph that stands
   on its own — do not repeat the description.
 - Leave no placeholder of these templates behind: a dollar sign and an opening brace around
-  one of their names (the title, the description). A dollar sign with a brace that belongs to
-  the code you describe — a shell variable, a JavaScript template string — is fine; a code
-  sample that uses one of these templates' names that way is refused: reword it.
+  one of their names (the title, the description, the module, the role, the files, the paths,
+  the docs and the others these templates use). A dollar sign with a brace that belongs to the
+  code you describe — a shell variable, a JavaScript template string — is fine; a code sample
+  that uses one of these templates' names that way is refused: reword it.
 - Never write outside `${staging_dir}/`; never edit code, the registry or another module's docs;
   never commit.

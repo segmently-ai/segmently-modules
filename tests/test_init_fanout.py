@@ -2,6 +2,7 @@
 neighbours, roles, staging dir and a prompt rendered from the template chain — and the modules
 created by hand after gate 3 (D15(d), SI-30)."""
 import json
+import re
 import string
 import tempfile
 import unittest
@@ -110,10 +111,21 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
                 "that phrase", "backticks mark a path the check verifies",
                 "written from the repository root, not from the package",
                 "Never backtick a path that does not exist", "an import specifier such as "
-                "`./lines`", "`modules/cart/roles/qa.md`"):
+                "`./lines`", "(a sibling doc: `modules/cart/roles/qa.md`; the main doc: "
+                "`modules/cart/MODULE.md`)"):
             self.assertIn(needle, flat)
         self.assertNotIn("${", prompt)
         self.assertIn("<one sentence: what the module does, why, when to use it>", prompt)
+
+    def test_a_custom_modules_dir(self):  # final review M-5: the layout init done checks
+        root = shop(self.base, config='[paths]\nmodules_dir = "docs/modules"\n'
+                                      'module_doc = "README.md"\n')
+        ok(root, "init", "fanout")
+        prompt = self.item(root, "cart")["prompt"]
+        self.assertIn("(a sibling doc: `docs/modules/cart/roles/qa.md`; the main doc: "
+                      "`docs/modules/cart/README.md`)", " ".join(prompt.split()))
+        self.assertNotIn("`modules/cart/", prompt)
+        self.assertNotIn("${", prompt)
 
     def test_the_placeholder_rule(self):  # P5C-AC-014 (D4): said in words, never with `${`
         root = shop(self.base)
@@ -122,14 +134,20 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
         self.assertNotIn("${", prompt)
         flat = " ".join(prompt.split())
         for needle in ("Leave no placeholder of these templates behind",
+                       "(the title, the description, the module, the role, the files, the "
+                       "paths, the docs and the others these templates use)",  # final review M-6
                        "belongs to the code you describe", "is fine",
                        "uses one of these templates' names that way is refused: reword it"):
             self.assertIn(needle, flat)
         source = (engine_templates() / "init/module_prompt.md").read_text(encoding="utf-8")
         self.assertLessEqual({"module", "staging_dir", "paths", "files_note", "neighbours",
                               "files", "docs", "description_min", "description_max",
-                              "min_keywords", "relations", "ask_fields"},
+                              "min_keywords", "relations", "ask_fields", "modules_dir",
+                              "module_doc"},
                              set(string.Template(source).get_identifiers()))
+        prose = source.split("## Rules", 1)[1]  # the template's own words hold no `${` but
+        self.assertEqual(set(re.findall(r"\$\{(\w+)\}", prose)),  # the values it renders
+                         {"modules_dir", "module", "module_doc", "staging_dir"})
 
     def test_the_template_chain(self):
         root = shop(self.base)

@@ -173,7 +173,9 @@ class Work:
                   "description_min": cfg["create"]["description_min"],
                   "description_max": cfg["create"]["description_max"],
                   "min_keywords": cfg["create"]["min_keywords"],
-                  "relations": ", ".join(cfg["registry"]["relations"]), "ask_fields": asked}
+                  "relations": ", ".join(cfg["registry"]["relations"]), "ask_fields": asked,
+                  "modules_dir": cfg["paths"]["modules_dir"],  # the layout init done checks
+                  "module_doc": cfg["paths"]["module_doc"]}
         text = fill(resolve_template(self.ws, "init/module_prompt.md"), values)
         return text if text.endswith("\n") else text + "\n"
 
