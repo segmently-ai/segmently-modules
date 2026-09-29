@@ -411,6 +411,16 @@ class InventedAtDoneTest(DriverRepo):  # P5C-AC-004…007, 021, 022 (D2, SI-1, S
         planned = table("`Cart`", "`modules/catalog/MODULE.md`")  # not written yet: not read
         self.assertEqual(self.done({"MODULE.md": planned}), (0, []))
 
+    def test_a_planned_doc_that_is_written(self):  # final review T-4 (PR-4's second half)
+        catalog = self.claim()["item"]
+        write_docs(self.root, catalog)  # catalog's writer is done: its staging docs are read
+        for doc in ("`modules/catalog/MODULE.md`", "`modules/catalog/roles/developer.md`"):
+            with self.subTest(doc=doc):
+                self.assertEqual(self.done({"MODULE.md": table("`Catalog`", doc)}), (0, []))
+                self.assertEqual(self.done({"MODULE.md": table("`nothere`", doc)}),
+                                 (1, ["MODULE.md:20: symbol not found in its row's file: "
+                                      "nothere"]))
+
     def test_a_damaged_sibling_work_item(self):  # final review M-4: its main doc only
         (self.root / WORK / "work/catalog.json").write_text("{not json")
         for token, problems in (

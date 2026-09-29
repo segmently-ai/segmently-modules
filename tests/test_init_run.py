@@ -469,16 +469,18 @@ class RetryTest(RunRepo):  # P5C-AC-008, P5C-AC-009, P5C-AC-022 (D3, SI-4, SI-6,
 
     def test_a_module_taken_over_while_its_writer_ran(self):  # PR-18: the same attempt only
         self.config("[init]\nmax_parallel = 1\n")
-        taken = []
+        live, taken = self.base / "live", []
 
-        def agent():  # while cart's writer works, another driver resumes and claims it
-            if not taken and self.stdins("cart"):
+        def agent():  # cart's writer waits for it: another driver resumes and claims cart,
+            if not taken and (live / "cart").exists():  # then lets the writer go on
                 ok(self.root, "init", "resume")
                 taken.append(ok(self.root, "init", "next")["item"]["module"])
+                (live / "agent").write_text("")  # the handshake: no timing window (T-6)
             time.sleep(0.05)
 
-        with mock.patch("modsys.init_run.pause", side_effect=agent):
-            data, err = self.run_init("--invent", "cart", "--sleep", "0.5")
+        with mock.patch("modsys.init_run.pause", side_effect=agent):  # each writer waits for
+            data, err = self.run_init("--invent", "cart", "--peers", "2",  # two files in live/
+                                      "--live", str(live))
         self.assertEqual((taken, err), (["cart"], ""))  # no retry of a module it lost
         self.assertEqual(len(self.stdins("cart")), 1)
         self.assertNotIn("cart", [r["module"] for r in data["modules"]])
