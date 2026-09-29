@@ -113,15 +113,21 @@ that was already in the registry, and never commits: the user reviews and commit
 
 8. **Fix what verify found.** Lint findings: fix the staging docs or the staging registry.
    Invented components (a path that does not exist, a symbol not in its file): remove or
-   correct them in the staging docs. Routing misses below the threshold: improve the keywords
-   of the missed NEW modules in the staging registry (the words the missed tasks used), never
-   the tasks, then verify again — at most 2 rounds; after that, report the remaining misses. A
-   missed module that was already in the registry (`done (existing)`) is never changed in the
-   staging registry — the finish step refuses that: ask the user, change it in the registry
-   itself, then run `modsys init reconcile --force --json` and verify again.
+   correct them in the staging docs. Routing misses below the threshold: change keywords, never
+   the tasks — at most 2 rounds; after that, report the remaining misses. Each round, in this
+   order:
+   - First, a missed module that was already in the registry (`done (existing)`): it is never
+     changed in the staging registry — the finish step refuses that. Ask the user, change it in
+     the registry itself, then run `modsys init reconcile --force --json`. It rebuilds the
+     staging registry from the writers' files, so a keyword edit made there before it is lost.
+   - Then improve the keywords of the missed NEW modules in the staging registry (the words
+     the missed tasks used).
+   - Then verify again.
 
 9. **STOP — gate 7.** Show the verify summary: lint counts, invented components, the hit rate
-   and its misses, the judgement items still open. Ask whether to finish. Only on a yes:
+   and its misses, the judgement items still open. End that message with one direct yes/no
+   question — "Shall I run modsys init finish now?" — and wait for the answer: naming the next
+   command is not asking. Only on a yes:
 
    ```bash
    modsys init finish --json

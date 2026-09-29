@@ -24,7 +24,10 @@ class InitDocsTest(unittest.TestCase):  # P5B-AC-037
                        "1. **lint**", "2. **invented components**", "3. **routing**",
                        "modsys eval routing --prompt", "modsys init finish --open-pr",
                        "modsys init resume --non-interactive --executor", "`[init] max_parallel`",
-                       "`[init] routing_min_hit_rate`", "never the tasks", "never a commit"):
+                       "`[init] routing_min_hit_rate`", "never the tasks", "never a commit",
+                       # the P5b follow-up: a documentation-only agent stops at gate 3 (G11)
+                       "An agent that drives init stops after `init map`: it shows the "
+                       "candidates and asks the person before `init confirm`"):
             self.assertIn(needle, text)
 
     def test_the_readme(self):

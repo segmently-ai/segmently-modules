@@ -29,10 +29,13 @@ directories, the imports, CODEOWNERS and the files that change together. Edit
 `<config_dir>/init/proposal.json` — each candidate's `include`, `name` and `paths` — to merge,
 split, rename or drop candidates, then `modsys init confirm`: it names every problem at once
 (a name that breaks the `create` rule, a glob that matches no file, two candidates that claim
-one file) and freezes the proposal as `confirmed.json`. Once the fan-out has started the module
-set is fixed: `init confirm` refuses, and `modsys init map --restart` starts over — unless
-modules were created by hand in the registry meanwhile: then `--restart` refuses too (continue
-with `modsys init resume`, or take them out of the registry and the modules dir first).
+one file) and freezes the proposal as `confirmed.json`. An agent that drives init stops after
+`init map`: it shows the candidates and asks the person before `init confirm` (the
+`module-init` skill does this). Once the fan-out has started the module set is fixed: `init
+confirm` refuses, and `modsys init map --restart` starts over — unless modules were created by
+hand in the registry meanwhile: then `--restart` refuses too (continue with `modsys init
+resume`, or take them out of the registry and the modules dir first). After `init finish`,
+`init map` says `init is finished — see modsys init status`.
 
 ## Phase 4: one writer per module
 
@@ -98,16 +101,19 @@ files and reports in `reconcile.json`:
 - `collisions` — a keyword two new modules hold belongs to the one with the most files whose
   path or text holds it; the others get it in `negative_keywords` instead (unless that leaves
   one below the keyword minimum, or it is a tie: then it is a judgement item);
-- `duplicates` — a name defined in two modules (Python top-level `def` / `class`, JS/TS
-  `export function|class|const|interface|type`), with file:line — a module created by hand
-  counts too (a report row: its entry is never changed);
+- `duplicates` — a name defined in two modules, at least one of them new (Python top-level
+  `def` / `class`, JS/TS `export function|class|const|interface|type`), with file:line — a
+  module created by hand counts as the other (a report row: its entry is never changed); a
+  name only modules created by hand share is not reported;
 - `judgement` — what the script leaves to a person: ties, keyword floors, duplicates.
 
 Edit the new modules' entries in `staging/registry.json` by hand (keywords, descriptions) as
 you like: `verify` reads the edits. A module that was already in the registry is changed in the
-registry itself, then `modsys init reconcile --force` — `init finish` never rewrites it. A second
-`reconcile` refuses to overwrite the edits (exit 2); `--force` rebuilds from the `entry.json`
-files; a hand edit that breaks the file is named by `verify` (fix it, or `--force`).
+registry itself, then `modsys init reconcile --force` — `init finish` never rewrites it. Do that
+first: `--force` rebuilds the staging registry from the `entry.json` files, so the new modules'
+keyword edits come after it. A second `reconcile` refuses to overwrite the edits (exit 2);
+`--force` rebuilds from the `entry.json` files; a hand edit that breaks the file is named by
+`verify` (fix it, or `--force`).
 
 ## Phase 6: routing and verify
 
@@ -138,7 +144,10 @@ It writes `verify.json` with a hash of the staging tree (files and symlinks): `i
 refuses a tree that changed since. On misses, improve the missed new modules' keywords in
 `staging/registry.json` — never the tasks — and verify again. A tasks file `init eval-tasks`
 refuses (not JSON, a module left out) is moved to `routing-tasks.rejected.json`: the next step
-is `init eval-tasks` again.
+is `init eval-tasks` again, and until it succeeds `init verify` and `init finish` refuse (exit 2:
+`the routing tasks were refused — run modsys init eval-tasks (or write the file and use
+--force)`). Written by hand instead: `init verify --force` measures the file, `init finish
+--force` records the override. Both also refuse a symlinked `staging/<module>/`.
 
 ## Gate 7: finish
 
@@ -151,8 +160,10 @@ modsys init finish --open-pr              # or: a branch, one commit, a pull req
 registry through the registry writer, appends one `[[code_map]]` rule `init-<module>` (its
 confirmed paths) to the team config, and writes the managed block into `CLAUDE.md` /
 `AGENTS.md` (those that exist; `--agents-md FILE` names others) — all or nothing, and never a
-commit: it prints the `git add` line. It refuses while verify has not passed (`--force` records
-the override) and never overwrites a module directory or a registry entry that appeared since.
+commit: it prints the `git add` line. It refuses while verify has not passed or the last `init
+eval-tasks` run was refused (`--force` records the override) and never overwrites a module
+directory or a registry entry that appeared since. A file an interrupted finish could not put
+back is named in its error.
 
 `--open-pr` needs `gh` on `PATH`, a remote `origin` and a clean tree (the starter files `init`
 created may be uncommitted: the commit takes them). It creates `modsys/init` (`--branch`) from
@@ -161,7 +172,8 @@ the current commit, commits, pushes and opens the pull request against the curre
 subject and the pull request's title are `docs: module docs for <n> module(s) (modsys init)`
 (Conventional Commits). A commit a hook, the git identity or signing refuses, a failed push or
 `gh` leaves the pull request pending: `modsys init resume --open-pr` retries what is left, back
-on the branch.
+on the branch. A step that was done but not recorded (a kill in between) is not done twice: the
+commit already on the branch is kept, and a pull request `gh` says already exists is recorded.
 
 ## Without a person
 
@@ -202,7 +214,8 @@ A placeholder a template does not know is rendered as `<name>`: a prompt never h
 | a run was killed | `modsys init resume`: interrupted modules restart from a clean staging dir |
 | `init reconcile` exit 2 (edited) | keep the edits, or `--force` to rebuild from `entry.json` |
 | `init eval-tasks` exit 1 | the refused file is in `routing-tasks.rejected.json`: fix the task writer, then `modsys init eval-tasks` again (no `--force` needed) |
+| `init verify` / `init finish` exit 2: the routing tasks were refused | `modsys init eval-tasks` again; or write `routing-tasks.json` by hand, then `init verify --force` and `init finish --force` (recorded) |
 | `init finish` exit 2 (verify) | `modsys init verify`, then finish; `--force` only on purpose |
 | `init finish` exit 2 (conflict) | a module directory appeared since: move it away — only that clears it (a new reconcile rebuilds the same entry); a staging registry edit of a module already in the registry: make it in the registry itself, then `modsys init reconcile --force` |
-| `init finish` was interrupted | `modsys init finish` again: an interrupted finish puts back what it wrote (after a kill, move away what it left — its refusal names each file) |
+| `init finish` was interrupted | `modsys init finish` again: an interrupted finish puts back what it wrote (a file it could not put back is named: restore it by hand; after a kill, move away what it left — its refusal names each file) |
 | a pull request is pending | fix what refused it (a commit hook, the git identity, the remote, `gh`), then `modsys init resume --open-pr` |

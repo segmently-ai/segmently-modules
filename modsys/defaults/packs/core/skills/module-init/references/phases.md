@@ -27,9 +27,12 @@ Give each writer its work item path and these rules (the item's `prompt` says th
   the item's `staging_dir` — no other file, nothing outside it.
 - `entry.json`: `description` (one sentence within the length limits of the prompt),
   `keywords` (at least the prompt's minimum, the words a developer would type in a task about
-  this module), optional `related_modules` edges to the neighbours.
-- Name only what exists: every path in backticks exists; in the components table
-  (`| Name | Path | Purpose |`) a `Name` in backticks is a symbol defined in that row's file.
+  this module — routing matches whole words without stemming, so single words with the plural
+  and verb forms of the key nouns), optional `related_modules` edges to the neighbours.
+- Name only what exists: every path in backticks exists, written from the repository root
+  (never from a package, never an import specifier or a sibling doc's bare name); in the
+  components table (`| Name | Path | Purpose |`) a `Name` in backticks is a symbol defined in
+  that row's file.
 - Fill every placeholder of the templates; leave no template placeholder behind.
 - Under `## Purpose`, a paragraph in the writer's own words that stands without the
   description: the routing eval shows it to the task writer.
@@ -50,7 +53,7 @@ tasks to raise the hit rate — improve the keywords instead.
 | `init reconcile` exit 2: staging registry edited | keep the edits (verify reads them) — rebuild only on the user's word: `modsys init reconcile --force --json` |
 | `init eval-tasks` exit 1 | the refused file is in `routing-tasks.rejected.json`; the next step is `modsys init eval-tasks --executor "<command>" --json` again |
 | `init finish` exit 2: a directory or module appeared | someone created it by hand: ask the user, never overwrite — only moving the directory away clears it |
-| `init finish` exit 2: the staging registry changes a module already in the registry | move that change into the registry itself (the user decides), then `modsys init reconcile --force --json` and verify again |
+| `init finish` exit 2: the staging registry changes a module already in the registry | move that change into the registry itself (the user decides), then `modsys init reconcile --force --json` — it rebuilds the staging registry, so the new modules' keyword edits come after it — and verify again |
 | no subagents available | the sequential loop: `init next`, write, `init done`, one module at a time |
 
 A pipeline without a person runs the same flow with an executor:

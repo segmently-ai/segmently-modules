@@ -101,6 +101,16 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
                        "| Name | Path | Purpose |", "Describe only components that exist",
                        "Never write outside", "# Cart — developer", "## Where the code lives"):
             self.assertIn(needle, prompt)
+        flat = " ".join(prompt.split())  # the real-agent findings of G9 / G11 (the keyword
+        for needle in (  # forms, the paths the invented check verifies)
+                "Routing matches whole words exactly, without stemming",
+                "the plural and verb forms of the key nouns (`suggestion`, `suggestions`, "
+                "`suggest`)", "a phrase of several words only when developers write exactly "
+                "that phrase", "backticks mark a path the check verifies",
+                "written from the repository root, not from the package",
+                "Never backtick a path that does not exist", "an import specifier such as "
+                "`./lines`", "`modules/cart/roles/qa.md`"):
+            self.assertIn(needle, flat)
         self.assertNotIn("${", prompt)
         self.assertIn("<one sentence: what the module does, why, when to use it>", prompt)
 

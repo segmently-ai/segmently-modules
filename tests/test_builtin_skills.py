@@ -59,7 +59,14 @@ CORE: dict[str, tuple[str, list[tuple[str, ...]], list[str]]] = {
                      "Without subagents, loop yourself", "Ask the user about each keyword tie",
                      "report the duplicate names", "never shows the keywords",
                      "never the tasks", "at most 2 rounds", "**STOP — gate 7.**",
-                     "Never commit yourself"]),
+                     "Never commit yourself",
+                     # the P5b follow-up: an existing module's registry change and its
+                     # reconcile --force first, then the new modules' keywords (N-4); gate 7
+                     # asked as a question, not a next command named (G11)
+                     "First, a missed module that was already in the registry",
+                     "Then improve the keywords of the missed NEW modules",
+                     "End that message with one direct yes/no question",
+                     "naming the next command is not asking"]),
     "module-adopt": ("writer", [("adopt", "--dry-run"), ("adopt",), ("lint",)],  # P5B-AC-029
                      ["Explain each inference with its evidence", "`applies_when`",
                       "`deprecated`", "a commented-out doc budget", "Group the findings by code",
