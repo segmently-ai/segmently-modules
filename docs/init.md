@@ -115,6 +115,9 @@ claim, after the template was rendered, so it may quote a `${…}` from a proble
 done` that refuses writes nothing: the writer is still at work. A claim whose work item file is
 missing is refused before anything is written (exit 2, the problems kept), naming the way out:
 `modsys init fanout` while no module has been claimed yet, else `modsys init map --restart`.
+`init done` refuses a module whose own work item is missing or damaged the same way (exit 2);
+under `init run`, a writer that removed or damaged its own work item fails its module at once
+(`the check could not run: …`, no retry) and the others run on.
 
 A killed or failed run is picked up by `modsys init resume` (or `modsys init run` again): every
 `running` or `failed` module goes back to `pending` with its staging dir cleared; a `done`

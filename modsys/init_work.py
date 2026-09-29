@@ -48,8 +48,9 @@ NOTE = ("\n## The previous attempt was refused\n\nThe files written last time di
 
 
 class CheckError(UsageError):
-    """The check itself cannot run for a module (a template it cannot read): exit 2 at `init
-    done`; under `init run` that module fails, the run goes on."""
+    """The check itself cannot run for a module (a template it cannot read, its own work item
+    missing or damaged): exit 2 at `init done`; under `init run` that module fails, the run goes
+    on."""
 
 
 def fence(text: str) -> str:
@@ -391,8 +392,13 @@ class Work:
         SI-1), then `entry.json`; a symlinked staging dir is one problem (its target is never
         read). A doc is refused for a placeholder only when it holds `${<name>}` of one of
         `template_names` — any other `${…}` (a shell variable, a JavaScript template string) is
-        text (D4)."""
-        item = self.item(module)
+        text (D4). Its own work item missing or damaged is a `CheckError` naming the file."""
+        try:
+            item = self.item(module)
+        except UsageError as e:  # damaged: exit 2 at init done, that module failed in init run
+            raise CheckError(str(e)) from None
+        if item is None:
+            raise CheckError(self.missing(self.require_fanout(self.flow.load_state()), module))
         base = self.staging_dir(module)
         linked = self.linked(module)
         if linked:

@@ -345,8 +345,9 @@ def sha(text: str) -> str:
 ENGINE = Path(__file__).resolve().parents[1]
 BREAKER = '''"""A writer whose cart output the check refuses (argv: the engine root, the mode): `link` — its
 staging dir replaced by a symlink; `read-only` — a path that does not exist and a read-only roles
-dir; `dollar` — `${API_URL}` in its MODULE.md. Every other module waits until cart is failed in
-the state (so it runs while cart's retry is claimed), then writes the fake writer's docs."""
+dir; `dollar` — `${API_URL}` in its MODULE.md; `unlink` / `damage` — clean docs, its own work
+item removed / not JSON. Every other module waits until cart is failed in the state (so it runs
+while cart's retry is claimed or its check fails), then writes the fake writer's docs."""
 import json, os, shutil, sys, time
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
@@ -371,6 +372,13 @@ elif mode == "read-only":
     write_docs(Path.cwd(), item, staging)
     invent(staging, item)
     os.chmod(staging / "roles", 0o555)
+elif mode in ("unlink", "damage"):
+    write_docs(Path.cwd(), item, staging)
+    work_item = Path(os.environ["MODSYS_INIT_WORK"])
+    if mode == "unlink":
+        work_item.unlink()
+    else:
+        work_item.write_text("{not json", encoding="utf-8")
 else:
     write_docs(Path.cwd(), item, staging)
     with open(staging / "MODULE.md", "a", encoding="utf-8") as fh:
@@ -591,6 +599,23 @@ class RetryTest(RunRepo):  # P5C-AC-008, P5C-AC-009, P5C-AC-022 (D3, SI-4, SI-6,
         self.assert_only_cart_failed(data, error)  # no retry: the writer cannot fix a template
         self.assertEqual(state(self.root)["modules"]["cart"],
                          {"status": "failed", "attempts": 1, "error": error})
+
+    def test_a_writer_that_removes_or_damages_its_work_item(self):  # extension, found 1–2
+        for mode, start, end in (
+                ("unlink", f"the check could not run: {WORK}/work/cart.json is missing — start "
+                           f"over: modsys init map --restart", ""),
+                ("damage", f"the check could not run: {WORK}/work/cart.json: cannot read it as "
+                           f"JSON (", ") — fix it, or start over: modsys init map --restart")):
+            with self.subTest(mode=mode):
+                self.setUp()
+                code, data, err = self.breaker(mode)  # the peers wait for cart's failure
+                error = state(self.root)["modules"]["cart"]["error"]
+                self.assertTrue(error.startswith(start) and error.endswith(end), error)
+                self.assertEqual((code, data["failed"], err.splitlines()),
+                                 (1, True, [f"modsys: cart failed: {error}"]))  # no retry
+                self.assert_only_cart_failed(data, error)
+                self.assertEqual(state(self.root)["modules"]["cart"],
+                                 {"status": "failed", "attempts": 1, "error": error})
 
 
 if __name__ == "__main__":

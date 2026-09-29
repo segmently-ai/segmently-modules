@@ -171,6 +171,24 @@ class DoneTest(DriverRepo):  # P5B-AC-005 (init done, the table)
             "modsys: cart: missing roles/qa.md",
             "modsys: cart: at least 5 distinct keywords (a list of non-empty strings)"])
 
+    def test_its_own_work_item_missing_or_damaged(self):  # final review extension, found item 1
+        write_docs(self.root, self.item)
+        work_item = self.root / WORK / "work/cart.json"
+        before = (self.root / WORK / "state.json").read_bytes()
+        for body, message in ((None, f"{WORK}/work/cart.json is missing — start over: modsys "
+                                     f"init map --restart"),  # the way out of M-2
+                              ("{not json", f"{WORK}/work/cart.json: cannot read it as JSON (")):
+            with self.subTest(body=body):
+                if body is None:
+                    work_item.unlink()
+                else:
+                    work_item.write_text(body)
+                code, out, err = text(self.root, "init", "done", "cart", "--json")
+                self.assertEqual((code, out), (2, ""))
+                self.assertTrue(err.startswith(f"modsys: error: {message}"), err)
+                self.assertNotIn("internal error", err)
+                self.assertEqual((self.root / WORK / "state.json").read_bytes(), before)
+
     def test_a_failed_item_that_still_has_problems(self):  # Task 5 review M2
         s = state(self.root)
         s["modules"]["cart"].update(status="failed", error="exit 3: gave up")
