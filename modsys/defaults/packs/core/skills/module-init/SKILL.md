@@ -91,11 +91,12 @@ that was already in the registry, and never commits: the user reviews and commit
    modsys init reconcile --json
    ```
 
-   It adds the import edges, moves shared keywords to `negative_keywords`, and lists the
-   `judgement` items it will not decide. Ask the user about each keyword tie (which module owns
-   the word) and each keyword that could not move without dropping a module below the keyword
-   minimum; report the duplicate names with their file:line (the user decides later whether
-   code moves). Apply the user's keyword answers to `<config_dir>/init/staging/registry.json`.
+   It adds the import edges, gives a keyword several new modules share to the one with the most
+   files and removes it from the others (no negative keyword), and lists the `judgement` items
+   it will not decide. Ask the user about each keyword tie (which module owns the word) and each
+   keyword that could not be removed without dropping a module below the keyword minimum;
+   report the duplicate names with their file:line (the user decides later whether code
+   moves). Apply the user's keyword answers to `<config_dir>/init/staging/registry.json`.
 
 7. **Measure routing.** Get the task writer's prompt:
 

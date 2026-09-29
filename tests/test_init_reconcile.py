@@ -9,8 +9,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from tests.helpers import run
-from tests.init_helpers import SIX, WORK, executor, ok, shop, state
+from tests.helpers import mutate_registry, run
+from tests.init_helpers import SIX, WORK, executor, ok, shop, state, text
 
 ROLES = {"developer": "developer", "qa": "qa", "po": "po", "architect": "architect"}
 
@@ -70,7 +70,9 @@ class RegistryAndEdgesTest(ReconcileRepo):  # P5B-AC-012 (SI-9, SI-19)
         self.assertEqual(cart["context_files"], {
             "universal": "modules/cart/MODULE.md",
             "roles": {r: f"modules/cart/roles/{r}.md" for r in ROLES}})
-        self.assertEqual(list(doc["modules"]["catalog"])[-1], "negative_keywords")
+        self.assertEqual(list(doc["modules"]["catalog"]), ["name", "description", "status",
+                                                          "keywords", "context_files"])
+        self.assertEqual([m for m, e in doc["modules"].items() if "negative_keywords" in e], [])
         self.assertEqual(state(self.root)["phases"]["reconcile"]["status"], "done")
 
     def test_the_edges(self):
@@ -99,7 +101,7 @@ class RegistryAndEdgesTest(ReconcileRepo):  # P5B-AC-012 (SI-9, SI-19)
         self.assertEqual(list(self.report()), ["edges", "collisions", "duplicates", "judgement"])
 
 
-class CollisionsTest(ReconcileRepo):  # P5B-AC-013 (SI-10)
+class CollisionsTest(ReconcileRepo):  # P5B-AC-013 (SI-10), P5C-AC-001 (D1: removed, never negated)
     def collision(self, keyword: str) -> dict | None:
         self.reconcile()
         return next((c for c in self.report()["collisions"] if c["keyword"] == keyword), None)
@@ -114,13 +116,14 @@ class CollisionsTest(ReconcileRepo):  # P5B-AC-013 (SI-10)
         self.plant("packages/cart/src", 2, "Zeta, zetas and zetaline")
         row = self.collision("zeta")
         self.assertEqual(row, {"keyword": "zeta", "owner": "catalog", "others": ["cart"],
-                               "files": {"cart": 2, "catalog": 7}, "moved": ["cart"]})
+                               "files": {"cart": 2, "catalog": 7}, "removed": ["cart"]})
         modules = self.registry()["modules"]
-        self.assertEqual((modules["cart"]["keywords"], modules["cart"]["negative_keywords"]),
-                         (["cart", "basket", "line", "total", "quantity"], ["zeta"]))
+        self.assertEqual(modules["cart"]["keywords"], ["cart", "basket", "line", "total",
+                                                       "quantity"])
+        self.assertNotIn("negative_keywords", modules["cart"])
         self.assertIn("zeta", modules["catalog"]["keywords"])
-        for entry in modules.values():
-            self.assertFalse(set(entry["keywords"]) & set(entry.get("negative_keywords", [])))
+        for entry in modules.values():  # reconcile negates nothing
+            self.assertNotIn("negative_keywords", entry)
 
     def test_a_tie_a_floor_and_the_case(self):
         self.keywords("catalog", ["catalog", "book", "isbn", "author", "title", "zeta"])
@@ -130,7 +133,7 @@ class CollisionsTest(ReconcileRepo):  # P5B-AC-013 (SI-10)
         self.plant("packages/cart/src", 5, "zeta")
         self.plant("apps/storefront/src", 1, "zeta")
         row = self.collision("zeta")
-        self.assertEqual((row["owner"], row["moved"]), (None, []))
+        self.assertEqual((row["owner"], row["removed"]), (None, []))
         self.assertIn({"kind": "keyword-tie", "keyword": "zeta", "modules": ["cart", "catalog"],
                        "files": {"cart": 5, "catalog": 5, "storefront": 1}},
                       self.report()["judgement"])
@@ -140,7 +143,7 @@ class CollisionsTest(ReconcileRepo):  # P5B-AC-013 (SI-10)
         self.plant("packages/catalog/src", 7, "zeta")
         self.plant("packages/cart/src", 2, "zeta")
         row = self.collision("zeta")
-        self.assertEqual((row["owner"], row["moved"]), ("catalog", []))
+        self.assertEqual((row["owner"], row["removed"]), ("catalog", []))
         self.assertIn({"kind": "keyword-floor", "keyword": "zeta", "module": "cart",
                        "keywords": 5}, self.report()["judgement"])
         self.assertIn("zeta", self.registry()["modules"]["cart"]["keywords"])
@@ -162,7 +165,79 @@ class CollisionsTest(ReconcileRepo):  # P5B-AC-013 (SI-10)
         self.reconcile()
         self.assertEqual(self.report()["collisions"], [
             {"keyword": "price", "owner": "cart", "others": ["catalog"],
-             "files": {"cart": 2, "catalog": 1}, "moved": ["catalog"]}])
+             "files": {"cart": 2, "catalog": 1}, "removed": ["catalog"]}])
+
+    def test_three_modules_the_floor_reached_and_every_case_form(self):  # P5C-AC-001
+        self.keywords("catalog", ["catalog", "book", "isbn", "author", "title", "zeta"])
+        self.keywords("cart", ["cart", "basket", "line", "total", "quantity", "zeta"])
+        self.keywords("storefront", ["storefront", "page", "shop", "window", "render", "zeta"])
+        self.plant("packages/catalog/src", 7, "zeta")
+        self.plant("packages/cart/src", 2, "zeta")
+        self.plant("apps/storefront/src", 1, "zeta")
+        row = self.collision("zeta")
+        self.assertEqual((row["owner"], row["others"], row["removed"]),
+                         ("catalog", ["cart", "storefront"], ["cart", "storefront"]))
+        modules = self.registry()["modules"]
+        self.assertEqual(modules["cart"]["keywords"],  # 6 → 5: the floor reached is allowed
+                         ["cart", "basket", "line", "total", "quantity"])
+        self.assertEqual(modules["storefront"]["keywords"],
+                         ["storefront", "page", "shop", "window", "render"])
+        self.assertEqual([m for m, e in modules.items() if "negative_keywords" in e], [])
+        self.setUp()
+        self.keywords("catalog", ["catalog", "book", "isbn", "author", "title", "Zeta"])
+        self.keywords("cart", ["cart", "basket", "line", "total", "quantity", "zeta", "ZETA"])
+        self.plant("packages/catalog/src", 7, "zeta")
+        self.plant("packages/cart/src", 2, "zeta")
+        row = self.collision("zeta")
+        self.assertEqual((row["owner"], row["removed"]), ("catalog", ["cart"]))
+        modules = self.registry()["modules"]
+        self.assertEqual(modules["cart"]["keywords"],  # every case form of the keyword
+                         ["cart", "basket", "line", "total", "quantity"])
+        self.assertIn("Zeta", modules["catalog"]["keywords"])
+        self.assertEqual([m for m, e in modules.items() if "negative_keywords" in e], [])
+
+
+class ReportTest(ReconcileRepo):  # P5C-AC-003 (the row's keys, the key order, a re-run)
+    def test_the_keys_and_a_re_run(self):
+        self.keywords("catalog", ["catalog", "book", "isbn", "author", "title", "zeta"])
+        self.keywords("cart", ["cart", "basket", "line", "total", "quantity", "zeta"])
+        self.plant("packages/catalog/src", 7, "zeta")
+        self.plant("packages/cart/src", 2, "zeta")
+        data = self.reconcile()
+        for rows in (data["collisions"], self.report()["collisions"]):
+            self.assertEqual([c["keyword"] for c in rows], ["zeta"])
+            for row in rows:
+                self.assertEqual(list(row), ["keyword", "owner", "others", "files", "removed"])
+                for key in ("others", "removed"):
+                    self.assertEqual(row[key], sorted(row[key]))
+                self.assertEqual(list(row["files"]), sorted(row["files"]))
+        for name, entry in self.registry()["modules"].items():
+            with self.subTest(module=name):  # create's order, then the edges: no negatives
+                self.assertIn(list(entry), (
+                    ["name", "description", "status", "keywords", "context_files"],
+                    ["name", "description", "status", "keywords", "context_files",
+                     "related_modules"]))
+        first = [p.read_bytes() for p in (self.staging / "registry.json",
+                                          self.root / WORK / "reconcile.json")]
+        self.reconcile()
+        self.assertEqual([p.read_bytes() for p in (self.staging / "registry.json",
+                                                   self.root / WORK / "reconcile.json")], first)
+
+
+class TextTest(ReconcileRepo):  # P5C-AC-003 (the text lines)
+    def test_the_collision_lines(self):
+        self.keywords("catalog", ["catalog", "book", "isbn", "author", "title", "zeta", "omega"])
+        self.keywords("cart", ["cart", "basket", "line", "total", "zeta", "omega"])  # six
+        self.keywords("storefront", ["storefront", "page", "shop", "window", "render", "tau"])
+        self.keywords("ui-kit", ["button", "field", "form", "label", "widget", "tau"])
+        self.plant("packages/catalog/src", 7, "zeta omega")
+        self.plant("packages/cart/src", 2, "zeta omega")
+        code, out, err = text(self.root, "init", "reconcile")
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual([l for l in out.splitlines() if l.startswith("collision")], [
+            "collision     'omega' — owner catalog; removed from cart",
+            "collision     'tau' — owner a tie",
+            "collision     'zeta' — owner catalog"])  # the floor: cart keeps its fifth keyword
 
 
 class DuplicatesTest(ReconcileRepo):  # P5B-AC-014 (SI-11)
@@ -295,6 +370,27 @@ class ExistingModuleTest(unittest.TestCase):  # P5B-AC-051 (reconcile keeps it a
             report = json.loads((root / WORK / "reconcile.json").read_text())
             self.assertEqual(report["duplicates"], [])  # formatPrice: catalog and ui-kit only
             self.assertFalse([j for j in report["judgement"] if j["kind"] == "duplicate"])
+
+    def test_a_hand_written_negative_keyword_is_kept(self):  # P5C-AC-002
+        with tempfile.TemporaryDirectory() as tmp:
+            root = shop(Path(tmp).resolve())
+            ok(root, "create", "catalog", "--non-interactive", "--description",
+               "Book titles, authors and ISBN lookups for the shop.", "--keywords",
+               "catalog, book, isbn, author, title, price")
+            mutate_registry(root, lambda doc: doc["modules"]["catalog"].update(
+                negative_keywords=["checkout"]))
+            before = json.loads((root / "modules/registry.json").read_text())["modules"]
+            ok(root, "init", "fanout")
+            ok(root, "init", "run", "--executor", executor())
+            ok(root, "init", "reconcile")
+            staged = json.loads((root / WORK / "staging/registry.json").read_text())["modules"]
+            self.assertEqual(staged["catalog"], before["catalog"])  # its negatives kept
+            report = json.loads((root / WORK / "reconcile.json").read_text())
+            self.assertFalse([c for c in report["collisions"]
+                              if "catalog" in c["others"] + c["removed"]])
+            self.assertIn("price", staged["cart"]["keywords"])  # a collision needs two new ones
+            self.assertEqual([m for m, e in staged.items() if "negative_keywords" in e],
+                             ["catalog"])
 
 
 if __name__ == "__main__":

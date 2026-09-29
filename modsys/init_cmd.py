@@ -593,8 +593,8 @@ def _render_reconcile(d) -> None:
     print(f"edges         {len(d['edges'])} ({added} added from the imports)")
     for c in d["collisions"]:
         owner = c["owner"] or "a tie"
-        moved = f"; moved to negative_keywords of {', '.join(c['moved'])}" if c["moved"] else ""
-        print(f"collision     '{c['keyword']}' — owner {owner}{moved}")
+        removed = f"; removed from {', '.join(c['removed'])}" if c["removed"] else ""
+        print(f"collision     '{c['keyword']}' — owner {owner}{removed}")
     for d_ in d["duplicates"]:
         where = ", ".join(f"{x['file']}:{x['line']}" for x in d_["definitions"])
         print(f"duplicate     {d_['name']} — {where}")

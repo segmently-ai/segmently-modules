@@ -1,5 +1,6 @@
 """P5b D12: the docs describe phases 4–7 — docs/init.md (new), the README "Start from existing
 code" section with its three drivers, the contract rows, the `[init]` keys and the two skills."""
+import re
 import unittest
 from pathlib import Path
 
@@ -55,6 +56,23 @@ class InitDocsTest(unittest.TestCase):  # P5B-AC-037
         skills = flat("docs/skills.md")
         for sid in ("module-init", "module-adopt"):
             self.assertIn(f"| `{sid}` |", skills)
+
+    def test_reconcile_removes_a_shared_keyword(self):  # P5C-AC-015 (D1)
+        text = flat("docs/init.md")
+        self.assertIn("the others lose it from their keywords — never a negative keyword", text)
+        self.assertNotIn("negative_keywords", text)
+        row = contract_row("| `init reconcile` |")
+        self.assertIn("`collisions` `[{keyword, owner, others, files: {module: n}, removed}]`",
+                      row)
+        self.assertIn("<the fields create asks for>, related_modules?}", row)
+        self.assertIsNone(re.search(r"\bmoved\b", row))
+        self.assertNotIn("negative_keywords", row)
+
+
+def contract_row(start: str) -> str:
+    """The row of docs/cli-contract.md that starts with `start`."""
+    lines = (ENGINE / "docs/cli-contract.md").read_text(encoding="utf-8").splitlines()
+    return next(line for line in lines if line.startswith(start))
 
 
 if __name__ == "__main__":

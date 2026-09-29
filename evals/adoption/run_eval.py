@@ -950,10 +950,12 @@ def init_flow(sc: Scenario) -> None:
         data, _ = sc.modsys("init", "reconcile", "--force")
         duplicates = [(d["name"], [x["module"] for x in d["definitions"]])
                       for d in data["duplicates"]]
-        collisions = [(c["keyword"], c["owner"], c["moved"]) for c in data["collisions"]]
-        check((duplicates, collisions) == ([("formatPrice", ["catalog", "ui-kit"])],
-                                           [("price", "cart", ["catalog"])]),
-              f"duplicates {duplicates}, collisions {collisions}")
+        collisions = [(c["keyword"], c["owner"], c["removed"]) for c in data["collisions"]]
+        staged = json.loads((work / "staging/registry.json").read_text(encoding="utf-8"))
+        negated = [m for m, e in staged["modules"].items() if "negative_keywords" in e]
+        check((duplicates, collisions, negated) == ([("formatPrice", ["catalog", "ui-kit"])],
+                                                    [("price", "cart", ["catalog"])], []),
+              f"duplicates {duplicates}, collisions {collisions}, negated {negated}")
         check((work / "staging/registry.json").read_bytes() == seen["registry"],
               "the rebuilt staging registry differs from the resumed run's")
 

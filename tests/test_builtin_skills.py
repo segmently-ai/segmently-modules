@@ -395,6 +395,13 @@ class InitAndAdoptSkillsTest(unittest.TestCase):  # P5B-AC-028, P5B-AC-029 (D6, 
         self.assertIn(["init", "done", "X", "--json"], cmds)
         self.assertIn(["eval", "routing", "--prompt", "--json"], cmds)
 
+    def test_module_init_step_6_removes_a_shared_keyword(self):  # P5C-AC-014 (D1, D5)
+        root = builtin_packs_root() / "core/skills/module-init"
+        text = " ".join((root / "SKILL.md").read_text("utf-8").split())
+        self.assertIn("removes it from the others (no negative keyword)", text)
+        for rel in ("SKILL.md", "references/phases.md"):
+            self.assertNotIn("negative_keywords", (root / rel).read_text("utf-8"))
+
 
 class ScaffoldBaseTest(unittest.TestCase):  # P5A-AC-004 (D0a)
     def test_the_scaffold_says_what_the_base_is(self):

@@ -5,24 +5,24 @@ from the writers' `entry.json` files, and what the writers could not see from on
                                            registry already has, as they are, then one entry per
                                            new module in name order — {name, description,
                                            status: "active", keywords, context_files (the final
-                                           paths), <asked fields>, related_modules?,
-                                           negative_keywords?}
+                                           paths), <asked fields>, related_modules?}
   <config_dir>/init/reconcile.json         {edges, collisions, duplicates, judgement}
 
 Edges: the proposal's import edges between confirmed modules become `depends-on` edges ("imports
 from <m> (<n> import(s), init reconcile)"), one per direction; a writer's own edge to the same
 module (any relation) wins. Collisions: a keyword (any case) that two new modules or more hold
 belongs to the module with the most files (under its confirmed paths) whose path or text holds
-it as a whole word (a file counts once); the others move it from `keywords` to
-`negative_keywords` — unless that leaves one below `[create] min_keywords` (a `keyword-floor`
-judgement item) or the most files are a tie (a `keyword-tie` item: nothing moves). Duplicates:
+it as a whole word (a file counts once); the others lose it from `keywords` — never a
+negative keyword, which would pull them out of every task that uses the word — unless that
+leaves one below `[create] min_keywords` (a `keyword-floor` judgement item) or the most files
+are a tie (a `keyword-tie` item: nothing is removed). Duplicates:
 a name defined in two confirmed modules or more, at least one of them new (a module already in
 the registry counts as the other) — Python top-level `def` / `class`, JS/TS
 `export function|class|const|interface|type` — never a name starting with `_`, a re-export,
 `export default` or a test file (`test_*.py`,
 `*_test.py`, `*.test.*`, `*.spec.*`, anything under a `tests/` directory): reported with
 file:line, never changed. A module already in the registry is never changed, gets no edge and
-never moves a keyword. The script runs no agent and no command but git (the file set);
+never loses a keyword. The script runs no agent and no command but git (the file set);
 `judgement` holds what a person or the `module-init` skill decides. A staging registry edited
 since the last reconcile is kept: `--force` rebuilds it from the `entry.json` files. Refused
 once `init finish` is done."""
@@ -131,11 +131,11 @@ class Reconcile:
             owners = [m for m in mods if counts[m] == top]
             if len(owners) > 1:
                 rows.append({"keyword": kw, "owner": None, "others": mods, "files": counts,
-                             "moved": []})
+                             "removed": []})
                 judgement.append({"kind": "keyword-tie", "keyword": kw, "modules": owners,
                                   "files": counts})
                 continue
-            moved = []
+            removed = []
             for other in (m for m in mods if m != owners[0]):
                 entry = new[other]
                 keep = [k for k in entry["keywords"] if k.lower() != kw]
@@ -143,13 +143,11 @@ class Reconcile:
                     judgement.append({"kind": "keyword-floor", "keyword": kw, "module": other,
                                       "keywords": len(set(entry["keywords"]))})
                     continue
-                gone = [k for k in entry["keywords"] if k.lower() == kw]
-                entry["keywords"] = keep
-                entry["negative_keywords"] = entry.get("negative_keywords", []) + gone
-                moved.append(other)
+                entry["keywords"] = keep  # every case form of it; never a negative keyword
+                removed.append(other)
             rows.append({"keyword": kw, "owner": owners[0],
                          "others": [m for m in mods if m != owners[0]], "files": counts,
-                         "moved": moved})
+                         "removed": removed})
         return rows, judgement
 
     def duplicates(self, files: dict, new: set[str]) -> list[dict]:
@@ -213,10 +211,9 @@ class Reconcile:
                       for d in duplicates]
         judgement.sort(key=lambda j: (j["kind"], j.get("keyword") or j.get("name"),
                                       j.get("module", "")))
-        for entry in new.values():  # the key order of `create`, then the edges and negatives
-            for key in ("related_modules", "negative_keywords"):
-                if key in entry:
-                    entry[key] = entry.pop(key)
+        for entry in new.values():  # the key order of `create`, then the edges
+            if "related_modules" in entry:
+                entry["related_modules"] = entry.pop("related_modules")
         registry = self.work.registry_modules()
         top = {k: v for k, v in self.work.registry_raw().items() if k != "modules"}
         doc = {**top, "modules": {**registry, **new}}
