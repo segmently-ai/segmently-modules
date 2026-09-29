@@ -81,8 +81,11 @@ them written, all over the same state:
   It runs the command once per pending module, `[init] max_parallel` at a time: the prompt on
   stdin, the root as the working directory, `MODSYS_INIT_MODULE`, `MODSYS_INIT_STAGING` and
   `MODSYS_INIT_WORK` (absolute paths) in the environment. The command is split like a shell
-  line but never run by a shell. Exit 0 and a complete staging output → `done`; anything else →
-  `failed` with the last 20 lines of stderr. A write outside `<config_dir>/init/` fails the run.
+  line but never run by a shell. Exit 0 and a staging output `init done` accepts → `done`.
+  Exit 0 and a refused output → retried once in the same run: a new attempt (its staging dir
+  cleared) whose prompt ends with the problems, and a stderr line `modsys: <module>: refused —
+  retrying once`; refused again → `failed` with them. Any other exit → `failed` at once with
+  the last 20 lines of stderr — no retry. A write outside `<config_dir>/init/` fails the run.
   There is no timeout: stop a hung run with Ctrl-C, then `modsys init resume`.
 
 `modsys init done` checks a staging dir: exactly the expected files, none empty or still holding
@@ -99,6 +102,14 @@ of a components table occurs in its row's file. Each problem names the doc and t
 the file list)`, `MODULE.md:20: symbol not found in its row's file: lineTotals`, `MODULE.md:20:
 no file to check: lineTotal`. A doc that is missing, empty or not UTF-8 is named as such and
 not read. `init verify` still runs the full check over the whole staging tree.
+
+The problems of an output `init run` refused stay in the module's entry of `state.json`
+(`problems`, shown by `modsys init status`) until its next claim — by `init run`, `init resume
+--executor` or `init next`. That claim hands them to the writer: the returned item carries them
+as `previous_problems`, and its `prompt` ends with a section `## The previous attempt was
+refused` listing them (the work item file itself never changes). The section is added at the
+claim, after the template was rendered, so it may quote a `${…}` from a problem line. An `init
+done` that refuses writes nothing: the writer is still at work.
 
 A killed or failed run is picked up by `modsys init resume` (or `modsys init run` again): every
 `running` or `failed` module goes back to `pending` with its staging dir cleared; a `done`
@@ -217,7 +228,8 @@ modsys templates list                               # init/module_prompt.md  eng
 modsys templates override init/module_prompt.md     # a copy in .modsys/overrides/templates/ to edit
 ```
 
-A placeholder a template does not know is rendered as `<name>`: a prompt never holds `${`.
+A placeholder a template does not know is rendered as `<name>`: a rendered prompt never holds
+`${` (the section a claim appends after a refused attempt may quote one from a problem line).
 
 `modsys init done` refuses a staging doc that still holds `${<name>}` (or `${<name>` without its
 brace) for a `<name>` that is a placeholder of a template `init` renders for that module — the

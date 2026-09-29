@@ -937,9 +937,10 @@ def init_flow(sc: Scenario) -> None:
         seen["done"], seen["starts"] = {m for m, s in got.items() if s == "done"}, len(starts())
 
     def resume():
-        data, _ = sc.modsys("init", "resume", "--executor", fake_writer("--record", str(log)),
-                            "--non-interactive")
-        check(data["ran"] == ["run", "reconcile", "eval-tasks", "verify"], f"resume {data}")
+        data, err = sc.modsys("init", "resume", "--executor", fake_writer("--record", str(log)),
+                              "--non-interactive")
+        check(data["ran"] == ["run", "reconcile", "eval-tasks", "verify"]
+              and "retrying once" not in err, f"resume {data} {err}")
         again = starts()[seen["starts"]:]
         check(set(statuses().values()) == {"done"}
               and sorted(again) == sorted(set(SIX) - seen["done"]),

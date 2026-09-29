@@ -1,6 +1,7 @@
 """Row 5.2 for phase 4 (D1): `init run` killed mid-phase (the fake executor SIGKILLs it on its
 third call), then `init resume` (or a second `init run`) — every module done once, its staging
 dir holding exactly one set of docs, the same bytes as an uninterrupted run."""
+import hashlib
 import json
 import os
 import shutil
@@ -10,7 +11,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.init_helpers import SIX, WORK, executor, ok, shop, state, text, tree_sha
+from tests.init_helpers import (SIX, WORK, executor, invented, ok, shop, state, text, tree_sha,
+                                with_note)
 
 ENGINE = Path(__file__).resolve().parents[1]
 
@@ -105,6 +107,29 @@ class KillAndResumeTest(unittest.TestCase):  # P5B-AC-010
         again = self.events("start")[len(before):]
         self.assertEqual(sorted(again), sorted(m for m, s in statuses.items() if s != "done"))
         self.assertFalse(done & set(again))
+
+
+class PreviousProblemsTest(unittest.TestCase):  # P5C-AC-010 (the executor drivers)
+    def test_resume_and_run_hand_them_to_the_executor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp).resolve()
+            template = shop(base, name="template")
+            ok(template, "init", "fanout")
+            ok(template, "init", "run", "--executor", executor("--invent-always", "cart"),
+               code=1)
+            for argv in (("init", "resume"), ("init", "run")):
+                with self.subTest(argv=argv):
+                    root, log = base / argv[1], base / f"{argv[1]}.jsonl"
+                    shutil.copytree(template, root, symlinks=True)
+                    item = json.loads((root / WORK / "work/cart.json").read_text())
+                    ok(root, *argv, "--executor", executor("--record", str(log)))
+                    calls = [json.loads(l) for l in log.read_text().splitlines()]
+                    note = with_note(item["prompt"], invented("cart"))
+                    self.assertEqual([c["stdin_sha256"] for c in calls
+                                      if c["event"] == "start" and c["module"] == "cart"],
+                                     [hashlib.sha256(note.encode("utf-8")).hexdigest()])
+                    self.assertEqual(state(root)["modules"]["cart"],
+                                     {"status": "done", "attempts": 3, "error": None})
 
 
 if __name__ == "__main__":

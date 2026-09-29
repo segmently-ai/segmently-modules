@@ -6,13 +6,19 @@ its first word is looked up on PATH, or — when it holds a `/` — resolved aga
 checked before any item runs. Per item: stdin = the prompt (UTF-8, then EOF), cwd = the root,
 the caller's environment plus MODSYS_INIT_MODULE, MODSYS_INIT_STAGING and MODSYS_INIT_WORK
 (absolute paths); stdout is discarded. Exit 0 and a complete staging output (`init done`'s
-check) -> `done`; else `failed`, with `error` = `exit <n>: ` + the last 20 lines of stderr (at
-most 2,000 characters) or the check's problems. There is no timeout: stop a hung run with
-Ctrl-C (its children are terminated — `STOP_S` seconds for all of them, then SIGKILL —, their
-items stay `running`) and `init resume`. A module another driver claimed first (`init next`, a
-second `init run`) is left to it. A git work tree is compared before and after (`git status`,
-file hashes; a symlink by its target text, never followed; a rename's or copy's source path too):
-a change outside `<config_dir>/init/` fails the run (exit 1) naming each path."""
+check) -> `done`. Exit 0 and a refused output -> back to `pending` with its problems, and run
+once more in this run through a normal claim (D3: one retry per module per run; the claim adds
+the problems to the prompt; a stderr line `modsys: <module>: refused — retrying once`); refused
+again -> `failed`, `error` = the problems joined, `problems` = the list. Any other exit ->
+`failed` at once, `error` = `exit <n>: ` + the last 20 lines of stderr (at most 2,000
+characters), no retry. There is no timeout: stop a hung run with Ctrl-C (its children are
+terminated — `STOP_S` seconds for all of them, then SIGKILL —, their items stay `running`) and
+`init resume`. A module another driver claimed first (`init next`, a second `init run`) is left
+to it, and so is one it put back or claimed again while its executor ran (nothing written: the
+same attempt only). A git work tree is compared before and after (`git status`, file hashes; a
+symlink by its target text, never followed; a rename's or copy's source path too): a change
+outside `<config_dir>/init/` fails the run (exit 1) naming each path."""
+import bisect
 import contextlib
 import hashlib
 import os
@@ -20,6 +26,7 @@ import shlex
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -121,6 +128,7 @@ class Runner:
     def __init__(self, work, argv: list[str]):
         self.work, self.flow, self.argv = work, work.flow, argv
         self.max_parallel = work.ws.config["init"]["max_parallel"]
+        self.retried: set[str] = set()  # the modules this run gave their one retry (D3)
 
     def start(self, module: str, item: dict) -> tuple:
         """Start the executor on a claimed work item: (process, stdin file, stderr file)."""
@@ -140,25 +148,45 @@ class Runner:
             raise UsageError(f"executor {self.argv[0]} cannot run: {e.strerror or e}") from None
         return proc, stdin, stderr
 
-    def finish(self, module: str, proc, stdin, stderr) -> dict:
+    def finish(self, module: str, proc, stdin, stderr) -> tuple[dict | None, bool]:
+        """(the module's row, retry) once its executor exited. retry: the check refused its
+        output for the first time in this run — it is `pending` again with its `problems`, for
+        its one retry (D3), no row yet. A module put back or claimed again by another driver
+        while its executor ran is that driver's now: nothing written, no row, no retry (the
+        same attempt only, as `init done`)."""
         stderr.seek(0)
         err = stderr.read()
         stdin.close()
         stderr.close()
+        problems = []
         if proc.returncode != 0:
             error = f"exit {proc.returncode}: {tail(err)}"
         else:
             problems = self.work.problems(module)
             error = "; ".join(problems) if problems else None
+        retry = bool(problems) and module not in self.retried
         with self.flow.locked():
             state = self.flow.load_state()
             entry = state["modules"][module]
-            entry.update(status="failed" if error else "done", error=error)
+            if entry["status"] != "running" or entry["attempts"] != self.work.claimed.get(module):
+                return None, False
+            entry.update(status="pending" if retry else "failed" if error else "done",
+                         error=error)
+            if problems:  # kept for the next claim: the writer gets them (SI-7, SI-9)
+                entry["problems"] = problems
+            else:
+                entry.pop("problems", None)
             self.flow.save_state(state)
-        return {"module": module, **{k: entry[k] for k in ("status", "attempts", "error")}}
+        if retry:
+            self.retried.add(module)
+            print(f"modsys: {module}: refused — retrying once", file=sys.stderr, flush=True)
+            return None, True
+        return {"module": module, **{k: entry[k] for k in ("status", "attempts", "error")}}, False
 
     def run(self) -> dict:
-        """Every pending item, `max_parallel` at a time; the rows in name order."""
+        """Every pending item, `max_parallel` at a time; the rows in name order, one per module
+        (its last attempt in this run)."""
+        self.retried = set()
         state = self.work.require_fanout(self.flow.load_state())
         pending = sorted(m for m, e in state["modules"].items() if e["status"] == "pending")
         inside = self.flow.rel(self.flow.work) + "/"
@@ -175,7 +203,11 @@ class Runner:
                     running[module] = self.start(module, item)
                 finished = [m for m, (p, _, _) in running.items() if p.poll() is not None]
                 for module in finished:
-                    rows.append(self.finish(module, *running.pop(module)))
+                    row, retry = self.finish(module, *running.pop(module))
+                    if retry:  # its one retry: claimed again like any pending module
+                        bisect.insort(pending, module)
+                    elif row:
+                        rows.append(row)
                 if not finished:
                     pause()
         except BaseException:  # Ctrl-C: stop the children; their items stay running

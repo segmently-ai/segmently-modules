@@ -16,8 +16,11 @@ executor: `init run`).
 The prompt is rendered from the template `init/module_prompt.md` (the template chain: team
 override, packs, engine), the doc templates it embeds from `create`'s chain; no `${…}`
 placeholder is left in it. A module's status in `state.json`: pending -> running (a claim:
-`init next`, `init run`) -> done | failed; `init done` checks the staging output. Every state
-change is a read-modify-write under `state.json.lock`."""
+`init next`, `init run`) -> done | failed; `init done` checks the staging output. The problems
+of an output `init run` refused stay in the module's entry (`problems`) until its next claim,
+which hands them to the writer (`with_problems`: `previous_problems` and `NOTE` after the
+prompt; the work item file never changes). Every state change is a read-modify-write under
+`state.json.lock`."""
 import json
 import re
 import shutil
@@ -39,6 +42,8 @@ _PLACEHOLDER = re.compile(r"\$\{([^}\s]*)\}?")  # `${name}`, or `${name` without
 INVENTED = {"path": "path does not exist", "symbol": "symbol not found in its row's file",
             "no-file": "no file to check"}  # the words of `init verify`'s text
 PATH_HINT = " (write paths from the repository root, as in the file list)"
+NOTE = ("\n## The previous attempt was refused\n\nThe files written last time did not pass "
+        "`modsys init done`. Fix each of these problems:\n\n")  # engine text (D3, SI-6)
 
 
 def fence(text: str) -> str:
@@ -53,6 +58,15 @@ def fill(template: str, values: dict) -> str:
     return _LEFT.sub(lambda m: f"<{m.group(1) or 'value'}>", text)
 
 
+def with_problems(item: dict, problems: list[str]) -> dict:
+    """The work item a claim hands out after a refused attempt (D3): `prompt` + `NOTE` + one
+    `- <problem>` line each, and `previous_problems` — appended at the claim, so the note may
+    quote a `${…}` from a problem line (SI-5)."""
+    note = NOTE + "".join(f"- {problem}\n" for problem in problems)
+    return {**item, "prompt": (item.get("prompt") or "") + note,
+            "previous_problems": list(problems)}
+
+
 def counts(state: dict) -> dict:
     statuses = [m["status"] for m in state["modules"].values()]
     return {s: statuses.count(s) for s in ("pending", "running", "done", "failed")}
@@ -65,6 +79,7 @@ class Work:
         self.flow, self.ws, self.root = flow, ws, flow.root
         self.dir = flow.work / "work"
         self.staging = flow.work / "staging"
+        self.claimed: dict[str, int] = {}  # module -> the attempt this Work's claim started
 
     # --- inputs ---------------------------------------------------------------------------
 
@@ -236,8 +251,9 @@ class Work:
                 from None
 
     def reset(self) -> list[str]:
-        """Every running or failed module back to pending, its staging dir removed (`attempts`
-        and the last error kept until the next claim); a done module is never touched."""
+        """Every running or failed module back to pending, its staging dir removed (`attempts`,
+        the last error and the refused `problems` kept until the next claim); a done module is
+        never touched."""
         state = self.require_fanout(self.flow.load_state())
         if not any(e["status"] in ("running", "failed") for e in state["modules"].values()):
             return []
@@ -253,8 +269,10 @@ class Work:
 
     def claim(self, module: str | None = None) -> tuple[dict | None, dict]:
         """The first pending module in name order (or `module`, when it is pending), now
-        running (attempts + 1, its staging dir cleared and created, its last error dropped):
-        (work item or None, counts)."""
+        running (attempts + 1, its staging dir cleared and created, its last error and refused
+        problems dropped — the problems go to the writer: `with_problems`): (work item or None,
+        counts). The item is read before the state is saved: a failure leaves the claim
+        undone."""
         self.require_fanout(self.flow.load_state())  # a refusal writes nothing, not even the lock
         with self.flow.locked():
             state = self.require_fanout(self.flow.load_state())
@@ -264,11 +282,14 @@ class Work:
             if not pending:
                 return None, counts(state)
             module = pending[0]
+            item = self.item(module)
             self.clear(module, make=True)
             entry = state["modules"][module]
+            previous = entry.pop("problems", None)
             entry.update(status="running", attempts=entry["attempts"] + 1, error=None)
             self.flow.save_state(state)
-        return self.item(module), counts(state)
+        self.claimed[module] = entry["attempts"]
+        return (with_problems(item, previous) if previous and item else item), counts(state)
 
     def linked(self, module: str) -> str | None:
         """The problem of a symlinked staging dir (its target is never read), else None —

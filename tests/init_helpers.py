@@ -14,6 +14,19 @@ FAKE = Path(__file__).resolve().parent / "init_fake_executor.py"
 WORK = ".modsys/init"
 SIX = ["cart", "catalog", "payments", "recommendations", "storefront", "ui-kit"]
 ROLES = ["developer", "qa", "po", "architect"]
+NOTE = ("\n## The previous attempt was refused\n\nThe files written last time did not pass "
+        "`modsys init done`. Fix each of these problems:\n\n")  # D3, SI-6: pinned here
+
+
+def invented(module: str) -> list[str]:
+    """The `init done` problems of the fake writer's `--invent` output for `module`."""
+    return [f"{doc}:1: path does not exist: src/{module}.ts (write paths from the repository "
+            f"root, as in the file list)" for doc in ("MODULE.md", "roles/developer.md")]
+
+
+def with_note(prompt: str, problems: list[str]) -> str:
+    """A retried writer's stdin: the prompt, the note, one line per problem."""
+    return prompt + NOTE + "".join(f"- {p}\n" for p in problems)
 
 
 def executor(*flags: str) -> str:

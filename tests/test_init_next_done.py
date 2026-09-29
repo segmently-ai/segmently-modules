@@ -9,7 +9,8 @@ from pathlib import Path
 from unittest import mock
 
 from tests.init_fake_executor import write_docs
-from tests.init_helpers import ROLES, WORK, ok, shop, state, text
+from tests.init_helpers import (ROLES, WORK, executor, invented, ok, shop, state, text,
+                                with_note)
 
 
 class DriverRepo(unittest.TestCase):
@@ -434,6 +435,51 @@ class InventedAtDoneTest(DriverRepo):  # P5C-AC-004…007, 021, 022 (D2, SI-1, S
         doc = (f"# Cart\n\nIts work item: `{WORK}/work/cart.json`; its staging doc: "
                f"`{WORK}/staging/cart/MODULE.md`.\n")
         self.assertEqual(self.done({"MODULE.md": doc}), (0, []))
+
+
+class PreviousProblemsTest(DriverRepo):  # P5C-AC-010, P5C-AC-011 (D3, SI-7, SI-8, SI-9)
+    def item_file(self) -> dict:
+        return json.loads((self.root / WORK / "work/cart.json").read_text())
+
+    def test_status_resume_and_the_next_claim(self):  # P5C-AC-010
+        ok(self.root, "init", "run", "--executor", executor("--invent-always", "cart"), code=1)
+        problems = invented("cart")
+        failed = {"status": "failed", "attempts": 2, "error": "; ".join(problems),
+                  "problems": problems}
+        self.assertEqual(ok(self.root, "init", "status")["modules"]["cart"], failed)
+        ok(self.root, "init", "resume")  # back to pending: the problems stay until a claim
+        self.assertEqual(state(self.root)["modules"]["cart"], {**failed, "status": "pending"})
+        pending = (self.root / WORK / "state.json").read_bytes()
+        item = self.item_file()
+        data = self.claim()
+        self.assertEqual(data["item"], {**item, "prompt": with_note(item["prompt"], problems),
+                                        "previous_problems": problems})
+        self.assertEqual(state(self.root)["modules"]["cart"],
+                         {"status": "running", "attempts": 3, "error": None})
+        self.assertEqual(self.item_file(), item)  # the work item file never changes
+        (self.root / WORK / "state.json").write_bytes(pending)
+        code, out, err = text(self.root, "init", "next")
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(out, f"claimed       cart  (work item {WORK}/work/cart.json)\n"
+                              + with_note(item["prompt"], problems))
+
+    def test_a_module_never_refused(self):  # P5C-AC-010: no note, no previous_problems
+        self.assertEqual(self.claim()["item"], self.item_file())
+
+    def test_not_recorded(self):  # P5C-AC-011
+        self.claim()
+        write_docs(self.root, self.item_file())
+        staging = self.root / WORK / "staging/cart"
+        (staging / "MODULE.md").write_text("# Cart\n\nSee `src/cart.ts`.\n")
+        before = (self.root / WORK / "state.json").read_bytes()
+        code, out, err = text(self.root, "init", "done", "cart", "--json")
+        self.assertEqual(code, 1)
+        self.assertEqual((self.root / WORK / "state.json").read_bytes(), before)
+        self.setUp()  # an executor's exit failure hands nothing over
+        ok(self.root, "init", "run", "--executor", executor("--fail", "cart"), code=1)
+        self.assertNotIn("problems", state(self.root)["modules"]["cart"])
+        ok(self.root, "init", "resume")
+        self.assertEqual(self.claim()["item"], self.item_file())
 
 
 if __name__ == "__main__":

@@ -410,6 +410,13 @@ class InitAndAdoptSkillsTest(unittest.TestCase):  # P5B-AC-028, P5B-AC-029 (D6, 
         phases = " ".join((root / "references/phases.md").read_text("utf-8").split())
         self.assertIn("a path that does not exist or a symbol not in its row's file", phases)
 
+    def test_module_init_step_5_passes_previous_problems(self):  # P5C-AC-014 (D3, D5)
+        root = builtin_packs_root() / "core/skills/module-init"
+        text = " ".join((root / "SKILL.md").read_text("utf-8").split())
+        self.assertIn("A claim whose `item` has `previous_problems`", text)
+        phases = " ".join((root / "references/phases.md").read_text("utf-8").split())
+        self.assertIn("`previous_problems`", phases)
+
 
 class ScaffoldBaseTest(unittest.TestCase):  # P5A-AC-004 (D0a)
     def test_the_scaffold_says_what_the_base_is(self):

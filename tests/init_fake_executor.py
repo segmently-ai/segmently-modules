@@ -21,6 +21,12 @@ Switches (anything else on the command line is ignored, so a test can pass odd a
   --fail MODULE       for MODULE: print 50 stderr lines (`--lines N`), exit 3
   --keywords4 MODULE  for MODULE: an entry.json with 4 keywords
   --nothing MODULE    for MODULE: write nothing, exit 0
+  --invent M,…        for each module named: line 1 of MODULE.md and of the first role's doc cite
+                      `src/<module>.ts`, a path that does not exist (two `init done` problems) —
+                      unless the prompt on stdin holds the note of a refused attempt (`NOTE`):
+                      then the docs are clean (a writer that fixes what it was told)
+  --invent-always M,… the same on every call, the note or not
+  --sleep-retry S     sleep S seconds before writing when stdin holds the note
   --outside PATH      also write PATH (root-relative) — a write outside the staging dir
   --git-mv PATH       also `git mv PATH <staging>/moved` (staged: a rename INTO the staging
                       dir), when PATH is still there
@@ -65,6 +71,7 @@ CANNED = {  # module -> (description, keywords, purpose paragraph)
 }
 EDGES = {"storefront": [{"module": "catalog", "relation": "complements",
                          "description": "shows the books the catalog holds"}]}
+NOTE = b"## The previous attempt was refused"  # the heading `init` appends to a retried prompt
 
 
 def texts(item: dict) -> tuple[str, list[str], str]:
@@ -103,11 +110,21 @@ def write_docs(root: Path, item: dict, staging: Path | None = None) -> None:
     (staging / "entry.json").write_text(json.dumps(entry, indent=2) + "\n", encoding="utf-8")
 
 
+def invent(staging: Path, item: dict) -> None:
+    """Line 1 of MODULE.md and of the first role's doc cite `src/<module>.ts` — a path
+    written from the package, not the root: it does not exist."""
+    for rel in ("MODULE.md", f"roles/{item['roles'][0]}.md"):
+        path = staging / rel
+        first, rest = path.read_text(encoding="utf-8").split("\n", 1)
+        path.write_text(f"{first} (`src/{item['module']}.ts`)\n{rest}", encoding="utf-8")
+
+
 def switches(argv: list[str]) -> dict:
     """The known `--name value` switches of argv; everything else is ignored."""
     out, known = {}, {"--record", "--stop-after", "--stop-group", "--fail", "--lines",
                       "--keywords4", "--nothing", "--outside", "--peers", "--live", "--sleep",
-                      "--pids", "--tasks-mode", "--git-mv", "--ignore-term"}
+                      "--pids", "--tasks-mode", "--git-mv", "--ignore-term", "--invent",
+                      "--invent-always", "--sleep-retry"}
     for i, arg in enumerate(argv):
         if arg in known and i + 1 < len(argv):
             out[arg[2:]] = argv[i + 1]
@@ -204,6 +221,9 @@ def main() -> int:
             time.sleep(0.01)
     if "sleep" in opts:
         time.sleep(float(opts["sleep"]))
+    retry = NOTE in stdin
+    if retry and "sleep-retry" in opts:
+        time.sleep(float(opts["sleep-retry"]))
     try:
         if opts.get("fail") == module:
             for i in range(int(opts.get("lines", 50))):
@@ -213,6 +233,9 @@ def main() -> int:
             return 0
         item = json.loads(Path(os.environ["MODSYS_INIT_WORK"]).read_text(encoding="utf-8"))
         write_docs(Path.cwd(), item, staging)
+        if module in opts.get("invent-always", "").split(",") or \
+                (module in opts.get("invent", "").split(",") and not retry):
+            invent(staging, item)
         if opts.get("keywords4") == module:
             entry = json.loads((staging / "entry.json").read_text(encoding="utf-8"))
             entry["keywords"] = entry["keywords"][:4]

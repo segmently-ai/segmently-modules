@@ -175,6 +175,54 @@ class InterruptTest(ContractRepo):
         self.assertNotIn("Traceback", err)
 
 
+class RetryContractTest(ContractRepo):  # P5C-AC-021 (D3): the retry and a P5b state
+    def test_a_p5b_state_and_the_exit_codes(self):
+        ok(self.root, "init", "fanout")
+        s = state(self.root)  # what the P5b engine wrote: a refused module, no `problems` key
+        s["modules"]["cart"].update(status="failed", attempts=1, error="MODULE.md is empty")
+        (self.root / WORK / "state.json").write_text(json.dumps(s))
+        ok(self.root, "init", "resume")
+        item = ok(self.root, "init", "next")["item"]
+        self.assertEqual(item, json.loads((self.root / WORK / "work/cart.json").read_text()))
+        for flags, code in ((("--invent", "payments"), 0), (("--invent-always", "payments"), 1)):
+            with self.subTest(flags=flags):
+                self.setUp()
+                ok(self.root, "init", "fanout")
+                got, out, err = self.call("init", "run", "--executor", executor(*flags), "--json")
+                self.assertEqual((got, json.loads(out)["data"]["failed"]), (code, bool(code)))
+                self.assertIn("modsys: payments: refused — retrying once", err.splitlines())
+                self.assertNotIn("Traceback", err)
+
+    def test_a_state_write_that_fails_during_a_retry(self):
+        from modsys import init_flow
+        ok(self.root, "init", "fanout")
+        real = init_flow.os.replace
+
+        def replace(src, dst):  # the save that records the refused problems
+            if Path(dst).name == "state.json" and '"problems"' in Path(src).read_text():
+                raise PermissionError(13, "Permission denied")
+            return real(src, dst)
+
+        with mock.patch("modsys.init_flow.os.replace", side_effect=replace):
+            got = self.call("init", "run", "--executor", executor("--invent", "cart"), "--json")
+        self.assertEqual(got[:2], (2, ""))
+        self.assertIn("modsys: error: cannot write .modsys/init/state.json: Permission denied",
+                      got[2])
+        self.assertNotIn("Traceback", got[2])
+        self.assertNotIn("problems", state(self.root)["modules"]["cart"])
+
+    def test_a_damaged_problems_entry(self):
+        ok(self.root, "init", "fanout")
+        s = state(self.root)
+        s["modules"]["cart"]["problems"] = "MODULE.md is empty"  # not a list
+        (self.root / WORK / "state.json").write_text(json.dumps(s))
+        for action in ("status", "next"):
+            with self.subTest(action=action):
+                code, out, err = self.call("init", action, "--json")
+                self.assertEqual((code, out), (2, ""))
+                self.assertIn(f"{WORK}/state.json: not a valid init state (module 'cart')", err)
+
+
 class ActionsTest(ContractRepo):  # P5B-AC-004 (the action list)
     def test_an_unknown_action_names_every_action(self):
         code, out, err = self.call("init", "bogus")

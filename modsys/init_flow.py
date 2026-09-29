@@ -4,8 +4,10 @@ The work directory is `<config_dir>/init/` (git-ignored by `modsys init`):
   state.json      {schema: "modsys.init-state/1", engine, started_at, phase, phases: {preflight,
                   map, gate-map, fanout, reconcile, eval-tasks, verify, finish: {status:
                   pending|running|done, started_at, finished_at, sha256}}, modules: {<module>:
-                  {status: pending|running|done|failed, attempts, error, existing?}}} — `phase` =
-                  the phase most recently started, or "finished" once `init finish` is done;
+                  {status: pending|running|done|failed, attempts, error, existing?, problems?}}}
+                  — `problems`: the check's problems of an output `init run` refused, kept until
+                  the module's next claim; `phase` = the phase most recently started, or
+                  "finished" once `init finish` is done;
                   optional keys once used: `forced`, `pr`, `open_pr` (`modsys.init_finish`);
                   `sha256` = the phase's output as written
                   (map's is how an edited proposal is recognised). A state that lacks phases at
@@ -61,6 +63,11 @@ def pending() -> dict:
     return {"status": "pending", "started_at": None, "finished_at": None, "sha256": None}
 
 
+def strings(value) -> bool:
+    """A list of strings (a module entry's `problems`)."""
+    return isinstance(value, list) and all(isinstance(v, str) for v in value)
+
+
 def state_problem(state: dict) -> str | None:
     """Why `state` is not a valid init state, else None: `phases` must hold a leading run of
     `PHASES` (a later phase without an earlier one is invalid), each entry with the four keys
@@ -85,7 +92,8 @@ def state_problem(state: dict) -> str | None:
     for name, entry in modules.items():
         if not isinstance(entry, dict) or entry.get("status") not in MODULE_STATUSES \
                 or not isinstance(entry.get("attempts"), int) \
-                or not isinstance(entry.get("error"), (str, type(None))):
+                or not isinstance(entry.get("error"), (str, type(None))) \
+                or not strings(entry.get("problems", [])):
             return f"module '{name}'"
     return None
 

@@ -361,7 +361,7 @@ def workspace(flow) -> Workspace:
 
 
 def module_rows(state: dict | None) -> dict:
-    """{module: {status, attempts, error, existing?}} of the state (`init status`)."""
+    """{module: {status, attempts, error, existing?, problems?}} of the state (`init status`)."""
     return {m: dict(e) for m, e in sorted((state or {}).get("modules", {}).items())}
 
 

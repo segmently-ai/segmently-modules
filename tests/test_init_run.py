@@ -1,5 +1,6 @@
 """`init run --executor CMD` (D1, driver 3): the executor contract, its failure modes, `[init]
 max_parallel`, writes outside the staging dir, the module transitions of a run, Ctrl-C."""
+import hashlib
 import json
 import os
 import shlex
@@ -14,7 +15,8 @@ from unittest import mock
 
 from tests.helpers import git, run
 from tests.init_fake_executor import write_docs
-from tests.init_helpers import FAKE, SIX, WORK, executor, ok, protected_sha, shop, state, text
+from tests.init_helpers import (FAKE, SIX, WORK, executor, invented, ok, protected_sha, shop,
+                                state, text, with_note)
 
 
 class RunRepo(unittest.TestCase):
@@ -115,9 +117,11 @@ class ExecutorFailuresTest(RunRepo):  # P5B-AC-008
         self.assertTrue(data["failed"])
         self.assertEqual(state(self.root)["modules"]["cart"],
                          {"status": "failed", "attempts": 1, "error": rows["cart"]["error"]})
-        data, _ = self.run_init()  # a new run: the failed ones again (attempt 2)
+        self.assertEqual({m: r["attempts"] for m, r in rows.items() if r["status"] == "failed"},
+                         {"cart": 1, "catalog": 2, "payments": 2})  # a refused output: 1 retry
+        data, _ = self.run_init()  # a new run: the failed ones again
         self.assertEqual({r["module"]: (r["status"], r["attempts"]) for r in data["modules"]},
-                         {"cart": ("done", 2), "catalog": ("done", 2), "payments": ("done", 2)})
+                         {"cart": ("done", 2), "catalog": ("done", 3), "payments": ("done", 3)})
 
     def test_argument_problems_run_nothing(self):
         for value, needle in (("", "--executor is empty"), ("  ", "--executor is empty"),
@@ -332,6 +336,148 @@ class RunInterruptTest(RunRepo):  # P5B-AC-038 (Ctrl-C during init run)
         for pid in (int(p.name) for p in pids.iterdir()):
             with self.assertRaises(ProcessLookupError):
                 os.kill(pid, 0)
+
+
+def sha(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+class RetryTest(RunRepo):  # P5C-AC-008, P5C-AC-009, P5C-AC-022 (D3, SI-4, SI-6, SI-8, SI-10)
+    RETRY = "modsys: cart: refused — retrying once"
+
+    def stdins(self, module: str) -> list[str]:
+        return [c["stdin_sha256"] for c in self.calls() if c["module"] == module]
+
+    def prompt(self, module: str) -> str:
+        return json.loads((self.root / WORK / f"work/{module}.json").read_text())["prompt"]
+
+    def test_one_retry_with_the_problems_then_done(self):  # P5C-AC-008
+        from modsys.init_run import Runner
+        self.config("[init]\nmax_parallel = 1\n")
+        work_item = self.root / WORK / "work/cart.json"
+        before = work_item.read_bytes()
+        staging, seen, real = self.root / WORK / "staging/cart", [], Runner.start
+
+        def start(runner, module, item):  # what the staging dir holds when a writer starts
+            if module == "cart":
+                seen.append(sorted(p.name for p in staging.rglob("*")))
+            return real(runner, module, item)
+
+        with mock.patch("modsys.init_run.Runner.start", autospec=True, side_effect=start):
+            data, err = self.run_init("--invent", "cart")
+        self.assertEqual(err.splitlines(), [self.RETRY])
+        self.assertEqual(seen, [[], []])  # the retry's claim cleared the first attempt's files
+        self.assertEqual(self.stdins("cart"), [sha(self.prompt("cart")),
+                                               sha(with_note(self.prompt("cart"),
+                                                             invented("cart")))])
+        self.assertEqual({m: len(self.stdins(m)) for m in SIX},
+                         {m: 2 if m == "cart" else 1 for m in SIX})
+        self.assertEqual(next(r for r in data["modules"] if r["module"] == "cart"),
+                         {"module": "cart", "status": "done", "attempts": 2, "error": None})
+        self.assertEqual(state(self.root)["modules"]["cart"],
+                         {"status": "done", "attempts": 2, "error": None})
+        self.assertEqual((data["failed"], [r["module"] for r in data["modules"]]), (False, SIX))
+        self.assertEqual(work_item.read_bytes(), before)  # the fan-out digest holds
+
+    def test_refused_twice_and_an_exit_failure(self):  # P5C-AC-008 (the table's last rows)
+        data, err = self.run_init("--invent-always", "cart", "--fail", "catalog", code=1)
+        rows = {r["module"]: r for r in data["modules"]}
+        joined = "; ".join(invented("cart"))
+        self.assertEqual(rows["cart"], {"module": "cart", "status": "failed", "attempts": 2,
+                                        "error": joined})
+        self.assertEqual(state(self.root)["modules"]["cart"],
+                         {"status": "failed", "attempts": 2, "error": joined,
+                          "problems": invented("cart")})
+        self.assertEqual((len(self.stdins("cart")), len(self.stdins("catalog"))), (2, 1))
+        self.assertTrue(rows["catalog"]["error"].startswith("exit 3: "))
+        self.assertNotIn("problems", state(self.root)["modules"]["catalog"])
+        self.assertEqual([l for l in err.splitlines() if "retrying" in l], [self.RETRY])
+        self.assertIn(f"modsys: cart failed: {joined}", err.splitlines())
+
+    def test_bounds(self):  # P5C-AC-009 (SI-4): one retry per module per run
+        self.run_init("--invent-always", "cart", code=1)
+        self.run_init("--invent-always", "cart", code=1)  # a new run: a new retry
+        self.assertEqual(len(self.stdins("cart")), 4)
+        self.assertEqual(state(self.root)["modules"]["cart"]["attempts"], 4)
+        self.setUp()
+        data, err = self.run_init("--invent", "cart,payments")  # four at a time, the default
+        self.assertEqual({m: len(self.stdins(m)) for m in SIX},
+                         {m: 2 if m in ("cart", "payments") else 1 for m in SIX})
+        self.assertEqual(sorted(err.splitlines()), [self.RETRY,
+                                                    "modsys: payments: refused — retrying once"])
+        events = sorted([(c["time"], 1) for c in self.calls("start")]
+                        + [(c["time"], -1) for c in self.calls("end")])
+        live = [sum(step for _, step in events[:i + 1]) for i in range(len(events))]
+        self.assertLessEqual(max(live), 4)
+        self.assertEqual({r["status"] for r in data["modules"]}, {"done"})
+
+    def test_a_retry_claimed_by_another_driver(self):  # P5C-AC-009 (SI-10)
+        from modsys.init_work import Work
+        self.config("[init]\nmax_parallel = 1\n")
+        real, taken = Work.claim, []
+
+        def claim(work, module=None):  # the retry's claim: an agent's init next came first
+            if module == "cart" and self.stdins("cart"):
+                taken.append(ok(self.root, "init", "next"))
+            return real(work, module)
+
+        with mock.patch("modsys.init_work.Work.claim", autospec=True, side_effect=claim):
+            data, err = self.run_init("--invent", "cart")
+        (agent,) = taken
+        self.assertEqual((agent["item"]["module"], agent["item"]["previous_problems"]),
+                         ("cart", invented("cart")))
+        self.assertEqual(len(self.stdins("cart")), 1)  # no second writer on its staging dir
+        self.assertNotIn("cart", [r["module"] for r in data["modules"]])
+        self.assertEqual(state(self.root)["modules"]["cart"],
+                         {"status": "running", "attempts": 2, "error": None})
+
+    def test_a_module_taken_over_while_its_writer_ran(self):  # PR-18: the same attempt only
+        self.config("[init]\nmax_parallel = 1\n")
+        taken = []
+
+        def agent():  # while cart's writer works, another driver resumes and claims it
+            if not taken and self.stdins("cart"):
+                ok(self.root, "init", "resume")
+                taken.append(ok(self.root, "init", "next")["item"]["module"])
+            time.sleep(0.05)
+
+        with mock.patch("modsys.init_run.pause", side_effect=agent):
+            data, err = self.run_init("--invent", "cart", "--sleep", "0.5")
+        self.assertEqual((taken, err), (["cart"], ""))  # no retry of a module it lost
+        self.assertEqual(len(self.stdins("cart")), 1)
+        self.assertNotIn("cart", [r["module"] for r in data["modules"]])
+        self.assertEqual(state(self.root)["modules"]["cart"],  # the other driver's claim
+                         {"status": "running", "attempts": 2, "error": None})
+
+    def test_ctrl_c_during_a_retry(self):  # P5C-AC-022
+        self.config("[init]\nmax_parallel = 1\n")
+        pids = self.base / "pids"
+
+        def interrupt():
+            if pids.is_dir() and [p.read_text() for p in pids.iterdir()].count("cart") == 2:
+                raise KeyboardInterrupt
+            time.sleep(0.05)
+
+        with mock.patch("modsys.init_run.pause", side_effect=interrupt):
+            got = run("init", "run", "--executor", executor("--invent", "cart", "--sleep-retry",
+                                                            "30", "--pids", str(pids)),
+                      "--root", str(self.root))
+        self.assertEqual(got, (130, "", f"{self.RETRY}\nmodsys: interrupted\n"))
+        for pid in (int(p.name) for p in pids.iterdir()):
+            with self.assertRaises(ProcessLookupError):
+                os.kill(pid, 0)
+        self.assertEqual(state(self.root)["modules"]["cart"],  # the retry's claim dropped them
+                         {"status": "running", "attempts": 2, "error": None})
+        ok(self.root, "init", "resume")
+        self.assertEqual(state(self.root)["modules"]["cart"]["status"], "pending")
+        item = ok(self.root, "init", "next")["item"]
+        self.assertEqual(item, json.loads((self.root / WORK / "work/cart.json").read_text()))
+
+    def test_a_write_outside_on_both_attempts(self):  # P5C-AC-022: named once
+        data, err = self.run_init("--invent", "cart", "--outside", "notes/outside.md", code=1)
+        self.assertEqual(data["outside"], ["notes/outside.md"])
+        self.assertEqual(err.count("modsys: wrote outside the staging dir: notes/outside.md"), 1)
+        self.assertEqual(len(self.stdins("cart")), 2)
 
 
 if __name__ == "__main__":

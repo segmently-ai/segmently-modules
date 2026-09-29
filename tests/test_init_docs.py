@@ -90,6 +90,22 @@ class InitDocsTest(unittest.TestCase):  # P5B-AC-037
         self.assertIn("`<doc>:<line>: path does not exist: <path> (write paths from the "
                       "repository root, as in the file list)`", row)
 
+    def test_the_retry_and_the_note(self):  # P5C-AC-015 (D3, SI-5)
+        text = flat("docs/init.md")
+        for needle in ("retried once in the same run", "`modsys: <module>: refused — retrying "
+                       "once`", "`previous_problems`", "`## The previous attempt was refused`",
+                       "it may quote a `${…}` from a problem line", "no retry"):
+            self.assertIn(needle, text)
+        rows = {start: contract_row(start) for start in (
+            "| `init fanout\\|next\\|done` |", "| `init run --executor CMD` |",
+            "| `init map\\|confirm\\|status\\|resume` |")}
+        self.assertIn("`previous_problems: [problem]`", rows["| `init fanout\\|next\\|done` |"])
+        run_row = rows["| `init run --executor CMD` |"]
+        for needle in ("retried once in this run", "`modsys: <module>: refused — retrying once`",
+                       "`problems`"):
+            self.assertIn(needle, run_row)
+        self.assertIn("existing?, problems?}", rows["| `init map\\|confirm\\|status\\|resume` |"])
+
 
 def contract_row(start: str) -> str:
     """The row of docs/cli-contract.md that starts with `start`."""
