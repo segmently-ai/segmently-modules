@@ -220,7 +220,18 @@ class RetryContractTest(ContractRepo):  # P5C-AC-021 (D3): the retry and a P5b s
             with self.subTest(action=action):
                 code, out, err = self.call("init", action, "--json")
                 self.assertEqual((code, out), (2, ""))
-                self.assertIn(f"{WORK}/state.json: not a valid init state (module 'cart')", err)
+                self.assertEqual(err, f"modsys: error: {WORK}/state.json: not a valid init state "
+                                      f"(module 'cart': problems is not a list of strings — "
+                                      f"remove it, or start over: modsys init map --restart)\n")
+        del s["modules"]["cart"]["problems"]  # the way out it names first
+        (self.root / WORK / "state.json").write_text(json.dumps(s))
+        self.assertEqual(ok(self.root, "init", "next")["item"]["module"], "cart")
+        s["modules"]["payments"]["attempts"] = "one"  # any other damage: as before
+        (self.root / WORK / "state.json").write_text(json.dumps(s))
+        code, out, err = self.call("init", "status", "--json")
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn(f"{WORK}/state.json: not a valid init state (module 'payments') — start "
+                      f"over: modsys init map --restart", err)
 
 
 class ActionsTest(ContractRepo):  # P5B-AC-004 (the action list)

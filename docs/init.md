@@ -84,8 +84,11 @@ them written, all over the same state:
   line but never run by a shell. Exit 0 and a staging output `init done` accepts → `done`.
   Exit 0 and a refused output → retried once in the same run: a new attempt (its staging dir
   cleared) whose prompt ends with the problems, and a stderr line `modsys: <module>: refused —
-  retrying once`; refused again → `failed` with them. Any other exit → `failed` at once with
-  the last 20 lines of stderr — no retry. A write outside `<config_dir>/init/` fails the run.
+  retrying once`; refused again → `failed` with them. A retry that cannot be claimed (the
+  writer left its staging dir a symlink or not removable, its work item is gone) → `failed`
+  with the problems and `; the retry could not start: <reason>` — the other modules run on.
+  Any other exit → `failed` at once with the last 20 lines of stderr — no retry. A write
+  outside `<config_dir>/init/` fails the run.
   There is no timeout: stop a hung run with Ctrl-C, then `modsys init resume`.
 
 `modsys init done` checks a staging dir: exactly the expected files, none empty or still holding
@@ -109,7 +112,9 @@ The problems of an output `init run` refused stay in the module's entry of `stat
 as `previous_problems`, and its `prompt` ends with a section `## The previous attempt was
 refused` listing them (the work item file itself never changes). The section is added at the
 claim, after the template was rendered, so it may quote a `${…}` from a problem line. An `init
-done` that refuses writes nothing: the writer is still at work.
+done` that refuses writes nothing: the writer is still at work. A claim whose work item file is
+missing is refused before anything is written (exit 2, the problems kept), naming the way out:
+`modsys init fanout` while no module has been claimed yet, else `modsys init map --restart`.
 
 A killed or failed run is picked up by `modsys init resume` (or `modsys init run` again): every
 `running` or `failed` module goes back to `pending` with its staging dir cleared; a `done`
@@ -237,7 +242,9 @@ resolved `MODULE.md`, the role templates of its work item and `init/module_promp
 override and packs included, so their own placeholders count too). Any other `${…}` is text:
 `${API_URL}` in a shell example or a JavaScript template string passes. The one case it still
 refuses is code that uses one of those names itself (`${title}` in a JavaScript string): the
-writer rewords it.
+writer rewords it. A template it cannot read then (not UTF-8, unreadable) stops `init done` with
+exit 2 `cannot read <path>: <reason>`; under `init run` that module fails at once (`the check
+could not run: …`, no retry) and the others run on.
 
 ## When something goes wrong
 

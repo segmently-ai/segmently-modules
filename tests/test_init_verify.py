@@ -1,6 +1,8 @@
 """`init verify` (D3, phase 6): the invented-component check, and verify over the staging tree
 as if it were in place — lint (clean: no error, no warning), invented components, the routing
 hit rate; `verify.json` and the exit rule."""
+import contextlib
+import io
 import json
 import shutil
 import tempfile
@@ -102,6 +104,23 @@ import x from `packages/catalog/src/fenced.ts`;
             (1, "path", "packages/../../x/y"),
             (5, "no-file", "searchBooks"),
             (5, "path", "../repo/packages/catalog/src/books.ts")])
+
+    def test_the_text_lines(self):  # final review M-7: the words init done uses (SI-2)
+        from modsys.init_cmd import _render_verify
+        data = {"lint": {"summary": {"error": 0, "warning": 0, "info": 0}, "findings": []},
+                "invented": [{"doc": "modules/cart/MODULE.md", "line": n, "kind": k, "token": t}
+                             for n, k, t in ((12, "path", "src/lines.ts"),
+                                             (20, "symbol", "lineTotals"),
+                                             (21, "no-file", "lineTotal"))],
+                "routing": None, "passed": False, "verify": f"{WORK}/verify.json", "next": "x"}
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            _render_verify(data)
+        self.assertEqual(out.getvalue().splitlines()[1:5], [
+            "invented      3 component(s)",
+            "  modules/cart/MODULE.md:12: path does not exist: src/lines.ts",
+            "  modules/cart/MODULE.md:20: symbol not found in its row's file: lineTotals",
+            "  modules/cart/MODULE.md:21: no file to check: lineTotal"])
 
 
 class VerifyRepo(unittest.TestCase):

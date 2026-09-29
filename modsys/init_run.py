@@ -32,6 +32,7 @@ import time
 from pathlib import Path
 
 from modsys.changes import git_env, work_tree_error
+from modsys.init_work import CheckError
 from modsys.output import UsageError
 
 TAIL_LINES, TAIL_CHARS = 20, 2000
@@ -162,8 +163,11 @@ class Runner:
         if proc.returncode != 0:
             error = f"exit {proc.returncode}: {tail(err)}"
         else:
-            problems = self.work.problems(module)
-            error = "; ".join(problems) if problems else None
+            try:
+                problems = self.work.problems(module)
+                error = "; ".join(problems) if problems else None
+            except CheckError as e:  # no retry: the writer cannot fix what stopped the check
+                error = f"the check could not run: {e}"
         retry = bool(problems) and module not in self.retried
         with self.flow.locked():
             state = self.flow.load_state()
@@ -183,6 +187,22 @@ class Runner:
             return None, True
         return {"module": module, **{k: entry[k] for k in ("status", "attempts", "error")}}, False
 
+    def unclaimed(self, module: str, reason: str) -> dict | None:
+        """The row of a module whose retry could not be claimed (`reason`: its staging dir a
+        symlink or not removable, its work item missing or damaged): `failed`, `error` = the
+        refused problems and the reason, `problems` kept for its next claim, `attempts` as the
+        refused attempt left them — the other modules run on. A module another driver claimed
+        or put back meanwhile is left to it (None)."""
+        with self.flow.locked():
+            state = self.flow.load_state()
+            entry = state["modules"][module]
+            if entry["status"] != "pending" or entry["attempts"] != self.work.claimed.get(module):
+                return None
+            refused = entry["error"] or "; ".join(entry.get("problems") or [])
+            entry.update(status="failed", error=f"{refused}; the retry could not start: {reason}")
+            self.flow.save_state(state)
+        return {"module": module, **{k: entry[k] for k in ("status", "attempts", "error")}}
+
     def run(self) -> dict:
         """Every pending item, `max_parallel` at a time; the rows in name order, one per module
         (its last attempt in this run)."""
@@ -197,7 +217,15 @@ class Runner:
             while pending or running:
                 while pending and len(running) < self.max_parallel:
                     module = pending.pop(0)
-                    item, _ = self.work.claim(module)
+                    try:
+                        item, _ = self.work.claim(module)
+                    except UsageError as e:
+                        if module not in self.retried:  # a first claim: the run stops (P5b)
+                            raise
+                        row = self.unclaimed(module, str(e))  # its retry: only it fails
+                        if row:
+                            rows.append(row)
+                        continue
                     if item is None:  # another driver claimed it first: it is theirs
                         continue
                     running[module] = self.start(module, item)

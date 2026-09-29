@@ -562,6 +562,7 @@ def _render_eval_tasks(d) -> None:
 
 
 def _render_verify(d) -> None:
+    from modsys.init_work import INVENTED  # the words init done uses too (SI-2)
     s = d["lint"]["summary"]
     print(f"lint          {s['error']} error(s), {s['warning']} warning(s), {s['info']} info")
     for f in d["lint"]["findings"]:
@@ -569,9 +570,7 @@ def _render_verify(d) -> None:
             print(f"  {f['severity']:<8} {f['code']} {f['module']}: {f['message']}")
     print(f"invented      {len(d['invented'])} component(s)")
     for f in d["invented"]:
-        what = {"path": "path does not exist", "symbol": "symbol not found in its row's file",
-                "no-file": "no file to check"}[f["kind"]]
-        print(f"  {f['doc']}:{f['line']}: {what}: {f['token']}")
+        print(f"  {f['doc']}:{f['line']}: {INVENTED[f['kind']]}: {f['token']}")
     if d["routing"] is None:
         print("routing: not measured")
     else:

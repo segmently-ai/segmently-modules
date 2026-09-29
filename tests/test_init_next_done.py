@@ -66,6 +66,29 @@ class NextTest(DriverRepo):  # P5B-AC-005 (init next)
         self.assertEqual((target / "keep.md").read_text(), "keep\n")
         self.assertEqual((self.root / WORK / "state.json").read_bytes(), before)
 
+    def test_a_missing_work_item(self):  # final review M-2: refused before any state write
+        def refused(way: str) -> None:
+            (self.root / WORK / "work/cart.json").unlink()
+            before = (self.root / WORK / "state.json").read_bytes()
+            code, out, err = text(self.root, "init", "next", "--json")
+            self.assertEqual((code, out), (2, ""))
+            self.assertIn(f"modsys: error: {WORK}/work/cart.json is missing — {way}", err)
+            self.assertEqual((self.root / WORK / "state.json").read_bytes(), before)
+
+        refused("write the work items again: modsys init fanout")  # nothing claimed yet
+        ok(self.root, "init", "fanout")  # the way out it names
+        self.assertEqual(self.claim()["item"]["module"], "cart")
+        self.setUp()
+        ok(self.root, "init", "run", "--executor", executor("--invent-always", "cart"), code=1)
+        ok(self.root, "init", "resume")
+        refused("start over: modsys init map --restart")  # the refused problems are kept
+        self.assertEqual(state(self.root)["modules"]["cart"]["problems"], invented("cart"))
+        ok(self.root, "init", "fanout", code=2)  # the fan-out has started: not a way out
+        ok(self.root, "init", "map", "--restart")  # the way out it names
+        ok(self.root, "init", "confirm")
+        ok(self.root, "init", "fanout")
+        self.assertEqual(self.claim()["item"]["module"], "cart")
+
 
 class DoneTest(DriverRepo):  # P5B-AC-005 (init done, the table)
     def setUp(self):
@@ -271,6 +294,30 @@ class PlaceholderTest(DriverRepo):  # P5C-AC-012, P5C-AC-013 (D4, SI-11)
                          ["roles/qa.md: unfilled placeholder ${pack_hint}"])
         self.assertEqual(self.check("MODULE.md", "\n${designer_hint}\n"), [])
 
+    def test_a_template_that_cannot_be_read(self):  # final review M-3: exit 2, not internal
+        override = self.root / ok(self.root, "templates", "override", "MODULE.md")["file"]
+        good = override.read_bytes()
+        rows = [(b"\xe9" + good, 0o644, "not UTF-8 text")]
+        if os.geteuid() != 0:  # (a root user reads it anyway)
+            rows.append((good, 0, "Permission denied"))
+        for body, mode, reason in rows:
+            with self.subTest(reason=reason):
+                override.write_bytes(body)
+                override.chmod(mode)
+                try:
+                    shutil.rmtree(self.staging, ignore_errors=True)
+                    write_docs(self.root, self.item)
+                    doc = self.staging / "MODULE.md"
+                    doc.write_text(doc.read_text() + "\nCall `${API_URL}` first.\n")
+                    code, out, err = text(self.root, "init", "done", "cart", "--json")
+                finally:
+                    override.chmod(0o644)
+                self.assertEqual((code, out), (2, ""))
+                self.assertEqual(err, f"modsys: error: cannot read .modsys/overrides/templates/"
+                                      f"MODULE.md: {reason}\n")
+        override.write_bytes(b"\xe9" + good)
+        self.assertEqual(self.check("MODULE.md", "\nNo placeholder.\n"), [])  # never read
+
 
 HINT = " (write paths from the repository root, as in the file list)"
 
@@ -363,6 +410,17 @@ class InventedAtDoneTest(DriverRepo):  # P5C-AC-004…007, 021, 022 (D2, SI-1, S
                                  (1 if problems else 0, problems))
         planned = table("`Cart`", "`modules/catalog/MODULE.md`")  # not written yet: not read
         self.assertEqual(self.done({"MODULE.md": planned}), (0, []))
+
+    def test_a_damaged_sibling_work_item(self):  # final review M-4: its main doc only
+        (self.root / WORK / "work/catalog.json").write_text("{not json")
+        for token, problems in (
+                ("the code", []),
+                ("`modules/catalog/MODULE.md`", []),
+                ("`modules/catalog/roles/developer.md`",
+                 [missing("MODULE.md", 12, "modules/catalog/roles/developer.md")])):
+            with self.subTest(token=token):
+                self.assertEqual(self.done({"MODULE.md": at_line_12(token)}),
+                                 (1 if problems else 0, problems))
 
     def test_created_by_hand_and_a_custom_modules_dir(self):  # P5C-AC-005
         root = shop(self.base, name="by-hand")
@@ -462,6 +520,16 @@ class PreviousProblemsTest(DriverRepo):  # P5C-AC-010, P5C-AC-011 (D3, SI-7, SI-
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(out, f"claimed       cart  (work item {WORK}/work/cart.json)\n"
                               + with_note(item["prompt"], problems))
+
+    def test_done_by_hand_after_a_failed_run(self):  # final review M-1: no problems left
+        ok(self.root, "init", "run", "--executor", executor("--invent-always", "cart"), code=1)
+        self.assertEqual(state(self.root)["modules"]["cart"]["problems"], invented("cart"))
+        shutil.rmtree(self.root / WORK / "staging/cart")
+        write_docs(self.root, self.item_file())  # a person fixes the docs
+        self.assertEqual(ok(self.root, "init", "done", "cart")["status"], "done")
+        done = {"status": "done", "attempts": 2, "error": None}
+        self.assertEqual(state(self.root)["modules"]["cart"], done)
+        self.assertEqual(ok(self.root, "init", "status")["modules"]["cart"], done)
 
     def test_a_module_never_refused(self):  # P5C-AC-010: no note, no previous_problems
         self.assertEqual(self.claim()["item"], self.item_file())

@@ -72,7 +72,8 @@ def state_problem(state: dict) -> str | None:
     """Why `state` is not a valid init state, else None: `phases` must hold a leading run of
     `PHASES` (a later phase without an earlier one is invalid), each entry with the four keys
     and a status of `STATUSES`; `phase` is null or a string — the phase most recently started,
-    or "finished" (written by `init finish`, with the `finish` phase done)."""
+    or "finished" (written by `init finish`, with the `finish` phase done). A damaged optional
+    `problems` names its own way out first: removing it."""
     phases = state.get("phases")
     if not isinstance(phases, dict):
         return "phases"
@@ -92,9 +93,11 @@ def state_problem(state: dict) -> str | None:
     for name, entry in modules.items():
         if not isinstance(entry, dict) or entry.get("status") not in MODULE_STATUSES \
                 or not isinstance(entry.get("attempts"), int) \
-                or not isinstance(entry.get("error"), (str, type(None))) \
-                or not strings(entry.get("problems", [])):
+                or not isinstance(entry.get("error"), (str, type(None))):
             return f"module '{name}'"
+        if not strings(entry.get("problems", [])):
+            return (f"module '{name}': problems is not a list of strings — remove it, or start "
+                    f"over: {RESTART}")
     return None
 
 
@@ -211,8 +214,9 @@ class InitFlow:
         if state is not None:
             problem = state_problem(state)
             if problem:
+                way = "" if RESTART in problem else f" — start over: {RESTART}"
                 raise UsageError(f"{self.rel(self.state_path)}: not a valid init state "
-                                 f"({problem}) — start over: {RESTART}")
+                                 f"({problem}){way}")
             for p in PHASES:
                 state["phases"].setdefault(p, pending())
         self.read_json(self.output("map"))

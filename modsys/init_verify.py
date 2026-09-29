@@ -158,8 +158,10 @@ def invented(ws, docs: dict) -> list[dict]:
             target = next((p for t in _BACKTICK.findall(cell) if (p := component_path(t))), None)
             if target and not inside(target):
                 target = None  # outside the root: no file of the repository
+            # a planned doc not written yet has no text to find the symbol in: the row is skipped
+            # (only at init done — by init verify every planned doc is written)
             if target and ws.exists(target) and not os.path.lexists(ws.disk(target)):
-                continue  # a doc init has planned but not written yet: verify reads it
+                continue
             source = source_text(ws.disk(target)) if target and ws.exists(target) else None
             if target and ws.exists(target) and source is None:
                 target = None  # a directory, unreadable or binary: no file to check

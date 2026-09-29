@@ -342,6 +342,42 @@ def sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+ENGINE = Path(__file__).resolve().parents[1]
+BREAKER = '''"""A writer whose cart output the check refuses (argv: the engine root, the mode): `link` — its
+staging dir replaced by a symlink; `read-only` — a path that does not exist and a read-only roles
+dir; `dollar` — `${API_URL}` in its MODULE.md. Every other module waits until cart is failed in
+the state (so it runs while cart's retry is claimed), then writes the fake writer's docs."""
+import json, os, shutil, sys, time
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from tests.init_fake_executor import invent, write_docs
+sys.stdin.buffer.read()
+module, mode = os.environ["MODSYS_INIT_MODULE"], sys.argv[2]
+staging = Path(os.environ["MODSYS_INIT_STAGING"])
+item = json.loads(Path(os.environ["MODSYS_INIT_WORK"]).read_text(encoding="utf-8"))
+if module != "cart":
+    state, deadline = staging.parents[1] / "state.json", time.time() + 30
+    while time.time() < deadline and json.loads(state.read_text(encoding="utf-8"))[
+            "modules"]["cart"]["status"] != "failed":
+        time.sleep(0.02)
+    write_docs(Path.cwd(), item, staging)
+elif mode == "link":
+    real = staging.parents[1] / "cart-real"
+    real.mkdir()
+    write_docs(Path.cwd(), item, real)
+    shutil.rmtree(staging)
+    os.symlink(real, staging)
+elif mode == "read-only":
+    write_docs(Path.cwd(), item, staging)
+    invent(staging, item)
+    os.chmod(staging / "roles", 0o555)
+else:
+    write_docs(Path.cwd(), item, staging)
+    with open(staging / "MODULE.md", "a", encoding="utf-8") as fh:
+        fh.write("\\nCall `${API_URL}` first.\\n")
+'''
+
+
 class RetryTest(RunRepo):  # P5C-AC-008, P5C-AC-009, P5C-AC-022 (D3, SI-4, SI-6, SI-8, SI-10)
     RETRY = "modsys: cart: refused — retrying once"
 
@@ -478,6 +514,81 @@ class RetryTest(RunRepo):  # P5C-AC-008, P5C-AC-009, P5C-AC-022 (D3, SI-4, SI-6,
         self.assertEqual(data["outside"], ["notes/outside.md"])
         self.assertEqual(err.count("modsys: wrote outside the staging dir: notes/outside.md"), 1)
         self.assertEqual(len(self.stdins("cart")), 2)
+
+    def breaker(self, mode: str) -> tuple[int, dict, str]:
+        """`init run --json` with the `BREAKER` writer in `mode`: (exit code, data, stderr)."""
+        script = self.base / "breaker.py"
+        script.write_text(BREAKER, encoding="utf-8")
+        exe = " ".join(shlex.quote(a) for a in (sys.executable, str(script), str(ENGINE), mode))
+        code, out, err = run("init", "run", "--executor", exe, "--json", "--root", str(self.root))
+        self.assertNotIn("Traceback", err)
+        self.assertNotIn("modsys: error", err)
+        data = json.loads(out)["data"]
+        self.assertEqual(set(data), {"action", "modules", "counts", "outside", "failed", "next"})
+        return code, data, err
+
+    def assert_only_cart_failed(self, data: dict, error: str) -> None:
+        self.assertEqual(data["modules"], [
+            {"module": m, "status": "failed" if m == "cart" else "done", "attempts": 1,
+             "error": error if m == "cart" else None} for m in SIX])
+
+    def test_a_retry_that_cannot_be_claimed(self):  # final review I-2 (P5C-AC-021: never 2)
+        linked = (f"the staging dir {WORK}/staging/cart is a symlink (write the files into a "
+                  f"real directory)")
+        rows = [("link", [linked], f"{linked}; the retry could not start: {WORK}/staging/cart "
+                                   f"is a symlink — remove it (its target is left alone)")]
+        if os.geteuid() != 0:  # (a root user removes a read-only dir's files anyway)
+            rows.append(("read-only", invented("cart"),
+                         "; ".join(invented("cart")) + f"; the retry could not start: cannot "
+                                                       f"write {WORK}/staging/cart/: Permission "
+                                                       f"denied"))
+        for mode, problems, error in rows:
+            with self.subTest(mode=mode):
+                self.setUp()
+                roles = self.root / WORK / "staging/cart/roles"
+                try:
+                    code, data, err = self.breaker(mode)  # the peers wait for cart's failure
+                finally:
+                    if roles.is_dir():
+                        roles.chmod(0o755)
+                self.assertEqual((code, data["failed"]), (1, True))
+                self.assertEqual(err.splitlines(), [self.RETRY, f"modsys: cart failed: {error}"])
+                self.assert_only_cart_failed(data, error)
+                self.assertEqual(state(self.root)["modules"]["cart"],  # kept for the next claim
+                                 {"status": "failed", "attempts": 1, "error": error,
+                                  "problems": problems})
+
+    def test_a_retry_whose_work_item_went_missing(self):  # final review M-2 under init run
+        from modsys.init_work import Work
+        self.config("[init]\nmax_parallel = 1\n")
+        real = Work.claim
+
+        def claim(work, module=None):  # the retry's claim: its work item is gone
+            if module == "cart" and self.stdins("cart"):
+                (self.root / WORK / "work/cart.json").unlink()
+            return real(work, module)
+
+        with mock.patch("modsys.init_work.Work.claim", autospec=True, side_effect=claim):
+            data, err = self.run_init("--invent", "cart", code=1)
+        error = ("; ".join(invented("cart")) + f"; the retry could not start: {WORK}/work/"
+                                               f"cart.json is missing — start over: modsys "
+                                               f"init map --restart")
+        self.assertEqual(err.splitlines(), [self.RETRY, f"modsys: cart failed: {error}"])
+        self.assert_only_cart_failed(data, error)
+        self.assertEqual(state(self.root)["modules"]["cart"],
+                         {"status": "failed", "attempts": 1, "error": error,
+                          "problems": invented("cart")})
+
+    def test_a_template_the_check_cannot_read(self):  # final review M-3: one module fails
+        override = self.root / ok(self.root, "templates", "override", "MODULE.md")["file"]
+        override.write_bytes(b"\xe9" + override.read_bytes())  # edited after the fan-out
+        code, data, err = self.breaker("dollar")  # cart's MODULE.md holds `${API_URL}`
+        error = ("the check could not run: cannot read .modsys/overrides/templates/MODULE.md: "
+                 "not UTF-8 text")
+        self.assertEqual((code, err.splitlines()), (1, [f"modsys: cart failed: {error}"]))
+        self.assert_only_cart_failed(data, error)  # no retry: the writer cannot fix a template
+        self.assertEqual(state(self.root)["modules"]["cart"],
+                         {"status": "failed", "attempts": 1, "error": error})
 
 
 if __name__ == "__main__":

@@ -28,8 +28,9 @@ import string
 
 from modsys.changes import glob_to_regex
 from modsys.config import enabled_roles
-from modsys.create import article, ask_fields, resolve_template
+from modsys.create import article, ask_fields, resolve_template, resolve_template_source
 from modsys.fields import value_matches
+from modsys.init_flow import RESTART
 from modsys.output import UsageError
 from modsys.store import serialize
 from modsys.workspace import Workspace
@@ -44,6 +45,11 @@ INVENTED = {"path": "path does not exist", "symbol": "symbol not found in its ro
 PATH_HINT = " (write paths from the repository root, as in the file list)"
 NOTE = ("\n## The previous attempt was refused\n\nThe files written last time did not pass "
         "`modsys init done`. Fix each of these problems:\n\n")  # engine text (D3, SI-6)
+
+
+class CheckError(UsageError):
+    """The check itself cannot run for a module (a template it cannot read): exit 2 at `init
+    done`; under `init run` that module fails, the run goes on."""
 
 
 def fence(text: str) -> str:
@@ -271,8 +277,8 @@ class Work:
         """The first pending module in name order (or `module`, when it is pending), now
         running (attempts + 1, its staging dir cleared and created, its last error and refused
         problems dropped — the problems go to the writer: `with_problems`): (work item or None,
-        counts). The item is read before the state is saved: a failure leaves the claim
-        undone."""
+        counts). The item is read before the state is saved: a failure — a work item that is
+        damaged or missing — leaves the claim undone."""
         self.require_fanout(self.flow.load_state())  # a refusal writes nothing, not even the lock
         with self.flow.locked():
             state = self.require_fanout(self.flow.load_state())
@@ -283,13 +289,24 @@ class Work:
                 return None, counts(state)
             module = pending[0]
             item = self.item(module)
+            if item is None:
+                raise UsageError(self.missing(state, module))
             self.clear(module, make=True)
             entry = state["modules"][module]
             previous = entry.pop("problems", None)
             entry.update(status="running", attempts=entry["attempts"] + 1, error=None)
             self.flow.save_state(state)
         self.claimed[module] = entry["attempts"]
-        return (with_problems(item, previous) if previous and item else item), counts(state)
+        return (with_problems(item, previous) if previous else item), counts(state)
+
+    def missing(self, state: dict, module: str) -> str:
+        """The refusal of a claim whose work item file is missing, with the way out that works:
+        `init fanout` writes the items again only while no module was ever claimed."""
+        fresh = all(e["status"] == "pending" and not e["attempts"]
+                    for e in state["modules"].values() if not e.get("existing"))
+        way = "write the work items again: modsys init fanout" if fresh else \
+            f"start over: {RESTART}"
+        return f"{self.flow.rel(self.item_path(module))} is missing — {way}"
 
     def linked(self, module: str) -> str | None:
         """The problem of a symlinked staging dir (its target is never read), else None —
@@ -308,17 +325,29 @@ class Work:
     def template_names(self, item: dict) -> set[str]:
         """The placeholder names of the templates `init` renders for a work item (D4): the
         resolved `MODULE.md`, `roles/<role>.md` per role of the item and `init/module_prompt.md`
-        (the template chain: team override, packs, engine) — `$name` and `${name}` alike."""
-        texts = [resolve_template(self.ws, "MODULE.md"),
-                 resolve_template(self.ws, "init/module_prompt.md")]
-        texts += [resolve_template(self.ws, f"roles/{role}.md", role) for role in item["roles"]]
-        return {name for text in texts for name in string.Template(text).get_identifiers()}
+        (the template chain: team override, packs, engine) — `$name` and `${name}` alike. A
+        template that cannot be read is a `CheckError` naming it."""
+        wanted = [("MODULE.md", None), ("init/module_prompt.md", None),
+                  *((f"roles/{role}.md", role) for role in item["roles"])]
+        names = set()
+        for relpath, role in wanted:
+            path = resolve_template_source(self.ws, relpath, role)[1]
+            try:
+                text = path.read_bytes().decode("utf-8")
+            except UnicodeDecodeError:
+                raise CheckError(f"cannot read {self.flow.rel(path)}: not UTF-8 text") from None
+            except OSError as e:
+                raise CheckError(f"cannot read {self.flow.rel(path)}: {e.strerror or e}") \
+                    from None
+            names |= set(string.Template(text).get_identifiers())
+        return names
 
     def planned(self) -> dict:
         """{final path: staging file} of every doc `init finish` will write (D2, SI-3): per new
         module of this init `<modules_dir>/<m>/<module_doc>` and `<modules_dir>/<m>/roles/
         <role>.md` for the roles of its work item — a writer may cite a sibling module's doc
-        before it is written (a module created by hand is on disk)."""
+        before it is written (a module created by hand is on disk). A sibling's work item that
+        is missing or cannot be read counts as its main doc only, as a damaged `roles`."""
         state = self.require_fanout(self.flow.load_state())
         paths = self.ws.config["paths"]
         out = {}
@@ -327,7 +356,10 @@ class Work:
                 continue
             final, base = f"{paths['modules_dir']}/{module}", self.staging_dir(module)
             out[f"{final}/{paths['module_doc']}"] = base / "MODULE.md"
-            roles = (self.flow.read_json(self.item_path(module)) or {}).get("roles")
+            try:
+                roles = (self.flow.read_json(self.item_path(module)) or {}).get("roles")
+            except UsageError:  # never another module's problem: this one is judged on its docs
+                roles = None
             for role in roles if isinstance(roles, list) else []:
                 out[f"{final}/roles/{role}.md"] = base / "roles" / f"{role}.md"
         return out
@@ -472,5 +504,6 @@ class Work:
                                          f"attempt {entry['attempts']}): nothing marked — check "
                                          f"it again once it is written"]
             entry.update(status="done", error=None)
+            entry.pop("problems", None)  # a failed run's: a done module is never claimed again
             self.flow.save_state(state)
         return "done", []
