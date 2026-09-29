@@ -111,7 +111,7 @@ class AdoptionEvalTest(unittest.TestCase):
 
     def test_a_failing_init_step_fails_only_that_scenario(self):  # P5B-AC-035
         env = {**os.environ, "MODSYS_EVAL_FAIL_STEP": "init:init fanout: six work items",
-               "MODSYS_EVAL_SCENARIOS": "adopt,init"}  # the test seams
+               "MODSYS_EVAL_SCENARIOS": "adopt, init"}  # the test seams (names are stripped)
         proc = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True,
                               timeout=300, env=env)
         card = json.loads(proc.stdout)

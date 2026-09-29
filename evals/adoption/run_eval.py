@@ -38,8 +38,9 @@ modsys CLI of THIS checkout (`python -m modsys`, the checkout on PYTHONPATH):
               --non-interactive: every module done once -> init reconcile: the planted
               duplicate and one collision -> init eval-tasks (the canned tasks) -> init verify
               passes -> init finish --open-pr against a local bare remote and a gh stand-in:
-              one commit on modsys/init, the pull request body holds the verify summary and the
-              routing table
+              one commit on modsys/init (its subject = the pull request's title, "docs:
+              module docs for 6 module(s) (modsys init)"), the pull request body holds the
+              verify summary and the routing table
 
 Every step asserts an exit code and a data check. Prints the scorecard JSON
 {scenario: {steps: [{name, ok, detail}], commands, ok}} (commands = modsys invocations) and
@@ -986,6 +987,10 @@ def init_flow(sc: Scenario) -> None:
         check(len(calls) == 1 and calls[0]["argv"][:2] == ["pr", "create"]
               and "## Verify" in body and "- routing: hit rate 1.0 (30/30" in body
               and "| Module | Hits | Tasks |" in body, f"gh calls {calls}")
+        argv, subject = calls[0]["argv"], sc.git("log", "-1", "--format=%s", "modsys/init")
+        title = argv[argv.index("--title") + 1] if "--title" in argv else None
+        check(subject == title == "docs: module docs for 6 module(s) (modsys init)",
+              f"commit subject {subject!r}, pull request title {title!r}")  # Conventional
 
     for name, fn in [("the bookshop monorepo with its history", fixture),
                      ("init map: seven candidates, tools switched off", map_it),
@@ -1020,7 +1025,8 @@ def run_scenario(name: str, build) -> dict:
 
 
 def main() -> int:
-    names = [n for n in os.environ.get(ONLY, "").split(",") if n] or list(SCENARIOS)
+    names = [n.strip() for n in os.environ.get(ONLY, "").split(",") if n.strip()] \
+        or list(SCENARIOS)  # "adopt, init" works too
     unknown = sorted(set(names) - set(SCENARIOS))
     if unknown:
         print(f"adoption eval: unknown scenario(s) in {ONLY}: {', '.join(unknown)}",

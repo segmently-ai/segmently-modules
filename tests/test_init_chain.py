@@ -101,6 +101,24 @@ class ChainTest(ChainRepo):  # P5B-AC-026
         data = self.resume(other, "--non-interactive", code=2, fake=None)
         self.assertIn('modules are pending: init resume --non-interactive needs --executor', data["err"])
 
+    def test_a_missing_executor_is_refused_before_anything_runs(self):  # M-2, from gate 3
+        root = build(self.base / "shop")
+        ok(root, "init", "map")
+        before = {p: p.read_bytes() for p in (root / WORK).rglob("*") if p.is_file()}
+        data = self.resume(root, "--non-interactive", code=2, fake=None)
+        self.assertIn('modules are pending: init resume --non-interactive needs --executor '
+                      '"<command>" (nothing ran)', data["err"])
+        self.assertEqual({p: p.read_bytes() for p in (root / WORK).rglob("*") if p.is_file()},
+                         before)  # gate 3 is still open: the proposal can still be edited
+        self.assertEqual(ok(root, "init", "confirm")["status"], "confirmed")
+        other = shop(self.base, name="other")  # every module written: the tasks are missing
+        ok(other, "init", "fanout")
+        ok(other, "init", "run", "--executor", executor())
+        data = self.resume(other, "--non-interactive", code=2, fake=None)
+        self.assertIn("the routing tasks are missing: init resume --non-interactive needs "
+                      "--executor", data["err"])
+        self.assertEqual(state(other)["phases"]["reconcile"]["status"], "pending")
+
     def test_plain_resume(self):
         root = shop(self.base)
         data = self.resume(root, fake=None)  # the fan-out, then a writer is needed
@@ -142,6 +160,38 @@ class PullRequestRetryTest(ChainRepo):  # P5B-AC-025 (the retries), SI-20
         self.assertEqual(git(self.base / "remote.git", "rev-parse", "modsys/init"),
                          git(root, "rev-parse", "HEAD"))
         self.assertEqual(git(root, "rev-list", "--count", "main..HEAD").strip(), "1")
+
+    def test_a_failed_commit_then_resume(self):  # a pre-commit hook refuses it once (C-1)
+        root = self.verified()
+        bare_remote(root, self.base / "remote.git")
+        marker = self.base / "the hook ran"
+        hook = root / ".git/hooks/pre-commit"
+        hook.parent.mkdir(parents=True, exist_ok=True)
+        hook.write_text(f"#!/bin/sh\nif [ ! -f '{marker}' ]; then touch '{marker}'; "
+                        f"echo 'lint-staged: failed' >&2; exit 1; fi\n")
+        hook.chmod(0o755)
+        with mock.patch.dict(os.environ, self.env):
+            code, env, err = run_json("init", "finish", "--open-pr", "--root", str(root))
+        self.assertEqual((code, env["data"]["pr"]), (1, "pending"))
+        self.assertIn("git commit failed on branch modsys/init: lint-staged: failed", err)
+        self.assertIn("the retry picks up from the branch", err)
+        record = state(root)["open_pr"]
+        self.assertEqual((record["branch_created"], record["committed"], record["pushed"]),
+                         (True, False, False))
+        git(root, "checkout", "-q", "main")  # the person looked around: resume goes back
+        data = self.resume(root, "--open-pr", fake=None)
+        self.assertEqual((data["ran"], state(root)["pr"]),
+                         (["pr"], "https://example.invalid/bookshop/pull/1"))
+        self.assertEqual(len(self.prs()), 1)  # one gh, one push, one commit
+        self.assertEqual(git(self.base / "remote.git", "rev-parse", "modsys/init"),
+                         git(root, "rev-parse", "modsys/init"))
+        self.assertEqual(git(root, "rev-list", "--count", "main..modsys/init").strip(), "1")
+        self.assertEqual(git(root, "branch", "--show-current").strip(), "modsys/init")
+        self.assertEqual(git(root, "log", "-1", "--format=%s", "modsys/init").strip(),
+                         "docs: module docs for 6 module(s) (modsys init)")
+        self.assertEqual(git(root, "status", "--porcelain"), "")
+        data = self.resume(root, "--open-pr", fake=None)
+        self.assertEqual((data["ran"], data["message"]), ([], "init is finished"))
 
     def test_a_failed_gh_then_resume(self):
         root = self.verified()

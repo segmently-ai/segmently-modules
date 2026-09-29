@@ -95,13 +95,54 @@ class InterruptTest(ContractRepo):
         ok(self.root, "init", "verify")
         (self.root / "CLAUDE.md").write_text("# notes\n")
         before = protected_sha(self.root)
-        self.interrupted("modsys.init_finish.agents_md", "init", "finish")
+        self.interrupted("modsys.agents_md_cmd.atomic_write", "init", "finish")  # the block
         self.assertEqual(protected_sha(self.root), before)  # all or nothing
         self.assertFalse((self.root / "modules/cart").exists())
         self.assertEqual(state(self.root)["phases"]["finish"]["status"], "running")
         self.assertIn("init finish was interrupted", ok(self.root, "init", "status")["next"])
         ok(self.root, "init", "finish")
         self.assertTrue((self.root / "modules/cart/MODULE.md").is_file())
+
+    def verified(self) -> str:
+        for argv in (("fanout",), ("run", "--executor", executor()), ("reconcile",),
+                     ("verify",)):
+            ok(self.root, "init", *argv)
+        (self.root / "AGENTS.md").write_text("# agents\n")
+        os.symlink("AGENTS.md", self.root / "CLAUDE.md")  # a common setup
+        return protected_sha(self.root)
+
+    def test_ctrl_c_after_the_writes(self):  # I-1: the state saved as finished is the last step
+        before = self.verified()
+        self.interrupted("modsys.init_finish.Finish.git_add", "init", "finish")
+        self.assertEqual(protected_sha(self.root), before)
+        self.assertTrue((self.root / "CLAUDE.md").is_symlink())  # I-2: put back through the link
+        self.assertEqual((self.root / "AGENTS.md").read_text(), "# agents\n")
+        self.assertFalse((self.root / "modules/cart").exists())
+        self.assertEqual(state(self.root)["phases"]["finish"]["status"], "running")
+        nxt = ok(self.root, "init", "status")["next"]
+        self.assertIn("init finish was interrupted: run modsys init finish again", nxt)
+        self.assertNotIn("nothing kept", nxt)
+        data = ok(self.root, "init", "finish")
+        self.assertEqual(data["agents_md"], [{"path": "CLAUDE.md", "status": "added"},
+                                             {"path": "AGENTS.md", "status": "added"}])
+        self.assertTrue((self.root / "CLAUDE.md").is_symlink())
+
+    def test_a_state_save_that_fails_at_the_commit_point(self):
+        from modsys.init_flow import InitFlow
+        before = self.verified()
+        real = InitFlow.save_state
+
+        def save(flow, s):
+            if s["phases"]["finish"]["status"] == "done":
+                raise KeyboardInterrupt  # the last step of finish
+            return real(flow, s)
+
+        with mock.patch("modsys.init_flow.InitFlow.save_state", autospec=True, side_effect=save):
+            self.assertEqual(self.call("init", "finish"), (130, "", "modsys: interrupted\n"))
+        self.assertEqual(protected_sha(self.root), before)
+        self.assertEqual(state(self.root)["phases"]["finish"]["status"], "running")
+        ok(self.root, "init", "finish")
+        self.assertEqual(state(self.root)["phase"], "finished")
 
     def test_an_unexpected_error(self):
         ok(self.root, "init", "fanout")

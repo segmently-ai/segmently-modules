@@ -183,6 +183,59 @@ class RefusalsTest(FinishRepo):  # P5B-AC-024 (SI-16, SI-18)
             self.assertIn("the registry changed since init reconcile (wishlist)",
                           self.refused(*flags))
 
+    def test_a_code_map_id_already_taken(self):  # never overridden; the file root-relative
+        config = self.root / ".modsys/config.toml"
+        config.write_text(config.read_text() + '\n[[code_map]]\nid = "init-cart"\n'
+                                                'globs = ["packages/cart/**"]\nmodule = "cart"\n')
+        for flags in ((), ("--force",)):
+            err = self.refused(*flags)
+            self.assertIn("[[code_map]] 'init-cart' is already defined in .modsys/config.toml", err)
+            self.assertNotIn(str(self.root), err)
+        self.assertEqual(state(self.root)["phases"]["finish"]["status"], "pending")
+
+    def test_a_bad_instruction_file_is_refused_before_any_write(self):  # I-2 (a)
+        (self.root / "CLAUDE.md").write_bytes("# Notes für Agenten\n".encode("latin-1"))
+        err = self.refused()
+        self.assertIn("CLAUDE.md is not valid UTF-8 text; nothing written", err)
+        self.assertEqual(state(self.root)["phases"]["finish"]["status"], "pending")
+        (self.root / "CLAUDE.md").write_text("<!-- modsys:begin v1 -->\nno end marker\n")
+        self.assertIn("CLAUDE.md:1: a begin marker without an end marker", self.refused())
+        (self.root / "CLAUDE.md").unlink()
+        self.finish()
+
+    def test_a_staging_edit_of_a_module_created_by_hand(self):  # M-13: finish says which case
+        root = shop(self.base, name="kept")
+        ok(root, "create", "catalog", "--non-interactive", "--description",
+           "Book titles, authors and ISBN lookups for the shop.", "--keywords",
+           "catalog, isbn, author, title, shelf")
+        for argv in (("fanout",), ("run", "--executor", executor()), ("reconcile",)):
+            ok(root, "init", *argv)
+        staged = root / WORK / "staging/registry.json"
+        doc = json.loads(staged.read_text())
+        doc["modules"]["catalog"]["keywords"].append("bookshelf")
+        staged.write_text(json.dumps(doc, indent=2) + "\n")
+        ok(root, "init", "verify")
+        code, out, err = run("init", "finish", "--root", str(root))
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("the staging registry changes catalog, already in the registry — finish "
+                      "never rewrites a registry module: make that change in "
+                      "modules/registry.json itself, then run modsys init reconcile --force", err)
+        self.assertNotIn("the registry changed since init reconcile", err)
+
+    def test_a_write_failure_is_named_and_put_back(self):  # Task 10 review I1
+        (self.root / "CLAUDE.md").write_text("# notes\n")
+        before = protected_sha(self.root)
+        os.chmod(self.root / "modules", 0o555)
+        try:
+            code, out, err = run("init", "finish", "--json", "--root", str(self.root))
+        finally:
+            os.chmod(self.root / "modules", 0o755)
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("modsys: error: cannot write modules/cart/MODULE.md: Permission denied", err)
+        self.assertEqual(protected_sha(self.root), before)
+        self.assertEqual(state(self.root)["phases"]["finish"]["status"], "running")
+        self.finish()
+
     def test_before_reconcile_and_after_finish(self):
         s = state(self.root)
         s["phases"]["reconcile"]["status"] = "pending"
@@ -193,6 +246,14 @@ class RefusalsTest(FinishRepo):  # P5B-AC-024 (SI-16, SI-18)
         self.finish()
         for flags in ((), ("--force",)):
             self.assertIn("already finished", self.refused(*flags))
+        state_before = (self.root / WORK / "state.json").read_bytes()
+        for argv in (("reconcile",), ("reconcile", "--force"), ("verify",),
+                     ("eval-tasks", "--executor", executor(), "--force")):  # M-5
+            with self.subTest(argv=argv):
+                code, out, err = run("init", *argv, "--json", "--root", str(self.root))
+                self.assertEqual((code, out), (2, ""))
+                self.assertIn("already finished — see modsys init status", err)
+        self.assertEqual((self.root / WORK / "state.json").read_bytes(), state_before)
 
 
 class OpenPrTest(FinishRepo):  # P5B-AC-025 (SI-20)
@@ -228,6 +289,9 @@ class OpenPrTest(FinishRepo):  # P5B-AC-025 (SI-20)
         (call,) = self.calls()
         argv = call["argv"]
         self.assertEqual(argv[:6], ["pr", "create", "--base", "main", "--head", "modsys/init"])
+        title = "docs: module docs for 6 module(s) (modsys init)"  # Conventional Commits
+        self.assertEqual(argv[argv.index("--title") + 1], title)
+        self.assertEqual(git(self.root, "log", "-1", "--format=%s").strip(), title)
         for needle in ("## Verify", "- lint: 0 error(s), 0 warning(s)",
                        "- routing: hit rate 1.0 (30/30, top 3; threshold 0.8)",
                        "| cart | 5 | 5 |", "## Judgement items (init reconcile)",
@@ -256,6 +320,9 @@ class OpenPrTest(FinishRepo):  # P5B-AC-025 (SI-20)
         (self.root / "notes.txt").write_text("n\n")
         self.assertIn("working tree not clean (notes.txt)", self.refused_pr())
         (self.root / "notes.txt").unlink()
+        (self.root / "a note ü.txt").write_text("n\n")  # never quoted (-z): named as it is
+        self.assertIn("working tree not clean (a note ü.txt)", self.refused_pr())
+        (self.root / "a note ü.txt").unlink()
         (self.root / "README.md").write_text("changed\n")
         self.assertIn("working tree not clean (README.md)", self.refused_pr())
         git(self.root, "checkout", "-q", "--", "README.md")
@@ -264,6 +331,8 @@ class OpenPrTest(FinishRepo):  # P5B-AC-025 (SI-20)
         for flag in ("--base", "--branch"):
             self.assertIn("expected one argument", self.refused_pr(flag, "-x"))  # argparse
             self.assertIn("may not start with '-'", self.refused_pr(f"{flag}=-x"))
+        self.assertIn("--branch 'bad..name' is not a valid branch name",
+                      self.refused_pr("--branch", "bad..name"))
         git(self.root, "branch", "modsys/init")
         self.assertIn("branch modsys/init exists", self.refused_pr())
         git(self.root, "branch", "-D", "modsys/init")
