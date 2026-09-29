@@ -68,6 +68,15 @@ class InitDocsTest(unittest.TestCase):  # P5B-AC-037
         self.assertIsNone(re.search(r"\bmoved\b", row))
         self.assertNotIn("negative_keywords", row)
 
+    def test_the_placeholder_rule(self):  # P5C-AC-015 (D4)
+        text = flat("docs/init.md")
+        for needle in ("none empty or still holding a placeholder of the templates",
+                       "Any other `${…}` is text", "`${title}` in a JavaScript string"):
+            self.assertIn(needle, text)
+        row = contract_row("| `init fanout\\|next\\|done` |")
+        self.assertIn("one of the templates' own placeholders", row)
+        self.assertNotIn("holding `${`", row)
+
 
 def contract_row(start: str) -> str:
     """The row of docs/cli-contract.md that starts with `start`."""

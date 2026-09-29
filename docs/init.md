@@ -86,10 +86,11 @@ them written, all over the same state:
   There is no timeout: stop a hung run with Ctrl-C, then `modsys init resume`.
 
 `modsys init done` checks a staging dir: exactly the expected files, none empty or still holding
-a `${…}` placeholder, `entry.json` with only the allowed keys and the `create` rules, edges to
-known modules with a known relation and a description. A killed or failed run is picked up by
-`modsys init resume` (or `modsys init run` again): every `running` or `failed` module goes back
-to `pending` with its staging dir cleared; a `done` module is never run again.
+a placeholder of the templates (see "Your own prompts"), `entry.json` with only the allowed keys
+and the `create` rules, edges to known modules with a known relation and a description. A
+killed or failed run is picked up by `modsys init resume` (or `modsys init run` again): every
+`running` or `failed` module goes back to `pending` with its staging dir cleared; a `done`
+module is never run again.
 
 ## Phase 5: reconcile
 
@@ -204,6 +205,14 @@ modsys templates override init/module_prompt.md     # a copy in .modsys/override
 ```
 
 A placeholder a template does not know is rendered as `<name>`: a prompt never holds `${`.
+
+`modsys init done` refuses a staging doc that still holds `${<name>}` (or `${<name>` without its
+brace) for a `<name>` that is a placeholder of a template `init` renders for that module — the
+resolved `MODULE.md`, the role templates of its work item and `init/module_prompt.md` (your
+override and packs included, so their own placeholders count too). Any other `${…}` is text:
+`${API_URL}` in a shell example or a JavaScript template string passes. The one case it still
+refuses is code that uses one of those names itself (`${title}` in a JavaScript string): the
+writer rewords it.
 
 ## When something goes wrong
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 from tests.init_fake_executor import write_docs
-from tests.init_helpers import WORK, ok, shop, state, text
+from tests.init_helpers import ROLES, WORK, ok, shop, state, text
 
 
 class DriverRepo(unittest.TestCase):
@@ -202,6 +202,72 @@ class DoneTest(DriverRepo):  # P5B-AC-005 (init done, the table)
             "missing roles/qa.md", "roles/po.md is a symlink (write the file itself)",
             "description must be 20–200 characters",
             "at least 5 distinct keywords (a list of non-empty strings)"]))
+
+
+class PlaceholderTest(DriverRepo):  # P5C-AC-012, P5C-AC-013 (D4, SI-11)
+    ROWS = [  # (text appended to MODULE.md, the problem — None: done)
+        ("\n# ${title}\n", "MODULE.md: unfilled placeholder ${title}"),
+        ("\n${description}\n", "MODULE.md: unfilled placeholder ${description}"),
+        ("\n${role_description}\n", "MODULE.md: unfilled placeholder ${role_description}"),
+        ("\n${module} and ${title}\n", "MODULE.md: unfilled placeholder ${module}"),
+        ("\n${staging_dir}\n", "MODULE.md: unfilled placeholder ${staging_dir}"),
+        ("\nThe ${title\n", "MODULE.md: unfilled placeholder ${title"),
+        ("\nCall `${API_URL}` first.\n", None),
+        ("\n```bash\necho \"${HOME}\"\n```\n", None),
+        ("\nIt logs `Hello ${userName}`.\n", None),
+        ("\n${name}, ${keywords} and ${status}\n", None),  # values fill supplies, no template's
+        ("\n$title\n", None),
+        ("\n${} and ${ title }\n", None),
+        ("\n```js\nconst label = `${title}`;\n```\n",  # a template's own name used by code:
+         "MODULE.md: unfilled placeholder ${title}"),  # the residual cost (D4)
+    ]
+
+    def setUp(self):
+        super().setUp()
+        self.claim()
+        self.item = json.loads((self.root / WORK / "work/cart.json").read_text())
+        self.staging = self.root / self.item["staging_dir"]
+
+    def check(self, doc: str, extra: str) -> list[str]:
+        """The problems of `init done cart` with `extra` appended to the staging doc `doc`."""
+        shutil.rmtree(self.staging, ignore_errors=True)
+        write_docs(self.root, self.item)
+        path = self.staging / doc
+        path.write_text(path.read_text() + extra)
+        code, out, err = text(self.root, "init", "done", "cart", "--json")
+        problems = json.loads(out)["data"]["problems"]
+        self.assertEqual((code, err.splitlines()),
+                         (1 if problems else 0, [f"modsys: cart: {p}" for p in problems]))
+        if not problems:  # back to running for the next row
+            s = state(self.root)
+            s["modules"]["cart"]["status"] = "running"
+            (self.root / WORK / "state.json").write_text(json.dumps(s))
+        return problems
+
+    def test_the_table(self):
+        for extra, problem in self.ROWS:
+            with self.subTest(text=extra):
+                self.assertEqual(self.check("MODULE.md", extra), [problem] if problem else [])
+
+    def test_override(self):  # a team template's own placeholders count; a dropped one does not
+        for rel in ("MODULE.md", *(f"roles/{r}.md" for r in ROLES)):
+            path = self.root / ok(self.root, "templates", "override", rel)["file"]
+            path.write_text(path.read_text().replace("${title}", "${team_field}"))
+        self.assertEqual(self.check("MODULE.md", "\n${team_field}\n"),
+                         ["MODULE.md: unfilled placeholder ${team_field}"])
+        self.assertEqual(self.check("roles/qa.md", "\n${team_field}\n"),
+                         ["roles/qa.md: unfilled placeholder ${team_field}"])
+        self.assertEqual(self.check("MODULE.md", "\n${title}\n"), [])
+
+    def test_a_pack_template(self):  # only the roles of the module's work item count
+        pack = self.root / ".modsys/packs/team"
+        (pack / "templates/roles").mkdir(parents=True)
+        (pack / "pack.toml").write_text('id = "team"\nversion = "1.0.0"\n')
+        (pack / "templates/roles/qa.md").write_text("# ${title} — qa\n\n${pack_hint}\n")
+        (pack / "templates/roles/designer.md").write_text("# ${title}\n\n${designer_hint}\n")
+        self.assertEqual(self.check("roles/qa.md", "\n${pack_hint}\n"),
+                         ["roles/qa.md: unfilled placeholder ${pack_hint}"])
+        self.assertEqual(self.check("MODULE.md", "\n${designer_hint}\n"), [])
 
 
 if __name__ == "__main__":

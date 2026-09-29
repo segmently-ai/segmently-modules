@@ -52,6 +52,9 @@ A JSON object with exactly these keys:
   for a whole file, `Path` the file in backticks.
 - Under `## Purpose`, write in your own words what the module is for, as a paragraph that stands
   on its own — do not repeat the description.
-- Leave no template placeholder behind (a dollar sign followed by an opening brace).
+- Leave no placeholder of these templates behind: a dollar sign and an opening brace around
+  one of their names (the title, the description). A dollar sign with a brace that belongs to
+  the code you describe — a shell variable, a JavaScript template string — is fine; a code
+  sample that uses one of these templates' names that way is refused: reword it.
 - Never write outside `${staging_dir}/`; never edit code, the registry or another module's docs;
   never commit.

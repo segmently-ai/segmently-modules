@@ -34,7 +34,7 @@ FILES_CAP = 200
 DOC_PLACEHOLDERS = {"description": "<one sentence: what the module does, why, when to use it>",
                     "keywords": "<the keywords>", "status": "active", "parent": ""}
 _LEFT = re.compile(r"\$\{(\w*)\}?")
-_FIRST_PLACEHOLDER = re.compile(r"\$\{[^}\s]*\}?")
+_PLACEHOLDER = re.compile(r"\$\{([^}\s]*)\}?")  # `${name}`, or `${name` without its brace
 
 
 def fence(text: str) -> str:
@@ -280,9 +280,20 @@ class Work:
         return [p for m, e in sorted(state["modules"].items())
                 if not e.get("existing") and (p := self.linked(m))]
 
+    def template_names(self, item: dict) -> set[str]:
+        """The placeholder names of the templates `init` renders for a work item (D4): the
+        resolved `MODULE.md`, `roles/<role>.md` per role of the item and `init/module_prompt.md`
+        (the template chain: team override, packs, engine) — `$name` and `${name}` alike."""
+        texts = [resolve_template(self.ws, "MODULE.md"),
+                 resolve_template(self.ws, "init/module_prompt.md")]
+        texts += [resolve_template(self.ws, f"roles/{role}.md", role) for role in item["roles"]]
+        return {name for text in texts for name in string.Template(text).get_identifiers()}
+
     def problems(self, module: str) -> list[str]:
         """What keeps a module's staging output from `done` (SI-8), one line each; a
-        symlinked staging dir is one problem (its target is never read)."""
+        symlinked staging dir is one problem (its target is never read). A doc is refused for
+        a placeholder only when it holds `${<name>}` of one of `template_names` — any other
+        `${…}` (a shell variable, a JavaScript template string) is text (D4)."""
         item = self.item(module)
         base = self.staging_dir(module)
         linked = self.linked(module)
@@ -293,6 +304,7 @@ class Work:
                        if p.is_file() or p.is_symlink()) if base.is_dir() else []
         out = [f"missing {rel}" for rel in expected if rel not in found]
         out += [f"unexpected file {rel}" for rel in found if rel not in expected]
+        names = None  # the templates' placeholder names: resolved once, when a doc holds `${`
         for rel in expected[:-1]:
             path = base / rel
             if rel not in found:
@@ -307,8 +319,13 @@ class Work:
                 continue
             if not text.strip():
                 out.append(f"{rel} is empty")
-            elif "${" in text:
-                out.append(f"{rel}: unfilled placeholder {_FIRST_PLACEHOLDER.search(text).group(0)}")
+                continue
+            if "${" in text:
+                names = self.template_names(item) if names is None else names
+                left = next((m.group(0) for m in _PLACEHOLDER.finditer(text)
+                             if m.group(1) in names), None)
+                if left:
+                    out.append(f"{rel}: unfilled placeholder {left}")
         if "entry.json" in found and not (base / "entry.json").is_symlink():
             out += self.entry_problems(base / "entry.json")
         elif "entry.json" in found:

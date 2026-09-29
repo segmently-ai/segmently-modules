@@ -2,6 +2,7 @@
 neighbours, roles, staging dir and a prompt rendered from the template chain — and the modules
 created by hand after gate 3 (D15(d), SI-30)."""
 import json
+import string
 import tempfile
 import unittest
 from pathlib import Path
@@ -113,6 +114,22 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
             self.assertIn(needle, flat)
         self.assertNotIn("${", prompt)
         self.assertIn("<one sentence: what the module does, why, when to use it>", prompt)
+
+    def test_the_placeholder_rule(self):  # P5C-AC-014 (D4): said in words, never with `${`
+        root = shop(self.base)
+        ok(root, "init", "fanout")
+        prompt = self.item(root, "cart")["prompt"]
+        self.assertNotIn("${", prompt)
+        flat = " ".join(prompt.split())
+        for needle in ("Leave no placeholder of these templates behind",
+                       "belongs to the code you describe", "is fine",
+                       "uses one of these templates' names that way is refused: reword it"):
+            self.assertIn(needle, flat)
+        source = (engine_templates() / "init/module_prompt.md").read_text(encoding="utf-8")
+        self.assertLessEqual({"module", "staging_dir", "paths", "files_note", "neighbours",
+                              "files", "docs", "description_min", "description_max",
+                              "min_keywords", "relations", "ask_fields"},
+                             set(string.Template(source).get_identifiers()))
 
     def test_the_template_chain(self):
         root = shop(self.base)
