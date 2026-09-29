@@ -80,8 +80,9 @@ that was already in the registry, and never commits: the user reviews and commit
    modsys init done <module> --json
    ```
 
-   Exit 1 names each problem of the staging output (a missing doc, an unfilled placeholder, too
-   few keywords, an edge to an unknown module): have the same writer fix them, then check again.
+   Exit 1 names each problem of the staging output (a missing doc, an unfilled placeholder, a
+   path that does not exist, a symbol not in its row's file, too few keywords, an edge to an
+   unknown module): have the same writer fix them while it has the context, then check again.
    An item that stays wrong: tell the user. The detailed rules for writers are in
    `references/phases.md`.
 

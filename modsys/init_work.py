@@ -29,12 +29,16 @@ from modsys.create import article, ask_fields, resolve_template
 from modsys.fields import value_matches
 from modsys.output import UsageError
 from modsys.store import serialize
+from modsys.workspace import Workspace
 
 FILES_CAP = 200
 DOC_PLACEHOLDERS = {"description": "<one sentence: what the module does, why, when to use it>",
                     "keywords": "<the keywords>", "status": "active", "parent": ""}
 _LEFT = re.compile(r"\$\{(\w*)\}?")
 _PLACEHOLDER = re.compile(r"\$\{([^}\s]*)\}?")  # `${name}`, or `${name` without its brace
+INVENTED = {"path": "path does not exist", "symbol": "symbol not found in its row's file",
+            "no-file": "no file to check"}  # the words of `init verify`'s text
+PATH_HINT = " (write paths from the repository root, as in the file list)"
 
 
 def fence(text: str) -> str:
@@ -289,11 +293,50 @@ class Work:
         texts += [resolve_template(self.ws, f"roles/{role}.md", role) for role in item["roles"]]
         return {name for text in texts for name in string.Template(text).get_identifiers()}
 
+    def planned(self) -> dict:
+        """{final path: staging file} of every doc `init finish` will write (D2, SI-3): per new
+        module of this init `<modules_dir>/<m>/<module_doc>` and `<modules_dir>/<m>/roles/
+        <role>.md` for the roles of its work item — a writer may cite a sibling module's doc
+        before it is written (a module created by hand is on disk)."""
+        state = self.require_fanout(self.flow.load_state())
+        paths = self.ws.config["paths"]
+        out = {}
+        for module, entry in sorted(state["modules"].items()):
+            if entry.get("existing"):
+                continue
+            final, base = f"{paths['modules_dir']}/{module}", self.staging_dir(module)
+            out[f"{final}/{paths['module_doc']}"] = base / "MODULE.md"
+            roles = (self.flow.read_json(self.item_path(module)) or {}).get("roles")
+            for role in roles if isinstance(roles, list) else []:
+                out[f"{final}/roles/{role}.md"] = base / "roles" / f"{role}.md"
+        return out
+
+    def invented_problems(self, module: str, texts: dict) -> list[str]:
+        """The invented-component check of `init verify` over a module's own docs (D2): `texts`
+        = {`MODULE.md` / `roles/<role>.md`: its text}, read at their final paths; a path exists
+        inside the root or among the `planned` docs. One line per finding, in doc and line
+        order, in the words a writer can act on."""
+        if not texts:
+            return []
+        from modsys.init_verify import invented  # lazy: init_verify imports eval_cmd -> this
+        paths = self.ws.config["paths"]
+        final = f"{paths['modules_dir']}/{module}"
+        docs = {rel: f"{final}/{paths['module_doc']}" if rel == "MODULE.md" else f"{final}/{rel}"
+                for rel in texts}
+        ws = Workspace(self.ws.root, self.ws.config_dir, self.ws.config, self.ws.fields,
+                       overlay=self.planned())
+        found = invented(ws, {doc: texts[rel] for rel, doc in docs.items()})
+        back = {doc: rel for rel, doc in docs.items()}
+        return [f"{back[f['doc']]}:{f['line']}: {INVENTED[f['kind']]}: {f['token']}"
+                f"{PATH_HINT if f['kind'] == 'path' else ''}" for f in found]
+
     def problems(self, module: str) -> list[str]:
-        """What keeps a module's staging output from `done` (SI-8), one line each; a
-        symlinked staging dir is one problem (its target is never read). A doc is refused for
-        a placeholder only when it holds `${<name>}` of one of `template_names` — any other
-        `${…}` (a shell variable, a JavaScript template string) is text (D4)."""
+        """What keeps a module's staging output from `done` (SI-8), one line each: the files,
+        then the invented components of every doc that could be read (`invented_problems`,
+        SI-1), then `entry.json`; a symlinked staging dir is one problem (its target is never
+        read). A doc is refused for a placeholder only when it holds `${<name>}` of one of
+        `template_names` — any other `${…}` (a shell variable, a JavaScript template string) is
+        text (D4)."""
         item = self.item(module)
         base = self.staging_dir(module)
         linked = self.linked(module)
@@ -305,6 +348,7 @@ class Work:
         out = [f"missing {rel}" for rel in expected if rel not in found]
         out += [f"unexpected file {rel}" for rel in found if rel not in expected]
         names = None  # the templates' placeholder names: resolved once, when a doc holds `${`
+        texts = {}  # the docs the invented-component check reads: present, UTF-8, not empty
         for rel in expected[:-1]:
             path = base / rel
             if rel not in found:
@@ -320,12 +364,14 @@ class Work:
             if not text.strip():
                 out.append(f"{rel} is empty")
                 continue
+            texts[rel] = text
             if "${" in text:
                 names = self.template_names(item) if names is None else names
                 left = next((m.group(0) for m in _PLACEHOLDER.finditer(text)
                              if m.group(1) in names), None)
                 if left:
                     out.append(f"{rel}: unfilled placeholder {left}")
+        out += self.invented_problems(module, texts)
         if "entry.json" in found and not (base / "entry.json").is_symlink():
             out += self.entry_problems(base / "entry.json")
         elif "entry.json" in found:

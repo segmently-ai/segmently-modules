@@ -402,6 +402,14 @@ class InitAndAdoptSkillsTest(unittest.TestCase):  # P5B-AC-028, P5B-AC-029 (D6, 
         for rel in ("SKILL.md", "references/phases.md"):
             self.assertNotIn("negative_keywords", (root / rel).read_text("utf-8"))
 
+    def test_module_init_step_5_names_the_invented_check(self):  # P5C-AC-014 (D2, D5)
+        root = builtin_packs_root() / "core/skills/module-init"
+        text = " ".join((root / "SKILL.md").read_text("utf-8").split())
+        self.assertIn("a path that does not exist, a symbol not in its row's file", text)
+        self.assertIn("while it has the context", text)
+        phases = " ".join((root / "references/phases.md").read_text("utf-8").split())
+        self.assertIn("a path that does not exist or a symbol not in its row's file", phases)
+
 
 class ScaffoldBaseTest(unittest.TestCase):  # P5A-AC-004 (D0a)
     def test_the_scaffold_says_what_the_base_is(self):

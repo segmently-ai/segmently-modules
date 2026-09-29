@@ -21,16 +21,20 @@ backticked repository path (MS040's rule: holds a `/`, no space, no `*`, no URL,
 their final paths; an absolute path or one that climbs out with `..` never does —, and in a
 table whose header has a `Symbol` or `Name` column AND a `Path` (or `File`) column, a cell of
 the first holding one backticked identifier names a symbol that occurs, as a whole identifier,
-in the file of the row's path cell (a table without both columns is not checked); fenced code
-blocks and HTML comments are skipped. `staging_sha256` pins what was verified (every file's
-path and bytes, every symlink's path and target text): `init finish` refuses a staging tree
-that changed. Verify is refused while the last `init eval-tasks` run was refused (the phase
-`running`; `--force` measures a tasks file written by hand anyway) and for a symlinked
-staging dir of a new module. After `init finish` both actions are refused."""
+in the file of the row's path cell (a table without both columns is not checked; a file that
+cannot be read as text — a directory, unreadable, binary — is "no file to check"; a doc `init`
+has planned but not written yet is not read); fenced code blocks and HTML comments are skipped.
+`init done` runs the same check over one module's docs (`modsys.init_work`). `staging_sha256`
+pins what was verified (every file's path and bytes, every symlink's path and target text):
+`init finish` refuses a staging tree that changed. Verify is refused while the last `init
+eval-tasks` run was refused (the phase `running`; `--force` measures a tasks file written by
+hand anyway) and for a symlinked staging dir of a new module. After `init finish` both actions
+are refused."""
 import hashlib
 import json
 import os
 import re
+import stat
 import subprocess
 from dataclasses import asdict
 from pathlib import Path
@@ -41,6 +45,7 @@ from modsys.init_overlay import overlay_workspace
 from modsys.init_run import tail
 from modsys.lint import component_path, lint_registry, severity_counts
 from modsys.output import UsageError
+from modsys.preflight import SNIFF
 from modsys.store import serialize
 
 REJECTED = "routing-tasks.rejected.json"
@@ -83,12 +88,28 @@ def cells(line: str) -> list[str]:
     return [c.strip() for c in body.split("|")]
 
 
+def source_text(path) -> str | None:
+    """The text of the file a component row names, or None when there is none to read: not a
+    regular file (a directory; a FIFO is never opened), unreadable, or binary (a NUL in its
+    first `SNIFF` bytes)."""
+    try:
+        if not stat.S_ISREG(os.stat(path).st_mode):
+            return None
+        data = Path(path).read_bytes()
+    except OSError:
+        return None
+    return None if b"\0" in data[:SNIFF] else data.decode("utf-8", errors="replace")
+
+
 def invented(ws, docs: dict) -> list[dict]:
     """{doc, line, kind: path | symbol | no-file, token} for every component a doc names that
-    is not there; `docs` = {final path: the file to read}."""
+    is not there; `docs` = {final path: the file to read, or its text when the caller has read
+    it already (`init done`)}."""
     out = []
     for rel, path in sorted(docs.items()):
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        text = path if isinstance(path, str) else path.read_text(encoding="utf-8",
+                                                                  errors="replace")
+        lines = text.splitlines()
         fence, comment, header = None, False, None
         for n, raw in enumerate(lines, 1):
             m = _FENCE.match(raw)
@@ -137,12 +158,14 @@ def invented(ws, docs: dict) -> list[dict]:
             target = next((p for t in _BACKTICK.findall(cell) if (p := component_path(t))), None)
             if target and not inside(target):
                 target = None  # outside the root: no file of the repository
-            if target and ws.exists(target) and not ws.disk(target).is_file():
-                target = None  # a directory: no file to check
+            if target and ws.exists(target) and not os.path.lexists(ws.disk(target)):
+                continue  # a doc init has planned but not written yet: verify reads it
+            source = source_text(ws.disk(target)) if target and ws.exists(target) else None
+            if target and ws.exists(target) and source is None:
+                target = None  # a directory, unreadable or binary: no file to check
             if target is None:
                 out.append({"doc": rel, "line": n, "kind": "no-file", "token": symbol.group(1)})
-            elif ws.exists(target):
-                source = ws.disk(target).read_text(encoding="utf-8", errors="replace")
+            elif source is not None:
                 if not re.search(rf"(?<![\w$]){re.escape(symbol.group(1))}(?![\w$])", source):
                     out.append({"doc": rel, "line": n, "kind": "symbol",
                                 "token": symbol.group(1)})

@@ -48,7 +48,7 @@ tasks to raise the hit rate — improve the keywords instead.
 
 | Situation | What to do |
 |---|---|
-| `init done` exit 1 | the stderr lines name each problem; the writer fixes them, check again |
+| `init done` exit 1 | the stderr lines name each problem — a path that does not exist or a symbol not in its row's file with the doc and line; the writer fixes them, check again |
 | a subagent died mid-item | `modsys init status --json` shows it `running`; `modsys init resume --json` puts it back to `pending` (its staging cleared) |
 | `init reconcile` exit 2: staging registry edited | keep the edits (verify reads them) — rebuild only on the user's word: `modsys init reconcile --force --json` |
 | `init eval-tasks` exit 1 | the refused file is in `routing-tasks.rejected.json`; the next step is `modsys init eval-tasks --executor "<command>" --json` again |

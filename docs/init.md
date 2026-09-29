@@ -87,8 +87,20 @@ them written, all over the same state:
 
 `modsys init done` checks a staging dir: exactly the expected files, none empty or still holding
 a placeholder of the templates (see "Your own prompts"), `entry.json` with only the allowed keys
-and the `create` rules, edges to known modules with a known relation and a description. A
-killed or failed run is picked up by `modsys init resume` (or `modsys init run` again): every
+and the `create` rules, edges to known modules with a known relation and a description.
+
+`init done` also runs the invented-component check of `init verify` (below) over the module's
+`MODULE.md` and role docs, read at their final paths, so the writer fixes what it invented
+while it still has the context: every backticked repository path exists inside the root — or
+is a doc this init will write (`<modules_dir>/<module>/MODULE.md` and the role docs of the
+work items: a writer may cite a sibling's doc before it is written) —, and a backticked `Name`
+of a components table occurs in its row's file. Each problem names the doc and the line:
+`MODULE.md:12: path does not exist: src/lines.ts (write paths from the repository root, as in
+the file list)`, `MODULE.md:20: symbol not found in its row's file: lineTotals`, `MODULE.md:20:
+no file to check: lineTotal`. A doc that is missing, empty or not UTF-8 is named as such and
+not read. `init verify` still runs the full check over the whole staging tree.
+
+A killed or failed run is picked up by `modsys init resume` (or `modsys init run` again): every
 `running` or `failed` module goes back to `pending` with its staging dir cleared; a `done`
 module is never run again.
 
@@ -138,7 +150,8 @@ ranks for it. The eval passes when hits ≥ `[init] routing_min_hit_rate` × tas
 2. **invented components** — every backticked repository path in a staging doc exists inside
    the root (the staging docs count at their final paths), and in a table with a `Symbol` or
    `Name` column and a `Path` column, a backticked symbol occurs, as a whole identifier, in the
-   file of its row's `Path` cell (a table without a `Path` column is not checked);
+   file of its row's `Path` cell (a table without a `Path` column is not checked; a file that
+   cannot be read as text — a directory, unreadable, binary — is `no file to check`);
 3. **routing** — the eval above, when `routing-tasks.json` exists (else `routing: not
    measured`).
 

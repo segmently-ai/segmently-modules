@@ -77,6 +77,19 @@ class InitDocsTest(unittest.TestCase):  # P5B-AC-037
         self.assertIn("one of the templates' own placeholders", row)
         self.assertNotIn("holding `${`", row)
 
+    def test_the_check_at_init_done(self):  # P5C-AC-015 (D2)
+        text = flat("docs/init.md")
+        for needle in ("`init done` also runs the invented-component check",
+                       "a writer may cite a sibling's doc before it is written",
+                       "`MODULE.md:12: path does not exist: src/lines.ts (write paths from the "
+                       "repository root, as in the file list)`",
+                       "`init verify` still runs the full check"):
+            self.assertIn(needle, text)
+        row = contract_row("| `init fanout\\|next\\|done` |")
+        self.assertIn("then the invented-component check of `init verify`", row)
+        self.assertIn("`<doc>:<line>: path does not exist: <path> (write paths from the "
+                      "repository root, as in the file list)`", row)
+
 
 def contract_row(start: str) -> str:
     """The row of docs/cli-contract.md that starts with `start`."""

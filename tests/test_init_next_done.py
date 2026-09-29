@@ -1,6 +1,7 @@
 """The sequential driver (D1, driver 2): `init next` claims the next pending module and returns
 its work item; `init done MODULE` checks the files written into its staging directory (SI-8)."""
 import json
+import os
 import shutil
 import tempfile
 import unittest
@@ -268,6 +269,171 @@ class PlaceholderTest(DriverRepo):  # P5C-AC-012, P5C-AC-013 (D4, SI-11)
         self.assertEqual(self.check("roles/qa.md", "\n${pack_hint}\n"),
                          ["roles/qa.md: unfilled placeholder ${pack_hint}"])
         self.assertEqual(self.check("MODULE.md", "\n${designer_hint}\n"), [])
+
+
+HINT = " (write paths from the repository root, as in the file list)"
+
+
+def missing(doc: str, line: int, token: str) -> str:
+    return f"{doc}:{line}: path does not exist: {token}{HINT}"
+
+
+def at_line_12(token: str) -> str:
+    """A MODULE.md whose line 12 holds `token`."""
+    return "".join(f"Line {n}.\n" for n in range(1, 12)) + f"See {token} here.\n"
+
+
+def table(name: str, path: str, header: str = "| Name | Path | Purpose |") -> str:
+    """A MODULE.md whose components table has one row, at line 20."""
+    return ("".join(f"Line {n}.\n" for n in range(1, 18)) + f"{header}\n|---|---|---|\n"
+            f"| {name} | {path} | what it does |\n")
+
+
+class InventedAtDoneTest(DriverRepo):  # P5C-AC-004…007, 021, 022 (D2, SI-1, SI-2, SI-3)
+    def setUp(self):
+        super().setUp()
+        self.claim()
+        self.item = json.loads((self.root / WORK / "work/cart.json").read_text())
+
+    def done(self, docs: dict, root: Path | None = None, item: dict | None = None,
+             **entry) -> tuple[int, list[str]]:
+        """`init done cart` over the fake writer's output with `docs` ({doc: text, bytes or
+        None to remove it}) and `entry` (entry.json keys) written over it."""
+        root, item = root or self.root, item or self.item
+        staging = root / item["staging_dir"]
+        shutil.rmtree(staging, ignore_errors=True)
+        write_docs(root, item)
+        for rel, body in docs.items():
+            path = staging / rel
+            if body is None:
+                path.unlink()
+            elif isinstance(body, bytes):
+                path.write_bytes(body)
+            else:
+                path.write_text(body)
+        if entry:
+            doc = json.loads((staging / "entry.json").read_text())
+            (staging / "entry.json").write_text(json.dumps({**doc, **entry}))
+        code, out, err = text(root, "init", "done", "cart", "--json")
+        data = json.loads(out)["data"]
+        self.assertEqual(set(data), {"action", "module", "status", "problems", "message"})
+        self.assertEqual((code, err.splitlines()), (1 if data["problems"] else 0,
+                                                    [f"modsys: cart: {p}"
+                                                     for p in data["problems"]]))
+        s = state(root)
+        self.assertEqual(s["modules"]["cart"]["status"], "done" if code == 0 else "running")
+        s["modules"]["cart"]["status"] = "running"  # back to running for the next row
+        (root / WORK / "state.json").write_text(json.dumps(s))
+        return code, data["problems"]
+
+    def test_the_path_table(self):  # P5C-AC-004
+        outside = self.base / "outside/x.py"  # it exists, but outside the root
+        outside.parent.mkdir()
+        outside.write_text("x = 1\n")
+        for token, problems in (
+                ("`packages/cart/src/lines.ts`", []),
+                ("`packages/cart/src/lines.ts:12`", []),
+                ("`packages/cart/src/lines.ts#L10`", []),
+                ("`src/lines.ts`", [missing("MODULE.md", 12, "src/lines.ts")]),
+                ("`roles/qa.md`", [missing("MODULE.md", 12, "roles/qa.md")]),
+                ("`../outside/x.py`", [missing("MODULE.md", 12, "../outside/x.py")]),
+                ("`/etc/hosts`", [missing("MODULE.md", 12, "/etc/hosts")]),
+                ("`packages/*/src`, `https://x.org/a/b`, `<module>/x`, `@scope/pkg`, `word`",
+                 [])):
+            with self.subTest(token=token):
+                self.assertEqual(self.done({"MODULE.md": at_line_12(token)}),
+                                 (1 if problems else 0, problems))
+        skipped = (at_line_12("the code") + "```\n`packages/cart/src/missing.ts`\n```\n"
+                   "<!-- `packages/cart/src/missing.ts` -->\n")
+        self.assertEqual(self.done({"MODULE.md": skipped}), (0, []))
+        self.assertEqual(self.done({"roles/qa.md": "# Cart — qa\n\nSee `src/lines.ts`.\n"}),
+                         (1, [missing("roles/qa.md", 3, "src/lines.ts")]))
+
+    def test_existing(self):  # P5C-AC-005 (SI-3): the disk, its own docs, the planned docs
+        for token, problems in (
+                ("`modules/cart/roles/qa.md`", []),
+                ("`modules/catalog/MODULE.md`, `modules/catalog/roles/developer.md`", []),
+                ("`modules/catalog/roles/designer.md`",
+                 [missing("MODULE.md", 12, "modules/catalog/roles/designer.md")]),
+                ("`modules/nosuch/MODULE.md`", [missing("MODULE.md", 12,
+                                                        "modules/nosuch/MODULE.md")])):
+            with self.subTest(token=token):
+                self.assertEqual(self.done({"MODULE.md": at_line_12(token)}),
+                                 (1 if problems else 0, problems))
+        planned = table("`Cart`", "`modules/catalog/MODULE.md`")  # not written yet: not read
+        self.assertEqual(self.done({"MODULE.md": planned}), (0, []))
+
+    def test_created_by_hand_and_a_custom_modules_dir(self):  # P5C-AC-005
+        root = shop(self.base, name="by-hand")
+        ok(root, "create", "ui-kit", "--non-interactive", "--description",
+           "Buttons, text fields and labels shared by the shop.", "--keywords",
+           "button, field, form, label, widget")
+        ok(root, "init", "fanout")
+        item = ok(root, "init", "next")["item"]
+        self.assertEqual(self.done({"MODULE.md": at_line_12("`modules/ui-kit/MODULE.md`")},
+                                   root, item), (0, []))
+        root = shop(self.base, name="docs-dir", config='[paths]\nmodules_dir = "docs/modules"\n')
+        ok(root, "init", "fanout")
+        item = ok(root, "init", "next")["item"]
+        for token, problems in (
+                ("`docs/modules/catalog/MODULE.md`, `docs/modules/cart/roles/qa.md`", []),
+                ("`modules/catalog/MODULE.md`", [missing("MODULE.md", 12,
+                                                         "modules/catalog/MODULE.md")])):
+            with self.subTest(token=token):
+                self.assertEqual(self.done({"MODULE.md": at_line_12(token)}, root, item),
+                                 (1 if problems else 0, problems))
+
+    def test_table(self):  # P5C-AC-006 (the AC's addLine is the fixture's lineTotal)
+        lines = "`packages/cart/src/lines.ts`"
+        for name, path, header, problems in (
+                ("`lineTotal`", lines, None, []),
+                ("`lineTotals`", lines, None,
+                 ["MODULE.md:20: symbol not found in its row's file: lineTotals"]),
+                ("`lineTotal`", "", None, ["MODULE.md:20: no file to check: lineTotal"]),
+                ("`lineTotal`", "`packages/cart/src`", None,
+                 ["MODULE.md:20: no file to check: lineTotal"]),
+                ("`lineTotal`", "`packages/cart/src/nope.ts`", None,
+                 [missing("MODULE.md", 20, "packages/cart/src/nope.ts")]),
+                ("Adds up a line", lines, None, []),
+                ("`anything`", "a function", "| Name | Kind | Purpose |", [])):
+            with self.subTest(name=name, path=path):
+                doc = table(name, path, header) if header else table(name, path)
+                self.assertEqual(self.done({"MODULE.md": doc}), (1 if problems else 0, problems))
+
+    def test_all_at_once(self):  # P5C-AC-007 (SI-1): one answer; a doc it cannot read: skipped
+        self.assertEqual(self.done({"roles/qa.md": None,
+                                    "MODULE.md": at_line_12("`src/lines.ts`")},
+                                   keywords=["a", "b", "c", "d"]),
+                         (1, ["missing roles/qa.md", missing("MODULE.md", 12, "src/lines.ts"),
+                              "at least 5 distinct keywords (a list of non-empty strings)"]))
+        self.assertEqual(self.done({"MODULE.md": " \n\n "}),
+                         (1, ["MODULE.md is empty"]))
+        code, problems = self.done({"MODULE.md": b"\xff\xfe See `src/lines.ts`.\n"})
+        self.assertEqual(code, 1)
+        self.assertEqual(len(problems), 1)
+        self.assertTrue(problems[0].startswith("MODULE.md: cannot read it as UTF-8 text ("))
+
+    def test_a_source_that_cannot_be_read(self):  # P5C-AC-021: no file to check, no traceback
+        src = self.root / "packages/cart/src"
+        (src / "blob.ts").write_bytes(b"\0\x01lineTotal\n")
+        locked = src / "locked.ts"
+        locked.write_text("export const lineTotal = 1;\n")
+        locked.chmod(0)
+        try:
+            paths = ["packages/cart/src/blob.ts", "packages/cart/src"]
+            if not os.access(locked, os.R_OK):  # (a root user reads it anyway)
+                paths.append("packages/cart/src/locked.ts")
+            for path in paths:
+                with self.subTest(path=path):
+                    self.assertEqual(self.done({"MODULE.md": table("`lineTotal`", f"`{path}`")}),
+                                     (1, ["MODULE.md:20: no file to check: lineTotal"]))
+        finally:
+            locked.chmod(0o644)
+
+    def test_config_dir(self):  # P5C-AC-022: a file in <config_dir>/init/ is on disk (backlog)
+        doc = (f"# Cart\n\nIts work item: `{WORK}/work/cart.json`; its staging doc: "
+               f"`{WORK}/staging/cart/MODULE.md`.\n")
+        self.assertEqual(self.done({"MODULE.md": doc}), (0, []))
 
 
 if __name__ == "__main__":
