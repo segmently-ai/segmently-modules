@@ -331,15 +331,16 @@ modsys init resume --non-interactive --executor "my-writer" --open-pr
 ```
 
 `init finish` never commits (it prints the `git add` line); `--open-pr` makes one commit on a
-new branch and opens the pull request with `gh`. An interrupted or failed run continues with
-`modsys init resume`. Code outside every package root gets candidates by the source-directory
-rule too (a top-level `tools/`, say). When `init map` notes code files outside every candidate,
-a manifest in a fixture, docs site or functions folder sits inside a source directory and keeps
-that directory's code out: add it to `[init] exclude` and run `modsys init map --restart`.
-Modules created by hand after gate 3 are kept as they are. `init map` refuses a registry that
-already has modules: use `adopt` (above). Every phase, the executor contract, the prompt
-templates and verify's checks: [docs/init.md](docs/init.md); the `[init]` keys:
-[docs/configuration.md](docs/configuration.md#init).
+new branch and opens the pull request with `gh` (both titled
+`docs: module docs for <n> module(s) (modsys init)`, a Conventional Commits subject). An
+interrupted or failed run continues with `modsys init resume`. Code outside every package root
+gets candidates by the source-directory rule too (a top-level `tools/`, say). When `init map`
+notes code files outside every candidate, a manifest in a fixture, docs site or functions folder
+sits inside a source directory and keeps that directory's code out: add it to `[init] exclude`
+and run `modsys init map --restart`. Modules created by hand after gate 3 are kept as they are.
+`init map` refuses a registry that already has modules: use `adopt` (above). Every phase, the
+executor contract, the prompt templates and verify's checks: [docs/init.md](docs/init.md); the
+`[init]` keys: [docs/configuration.md](docs/configuration.md#init).
 
 ## CI gate
 

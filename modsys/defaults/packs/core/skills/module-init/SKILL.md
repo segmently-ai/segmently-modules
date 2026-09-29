@@ -113,9 +113,12 @@ that was already in the registry, and never commits: the user reviews and commit
 
 8. **Fix what verify found.** Lint findings: fix the staging docs or the staging registry.
    Invented components (a path that does not exist, a symbol not in its file): remove or
-   correct them in the staging docs. Routing misses below the threshold: improve the missed
-   modules' keywords in the staging registry (the words the missed tasks used), never the tasks,
-   then verify again — at most 2 rounds; after that, report the remaining misses.
+   correct them in the staging docs. Routing misses below the threshold: improve the keywords
+   of the missed NEW modules in the staging registry (the words the missed tasks used), never
+   the tasks, then verify again — at most 2 rounds; after that, report the remaining misses. A
+   missed module that was already in the registry (`done (existing)`) is never changed in the
+   staging registry — the finish step refuses that: ask the user, change it in the registry
+   itself, then run `modsys init reconcile --force --json` and verify again.
 
 9. **STOP — gate 7.** Show the verify summary: lint counts, invented components, the hit rate
    and its misses, the judgement items still open. Ask whether to finish. Only on a yes:

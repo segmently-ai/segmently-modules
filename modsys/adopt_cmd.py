@@ -380,9 +380,11 @@ class Inference:
         self.data["updated_at_path"] = found[0][1] if found else None
         if found:
             others = [p for _, p in found[1:]]
+            personal = self.personal["registry"].get("updated_at_path") == found[0][1]
             self.registry_keys.append(("updated_at_path", found[0][1], [
                 "a registry-level ISO-8601 timestamp named updated/modified; the registry "
-                "writers stamp it" + (f" (also found: {', '.join(others)})" if others else "")]))
+                "writers stamp it" + (f" (also found: {', '.join(others)})" if others else "")
+                + (f"; {PERSONAL}" if personal else "")]))
 
     def infer_vocabulary(self) -> None:
         """The status values and relation types the registry uses that no team layer allows —
@@ -508,6 +510,9 @@ class Inference:
         if alternatives:
             evidence.append("alternatives: " + ", ".join(f"{a['pattern']} ({a['covered']})"
                                                          for a in alternatives))
+        if any(isinstance(r, dict) and (r.get("id") == rule_id or r.get("pattern") == pattern)
+               for r in self.personal.get("code_map") or []):
+            evidence.append(PERSONAL)
         self.section("[[code_map]]", [("id", rule_id, [f"the prefix {prefix}"]),
                                       ("pattern", pattern, evidence)])
 
@@ -557,7 +562,9 @@ class Inference:
             self.budget_lines = ["## adopt: the doc budgets flag some docs. A team decision: "
                                  "uncomment to raise them.", "# [budgets]"]
             for key, value, _, evidence in rows:
-                self.budget_lines += [f"# {key} = {value}", f"# adopt: {evidence}"]
+                personal = self.personal["budgets"].get(key) != budgets[key]
+                self.budget_lines += [f"# {key} = {value}", f"# adopt: {evidence}"
+                                      + (f"; {PERSONAL}" if personal else "")]
 
     def text(self) -> str:
         blocks = ["\n".join(lines) for lines in self.sections if lines]

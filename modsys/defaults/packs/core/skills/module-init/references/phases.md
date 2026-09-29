@@ -48,7 +48,9 @@ tasks to raise the hit rate — improve the keywords instead.
 | `init done` exit 1 | the stderr lines name each problem; the writer fixes them, check again |
 | a subagent died mid-item | `modsys init status --json` shows it `running`; `modsys init resume --json` puts it back to `pending` (its staging cleared) |
 | `init reconcile` exit 2: staging registry edited | keep the edits (verify reads them) — rebuild only on the user's word: `modsys init reconcile --force --json` |
-| `init finish` exit 2: a directory or module appeared | someone created it by hand: ask the user, never overwrite |
+| `init eval-tasks` exit 1 | the refused file is in `routing-tasks.rejected.json`; the next step is `modsys init eval-tasks --executor "<command>" --json` again |
+| `init finish` exit 2: a directory or module appeared | someone created it by hand: ask the user, never overwrite — only moving the directory away clears it |
+| `init finish` exit 2: the staging registry changes a module already in the registry | move that change into the registry itself (the user decides), then `modsys init reconcile --force --json` and verify again |
 | no subagents available | the sequential loop: `init next`, write, `init done`, one module at a time |
 
 A pipeline without a person runs the same flow with an executor:

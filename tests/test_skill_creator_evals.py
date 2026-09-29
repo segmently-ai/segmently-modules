@@ -90,9 +90,12 @@ class EvalFilesTest(unittest.TestCase):  # P5B-AC-031
             with self.subTest(skill=skill):
                 self.assertEqual(trigger_problems(rows), [])
                 misses = [r["query"] for r in rows if not r["should_trigger"]]
-                owned = {q: owner for q in misses for prefix, owner in OWNERS[skill].items()
-                         if q.startswith(prefix)}
-                self.assertEqual(sorted(owned), sorted(misses))  # every near miss has its row
+                owned = {}
+                for q in misses:  # every near miss has exactly one row (never the last of two)
+                    owners = [o for prefix, o in OWNERS[skill].items() if q.startswith(prefix)]
+                    self.assertEqual(len(owners), 1, f"{q!r}: {len(owners)} OWNERS rows")
+                    owned[q] = owners[0]
+                self.assertEqual(sorted(owned), sorted(misses))
                 others = [o for o in owned.values() if o]
                 self.assertGreaterEqual(len(others), 6)
                 self.assertTrue(set(others) <= set(SKILLS) - {skill})

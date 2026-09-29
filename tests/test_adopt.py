@@ -702,6 +702,37 @@ class UserLayerTest(AdoptRepo):  # P5B-AC-047 (D15(d) M-4, SI-28)
         self.assertEqual((lint[0], [f["code"] for f in lint[1]["data"]["findings"]]), (0, []))
 
 
+class PersonalEverySectionTest(AdoptRepo):  # P5B-AC-047 (M-4 in every section, Task 2 review)
+    def test_each_section_notes_the_personal_file(self):
+        names = ["a", "b", "c"]
+        self.registry({n: entry(n, status="stable") for n in names},
+                      updatedAt="2026-01-01T00:00:00Z")
+        for n in names:
+            self.write(f"src/{n}/x.py")
+        self.write("modules/a/MODULE.md", "line\n" * 601)
+        self.write("modules/_shared/notes.md")
+        personal = "also declared in config.user.toml (personal)"
+        self.assertNotIn(personal, self.adopt("--dry-run")["config"])
+        self.write(".modsys/config.user.toml",
+                   '[registry]\nupdated_at_path = "updatedAt"\nstatuses = ["stable"]\n'
+                   'dir_whitelist = ["_shared"]\n\n[budgets]\nmodule_doc_split_signal = 700\n\n'
+                   '[[code_map]]\nid = "src"\npattern = "src/{module}/**"\n')
+        data = self.adopt("--dry-run")
+        text = data["config"]
+        for needle in ("the registry writers stamp it; " + personal,
+                       '"stable" on 3 modules (a, b, c); ' + personal,
+                       "modules/_shared/ is not a registry module or a pointer stub (lint MS014 "
+                       "otherwise); " + personal,
+                       "# adopt: " + personal,  # the code-map rule's pattern
+                       "this clears 1 MS030 / MS031; " + personal):
+            with self.subTest(needle=needle[:30]):
+                self.assertIn(needle, text)
+        self.assertEqual(text.count(personal), 5)
+        inferred = data["inferred"]  # written to the team file all the same
+        self.assertEqual((inferred["updated_at_path"], inferred["code_map"]["pattern"],
+                          inferred["dir_whitelist"]), ("updatedAt", "src/{module}/**", ["_shared"]))
+
+
 class CodeMapRankingTest(AdoptRepo):  # P5B-AC-048 (D15(d) M-6)
     def inferred(self, layout: dict[str, tuple[int, str]]) -> dict:
         names = [f"m{i}" for i in range(5)]
