@@ -345,9 +345,10 @@ def sha(text: str) -> str:
 ENGINE = Path(__file__).resolve().parents[1]
 BREAKER = '''"""A writer whose cart output the check refuses (argv: the engine root, the mode): `link` — its
 staging dir replaced by a symlink; `read-only` — a path that does not exist and a read-only roles
-dir; `dollar` — `${API_URL}` in its MODULE.md; `unlink` / `damage` — clean docs, its own work
-item removed / not JSON. Every other module waits until cart is failed in the state (so it runs
-while cart's retry is claimed or its check fails), then writes the fake writer's docs."""
+dir; `dollar` — `${API_URL}` in its MODULE.md; `unlink` / `damage` / `shape` — clean docs, its
+own work item removed / not JSON / `{}`. Every other module waits until cart is failed in the
+state (so it runs while cart's retry is claimed or its check fails), then writes the fake
+writer's docs."""
 import json, os, shutil, sys, time
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
@@ -372,13 +373,13 @@ elif mode == "read-only":
     write_docs(Path.cwd(), item, staging)
     invent(staging, item)
     os.chmod(staging / "roles", 0o555)
-elif mode in ("unlink", "damage"):
+elif mode in ("unlink", "damage", "shape"):
     write_docs(Path.cwd(), item, staging)
     work_item = Path(os.environ["MODSYS_INIT_WORK"])
     if mode == "unlink":
         work_item.unlink()
     else:
-        work_item.write_text("{not json", encoding="utf-8")
+        work_item.write_text("{not json" if mode == "damage" else "{}", encoding="utf-8")
 else:
     write_docs(Path.cwd(), item, staging)
     with open(staging / "MODULE.md", "a", encoding="utf-8") as fh:
@@ -570,24 +571,44 @@ class RetryTest(RunRepo):  # P5C-AC-008, P5C-AC-009, P5C-AC-022 (D3, SI-4, SI-6,
 
     def test_a_retry_whose_work_item_went_missing(self):  # final review M-2 under init run
         from modsys.init_work import Work
-        self.config("[init]\nmax_parallel = 1\n")
         real = Work.claim
+        for body, reason in (
+                (None, f"{WORK}/work/cart.json is missing — start over: modsys init map "
+                       f"--restart"),
+                ("{}", f"{WORK}/work/cart.json: module is not 'cart', roles is not a list of "
+                       f"strings, prompt is not a string — fix it, or start over: modsys init "
+                       f"map --restart")):  # follow-up C: the wrong shape, as a missing one
+            with self.subTest(body=body):
+                self.setUp()
+                self.config("[init]\nmax_parallel = 1\n")
 
-        def claim(work, module=None):  # the retry's claim: its work item is gone
-            if module == "cart" and self.stdins("cart"):
-                (self.root / WORK / "work/cart.json").unlink()
-            return real(work, module)
+                def claim(work, module=None):  # the retry's claim: its work item is gone
+                    if module == "cart" and self.stdins("cart"):
+                        path = self.root / WORK / "work/cart.json"
+                        path.unlink() if body is None else path.write_text(body)
+                    return real(work, module)
 
-        with mock.patch("modsys.init_work.Work.claim", autospec=True, side_effect=claim):
-            data, err = self.run_init("--invent", "cart", code=1)
-        error = ("; ".join(invented("cart")) + f"; the retry could not start: {WORK}/work/"
-                                               f"cart.json is missing — start over: modsys "
-                                               f"init map --restart")
-        self.assertEqual(err.splitlines(), [self.RETRY, f"modsys: cart failed: {error}"])
-        self.assert_only_cart_failed(data, error)
-        self.assertEqual(state(self.root)["modules"]["cart"],
-                         {"status": "failed", "attempts": 1, "error": error,
-                          "problems": invented("cart")})
+                with mock.patch("modsys.init_work.Work.claim", autospec=True,
+                                side_effect=claim):
+                    data, err = self.run_init("--invent", "cart", code=1)
+                error = "; ".join(invented("cart")) + f"; the retry could not start: {reason}"
+                self.assertEqual(err.splitlines(), [self.RETRY, f"modsys: cart failed: {error}"])
+                self.assert_only_cart_failed(data, error)
+                self.assertEqual(state(self.root)["modules"]["cart"],
+                                 {"status": "failed", "attempts": 1, "error": error,
+                                  "problems": invented("cart")})
+
+    def test_a_first_claim_of_a_work_item_of_the_wrong_shape(self):  # follow-up C (P5b rule)
+        path = self.root / WORK / "work/cart.json"
+        path.write_text(json.dumps({**json.loads(path.read_text()), "prompt": None}))
+        before = (self.root / WORK / "state.json").read_bytes()
+        code, out, err = run("init", "run", "--executor", executor("--record", str(self.log)),
+                             "--json", "--root", str(self.root))
+        self.assertEqual((code, out), (2, ""))  # refused before any state write: nothing ran
+        self.assertEqual(err, f"modsys: error: {WORK}/work/cart.json: prompt is not a string — "
+                              f"fix it, or start over: modsys init map --restart\n")
+        self.assertEqual((self.root / WORK / "state.json").read_bytes(), before)
+        self.assertEqual(self.calls(), [])
 
     def test_a_template_the_check_cannot_read(self):  # final review M-3: one module fails
         override = self.root / ok(self.root, "templates", "override", "MODULE.md")["file"]
@@ -605,7 +626,10 @@ class RetryTest(RunRepo):  # P5C-AC-008, P5C-AC-009, P5C-AC-022 (D3, SI-4, SI-6,
                 ("unlink", f"the check could not run: {WORK}/work/cart.json is missing — start "
                            f"over: modsys init map --restart", ""),
                 ("damage", f"the check could not run: {WORK}/work/cart.json: cannot read it as "
-                           f"JSON (", ") — fix it, or start over: modsys init map --restart")):
+                           f"JSON (", ") — fix it, or start over: modsys init map --restart"),
+                ("shape", f"the check could not run: {WORK}/work/cart.json: module is not "
+                          f"'cart', roles is not a list of strings, prompt is not a string — "
+                          f"fix it, or start over: modsys init map --restart", "")):  # follow-up C
             with self.subTest(mode=mode):
                 self.setUp()
                 code, data, err = self.breaker(mode)  # the peers wait for cart's failure

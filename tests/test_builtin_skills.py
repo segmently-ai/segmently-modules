@@ -66,7 +66,9 @@ CORE: dict[str, tuple[str, list[tuple[str, ...]], list[str]]] = {
                      "First, a missed module that was already in the registry",
                      "Then improve the keywords of the missed NEW modules",
                      "End that message with one direct yes/no question",
-                     "naming the next command is not asking"]),
+                     "naming the next command is not asking",
+                     # the P5c follow-up: a tied keyword is kept unless the user names an owner
+                     "a tied keyword stays on every module that holds it"]),
     "module-adopt": ("writer", [("adopt", "--dry-run"), ("adopt",), ("lint",)],  # P5B-AC-029
                      ["Explain each inference with its evidence", "`applies_when`",
                       "`deprecated`", "a commented-out doc budget", "Group the findings by code",

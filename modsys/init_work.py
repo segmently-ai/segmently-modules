@@ -30,7 +30,7 @@ from modsys.changes import glob_to_regex
 from modsys.config import enabled_roles
 from modsys.create import article, ask_fields, resolve_template, resolve_template_source
 from modsys.fields import value_matches
-from modsys.init_flow import RESTART
+from modsys.init_flow import RESTART, strings
 from modsys.output import UsageError
 from modsys.store import serialize
 from modsys.workspace import Workspace
@@ -49,8 +49,8 @@ NOTE = ("\n## The previous attempt was refused\n\nThe files written last time di
 
 class CheckError(UsageError):
     """The check itself cannot run for a module (a template it cannot read, its own work item
-    missing or damaged): exit 2 at `init done`; under `init run` that module fails, the run goes
-    on."""
+    missing, damaged or of the wrong shape): exit 2 at `init done`; under `init run` that module
+    fails, the run goes on."""
 
 
 def fence(text: str) -> str:
@@ -72,6 +72,20 @@ def with_problems(item: dict, problems: list[str]) -> dict:
     note = NOTE + "".join(f"- {problem}\n" for problem in problems)
     return {**item, "prompt": (item.get("prompt") or "") + note,
             "previous_problems": list(problems)}
+
+
+def item_problem(item: dict, module: str) -> str | None:
+    """What is wrong with the fields the engine reads of a work item, else None: `module` (the
+    name of its file: `init next` returns its path), `roles` (a list of strings: the docs `init
+    done` expects, the role docs `planned` counts, the registry's `context_files`) and `prompt`
+    (a string: the writer's stdin). Only the items of the modules init writes are read — an
+    existing module's (`prompt: null`) never is."""
+    wrong = [] if item.get("module") == module else [f"module is not '{module}'"]
+    if not strings(item.get("roles")):
+        wrong.append("roles is not a list of strings")
+    if not isinstance(item.get("prompt"), str):
+        wrong.append("prompt is not a string")
+    return ", ".join(wrong) or None
 
 
 def counts(state: dict) -> dict:
@@ -120,8 +134,17 @@ class Work:
     def staging_dir(self, module: str):
         return self.staging / module
 
-    def item(self, module: str) -> dict:
-        return self.flow.read_json(self.item_path(module))
+    def item(self, module: str) -> dict | None:
+        """The work item of `module`, None when its file is missing — the one place a work item
+        is read: a file that is not a JSON object, or a field the engine reads of the wrong
+        shape (`item_problem`), is a `UsageError` naming the file and the way out."""
+        path = self.item_path(module)
+        item = self.flow.read_json(path)
+        problem = None if item is None else item_problem(item, module)
+        if problem:
+            raise UsageError(f"{self.flow.rel(path)}: {problem} — fix it, or start over: "
+                             f"{RESTART}")
+        return item
 
     # --- the work items -------------------------------------------------------------------
 
@@ -281,7 +304,7 @@ class Work:
         running (attempts + 1, its staging dir cleared and created, its last error and refused
         problems dropped — the problems go to the writer: `with_problems`): (work item or None,
         counts). The item is read before the state is saved: a failure — a work item that is
-        damaged or missing — leaves the claim undone."""
+        damaged, of the wrong shape or missing — leaves the claim undone."""
         self.require_fanout(self.flow.load_state())  # a refusal writes nothing, not even the lock
         with self.flow.locked():
             state = self.require_fanout(self.flow.load_state())
@@ -304,7 +327,10 @@ class Work:
 
     def missing(self, state: dict, module: str) -> str:
         """The refusal of a claim whose work item file is missing, with the way out that works:
-        `init fanout` writes the items again only while no module was ever claimed."""
+        `init fanout` is named only while every new module is `pending` with no attempt — no
+        claim since the fan-out wrote the items (`init resume` keeps `attempts`). `init fanout`
+        also runs again once `init resume` put every module back to pending, but it would reset
+        `attempts` and drop the refused `problems`: then the restart is named."""
         fresh = all(e["status"] == "pending" and not e["attempts"]
                     for e in state["modules"].values() if not e.get("existing"))
         way = "write the work items again: modsys init fanout" if fresh else \
@@ -350,7 +376,7 @@ class Work:
         module of this init `<modules_dir>/<m>/<module_doc>` and `<modules_dir>/<m>/roles/
         <role>.md` for the roles of its work item — a writer may cite a sibling module's doc
         before it is written (a module created by hand is on disk). A sibling's work item that
-        is missing or cannot be read counts as its main doc only, as a damaged `roles`."""
+        is missing, cannot be read or is of the wrong shape counts as its main doc only."""
         state = self.require_fanout(self.flow.load_state())
         paths = self.ws.config["paths"]
         out = {}
@@ -360,10 +386,10 @@ class Work:
             final, base = f"{paths['modules_dir']}/{module}", self.staging_dir(module)
             out[f"{final}/{paths['module_doc']}"] = base / "MODULE.md"
             try:
-                roles = (self.flow.read_json(self.item_path(module)) or {}).get("roles")
+                item = self.item(module)
             except UsageError:  # never another module's problem: this one is judged on its docs
-                roles = None
-            for role in roles if isinstance(roles, list) else []:
+                item = None
+            for role in item["roles"] if item is not None else []:
                 out[f"{final}/roles/{role}.md"] = base / "roles" / f"{role}.md"
         return out
 
@@ -392,10 +418,11 @@ class Work:
         SI-1), then `entry.json`; a symlinked staging dir is one problem (its target is never
         read). A doc is refused for a placeholder only when it holds `${<name>}` of one of
         `template_names` — any other `${…}` (a shell variable, a JavaScript template string) is
-        text (D4). Its own work item missing or damaged is a `CheckError` naming the file."""
+        text (D4). Its own work item missing, damaged or of the wrong shape is a `CheckError`
+        naming the file."""
         try:
             item = self.item(module)
-        except UsageError as e:  # damaged: exit 2 at init done, that module failed in init run
+        except UsageError as e:  # damaged or wrong-shaped: exit 2 at init done, failed in run
             raise CheckError(str(e)) from None
         if item is None:
             raise CheckError(self.missing(self.require_fanout(self.flow.load_state()), module))

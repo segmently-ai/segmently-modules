@@ -89,6 +89,26 @@ class NextTest(DriverRepo):  # P5B-AC-005 (init next)
         ok(self.root, "init", "fanout")
         self.assertEqual(self.claim()["item"]["module"], "cart")
 
+    def test_a_work_item_of_the_wrong_shape(self):  # follow-up C: refused before any write
+        path = self.root / WORK / "work/cart.json"
+        item = json.loads(path.read_text())
+        for body, wrong in (({}, "module is not 'cart', roles is not a list of strings, prompt "
+                                 "is not a string"),
+                            ({**item, "roles": None}, "roles is not a list of strings"),
+                            ({**item, "roles": ["developer", 1]}, "roles is not a list of "
+                                                                  "strings"),
+                            ({**item, "prompt": 5}, "prompt is not a string"),
+                            ({**item, "module": "catalog"}, "module is not 'cart'")):
+            with self.subTest(wrong=wrong, body=json.dumps(body)[:40]):
+                path.write_text(json.dumps(body))
+                before = (self.root / WORK / "state.json").read_bytes()
+                code, out, err = text(self.root, "init", "next", "--json")
+                self.assertEqual((code, out), (2, ""))
+                self.assertEqual(err, f"modsys: error: {WORK}/work/cart.json: {wrong} — fix it, "
+                                      f"or start over: modsys init map --restart\n")
+                self.assertEqual((self.root / WORK / "state.json").read_bytes(), before)
+                self.assertFalse((self.root / WORK / "staging/cart").exists())
+
 
 class DoneTest(DriverRepo):  # P5B-AC-005 (init done, the table)
     def setUp(self):
@@ -187,6 +207,21 @@ class DoneTest(DriverRepo):  # P5B-AC-005 (init done, the table)
                 self.assertEqual((code, out), (2, ""))
                 self.assertTrue(err.startswith(f"modsys: error: {message}"), err)
                 self.assertNotIn("internal error", err)
+                self.assertEqual((self.root / WORK / "state.json").read_bytes(), before)
+
+    def test_its_own_work_item_of_the_wrong_shape(self):  # follow-up C: named, not internal
+        write_docs(self.root, self.item)
+        work_item = self.root / WORK / "work/cart.json"
+        before = (self.root / WORK / "state.json").read_bytes()
+        for body, wrong in (({}, "module is not 'cart', roles is not a list of strings, prompt "
+                                 "is not a string"),
+                            ({**self.item, "roles": None}, "roles is not a list of strings")):
+            with self.subTest(wrong=wrong):
+                work_item.write_text(json.dumps(body))
+                code, out, err = text(self.root, "init", "done", "cart", "--json")
+                self.assertEqual((code, out), (2, ""))
+                self.assertEqual(err, f"modsys: error: {WORK}/work/cart.json: {wrong} — fix it, "
+                                      f"or start over: modsys init map --restart\n")
                 self.assertEqual((self.root / WORK / "state.json").read_bytes(), before)
 
     def test_a_failed_item_that_still_has_problems(self):  # Task 5 review M2
@@ -449,6 +484,21 @@ class InventedAtDoneTest(DriverRepo):  # P5C-AC-004…007, 021, 022 (D2, SI-1, S
             with self.subTest(token=token):
                 self.assertEqual(self.done({"MODULE.md": at_line_12(token)}),
                                  (1 if problems else 0, problems))
+
+    def test_a_sibling_work_item_of_the_wrong_shape(self):  # follow-up C: as M-4, its main doc
+        catalog = self.root / WORK / "work/catalog.json"
+        item = json.loads(catalog.read_text())
+        for label, body in (("{}", {}), ("roles null", {**item, "roles": None}),
+                            ("a role not a string", {**item, "roles": ["developer", 1]})):
+            catalog.write_text(json.dumps(body))
+            for token, problems in (
+                    ("the code", []),  # cart is judged on its own docs
+                    ("`modules/catalog/MODULE.md`", []),
+                    ("`modules/catalog/roles/developer.md`",
+                     [missing("MODULE.md", 12, "modules/catalog/roles/developer.md")])):
+                with self.subTest(body=label, token=token):
+                    self.assertEqual(self.done({"MODULE.md": at_line_12(token)}),
+                                     (1 if problems else 0, problems))
 
     def test_created_by_hand_and_a_custom_modules_dir(self):  # P5C-AC-005
         root = shop(self.base, name="by-hand")

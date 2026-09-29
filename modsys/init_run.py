@@ -189,10 +189,10 @@ class Runner:
 
     def unclaimed(self, module: str, reason: str) -> dict | None:
         """The row of a module whose retry could not be claimed (`reason`: its staging dir a
-        symlink or not removable, its work item missing or damaged): `failed`, `error` = the
-        refused problems and the reason, `problems` kept for its next claim, `attempts` as the
-        refused attempt left them — the other modules run on. A module another driver claimed
-        or put back meanwhile is left to it (None)."""
+        symlink or not removable, its work item missing, damaged or of the wrong shape):
+        `failed`, `error` = the refused problems and the reason, `problems` kept for its next
+        claim, `attempts` as the refused attempt left them — the other modules run on. A module
+        another driver claimed or put back meanwhile is left to it (None)."""
         with self.flow.locked():
             state = self.flow.load_state()
             entry = state["modules"][module]
