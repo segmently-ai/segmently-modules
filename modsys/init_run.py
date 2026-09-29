@@ -8,14 +8,17 @@ the caller's environment plus MODSYS_INIT_MODULE, MODSYS_INIT_STAGING and MODSYS
 (absolute paths); stdout is discarded. Exit 0 and a complete staging output (`init done`'s
 check) -> `done`; else `failed`, with `error` = `exit <n>: ` + the last 20 lines of stderr (at
 most 2,000 characters) or the check's problems. There is no timeout: stop a hung run with
-Ctrl-C (its children are terminated, their items stay `running`) and `init resume`. A git
-work tree is compared before and after (`git status`, file hashes): a change outside
-`<config_dir>/init/` fails the run (exit 1) naming each path."""
+Ctrl-C (its children are terminated — `STOP_S` seconds for all of them, then SIGKILL —, their
+items stay `running`) and `init resume`. A module another driver claimed first (`init next`, a
+second `init run`) is left to it. A git work tree is compared before and after (`git status`,
+file hashes; a symlink by its target text, never followed; a rename's or copy's source path too):
+a change outside `<config_dir>/init/` fails the run (exit 1) naming each path."""
 import contextlib
 import hashlib
 import os
 import shlex
 import shutil
+import stat
 import subprocess
 import tempfile
 import time
@@ -26,6 +29,8 @@ from modsys.output import UsageError
 
 TAIL_LINES, TAIL_CHARS = 20, 2000
 POLL_S = 0.05
+STOP_S = 5  # after Ctrl-C: the seconds all children get to exit on SIGTERM, then SIGKILL
+CHUNK = 1 << 20
 
 
 def pause() -> None:
@@ -60,31 +65,53 @@ def tail(data: bytes) -> str:
     return "\n".join(lines)[-TAIL_CHARS:]
 
 
-def outside_snapshot(root: Path, inside: str) -> dict | None:
-    """{path: (git status code, sha256)} of every changed or untracked file outside `inside`
-    (a root-relative directory); None outside a git work tree."""
-    if work_tree_error(root) is not None:
-        return None
+def changed_paths(root: Path) -> list[tuple[str, str]]:
+    """(status code, root-relative path) of every change `git status --porcelain=v1 -z
+    --untracked-files=all` reports — paths as they are (never quoted), a rename's or copy's
+    source path as an entry of its own (in `-z` output it is the field after the new path)."""
     proc = subprocess.run(["git", "-C", str(root), "status", "--porcelain=v1", "-z",
                            "--untracked-files=all"], capture_output=True, env=git_env())
-    out, parts = {}, proc.stdout.split(b"\0")
-    i = 0
+    parts = proc.stdout.split(b"\0")
+    out, i = [], 0
     while i < len(parts):
         entry = parts[i].decode("utf-8", "surrogateescape")
         i += 1
         if len(entry) < 4:
             continue
-        code, path = entry[:2], entry[3:]
-        if code[0] in "RC":
-            i += 1  # the rename's source path follows
-        if path == inside.rstrip("/") or path.startswith(inside):
-            continue
-        with contextlib.suppress(OSError):
-            data = (root / path).read_bytes()
-            out[path] = (code, hashlib.sha256(data).hexdigest())
-            continue
-        out[path] = (code, None)
+        code = entry[:2]
+        out.append((code, entry[3:]))
+        if code[0] in "RC" and i < len(parts):
+            out.append((code, parts[i].decode("utf-8", "surrogateescape")))
+            i += 1
     return out
+
+
+def file_sha(path: Path) -> str | None:
+    """sha256 of a file, read in chunks; a symlink's is that of its target text (never
+    followed: a link to a FIFO or a huge file costs nothing); None for anything else."""
+    try:
+        mode = path.lstat().st_mode
+        if stat.S_ISLNK(mode):
+            return "symlink:" + hashlib.sha256(os.fsencode(os.readlink(path))).hexdigest()
+        if not stat.S_ISREG(mode):
+            return None
+        h = hashlib.sha256()
+        with open(path, "rb") as fh:
+            while chunk := fh.read(CHUNK):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
+        return None
+
+
+def outside_snapshot(root: Path, inside: str) -> dict | None:
+    """{path: (git status code, sha256)} of every changed or untracked file outside `inside`
+    (a root-relative directory) — the source of a rename or copy into `inside` included; None
+    outside a git work tree."""
+    if work_tree_error(root) is not None:
+        return None
+    return {path: (code, file_sha(root / path)) for code, path in changed_paths(root)
+            if not (path == inside.rstrip("/") or path.startswith(inside))}
 
 
 class Runner:
@@ -94,8 +121,8 @@ class Runner:
         self.work, self.flow, self.argv = work, work.flow, argv
         self.max_parallel = work.ws.config["init"]["max_parallel"]
 
-    def start(self, module: str) -> tuple:
-        item = self.work.item(module)
+    def start(self, module: str, item: dict) -> tuple:
+        """Start the executor on a claimed work item: (process, stdin file, stderr file)."""
         stdin = tempfile.TemporaryFile()
         stdin.write(item["prompt"].encode("utf-8"))
         stdin.seek(0)
@@ -141,8 +168,10 @@ class Runner:
             while pending or running:
                 while pending and len(running) < self.max_parallel:
                     module = pending.pop(0)
-                    self.work.claim(module)
-                    running[module] = self.start(module)
+                    item, _ = self.work.claim(module)
+                    if item is None:  # another driver claimed it first: it is theirs
+                        continue
+                    running[module] = self.start(module, item)
                 finished = [m for m, (p, _, _) in running.items() if p.poll() is not None]
                 for module in finished:
                     rows.append(self.finish(module, *running.pop(module)))
@@ -152,9 +181,10 @@ class Runner:
             for proc, stdin, stderr in running.values():
                 with contextlib.suppress(OSError):
                     proc.terminate()
+            deadline = time.monotonic() + STOP_S  # one deadline for all of them
             for proc, stdin, stderr in running.values():
                 try:
-                    proc.wait(timeout=5)
+                    proc.wait(timeout=max(0.0, deadline - time.monotonic()))
                 except subprocess.TimeoutExpired:
                     proc.kill()
                     proc.wait()

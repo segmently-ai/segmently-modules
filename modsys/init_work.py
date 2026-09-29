@@ -188,8 +188,12 @@ class Work:
             if self.dir.is_dir() else {}
         for name, text in texts.items():
             flow.write(self.item_path(name), text)
-        for stale in set(before) - {f"{n}.json" for n in items}:
-            (self.dir / stale).unlink()
+        for stale in sorted(set(before) - {f"{n}.json" for n in items}):
+            try:
+                (self.dir / stale).unlink()
+            except OSError as e:
+                raise UsageError(f"cannot write {flow.rel(self.dir / stale)}: "
+                                 f"{e.strerror or e}") from None
         state["modules"] = {name: ({"status": "done", "attempts": 0, "error": None,
                                     "existing": True} if item.get("existing") else
                                    {"status": "pending", "attempts": 0, "error": None})
@@ -263,9 +267,13 @@ class Work:
         return self.item(module), counts(state)
 
     def problems(self, module: str) -> list[str]:
-        """What keeps a module's staging output from `done` (SI-8), one line each."""
+        """What keeps a module's staging output from `done` (SI-8), one line each; a
+        symlinked staging dir is one problem (its target is never read)."""
         item = self.item(module)
         base = self.staging_dir(module)
+        if base.is_symlink():
+            return [f"the staging dir {self.flow.rel(base)} is a symlink (write the files into "
+                    f"a real directory)"]
         expected = ["MODULE.md", *(f"roles/{r}.md" for r in item["roles"]), "entry.json"]
         found = sorted(p.relative_to(base).as_posix() for p in base.rglob("*")
                        if p.is_file() or p.is_symlink()) if base.is_dir() else []
@@ -341,12 +349,14 @@ class Work:
 
     def done(self, module: str) -> tuple[str, list[str]]:
         """`init done <module>`: (status, problems) — `done` when the staging output is
-        complete; a pending or unknown module is exit 2; an item already done stays done."""
+        complete; a pending or unknown module is exit 2; an item already done stays done. The
+        check runs outside the lock: the item is marked `done` only if nobody put it back or
+        claimed it again meanwhile (the same attempt, still running or failed)."""
         state = self.require_fanout(self.flow.load_state())
         modules = state["modules"]
         if module not in modules:
             raise UsageError(f"unknown module '{module}' (modules: {', '.join(sorted(modules))})")
-        status = modules[module]["status"]
+        status, attempts = modules[module]["status"], modules[module]["attempts"]
         if status == "done":
             return "already done", []
         if status == "pending":
@@ -357,7 +367,12 @@ class Work:
         with self.flow.locked():
             state = self.flow.load_state()
             entry = state["modules"][module]
-            if entry["status"] in ("running", "failed"):
-                entry.update(status="done", error=None)
-                self.flow.save_state(state)
+            if entry["status"] == "done":
+                return "done", []
+            if entry["status"] == "pending" or entry["attempts"] != attempts:
+                return entry["status"], [f"changed while it was checked (now {entry['status']}, "
+                                         f"attempt {entry['attempts']}): nothing marked — check "
+                                         f"it again once it is written"]
+            entry.update(status="done", error=None)
+            self.flow.save_state(state)
         return "done", []

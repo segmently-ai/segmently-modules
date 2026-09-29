@@ -7,8 +7,10 @@ runs; the first step that needs an agent or a person stops the run, named in `ne
   --executor CMD        also runs the pending modules (`init run`) and writes the routing tasks
                         (`init eval-tasks`) when they are missing
   --non-interactive     never waits for a person: gate 3 passes as the proposal stands (`init
-                        confirm`), a missing executor is exit 2, a verify that does not pass is
-                        exit 1; it stops before gate 7 unless `--open-pr`
+                        confirm`), a verify that does not pass is exit 1; it stops before gate 7
+                        unless `--open-pr`. Without `--executor` it is exit 2 before anything
+                        runs when a writer will be needed (a module not done, or no routing
+                        tasks)
   --open-pr             gate 7 as a pull request: `init finish --open-pr` (or, after a failed
                         push or `gh`, the steps that are left)"""
 import json
@@ -25,10 +27,33 @@ class Chain:
         self.ran: list[str] = []
         self.messages: list[str] = []
 
-    def need_executor(self, what: str) -> None:
-        if self.non_interactive and self.argv is None:
-            raise UsageError(f"{what}: init resume --non-interactive needs --executor "
-                             f"\"<command>\"")
+    def refuse(self, what: str) -> None:
+        raise UsageError(f"{what}: init resume --non-interactive needs --executor "
+                         f"\"<command>\" (nothing ran)")
+
+    def blocked(self, what: str) -> bool:
+        """True when this step needs a writer and none was given (the plain resume stops)."""
+        if self.argv is None and self.non_interactive:
+            self.refuse(what)  # the up-front check makes this unreachable; never a silent stop
+        return self.argv is None
+
+    def writer_needed(self, state: dict) -> str | None:
+        """What a writer would have to do in this run (checked before anything runs), else
+        None: a module that is not done, or routing tasks that are missing or were refused."""
+        flow, work = self.flow, self.work
+        if state["phases"]["fanout"]["status"] != "done":
+            gate = "gate-map" if state["phases"]["gate-map"]["status"] == "done" else "map"
+            doc = flow.read_json(flow.output(gate))  # None: map has not run yet
+            names = {c.get("name") for c in (doc or {}).get("candidates") or []
+                     if isinstance(c, dict) and c.get("include") is True}
+            if doc is None or names - set(work.registry_modules()):
+                return "modules are pending"
+        elif any(e["status"] != "done" for e in state["modules"].values()):
+            return "modules are pending"
+        tasks = state["phases"]["eval-tasks"]["status"]
+        if not flow.output("eval-tasks").is_file() or tasks == "running":
+            return "the routing tasks are missing"
+        return None
 
     def verified(self) -> bool:
         """verify ran, passed, and the staging tree is the one it verified."""
@@ -60,6 +85,10 @@ class Chain:
                 return EXIT_OK
             self.messages.append("init is finished")
             return EXIT_OK
+        if self.non_interactive and self.argv is None:
+            what = self.writer_needed(state)
+            if what:
+                self.refuse(what)
         state, ran = flow.resume()
         self.ran += ran
         if state["phases"]["gate-map"]["status"] != "done":
@@ -76,8 +105,7 @@ class Chain:
             self.messages.append(f"back to pending (their staging cleared): {', '.join(reset)}")
         state = flow.load_state()
         if any(e["status"] != "done" for e in state["modules"].values()):
-            self.need_executor("modules are pending")
-            if self.argv is None:
+            if self.blocked("modules are pending"):
                 return EXIT_OK  # an agent writes them: init next / done, or init run
             result = Runner(work, self.argv).run()
             self.ran.append("run")
@@ -92,16 +120,16 @@ class Chain:
             Reconcile(work).run(False)
             self.ran.append("reconcile")
         check = Verify(work)
-        if not check.tasks_path.is_file():
-            self.need_executor("the routing tasks are missing")
-            if self.argv is None:
+        state = flow.load_state()  # a refused or interrupted eval-tasks runs again, file or not
+        if not check.tasks_path.is_file() or state["phases"]["eval-tasks"]["status"] == "running":
+            if self.blocked("the routing tasks are missing"):
                 return EXIT_OK  # an agent (or a person) writes them
             result = check.eval_tasks(self.argv, False)
             self.ran.append("eval-tasks")
             if result["problems"]:
                 self.messages += [f"eval-tasks: {p}" for p in result["problems"]]
                 return EXIT_FINDINGS
-        if not self.verified():
+        if "eval-tasks" in self.ran or not self.verified():  # new tasks: measure them
             result = check.run()
             self.ran.append("verify")
             if not result["passed"]:

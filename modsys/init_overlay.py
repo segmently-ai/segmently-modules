@@ -7,9 +7,12 @@ import json
 
 from modsys.config import load_config
 from modsys.fields import load_field_defs
+from modsys.output import UsageError
 from modsys.registry import Registry
 from modsys.store import sha256_bytes
 from modsys.workspace import Workspace
+
+REBUILD = "fix it, or rebuild it from the entry.json files: modsys init reconcile --force"
 
 
 def code_map_rules(work, state: dict) -> list[dict]:
@@ -19,17 +22,32 @@ def code_map_rules(work, state: dict) -> list[dict]:
             for m, e in sorted(state["modules"].items()) if not e.get("existing")]
 
 
+def staged_registry(flow, work) -> tuple[dict, bytes]:
+    """(the staging registry, its bytes) — a hand edit that broke it (not JSON, no `modules`
+    object) is exit 2 naming the file and the way out."""
+    staged = work.staging / "registry.json"
+    try:
+        data = staged.read_bytes()
+        raw = json.loads(data.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
+        raise UsageError(f"{flow.rel(staged)}: cannot read it as JSON ({e}) — {REBUILD}") \
+            from None
+    if not isinstance(raw, dict) or not isinstance(raw.get("modules"), dict) \
+            or not all(isinstance(e, dict) for e in raw["modules"].values()):
+        raise UsageError(f"{flow.rel(staged)}: not a registry (a 'modules' object of entries) "
+                         f"— {REBUILD}")
+    return raw, data
+
+
 def overlay_workspace(flow, work, state: dict) -> Workspace:
     """The workspace `init finish` would leave behind, from the staging tree."""
+    raw, data = staged_registry(flow, work)
     rules = []
     if (flow.config_dir / "config.toml").is_file():
         taken = {r.get("id") for r in flow.config.get("code_map") or [] if isinstance(r, dict)}
         rules = [r for r in code_map_rules(work, state) if r["id"] not in taken]
     config = load_config(flow.config_dir, flow.root, extra={"code_map": rules},
                          extra_source="init") if rules else flow.config
-    staged = work.staging / "registry.json"
-    data = staged.read_bytes()
-    raw = json.loads(data.decode("utf-8"))
     ws = Workspace(flow.root, flow.config_dir, config, load_field_defs(config))
     ws._registry = Registry(flow.root / config["paths"]["registry"], raw, sha256_bytes(data))
     paths = config["paths"]
@@ -44,12 +62,14 @@ def overlay_workspace(flow, work, state: dict) -> Workspace:
     return ws
 
 
-def current(root, config_dir):
-    """The overlay workspace while an init is between reconcile and finish, else None."""
+def current(root, config_dir, config: dict | None = None):
+    """The overlay workspace while an init is between reconcile and finish, else None
+    (`config`: the loaded config, when the caller has it)."""
     from modsys.init_cmd import workspace
     from modsys.init_flow import InitFlow
     from modsys.init_work import Work
-    flow = InitFlow(root, config_dir, load_config(config_dir, root))
+    flow = InitFlow(root, config_dir, config if config is not None
+                    else load_config(config_dir, root))
     if not flow.state_path.is_file():
         return None
     state = flow.load_state()

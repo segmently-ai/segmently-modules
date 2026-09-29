@@ -31,6 +31,7 @@ from modsys.workspace import Workspace
 ACTIONS = ("routing",)
 TOP, TOP_MAX, PER_MODULE, PER_MODULE_MAX, FILES_CAP = 3, 20, 5, 20, 200
 _COMMENT = re.compile(r"<!--.*?-->", re.S)
+_MARK = "\0"  # where a comment was (purpose)
 
 
 def register(sub, common) -> None:
@@ -60,30 +61,32 @@ def workspace(args) -> Workspace:
     """The workspace to measure: the overlay while an init is between reconcile and finish."""
     from modsys.init_overlay import current
     ws = Workspace.from_args(args)
-    return current(ws.root, ws.config_dir) or ws
+    return current(ws.root, ws.config_dir, ws.config) or ws
 
 
-def load_tasks(path: Path, modules: set[str]) -> list[dict]:
-    """The tasks of FILE; anything else is exit 2 naming the file (and the item)."""
+def load_tasks(path: Path, modules: set[str], shown: str | None = None) -> list[dict]:
+    """The tasks of FILE; anything else is exit 2 naming the file (as `shown`, else as given)
+    and the item."""
+    name = shown or path
     try:
         text = path.read_bytes().decode("utf-8")
     except (OSError, UnicodeDecodeError) as e:
-        raise UsageError(f"cannot read {path}: {getattr(e, 'strerror', None) or e}") from None
+        raise UsageError(f"cannot read {name}: {getattr(e, 'strerror', None) or e}") from None
     try:
         tasks = json.loads(text)
     except json.JSONDecodeError as e:
-        raise UsageError(f"{path}: invalid JSON ({e})") from None
+        raise UsageError(f"{name}: invalid JSON ({e})") from None
     if not isinstance(tasks, list):
-        raise UsageError(f"{path}: not a list of {{task, module}} objects")
+        raise UsageError(f"{name}: not a list of {{task, module}} objects")
     if not tasks:
-        raise UsageError(f"no tasks in {path}")
+        raise UsageError(f"no tasks in {name}")
     for i, t in enumerate(tasks, 1):
         if not isinstance(t, dict) or not isinstance(t.get("task"), str) or not t["task"].strip() \
                 or not isinstance(t.get("module"), str):
-            raise UsageError(f"{path}: task #{i} is not a {{task, module}} object with a "
+            raise UsageError(f"{name}: task #{i} is not a {{task, module}} object with a "
                              f"non-empty task text")
         if t["module"] not in modules:
-            raise UsageError(f"unknown module '{t['module']}' in {path}")
+            raise UsageError(f"unknown module '{t['module']}' in {name}")
     return tasks
 
 
@@ -92,11 +95,13 @@ def hit(expected: str, got: list[str]) -> bool:
     return any(g == expected or g.partition("/")[0] == expected and "/" in g for g in got)
 
 
-def routing(ws, tasks: list[dict], top: int, threshold: float) -> dict:
-    """The routing report of `tasks` over the workspace's registry."""
+def routing(ws, tasks: list[dict], top: int, threshold: float,
+            targets: set[str] | None = None) -> dict:
+    """The routing report of `tasks` over the workspace's registry (`targets`: its routing
+    targets, when the caller has them)."""
     cfg = ws.config["match"]
     per = {t: {"module": t, "tasks": 0, "hits": 0, "misses": []}
-           for t in sorted(target_names(ws.registry.modules))}
+           for t in sorted(targets if targets is not None else target_names(ws.registry.modules))}
     hits = 0
     for t in tasks:
         got = [r["module"] for r in match_modules(ws.registry.modules, t["task"], cfg, top,
@@ -115,27 +120,35 @@ def routing(ws, tasks: list[dict], top: int, threshold: float) -> dict:
 
 
 def purpose(ws, doc: str | None) -> str | None:
-    """The first paragraph under `## Purpose` of a doc (blockquotes and comments skipped)."""
+    """The first paragraph under `## Purpose` of a doc; a blockquote line or a line that is only
+    an HTML comment is skipped wherever it sits (before the paragraph or inside it) — only a
+    blank line or a heading ends the paragraph."""
     if not isinstance(doc, str):
         return None
     try:
         text = ws.disk(doc).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
-    lines = _COMMENT.sub("", text).splitlines()
+    # a comment leaves a mark on every line it covered: a line of marks alone was a comment
+    lines = _COMMENT.sub(lambda m: _MARK + ("\n" + _MARK) * m.group(0).count("\n"),
+                         text).splitlines()
     try:
-        start = next(i for i, line in enumerate(lines) if line.strip() == "## Purpose") + 1
+        start = next(i for i, line in enumerate(lines)
+                     if line.replace(_MARK, "").strip() == "## Purpose") + 1
     except StopIteration:
         return None
     para = []
     for line in lines[start:]:
-        if line.startswith("#"):
+        bare = line.replace(_MARK, "")
+        if bare.startswith("#"):
             break
-        if not line.strip() or line.lstrip().startswith(">"):
+        if (line.strip() and not bare.strip()) or bare.lstrip().startswith(">"):
+            continue  # a whole-line comment or a blockquote
+        if not bare.strip():
             if para:
                 break
             continue
-        para.append(line.strip())
+        para.append(bare.strip())
     return " ".join(para) or None
 
 
@@ -197,8 +210,9 @@ def run(args) -> int:
         emit("eval", data, args.json, lambda d: print(d["prompt"], end=""))
         return EXIT_OK
     threshold = threshold_of(args, ws)
-    tasks = load_tasks(args.tasks, target_names(ws.registry.modules))
-    data = routing(ws, tasks, args.top or TOP, threshold)
+    targets = target_names(ws.registry.modules)
+    tasks = load_tasks(args.tasks, targets)
+    data = routing(ws, tasks, args.top or TOP, threshold, targets)
     emit("eval", data, args.json, render)
     return EXIT_OK if data["passed"] else EXIT_FINDINGS
 

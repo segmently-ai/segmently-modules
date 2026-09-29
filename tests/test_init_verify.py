@@ -71,6 +71,38 @@ import x from `packages/catalog/src/fenced.ts`;
         self.assertEqual(found, [{"doc": "modules/catalog/MODULE.md", "line": n, "kind": kind,
                                   "token": token} for n, kind, token in rows])
 
+    def check(self, text: str) -> list[tuple[int, str, str]]:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve() / "repo"
+            (root / "packages/catalog/src").mkdir(parents=True)
+            (root / "packages/catalog/src/books.ts").write_text(
+                "export function searchBooks() {}\n")
+            doc = Path(tmp) / "developer.md"
+            doc.write_text(text.replace("<root>", str(root)))
+            found = invented(Workspace.load(root), {"modules/catalog/roles/developer.md": doc})
+        return [(f["line"], f["kind"], f["token"].replace(str(root), "<root>")) for f in found]
+
+    def test_a_table_without_a_path_column(self):  # PR-19 (I-5): not a components table
+        text = ("| Name | Kind | Purpose |\n|---|---|---|\n| `searchBooks` | function | finds "
+                "books |\n| `pytest` | tool | runs the tests |\n\n| Symbol | Type |\n|---|---|\n"
+                "| `maxItems` | int |\n\n| Path | Purpose |\n|---|---|\n| `nowhere` | x |\n")
+        self.assertEqual(self.check(text), [])
+        text += "\n| Name | File |\n|---|---|\n| `nowhere` | `packages/catalog/src/books.ts` |\n"
+        self.assertEqual(self.check(text), [(16, "symbol", "nowhere")])
+
+    def test_paths_outside_the_root(self):  # M-15: they exist on the machine, not in the root
+        text = ("See `<root>/packages/catalog/src/books.ts` and "
+                "`../repo/packages/catalog/src/books.ts`, not `packages/../../x/y`.\n\n"
+                "| Name | Path |\n|---|---|\n"
+                "| `searchBooks` | `../repo/packages/catalog/src/books.ts` |\n"
+                "| `searchBooks` | `packages/catalog/src/books.ts` |\n")
+        self.assertEqual(self.check(text), [
+            (1, "path", "../repo/packages/catalog/src/books.ts"),
+            (1, "path", "<root>/packages/catalog/src/books.ts"),
+            (1, "path", "packages/../../x/y"),
+            (5, "no-file", "searchBooks"),
+            (5, "path", "../repo/packages/catalog/src/books.ts")])
+
 
 class VerifyRepo(unittest.TestCase):
     @classmethod
@@ -166,6 +198,45 @@ class VerifyTest(VerifyRepo):  # P5B-AC-022 (SI-16, SI-17)
         code, out, err = run("init", "verify", "--json", "--root", str(self.root))
         self.assertEqual((code, out), (2, ""))
         self.assertIn("modsys init reconcile", err)
+
+    def refused(self, *argv: str) -> str:
+        code, out, err = run(*argv, "--json", "--root", str(self.root))
+        self.assertEqual((code, out), (2, ""), err)
+        self.assertNotIn("internal error", err)
+        self.assertNotIn(str(self.root), err)  # root-relative (M-12)
+        return err
+
+    def test_a_hand_written_tasks_file_that_is_not_valid(self):  # Task 9 review I1
+        tasks = self.root / WORK / "routing-tasks.json"
+        for text, problem in (("{not json", f"{WORK}/routing-tasks.json: invalid JSON"),
+                              ('[{"task": "the isbn", "module": "nosuch"}]',
+                               f"unknown module 'nosuch' in {WORK}/routing-tasks.json")):
+            with self.subTest(problem=problem[:20]):
+                tasks.write_text(text)
+                err = self.refused("init", "verify")
+                self.assertIn(problem, err)
+                self.assertIn("— fix it, or modsys init eval-tasks --force", err)
+
+    def test_a_broken_staging_registry(self):  # M-1: a hand edit gone wrong
+        for text in ('{"modules": {,', '{"modules": []}'):
+            self.registry.write_text(text)
+            for argv in (("init", "verify"), ("eval", "routing", "--prompt")):
+                with self.subTest(text=text, argv=argv):
+                    err = self.refused(*argv)
+                    self.assertIn(f"{WORK}/staging/registry.json", err)
+                    self.assertIn("fix it, or rebuild it from the entry.json files: modsys init "
+                                  "reconcile --force", err)
+
+    def test_a_symlink_added_to_staging_after_verify(self):  # Task 9 review C1 (M-8)
+        from modsys.init_verify import tree_sha
+        self.assertEqual(self.verify()[0], 0)
+        staging = self.root / WORK / "staging"
+        before = tree_sha(staging)
+        (staging / "cart/roles/extra.md").symlink_to(self.root / "README.md")
+        self.assertNotEqual(tree_sha(staging), before)
+        code, out, err = run("init", "finish", "--root", str(self.root))
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("staging changed since verify", err)
 
 
 class OverlayEqualsFinalTest(VerifyRepo):  # P5B-AC-022 (verify reads what finish writes)

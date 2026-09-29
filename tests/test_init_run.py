@@ -6,12 +6,14 @@ import shlex
 import shutil
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from tests.helpers import run
+from tests.init_fake_executor import write_docs
 from tests.init_helpers import FAKE, SIX, WORK, executor, ok, protected_sha, shop, state, text
 
 
@@ -205,6 +207,54 @@ class StagingOnlyTest(RunRepo):  # P5B-AC-011 (phase 4; the later phases: test_i
         self.assertEqual((data["outside"], data["failed"]), (["modules/catalog/MODULE.md"], True))
         self.assertEqual({r["status"] for r in data["modules"]}, {"done"})
 
+    def test_a_staged_move_into_the_staging_dir(self):  # Task 6 review I1: the source counts
+        self.config("[init]\nmax_parallel = 1\n")
+        data, err = self.run_init("--git-mv", "packages/catalog/src/books.ts", code=1)
+        self.assertIn("modsys: wrote outside the staging dir: packages/catalog/src/books.ts",
+                      err.splitlines())
+        self.assertEqual(data["outside"], ["packages/catalog/src/books.ts"])
+
+    def test_a_symlink_to_a_fifo_is_never_opened(self):  # M-7: lstat, the link text hashed
+        from modsys.init_run import outside_snapshot
+        fifo = self.base / "pipe"
+        os.mkfifo(fifo)
+        (self.root / "notes.pipe").symlink_to(fifo)
+        got = []
+        worker = threading.Thread(target=lambda: got.append(
+            outside_snapshot(self.root, f"{WORK}/")), daemon=True)
+        worker.start()
+        worker.join(timeout=20)
+        self.assertFalse(worker.is_alive(), "outside_snapshot opened the FIFO")
+        code, sha = got[0]["notes.pipe"]
+        self.assertEqual(code, "??")
+        self.assertTrue(sha.startswith("symlink:"))
+        (self.root / "notes.pipe").unlink()
+        (self.root / "notes.pipe").symlink_to(self.base / "elsewhere")
+        self.assertNotEqual(outside_snapshot(self.root, f"{WORK}/")["notes.pipe"][1], sha)
+
+
+class RaceTest(RunRepo):  # I-3 (T-1): init next racing init run
+    CONFIG = "[init]\nmax_parallel = 1\n"
+
+    def test_a_module_claimed_meanwhile_is_left_to_its_claimer(self):
+        claimed = []
+
+        def agent():  # while init run waits on its first module, an agent claims the next one
+            if not claimed:
+                claimed.append(ok(self.root, "init", "next")["item"]["module"])
+            time.sleep(0.05)
+
+        with mock.patch("modsys.init_run.pause", side_effect=agent):
+            data, err = self.run_init()
+        (mine,) = claimed
+        starts = [c["module"] for c in self.calls()]
+        self.assertEqual(sorted(starts), [m for m in SIX if m != mine])  # each at most once
+        self.assertNotIn(mine, [r["module"] for r in data["modules"]])
+        self.assertEqual(state(self.root)["modules"][mine],
+                         {"status": "running", "attempts": 1, "error": None})  # the agent's
+        write_docs(self.root, json.loads((self.root / WORK / f"work/{mine}.json").read_text()))
+        self.assertEqual(ok(self.root, "init", "done", mine)["status"], "done")
+
 
 class RunTransitionsTest(RunRepo):  # P5B-AC-003 (the executor rows; claims: test_init_state)
     def test_running_failed_pending_done(self):
@@ -249,6 +299,28 @@ class RunInterruptTest(RunRepo):  # P5B-AC-038 (Ctrl-C during init run)
         got, _, err = run("init", "resume", "--executor", executor(), "--root", str(self.root))
         self.assertEqual((got, err), (0, ""))
         self.assertEqual({e["status"] for e in state(self.root)["modules"].values()}, {"done"})
+
+    def test_one_deadline_for_every_child(self):  # Task 6 review M1: then SIGKILL the rest
+        self.config("[init]\nmax_parallel = 3\n")
+        pids, stopped = self.base / "pids", []
+
+        def interrupt():
+            if pids.is_dir() and len(list(pids.iterdir())) == 3:
+                stopped.append(time.monotonic())
+                raise KeyboardInterrupt
+            time.sleep(0.05)
+
+        with mock.patch("modsys.init_run.pause", side_effect=interrupt), \
+                mock.patch("modsys.init_run.STOP_S", 1):
+            got = run("init", "run", "--executor", executor("--sleep", "30", "--pids", str(pids),
+                                                            "--ignore-term", "yes"),
+                      "--root", str(self.root))
+        elapsed = time.monotonic() - stopped[0]
+        self.assertEqual(got, (130, "", "modsys: interrupted\n"))
+        self.assertLess(elapsed, 2.5)  # one second for all three, not one second each
+        for pid in (int(p.name) for p in pids.iterdir()):
+            with self.assertRaises(ProcessLookupError):
+                os.kill(pid, 0)
 
 
 if __name__ == "__main__":

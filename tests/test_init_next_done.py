@@ -5,6 +5,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tests.init_fake_executor import write_docs
 from tests.init_helpers import WORK, ok, shop, state, text
@@ -47,6 +48,21 @@ class NextTest(DriverRepo):  # P5B-AC-005 (init next)
         item = json.loads((self.root / WORK / "work/cart.json").read_text())
         self.assertEqual(out, f"claimed       cart  (work item {WORK}/work/cart.json)\n"
                               + item["prompt"])
+
+    def test_a_symlinked_staging_dir_is_refused(self):  # Task 5 review I1 (Work.clear)
+        target = self.base / "elsewhere"
+        target.mkdir()
+        (target / "keep.md").write_text("keep\n")
+        staging = self.root / WORK / "staging"
+        staging.mkdir(parents=True, exist_ok=True)
+        (staging / "cart").symlink_to(target)
+        before = (self.root / WORK / "state.json").read_bytes()
+        code, out, err = text(self.root, "init", "next", "--json")
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn(f"{WORK}/staging/cart is a symlink — remove it (its target is left alone)",
+                      err)
+        self.assertEqual((target / "keep.md").read_text(), "keep\n")
+        self.assertEqual((self.root / WORK / "state.json").read_bytes(), before)
 
 
 class DoneTest(DriverRepo):  # P5B-AC-005 (init done, the table)
@@ -119,6 +135,61 @@ class DoneTest(DriverRepo):  # P5B-AC-005 (init done, the table)
             {"module": "catalog", "relation": "depends-on", "description": "imports the books"}]))
         self.assertEqual((code, got, state(self.root)["modules"]["cart"]["status"]),
                          (0, [], "done"))
+
+    def test_the_text_of_a_check_with_problems(self):  # Task 5 review M1 (_render_done)
+        write_docs(self.root, self.item)
+        (self.staging / "roles/qa.md").unlink()
+        self.entry(keywords=["one"])
+        code, out, err = text(self.root, "init", "done", "cart")
+        self.assertEqual((code, out), (1, "not done      cart (2 problem(s) on stderr)\n"))
+        self.assertEqual(err.splitlines(), [
+            "modsys: cart: missing roles/qa.md",
+            "modsys: cart: at least 5 distinct keywords (a list of non-empty strings)"])
+
+    def test_a_failed_item_that_still_has_problems(self):  # Task 5 review M2
+        s = state(self.root)
+        s["modules"]["cart"].update(status="failed", error="exit 3: gave up")
+        (self.root / WORK / "state.json").write_text(json.dumps(s))
+        write_docs(self.root, self.item)
+        (self.staging / "MODULE.md").write_text("")
+        code, out, err = text(self.root, "init", "done", "cart", "--json")
+        data = json.loads(out)["data"]
+        self.assertEqual((code, data["status"], data["problems"]),
+                         (1, "failed", ["MODULE.md is empty"]))
+        self.assertEqual(state(self.root)["modules"]["cart"]["status"], "failed")
+
+    def test_a_symlinked_staging_dir_is_one_problem(self):  # M-8: its target is never read
+        elsewhere = self.base / "elsewhere"
+        shutil.rmtree(self.staging)
+        elsewhere.mkdir()
+        self.staging.symlink_to(elsewhere)
+        write_docs(self.root, self.item, staging=elsewhere)
+        code, out, err = text(self.root, "init", "done", "cart", "--json")
+        self.assertEqual((code, json.loads(out)["data"]["problems"]),
+                         (1, [f"the staging dir {WORK}/staging/cart is a symlink (write the "
+                              f"files into a real directory)"]))
+
+    def test_claimed_again_while_it_was_checked(self):  # M-10: the same attempt only
+        from modsys.init_work import Work
+        write_docs(self.root, self.item)
+        real = Work.problems
+
+        def meanwhile(work, module):  # another driver resets and claims it during the check
+            found = real(work, module)
+            s = state(self.root)
+            s["modules"][module]["attempts"] += 1
+            (self.root / WORK / "state.json").write_text(json.dumps(s))
+            return found
+
+        with mock.patch("modsys.init_work.Work.problems", autospec=True, side_effect=meanwhile):
+            code, out, err = text(self.root, "init", "done", "cart", "--json")
+        data = json.loads(out)["data"]
+        self.assertEqual((code, data["status"]), (1, "running"))
+        self.assertEqual(data["problems"], ["changed while it was checked (now running, attempt "
+                                            "2): nothing marked — check it again once it is "
+                                            "written"])
+        self.assertEqual(state(self.root)["modules"]["cart"]["status"], "running")
+        self.assertEqual(ok(self.root, "init", "done", "cart")["status"], "done")
 
     def test_several_problems_at_once_and_a_symlink(self):
         def change():

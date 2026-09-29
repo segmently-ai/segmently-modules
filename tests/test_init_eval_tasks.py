@@ -3,12 +3,14 @@ writes MODSYS_INIT_TASKS; the file is checked (JSON, known modules, a task for e
 import hashlib
 import json
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tests.helpers import run
-from tests.init_helpers import WORK, executor, ok, shop, state
+from tests.init_helpers import SIX, WORK, executor, ok, shop, state
 
 
 class EvalTasksTest(unittest.TestCase):  # P5B-AC-020
@@ -73,6 +75,67 @@ class EvalTasksTest(unittest.TestCase):  # P5B-AC-020
         self.assertEqual(self.tasks.read_text(), "[]")
         code, data, _ = self.eval_tasks(force=True)
         self.assertEqual((code, data["tasks"]), (0, 30))
+
+    def rejected(self) -> Path:
+        return self.root / WORK / "routing-tasks.rejected.json"
+
+    def test_a_refused_file_is_moved_aside(self):  # I-4: the next step is eval-tasks again
+        for mode in ("invalid", "partial"):
+            with self.subTest(mode=mode):
+                self.setUp()
+                code, data, _ = self.eval_tasks("--tasks-mode", mode)
+                self.assertEqual(code, 1)
+                self.assertFalse(self.tasks.exists())
+                self.assertTrue(self.rejected().is_file())
+                self.assertIn("modsys init eval-tasks", data["next"])
+                self.assertIn("routing-tasks.rejected.json", data["next"])
+                verify = ok(self.root, "init", "verify")  # never stuck on the refused file
+                self.assertIsNone(verify["routing"])
+                self.assertIn("modsys init eval-tasks", verify["next"])
+                code, data, err = self.eval_tasks()  # no --force: it runs again
+                self.assertEqual((code, err, data["status"], data["tasks"]),
+                                 (0, "", "written", 30))
+                self.assertEqual(state(self.root)["phases"]["eval-tasks"]["status"], "done")
+
+    def resume(self, *flags: str) -> dict:
+        code, out, err = run("init", "resume", *flags, "--json", "--root", str(self.root))
+        self.assertEqual((code, err), (0, ""))
+        return json.loads(out)["data"]
+
+    def test_resume_after_a_refused_file(self):  # I-4: never skipped because a file exists
+        for mode, left in (("invalid", False), ("partial", False), ("partial", True)):
+            with self.subTest(mode=mode, left_behind=left):
+                self.setUp()
+                self.assertEqual(self.eval_tasks("--tasks-mode", mode)[0], 1)
+                if left:  # as a killed run would leave it: the file there, the phase running
+                    shutil.copy(self.rejected(), self.tasks)
+                data = self.resume()
+                self.assertEqual(data["ran"], [])
+                self.assertIn("modsys init eval-tasks", data["next"])
+                data = self.resume("--non-interactive", "--executor", executor())
+                self.assertEqual(data["ran"], ["eval-tasks", "verify"])
+                routing = json.loads((self.root / WORK / "verify.json").read_text())["routing"]
+                self.assertEqual({r["module"]: r["tasks"] for r in routing["per_module"]},
+                                 dict.fromkeys(SIX, 5))
+                self.assertEqual(state(self.root)["phases"]["eval-tasks"]["status"], "done")
+
+    def test_ctrl_c_while_the_executor_writes(self):
+        real = subprocess.run
+
+        def half(argv, **kw):  # git runs as usual; the executor writes half a file, then Ctrl-C
+            if argv[0] == "git":
+                return real(argv, **kw)
+            self.tasks.write_text('[{"task": "change how the cart')
+            raise KeyboardInterrupt
+
+        with mock.patch("subprocess.run", side_effect=half):
+            got = run("init", "eval-tasks", "--executor", executor(), "--root", str(self.root))
+        self.assertEqual(got, (130, "", "modsys: interrupted\n"))
+        self.assertFalse(self.tasks.exists())
+        self.assertTrue(self.rejected().is_file())
+        self.assertEqual(state(self.root)["phases"]["eval-tasks"]["status"], "running")
+        self.assertIn("modsys init eval-tasks", ok(self.root, "init", "status")["next"])
+        self.assertEqual(self.eval_tasks()[1]["status"], "written")
 
     def test_before_reconcile(self):
         root = self.base / "early"

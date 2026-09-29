@@ -219,6 +219,16 @@ class PromptTest(RoutingRepo):  # P5B-AC-019 (SI-13, SI-14)
         code, out, err = run("eval", "routing", "--prompt", *self.R)
         self.assertEqual((code, out, err), (0, prompt, ""))
 
+    def test_a_blockquote_or_a_comment_inside_the_paragraph(self):  # Task 8 review I1
+        doc = self.root / "modules/catalog/MODULE.md"
+        doc.write_text("# Catalog\n\n## Purpose\n\nBooks, authors\n> a note in between\n"
+                       "and search,\n<!-- a comment\nover two lines -->\nfor every reader.\n"
+                       "\nMore text.\n")
+        block = self.evaluate("--prompt")["prompt"].split("## `catalog`", 1)[1]
+        self.assertIn("\n\nBooks, authors and search, for every reader.\n\n", block)
+        self.assertNotIn("More text.", block)
+        self.assertNotIn("a note in between", block)
+
     def test_per_module_and_the_template_chain(self):
         self.assertIn("write 1 task(s)", self.evaluate("--prompt", "--per-module", "1")["prompt"])
         self.assertIn("write 20 task(s)", self.evaluate("--prompt", "--per-module", "20")["prompt"])

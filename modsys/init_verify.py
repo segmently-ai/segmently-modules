@@ -6,6 +6,10 @@ write it (`modsys.init_overlay`), nothing moved.
                                         MODSYS_INIT_TASKS = this file's absolute path (the
                                         executor writes it), or someone writes it by hand from
                                         `modsys eval routing --prompt`
+  <config_dir>/init/routing-tasks.rejected.json  a tasks file `init eval-tasks` refused (not
+                                        JSON, a module left out or unknown) or one an interrupted
+                                        run left behind: moved aside, so the next step is
+                                        `init eval-tasks` again (the phase stays `running`)
   <config_dir>/init/verify.json         {lint: {summary, findings}, invented, routing,
                                         staging_sha256, passed}
 
@@ -13,16 +17,21 @@ Verify runs three checks: lint (clean = no error and no warning; info is fine), 
 component check over the new modules' staging docs, and the routing eval when the tasks file
 exists (`routing: null` — "not measured" — otherwise). The invented-component check: every
 backticked repository path (MS040's rule: holds a `/`, no space, no `*`, no URL, no `<`, `{`,
-`[` or leading `@`; `:line` and `#L…` cut) exists — the staging docs count at their final
-paths —, and in a table whose header has a `Symbol` or `Name` column, a cell holding one
-backticked identifier names a symbol that occurs, as a whole identifier, in the file of the
-row's `Path` (or `File`) column; fenced code blocks and HTML comments are skipped.
-`staging_sha256` pins what was verified: `init finish` refuses a staging tree that changed."""
+`[` or leading `@`; `:line` and `#L…` cut) exists inside the root — the staging docs count at
+their final paths; an absolute path or one that climbs out with `..` never does —, and in a
+table whose header has a `Symbol` or `Name` column AND a `Path` (or `File`) column, a cell of
+the first holding one backticked identifier names a symbol that occurs, as a whole identifier,
+in the file of the row's path cell (a table without both columns is not checked); fenced code
+blocks and HTML comments are skipped. `staging_sha256` pins what was verified (every file's
+path and bytes, every symlink's path and target text): `init finish` refuses a staging tree
+that changed. After `init finish` both actions are refused."""
 import hashlib
 import json
+import os
 import re
 import subprocess
 from dataclasses import asdict
+from pathlib import Path
 
 from modsys.eval_cmd import PER_MODULE, load_tasks, routing, routing_prompt
 from modsys.changes import target_names
@@ -32,6 +41,7 @@ from modsys.lint import component_path, lint_registry, severity_counts
 from modsys.output import UsageError
 from modsys.store import serialize
 
+REJECTED = "routing-tasks.rejected.json"
 _BACKTICK = re.compile(r"`([^`\n]+)`")
 _FENCE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
 _SYMBOL = re.compile(r"`([A-Za-z_$][\w$]*)`")
@@ -40,13 +50,26 @@ TASKS = "routing-tasks.json"
 
 
 def tree_sha(path) -> str:
-    """sha256 over every file below `path`: its relative path and its bytes, sorted."""
+    """sha256 over the tree below `path`, sorted by path: a file's relative path and bytes, a
+    symlink's relative path and target text (never followed — a link added after verify
+    changes it too)."""
     h = hashlib.sha256()
-    for p in sorted(path.rglob("*")) if path.is_dir() else []:
-        if p.is_file() and not p.is_symlink():
-            h.update(p.relative_to(path).as_posix().encode("utf-8") + b"\0" + p.read_bytes()
-                     + b"\0")
+    found = []
+    for top, dirs, files in os.walk(path) if path.is_dir() else []:  # never into a linked dir
+        found += [Path(top) / name for name in dirs + files]
+    for p in sorted(found):
+        rel = p.relative_to(path).as_posix().encode("utf-8", "surrogateescape")
+        if p.is_symlink():
+            h.update(rel + b"\0symlink\0" + os.fsencode(os.readlink(p)) + b"\0")
+        elif p.is_file():
+            h.update(rel + b"\0" + p.read_bytes() + b"\0")
     return h.hexdigest()
+
+
+def inside(target: str) -> bool:
+    """A root-relative path that stays inside the root (not absolute, no `..` out of it)."""
+    norm = os.path.normpath(target)
+    return not (os.path.isabs(target) or norm == ".." or norm.startswith("../"))
 
 
 def cells(line: str) -> list[str]:
@@ -88,7 +111,7 @@ def invented(ws, docs: dict) -> list[dict]:
                         text, rest, comment = text + rest[:start], rest[start + 4:], True
             for token in _BACKTICK.findall(text):
                 target = component_path(token)
-                if target and not ws.exists(target):
+                if target and not (inside(target) and ws.exists(target)):
                     out.append({"doc": rel, "line": n, "kind": "path", "token": target})
             if not text.lstrip().startswith("|"):
                 header = None
@@ -100,14 +123,16 @@ def invented(ws, docs: dict) -> list[dict]:
                 header = (next((i for i, c in enumerate(names) if c in ("symbol", "name")), None),
                           next((i for i, c in enumerate(names) if c in ("path", "file")), None))
                 continue
-            if header is None or header[0] is None:
-                continue
+            if header is None or header[0] is None or header[1] is None:
+                continue  # not a components table: a Symbol / Name column AND a Path column
             row = cells(text)
             symbol = _SYMBOL.fullmatch(row[header[0]]) if header[0] < len(row) else None
             if not symbol:
                 continue
-            cell = row[header[1]] if header[1] is not None and header[1] < len(row) else ""
+            cell = row[header[1]] if header[1] < len(row) else ""
             target = next((p for t in _BACKTICK.findall(cell) if (p := component_path(t))), None)
+            if target and not inside(target):
+                target = None  # outside the root: no file of the repository
             if target and ws.exists(target) and not ws.disk(target).is_file():
                 target = None  # a directory: no file to check
             if target is None:
@@ -128,6 +153,8 @@ class Verify:
 
     def require_reconcile(self) -> dict:
         state = self.work.require_fanout(self.flow.load_state())
+        if state["phases"]["finish"]["status"] == "done":
+            raise UsageError("already finished — see modsys init status")
         if state["phases"]["reconcile"]["status"] != "done" or \
                 not (self.work.staging / "registry.json").is_file():
             raise UsageError("reconcile has not run — run modsys init reconcile first")
@@ -136,26 +163,44 @@ class Verify:
     def overlay(self, state: dict):
         return overlay_workspace(self.flow, self.work, state)
 
+    def reject(self) -> None:
+        """Move a refused (or half-written) tasks file aside: the next step is eval-tasks."""
+        if os.path.lexists(self.tasks_path):
+            rejected = self.flow.work / REJECTED
+            try:
+                os.replace(self.tasks_path, rejected)
+            except OSError as e:
+                raise UsageError(f"cannot write {self.flow.rel(rejected)}: "
+                                 f"{e.strerror or e}") from None
+
     def eval_tasks(self, argv: list[str], force: bool) -> dict:
-        """Run the executor once on the routing prompt; it writes the tasks file."""
+        """Run the executor once on the routing prompt; it writes the tasks file. A file the
+        check refuses — and one an interrupted run left — is moved to `REJECTED`; a file that
+        exists while the phase is not `running` is kept (`--force` regenerates it)."""
         state = self.require_reconcile()
         rel = self.flow.rel(self.tasks_path)
-        if self.tasks_path.exists() and not force:
+        interrupted = state["phases"]["eval-tasks"]["status"] == "running"
+        if self.tasks_path.exists() and not force and not interrupted:
             return {"file": rel, "status": "exists", "tasks": None, "per_module": None,
                     "problems": [], "state": state}
         ws = self.overlay(state)
         modules, prompt = routing_prompt(ws, PER_MODULE)
         self.flow.mark(state, "eval-tasks", "running")
+        if interrupted:  # a file left by a failed or interrupted run is never taken as is
+            self.reject()
         try:
             self.tasks_path.unlink(missing_ok=True)
         except OSError as e:
             raise UsageError(f"cannot write {rel}: {e.strerror or e}") from None
-        env = {**__import__("os").environ, "MODSYS_INIT_TASKS": str(self.tasks_path)}
+        env = {**os.environ, "MODSYS_INIT_TASKS": str(self.tasks_path)}
         try:
             proc = subprocess.run(argv, input=prompt.encode("utf-8"), stdout=subprocess.DEVNULL,
                                   stderr=subprocess.PIPE, cwd=self.flow.root, env=env)
         except OSError as e:
             raise UsageError(f"executor {argv[0]} cannot run: {e.strerror or e}") from None
+        except BaseException:  # Ctrl-C: whatever the executor wrote so far is not a tasks file
+            self.reject()
+            raise
         problems = []
         if proc.returncode != 0:
             problems.append(f"the executor exited {proc.returncode}: {tail(proc.stderr)}")
@@ -164,6 +209,7 @@ class Verify:
         else:
             problems += self.task_problems(set(modules))
         if problems:
+            self.reject()
             return {"file": rel, "status": "failed", "tasks": None, "per_module": None,
                     "problems": problems, "state": state}
         tasks = json.loads(self.tasks_path.read_text(encoding="utf-8"))
@@ -198,8 +244,12 @@ class Verify:
         lint = {"summary": severity_counts(findings), "findings": [asdict(f) for f in findings]}
         routed = None
         if self.tasks_path.is_file():
-            tasks = load_tasks(self.tasks_path, target_names(ws.registry.modules))
-            routed = routing(ws, tasks, 3, ws.config["init"]["routing_min_hit_rate"])
+            targets = target_names(ws.registry.modules)
+            try:
+                tasks = load_tasks(self.tasks_path, targets, self.flow.rel(self.tasks_path))
+            except UsageError as e:  # a hand-written file: say how to get a good one
+                raise UsageError(f"{e} — fix it, or modsys init eval-tasks --force") from None
+            routed = routing(ws, tasks, 3, ws.config["init"]["routing_min_hit_rate"], targets)
         found = invented(ws, ws.overlay)
         clean = not (lint["summary"]["error"] or lint["summary"]["warning"])
         doc = {"lint": lint, "invented": found, "routing": routed,

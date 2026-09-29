@@ -146,6 +146,18 @@ class CollisionsTest(ReconcileRepo):  # P5B-AC-013 (SI-10)
         self.assertIn("zeta", self.registry()["modules"]["cart"]["keywords"])
         self.assertNotIn("negative_keywords", self.registry()["modules"]["cart"])
 
+    def test_a_keyword_in_a_path(self):  # PR-13 (M-4): path or text, each file once
+        self.keywords("catalog", ["catalog", "book", "isbn", "author", "title", "zeta"])
+        self.keywords("cart", ["cart", "basket", "line", "total", "quantity", "zeta"])
+        for i in range(3):  # the word only in the file's path (never in its text)
+            path = self.root / f"packages/catalog/src/zeta-{i}.ts"
+            path.write_text(f"export const v{i} = 1;\n")
+        (self.root / "packages/catalog/src/zeta.png").write_bytes(b"\x89PNG\0\0binary")
+        (self.root / "packages/catalog/src/zeta-text.ts").write_text("// zeta\n")  # both: once
+        self.plant("packages/cart/src", 4, "zeta")
+        row = self.collision("zeta")
+        self.assertEqual((row["owner"], row["files"]), ("catalog", {"cart": 4, "catalog": 5}))
+
     def test_the_fixture_collision(self):
         self.reconcile()
         self.assertEqual(self.report()["collisions"], [
@@ -261,6 +273,12 @@ class ExistingModuleTest(unittest.TestCase):  # P5B-AC-051 (reconcile keeps it a
             report = json.loads((root / WORK / "reconcile.json").read_text())
             self.assertFalse([c for c in report["collisions"] if "catalog" in c["others"]])
             self.assertFalse((root / WORK / "staging/catalog").exists())
+            # a duplicate name spans it too (Task 7 review I2): a report row, nothing changed
+            self.assertEqual(report["duplicates"], [{"name": "formatPrice", "definitions": [
+                {"module": "catalog", "file": "packages/catalog/src/books.ts", "line": 14},
+                {"module": "ui-kit", "file": "packages/ui-kit/src/index.tsx", "line": 7}]}])
+            self.assertEqual([j["kind"] for j in report["judgement"]], ["duplicate"])
+            self.assertFalse([e for e in report["edges"] if "catalog" == e["from"]])
 
 
 if __name__ == "__main__":

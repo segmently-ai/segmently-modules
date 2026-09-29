@@ -22,6 +22,9 @@ Switches (anything else on the command line is ignored, so a test can pass odd a
   --keywords4 MODULE  for MODULE: an entry.json with 4 keywords
   --nothing MODULE    for MODULE: write nothing, exit 0
   --outside PATH      also write PATH (root-relative) — a write outside the staging dir
+  --git-mv PATH       also `git mv PATH <staging>/moved` (staged: a rename INTO the staging
+                      dir), when PATH is still there
+  --ignore-term X     ignore SIGTERM (a writer that does not stop when asked)
   --peers K --live D  create D/<module>, then wait (up to 10 s) until D holds K files
   --sleep S           sleep S seconds before writing
   --pids D            write D/<pid> at the start
@@ -32,6 +35,7 @@ import hashlib
 import json
 import os
 import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -103,7 +107,7 @@ def switches(argv: list[str]) -> dict:
     """The known `--name value` switches of argv; everything else is ignored."""
     out, known = {}, {"--record", "--stop-after", "--stop-group", "--fail", "--lines",
                       "--keywords4", "--nothing", "--outside", "--peers", "--live", "--sleep",
-                      "--pids", "--tasks-mode"}
+                      "--pids", "--tasks-mode", "--git-mv", "--ignore-term"}
     for i, arg in enumerate(argv):
         if arg in known and i + 1 < len(argv):
             out[arg[2:]] = argv[i + 1]
@@ -169,6 +173,8 @@ def write_tasks(path: Path, mode: str | None) -> int:
 
 def main() -> int:
     opts = switches(sys.argv[1:])
+    if "ignore-term" in opts:
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
     stdin = sys.stdin.buffer.read()  # the prompt: this fake writes from the work item alone
     if "MODSYS_INIT_TASKS" in os.environ:
         record(opts, "tasks", stdin)
@@ -215,6 +221,9 @@ def main() -> int:
             target = Path.cwd() / opts["outside"]
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text("# written by the executor\n", encoding="utf-8")
+        if "git-mv" in opts and (Path.cwd() / opts["git-mv"]).exists():
+            subprocess.run(["git", "mv", opts["git-mv"], str(staging / "moved")],
+                           capture_output=True)
         return 0
     finally:
         record(opts, "end", stdin)

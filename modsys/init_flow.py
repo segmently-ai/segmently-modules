@@ -5,7 +5,9 @@ The work directory is `<config_dir>/init/` (git-ignored by `modsys init`):
                   map, gate-map, fanout, reconcile, eval-tasks, verify, finish: {status:
                   pending|running|done, started_at, finished_at, sha256}}, modules: {<module>:
                   {status: pending|running|done|failed, attempts, error, existing?}}} — `phase` =
-                  the phase most recently started; `sha256` = the phase's output as written
+                  the phase most recently started, or "finished" once `init finish` is done;
+                  optional keys once used: `forced`, `pr`, `open_pr` (`modsys.init_finish`);
+                  `sha256` = the phase's output as written
                   (map's is how an edited proposal is recognised). A state that lacks phases at
                   the end of `PHASES` (written by an engine that had fewer: P5a wrote three)
                   reads them as pending; unknown phase and state keys are ignored
@@ -16,7 +18,7 @@ The work directory is `<config_dir>/init/` (git-ignored by `modsys init`):
                   fan-out has started: `init map --restart` changes the module set)
   work/, staging/ phase 4 (`modsys.init_work`); staging/registry.json and reconcile.json:
                   phase 5 (`modsys.init_reconcile`); routing-tasks.json, verify.json: phase 6
-                  (`modsys.init_verify`)
+                  (`modsys.init_verify`; a refused tasks file: routing-tasks.rejected.json)
 Every write is a temp file + an atomic rename, so an interrupted phase leaves no partial output:
 a phase whose status is not `done` re-runs from its start (`init resume`, or `init map` again).
 `map` and `confirm` never prompt."""
@@ -62,7 +64,8 @@ def pending() -> dict:
 def state_problem(state: dict) -> str | None:
     """Why `state` is not a valid init state, else None: `phases` must hold a leading run of
     `PHASES` (a later phase without an earlier one is invalid), each entry with the four keys
-    and a status of `STATUSES`; `phase` is null or a phase name."""
+    and a status of `STATUSES`; `phase` is null or a string — the phase most recently started,
+    or "finished" (written by `init finish`, with the `finish` phase done)."""
     phases = state.get("phases")
     if not isinstance(phases, dict):
         return "phases"
@@ -238,7 +241,9 @@ class InitFlow:
             pr = f" ({state['pr']})" if state.get("pr") else ""
             return f"init is finished{pr} — review, then commit (init never commits)"
         if phases["finish"]["status"] == "running":
-            return "init finish was interrupted (nothing kept): modsys init finish"
+            return ("init finish was interrupted: run modsys init finish again (a failed or "
+                    "interrupted finish puts back every file it wrote; after a kill, move away "
+                    "what it left — its refusal names each file)")
         for phase in ("preflight", "map"):
             if phases[phase]["status"] == "running":
                 return (f"phase {phase} was interrupted: modsys init resume re-runs it from its "
@@ -267,6 +272,10 @@ class InitFlow:
         if phases["reconcile"]["status"] != "done":
             return ("every module is done: modsys init reconcile builds the staging registry "
                     "(edges, keyword collisions, duplicates)")
+        if phases["eval-tasks"]["status"] == "running":
+            return (f"the routing tasks were refused or interrupted (the file, if any: "
+                    f"{work_rel}/routing-tasks.rejected.json): modsys init eval-tasks --executor "
+                    f"\"<command>\" writes them again")
         if phases["verify"]["status"] != "done":
             if not (self.work / "routing-tasks.json").is_file():
                 return (f"routing tasks: modsys init eval-tasks --executor \"<command>\", or "
@@ -319,6 +328,12 @@ class InitFlow:
         registry = self.root / self.config["paths"]["registry"]
         if registry.is_file():
             count = len(load_registry(registry).modules)
+            if count and self.state_path.is_file():  # created by hand while init was running
+                raise UsageError(f"{self.rel(registry)} already has {count} module(s), created "
+                                 f"by hand during init — init map (and --restart) starts only "
+                                 f"from code without modules: continue with modsys init resume "
+                                 f"(a module in the registry is kept as it is), or take them "
+                                 f"out of the registry and the modules dir, then run {RESTART}")
             if count:
                 raise UsageError(f"{self.rel(registry)} already has {count} module(s) — init map "
                                  f"starts from code without modules. To make the engine read "

@@ -12,17 +12,19 @@ from the writers' `entry.json` files, and what the writers could not see from on
 Edges: the proposal's import edges between confirmed modules become `depends-on` edges ("imports
 from <m> (<n> import(s), init reconcile)"), one per direction; a writer's own edge to the same
 module (any relation) wins. Collisions: a keyword (any case) that two new modules or more hold
-belongs to the module with the most files (under its confirmed paths) that mention it as a whole
-word; the others move it from `keywords` to `negative_keywords` — unless that leaves one below
-`[create] min_keywords` (a `keyword-floor` judgement item) or the most files are a tie (a
-`keyword-tie` item: nothing moves). Duplicates: a name defined in two modules or more — Python
-top-level `def` / `class`, JS/TS `export function|class|const|interface|type` — never a name
-starting with `_`, a re-export, `export default` or a test file (`test_*.py`, `*_test.py`,
-`*.test.*`, `*.spec.*`, anything under a `tests/` directory): reported with file:line, never
-changed. A module already in the registry is never changed and never moves a keyword. The
-script runs no agent and no command but git (the file set); `judgement` holds what a person or
-the `module-init` skill decides. A staging registry edited since the last reconcile is kept:
-`--force` rebuilds it from the `entry.json` files."""
+belongs to the module with the most files (under its confirmed paths) whose path or text holds
+it as a whole word (a file counts once); the others move it from `keywords` to
+`negative_keywords` — unless that leaves one below `[create] min_keywords` (a `keyword-floor`
+judgement item) or the most files are a tie (a `keyword-tie` item: nothing moves). Duplicates:
+a name defined in two confirmed modules or more — a module already in the registry included —
+Python top-level `def` / `class`, JS/TS `export function|class|const|interface|type` — never a
+name starting with `_`, a re-export, `export default` or a test file (`test_*.py`,
+`*_test.py`, `*.test.*`, `*.spec.*`, anything under a `tests/` directory): reported with
+file:line, never changed. A module already in the registry is never changed, gets no edge and
+never moves a keyword. The script runs no agent and no command but git (the file set);
+`judgement` holds what a person or the `module-init` skill decides. A staging registry edited
+since the last reconcile is kept: `--force` rebuilds it from the `entry.json` files. Refused
+once `init finish` is done."""
 import json
 import re
 from pathlib import PurePosixPath
@@ -122,8 +124,8 @@ class Reconcile:
         for kw in sorted(k for k, mods in holders.items() if len(mods) > 1):
             mods = sorted(holders[kw])
             rx = term_pattern(kw)
-            counts = {m: sum(1 for f in files[m] if (t := self.text(f)) is not None
-                             and rx.search(t.lower())) for m in mods}
+            counts = {m: sum(1 for f in files[m] if rx.search(f.lower()) or (
+                (t := self.text(f)) is not None and rx.search(t.lower()))) for m in mods}
             top = max(counts.values())
             owners = [m for m in mods if counts[m] == top]
             if len(owners) > 1:
@@ -175,6 +177,8 @@ class Reconcile:
     def run(self, force: bool) -> dict:
         flow = self.flow
         state = self.work.require_fanout(flow.load_state())
+        if state["phases"]["finish"]["status"] == "done":
+            raise UsageError("already finished — see modsys init status")
         waiting = {m: e["status"] for m, e in sorted(state["modules"].items())
                    if e["status"] != "done"}
         if waiting:
@@ -196,10 +200,11 @@ class Reconcile:
                 "modsys init done <module> and modsys init reconcile")
         new = {m: self.entry(m, self.work.item(m)) for m in sorted(state["modules"])
                if m not in existing}
-        files = self.module_files({m: confirmed[m] for m in new}, flow.files())
+        files = self.module_files({m: confirmed[m] for m in sorted(state["modules"])
+                                   if m in confirmed}, flow.files())
         edges = self.edges(new, confirmed)
-        collisions, judgement = self.collisions(new, files)
-        duplicates = self.duplicates(files)
+        collisions, judgement = self.collisions(new, {m: files[m] for m in new})
+        duplicates = self.duplicates(files)  # a module created by hand included: a row only
         judgement += [{"kind": "duplicate", "name": d["name"], "definitions": d["definitions"]}
                       for d in duplicates]
         judgement.sort(key=lambda j: (j["kind"], j.get("keyword") or j.get("name"),

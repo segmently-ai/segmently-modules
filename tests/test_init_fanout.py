@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from modsys.create import engine_templates
 from tests.helpers import git, run_json
@@ -168,6 +169,40 @@ class ExistingModulesTest(FanoutRepo):  # P5B-AC-051 (D15(d), SI-30)
         ok(root, "init", "fanout")
         self.assertNotIn("legacy", state(root)["modules"])
         self.assertFalse((root / WORK / "work/legacy.json").exists())
+
+    def test_starting_over_is_refused_with_modules_created_by_hand(self):  # M-14
+        root = shop(self.base)
+        self.create_catalog(root)
+        ok(root, "init", "fanout")
+        before = (root / WORK / "state.json").read_bytes()
+        for flags in (("--restart",), ()):
+            with self.subTest(flags=flags):
+                code, env, err = run_json("init", "map", *flags, "--root", str(root))
+                self.assertEqual((code, env), (2, None))
+                self.assertIn("modules/registry.json already has 1 module(s), created by hand "
+                              "during init — init map (and --restart) starts only from code "
+                              "without modules: continue with modsys init resume", err)
+        self.assertEqual((root / WORK / "state.json").read_bytes(), before)
+
+
+class StaleItemTest(FanoutRepo):  # Task 4 review M2: a failed removal is a named write failure
+    def test_a_stale_work_item_that_cannot_be_removed(self):
+        root = shop(self.base)
+        ok(root, "init", "fanout")
+        (root / WORK / "work/zz-gone.json").write_text("{}")
+        real = Path.unlink
+
+        def unlink(path, *args, **kwargs):
+            if path.name == "zz-gone.json":
+                raise PermissionError(13, "Permission denied")
+            return real(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "unlink", autospec=True, side_effect=unlink):
+            code, env, err = run_json("init", "fanout", "--root", str(root))
+        self.assertEqual((code, env), (2, None))
+        self.assertIn(f"modsys: error: cannot write {WORK}/work/zz-gone.json: Permission denied",
+                      err)
+        self.assertNotIn("internal error", err)
 
 
 if __name__ == "__main__":

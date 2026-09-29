@@ -196,11 +196,11 @@ class InvalidTransitionsTest(InitRepo):  # P5A-AC-026
             (self.work / rel).write_bytes(good)
 
     def test_flags_and_actions(self):
-        for action in ("status", "confirm", "resume"):
+        for action in ("status", "confirm", "resume", "fanout"):
             with self.subTest(action=action):
                 self.assertIn("--restart works with map only",
                               self.refused(action, "--restart"))
-        for action in ("status", "resume"):
+        for action in ("status", "resume", "fanout"):
             with self.subTest(dry_run=action):
                 self.assertIn("--dry-run", self.refused(action, "--dry-run"))
         err = self.refused("bogus")
