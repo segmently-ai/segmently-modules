@@ -24,7 +24,9 @@ the first holding one backticked identifier names a symbol that occurs, as a who
 in the file of the row's path cell (a table without both columns is not checked); fenced code
 blocks and HTML comments are skipped. `staging_sha256` pins what was verified (every file's
 path and bytes, every symlink's path and target text): `init finish` refuses a staging tree
-that changed. After `init finish` both actions are refused."""
+that changed. Verify is refused while the last `init eval-tasks` run was refused (the phase
+`running`; `--force` measures a tasks file written by hand anyway) and for a symlinked
+staging dir of a new module. After `init finish` both actions are refused."""
 import hashlib
 import json
 import os
@@ -42,6 +44,8 @@ from modsys.output import UsageError
 from modsys.store import serialize
 
 REJECTED = "routing-tasks.rejected.json"
+REFUSED_TASKS = ("the routing tasks were refused — run modsys init eval-tasks (or write the file "
+                 "and use --force)")  # `init verify` and `init finish` while eval-tasks is running
 _BACKTICK = re.compile(r"`([^`\n]+)`")
 _FENCE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
 _SYMBOL = re.compile(r"`([A-Za-z_$][\w$]*)`")
@@ -237,8 +241,16 @@ class Verify:
         out += [f"no task for module '{m}'" for m in sorted(modules - named)]
         return out
 
-    def run(self) -> dict:
+    def run(self, force: bool = False) -> dict:
+        """Verify the staging tree; refused while the last `init eval-tasks` run was refused
+        (`force`: measure a tasks file written by hand anyway) and for a symlinked staging
+        dir."""
         state = self.require_reconcile()
+        if state["phases"]["eval-tasks"]["status"] == "running" and not force:
+            raise UsageError(REFUSED_TASKS)
+        linked = self.work.linked_staging(state)
+        if linked:
+            raise UsageError("; ".join(linked) + " — nothing verified")
         ws = self.overlay(state)
         findings = lint_registry(ws)
         lint = {"summary": severity_counts(findings), "findings": [asdict(f) for f in findings]}

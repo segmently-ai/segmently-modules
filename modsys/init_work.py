@@ -266,14 +266,28 @@ class Work:
             self.flow.save_state(state)
         return self.item(module), counts(state)
 
+    def linked(self, module: str) -> str | None:
+        """The problem of a symlinked staging dir (its target is never read), else None —
+        `init done`, `init verify` and `init finish` refuse one."""
+        base = self.staging_dir(module)
+        if base.is_symlink():
+            return (f"the staging dir {self.flow.rel(base)} is a symlink (write the files into "
+                    f"a real directory)")
+        return None
+
+    def linked_staging(self, state: dict) -> list[str]:
+        """`linked` of every module init writes (a module created by hand has no staging)."""
+        return [p for m, e in sorted(state["modules"].items())
+                if not e.get("existing") and (p := self.linked(m))]
+
     def problems(self, module: str) -> list[str]:
         """What keeps a module's staging output from `done` (SI-8), one line each; a
         symlinked staging dir is one problem (its target is never read)."""
         item = self.item(module)
         base = self.staging_dir(module)
-        if base.is_symlink():
-            return [f"the staging dir {self.flow.rel(base)} is a symlink (write the files into "
-                    f"a real directory)"]
+        linked = self.linked(module)
+        if linked:
+            return [linked]
         expected = ["MODULE.md", *(f"roles/{r}.md" for r in item["roles"]), "entry.json"]
         found = sorted(p.relative_to(base).as_posix() for p in base.rglob("*")
                        if p.is_file() or p.is_symlink()) if base.is_dir() else []

@@ -324,10 +324,20 @@ class InitFlow:
 
     # --- actions ------------------------------------------------------------------------
 
+    def finished(self) -> bool:
+        """The state on disk says `init finish` is done (a state that cannot be read: no)."""
+        try:
+            state = json.loads(self.state_path.read_bytes().decode("utf-8"))
+            return state["phases"]["finish"]["status"] == "done"
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
+
     def refuse_modules(self) -> None:
         registry = self.root / self.config["paths"]["registry"]
         if registry.is_file():
             count = len(load_registry(registry).modules)
+            if count and self.finished():  # init wrote them
+                raise UsageError("init is finished — see modsys init status")
             if count and self.state_path.is_file():  # created by hand while init was running
                 raise UsageError(f"{self.rel(registry)} already has {count} module(s), created "
                                  f"by hand during init — init map (and --restart) starts only "

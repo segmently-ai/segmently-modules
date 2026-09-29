@@ -12,14 +12,16 @@ line. A module already in the registry is never moved or rewritten.
 
 The state is saved as finished only as the last step of the writes (the commit point): a failure
 or Ctrl-C before it puts every file back — its saved bytes at its real path, so a symlinked
-`CLAUDE.md` stays a symlink; each file is tried even when another one fails.
+`CLAUDE.md` stays a symlink; each file is tried even when another one fails, and one that could
+not be put back is named. Once the state on disk says finished, nothing is put back.
 
-Refusals (exit 2, nothing written): already finished; reconcile never ran; verify not passed or
-the staging tree changed since it (both overridden by `--force`, recorded in the state); a module
-directory or registry entry that appeared since, a registry changed since reconcile (or a
-staging registry that changes a module already in the registry: finish never rewrites one), a
-`[[code_map]]` id already taken (never overridden); an instruction file the agents' block cannot
-go into (its markers, not UTF-8, unreadable) — all checked before the first write.
+Refusals (exit 2, nothing written): already finished; reconcile never ran; the last `init
+eval-tasks` run refused, verify not passed or the staging tree changed since it (overridden by
+`--force`, recorded in the state); a symlinked staging dir, a module directory or registry entry
+that appeared since, a registry changed since reconcile (or a staging registry that changes a
+module already in the registry: finish never rewrites one), a `[[code_map]]` id already taken
+(never overridden); an instruction file the agents' block cannot go into (its markers, not
+UTF-8, unreadable) — all checked before the first write. The staging registry is read once.
 
 `--open-pr [--base B] [--branch modsys/init]`: needs `gh` on PATH, a git remote `origin` and a
 tree with no change outside what the commit takes (the files above plus the starter files `init`
@@ -27,15 +29,19 @@ created); creates the branch from the current commit, commits every written file
 (subject = the pull request's title, `docs: module docs for <n> module(s) (modsys init)`, n =
 the new modules), pushes it and runs `gh pr create` with the verify summary, the routing table
 and the judgement items as the body. Each step is recorded in `open_pr` (`branch_created`,
-`committed`, `pushed`): a failed commit (a hook, the git identity, signing), push or `gh` records
-`pr: "pending"` and exits 1; `init resume --open-pr` retries only what is left — back on the
-branch, never a second branch, commit or push."""
+`committed`, `pushed`; `start` = the commit the branch starts from): a failed commit (a hook,
+the git identity, signing), push or `gh` records `pr: "pending"` and exits 1; `init resume
+--open-pr` retries only what is left — back on the branch, never a second branch, commit or
+push. A step done but not recorded (a kill) is recognised: a commit on the branch with the
+title and nothing of its paths left to commit, a pull request `gh` says already exists."""
 import contextlib
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -46,13 +52,17 @@ from modsys.config import load_config
 from modsys.fields import load_field_defs
 from modsys.init_overlay import code_map_rules, staged_registry
 from modsys.init_run import changed_paths
-from modsys.init_verify import tree_sha
+from modsys.init_verify import REFUSED_TASKS, tree_sha
 from modsys.layout import build_index
 from modsys.output import UsageError
-from modsys.store import atomic_write, open_store, serialize, utc_now
+from modsys.store import atomic_write, open_store, serialize, sha256_bytes, utc_now
 from modsys.workspace import Workspace
 
 INSTRUCTION_FILES = ("CLAUDE.md", "AGENTS.md")
+REFUSALS = {  # a forced finish's reasons, the refusal of each without --force
+    "routing tasks refused": REFUSED_TASKS,
+    "verify not passed": "verify has not passed — run modsys init verify",
+    "staging changed since verify": "staging changed since verify — run modsys init verify"}
 
 
 def run_git(root: Path, *args: str) -> subprocess.CompletedProcess:
@@ -102,8 +112,9 @@ class Finish:
 
     # --- checks ---------------------------------------------------------------------------
 
-    def check(self, state: dict | None, force: bool) -> tuple[dict, dict, list[str]]:
-        """(state, the staging registry, the reasons a forced finish overrides)."""
+    def check(self, state: dict | None, force: bool) -> tuple[dict, dict, bytes, list[str]]:
+        """(state, the staging registry, its bytes as read — the only read —, the reasons a
+        forced finish overrides)."""
         if state is None:
             raise UsageError("no init state — run modsys init map")
         if state["phases"]["finish"]["status"] == "done":
@@ -112,7 +123,12 @@ class Finish:
                 not (self.work.staging / "registry.json").is_file():
             raise UsageError("reconcile has not run — run modsys init reconcile, then modsys init "
                              "verify")
+        linked = self.work.linked_staging(state)
+        if linked:  # never copied through a link (verify hashed the link text only)
+            raise UsageError("; ".join(linked) + " — nothing written")
         forced = []
+        if state["phases"]["eval-tasks"]["status"] == "running":
+            forced.append("routing tasks refused")
         verify = None
         with contextlib.suppress(OSError, ValueError):
             verify = json.loads((self.flow.work / "verify.json").read_text(encoding="utf-8"))
@@ -122,10 +138,9 @@ class Finish:
         elif verify.get("staging_sha256") != tree_sha(self.work.staging):
             forced.append("staging changed since verify")
         if forced and not force:
-            raise UsageError("verify has not passed — run modsys init verify"
-                             if forced[0] == "verify not passed" else
-                             "staging changed since verify — run modsys init verify")
-        return state, staged_registry(self.flow, self.work)[0], forced
+            raise UsageError(REFUSALS[forced[0]])
+        staged, data = staged_registry(self.flow, self.work)
+        return state, staged, data, forced
 
     @staticmethod
     def new_modules(state: dict) -> list[str]:
@@ -137,8 +152,9 @@ class Finish:
         return {".gitignore", self.flow.rel(self.flow.config_dir / "config.toml"),
                 ws.config["paths"]["registry"]}
 
-    def conflicts(self, ws, staged: dict, state: dict) -> list[str]:
-        """Everything `finish` would overwrite: it never does."""
+    def conflicts(self, ws, staged: dict, data: bytes, state: dict) -> list[str]:
+        """Everything `finish` would overwrite: it never does (`data`: the staging registry's
+        bytes `staged` was parsed from)."""
         mdir = ws.config["paths"]["modules_dir"]
         real = self.work.registry_modules()
         new = self.new_modules(state)
@@ -148,9 +164,7 @@ class Finish:
         changed = sorted(m for m in set(kept) | set(real)
                          if m not in new and serialize(kept.get(m, {})) != serialize(
                              real.get(m, {})))
-        staging = self.work.staging / "registry.json"
-        edited = self.flow.sha(staging.read_text(encoding="utf-8")) != \
-            state["phases"]["reconcile"]["sha256"]
+        edited = sha256_bytes(data) != state["phases"]["reconcile"]["sha256"]
         mine = [m for m in changed if edited and m in kept and m in real]  # the staging edit
         theirs = [m for m in changed if m not in mine]  # the registry changed since reconcile
         if theirs:
@@ -163,10 +177,9 @@ class Finish:
                        f"reconcile --force")
         if (self.flow.config_dir / "config.toml").is_file():
             for rule in code_map_rules(self.work, state):
-                owner = _defined_in(ws, rule["id"])
+                owner = _defined_in(ws, rule["id"])  # root-relative
                 if owner:
-                    shown = ws.rel(owner) if os.path.isabs(owner) else owner
-                    out.append(f"[[code_map]] '{rule['id']}' is already defined in {shown}")
+                    out.append(f"[[code_map]] '{rule['id']}' is already defined in {owner}")
         return out
 
     def targets(self, ws, agents_md_args: list[str]) -> list[str]:
@@ -241,31 +254,50 @@ class Finish:
                 state["forced"] = {"at": utc_now(), "reason": "; ".join(forced)}
             if pr is not None:
                 state["pr"] = "pending"
-                state["open_pr"] = {"branch": pr["branch"], "base": pr["base"], "paths": add,
+                state["open_pr"] = {"branch": pr["branch"], "base": pr["base"],
+                                    "start": pr.get("start"), "paths": add,
                                     "committed": False, "pushed": False,
                                     "title": pr_title(len(new))}
                 self.flow.write(self.flow.work / "pr-body.md", self.pr_body(state, forced))
             self.flow.save_state(state)  # the commit point: from here on, finish is done
-        except BaseException:
-            self.rollback(saved, created, paths)
+        except BaseException as e:
+            if self.flow.finished():  # stopped after the state was saved: the writes stand
+                raise
+            failed = self.rollback(saved, created, paths)
+            if failed:
+                note = f"could not put back: {', '.join(failed)} (restore them by hand)"
+                if isinstance(e, UsageError):
+                    raise UsageError(f"{e} — {note}") from None
+                print(f"modsys: init finish {note}", file=sys.stderr)
             raise
         return {"moved": moved, "agents_md": [{"path": r["path"], "status": r["status"]}
                                               for r in rows], "code_map": ids, "git_add": add}
 
-    def rollback(self, saved: dict, created: list, paths: dict) -> None:
+    def rollback(self, saved: dict, created: list, paths: dict) -> list[str]:
         """Put back every file `apply` touched; each step is tried even when one fails (the
-        caller re-raises the error that stopped `apply`)."""
+        caller re-raises the error that stopped `apply`). What could not be put back,
+        root-relative."""
+        failed = []
         for path, data in saved.items():
-            with contextlib.suppress(Exception):
+            try:
                 restore(path, data)
+            except Exception:
+                failed.append(self.flow.rel(path))
         for path in created:
-            with contextlib.suppress(Exception):
+            try:
                 path.unlink(missing_ok=True)
+            except Exception:
+                failed.append(self.flow.rel(path))
         stop = self.root / paths["modules_dir"]
         for d in sorted({d for p in created for d in p.parents if stop in d.parents},
                         key=lambda d: -len(d.parts)):
-            with contextlib.suppress(Exception):
+            try:
                 d.rmdir()
+            except FileNotFoundError:
+                pass
+            except Exception:
+                failed.append(self.flow.rel(d) + "/")
+        return sorted(set(failed))
 
     def git_add(self, ws, written: list[str]) -> list[str]:
         """What the commit takes: every file finish wrote, and the starter files `init` created
@@ -368,6 +400,22 @@ class Finish:
             self.flow.save_state(state)
         return None
 
+    def commit_made(self, pr: dict) -> bool:
+        """The commit a kill kept from being recorded: HEAD carries the pull request's title, is
+        ahead of the commit the branch started from (a state without `start`: the base), and
+        none of the paths it takes is staged or changed any more."""
+        subject = run_git(self.root, "log", "-1", "--format=%s", "HEAD")
+        if subject.returncode != 0 or subject.stdout.rstrip("\n") != pr["title"]:
+            return False
+        ahead = run_git(self.root, "rev-list", "--count",
+                        f"{pr.get('start') or pr['base']}..HEAD")
+        if ahead.returncode != 0 or not ahead.stdout.strip().isdigit() \
+                or int(ahead.stdout) < 1:
+            return False
+        left = run_git(self.root, "--literal-pathspecs", "status", "--porcelain=v1", "-z",
+                       "--untracked-files=all", "--", *pr["paths"])
+        return left.returncode == 0 and not left.stdout
+
     def publish(self, state: dict) -> tuple[str, str | None]:
         """The steps of the pull request not done yet (the branch, add + commit, push, `gh pr
         create`); (pr, the error that left it pending)."""
@@ -377,18 +425,19 @@ class Finish:
             error = self.on_branch(state)
             if error:
                 return "pending", error
-            proc = run_git(self.root, "add", "--", *pr["paths"])
-            if proc.returncode != 0:
-                return "pending", (f"git add failed on branch {pr['branch']}: "
-                                   f"{proc.stderr.strip()[:300]} (the retry picks up from the "
-                                   f"branch)")
-            proc = run_git(self.root, "commit", "-q", "-m", pr["title"])
-            if proc.returncode != 0:
-                why = (proc.stderr.strip() or proc.stdout.strip())[:300]
-                return "pending", (f"git commit failed on branch {pr['branch']}: {why} (a "
-                                   f"hook, the git identity or commit signing refused it; the "
-                                   f"files stay on the branch: fix that, and the retry picks "
-                                   f"up from the branch)")
+            if not self.commit_made(pr):
+                proc = run_git(self.root, "add", "--", *pr["paths"])
+                if proc.returncode != 0:
+                    return "pending", (f"git add failed on branch {pr['branch']}: "
+                                       f"{proc.stderr.strip()[:300]} (the retry picks up from "
+                                       f"the branch)")
+                proc = run_git(self.root, "commit", "-q", "-m", pr["title"])
+                if proc.returncode != 0:
+                    why = (proc.stderr.strip() or proc.stdout.strip())[:300]
+                    return "pending", (f"git commit failed on branch {pr['branch']}: {why} (a "
+                                       f"hook, the git identity or commit signing refused it; "
+                                       f"the files stay on the branch: fix that, and the retry "
+                                       f"picks up from the branch)")
             pr["committed"] = True
             self.flow.save_state(state)
         if not pr["pushed"]:
@@ -403,9 +452,16 @@ class Finish:
                                   cwd=self.root, capture_output=True, text=True, errors="replace")
         except OSError as e:
             return "pending", f"gh cannot run: {e.strerror or e}"
-        if proc.returncode != 0:
-            return "pending", f"gh pr create failed: {(proc.stderr or proc.stdout).strip()[:300]}"
-        url = next((l.strip() for l in reversed(proc.stdout.splitlines()) if l.strip()), "created")
+        if proc.returncode == 0:
+            url = next((l.strip() for l in reversed(proc.stdout.splitlines()) if l.strip()),
+                       "created")
+        else:  # created before but not recorded (a kill): gh names that pull request
+            said = f"{proc.stderr}\n{proc.stdout}"
+            urls = re.findall(r"https?://\S+", said) if "already exists" in said else []
+            if not urls:
+                return "pending", (f"gh pr create failed: "
+                                   f"{(proc.stderr or proc.stdout).strip()[:300]}")
+            url = urls[-1]
         state["pr"] = url
         self.flow.save_state(state)
         return url, None
@@ -414,9 +470,9 @@ class Finish:
 
     def run(self, force: bool, agents_md_args: list[str], open_pr: bool, base: str | None,
             branch: str) -> dict:
-        state, staged, forced = self.check(self.flow.load_state(), force)
+        state, staged, data, forced = self.check(self.flow.load_state(), force)
         ws = self.workspace()
-        problems = self.conflicts(ws, staged, state)
+        problems = self.conflicts(ws, staged, data, state)
         if problems:
             raise UsageError("init finish would overwrite: " + "; ".join(problems) +
                              " — nothing written")
@@ -426,6 +482,8 @@ class Finish:
         pr = None
         if open_pr:  # the starter files init created may still be uncommitted: the PR takes them
             pr = {"branch": branch, "base": self.pr_checks(base, branch, self.starters(ws))}
+            head = run_git(self.root, "rev-parse", "--verify", "--quiet", "HEAD")
+            pr["start"] = head.stdout.strip() if head.returncode == 0 else None
         self.flow.mark(state, "finish", "running")
         result = self.apply(state, staged, targets, forced, pr)
         error = None

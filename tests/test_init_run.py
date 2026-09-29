@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from tests.helpers import run
+from tests.helpers import git, run
 from tests.init_fake_executor import write_docs
 from tests.init_helpers import FAKE, SIX, WORK, executor, ok, protected_sha, shop, state, text
 
@@ -213,6 +213,17 @@ class StagingOnlyTest(RunRepo):  # P5B-AC-011 (phase 4; the later phases: test_i
         self.assertIn("modsys: wrote outside the staging dir: packages/catalog/src/books.ts",
                       err.splitlines())
         self.assertEqual(data["outside"], ["packages/catalog/src/books.ts"])
+
+    def test_a_work_tree_rename(self):  # N-3: a rename in either column takes its source
+        from modsys.init_run import changed_paths
+        src = self.root / "packages/catalog/src"
+        (src / "books.ts").rename(src / "tomes.ts")
+        git(self.root, "add", "-N", "packages/catalog/src/tomes.ts")  # a rename in column Y
+        got = changed_paths(self.root)
+        self.assertEqual({p for _, p in got if "catalog" in p},
+                         {"packages/catalog/src/tomes.ts", "packages/catalog/src/books.ts"})
+        self.assertTrue(all(code[0] in " MADRCU?!" and code[1] in " MADRCU?!"
+                            for code, _ in got), got)
 
     def test_a_symlink_to_a_fifo_is_never_opened(self):  # M-7: lstat, the link text hashed
         from modsys.init_run import outside_snapshot

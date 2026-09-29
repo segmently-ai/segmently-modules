@@ -12,6 +12,9 @@ from unittest import mock
 from tests.helpers import run
 from tests.init_helpers import SIX, WORK, executor, ok, shop, state
 
+REFUSED = ("modsys: error: the routing tasks were refused — run modsys init eval-tasks (or "
+           "write the file and use --force)")
+
 
 class EvalTasksTest(unittest.TestCase):  # P5B-AC-020
     @classmethod
@@ -89,13 +92,32 @@ class EvalTasksTest(unittest.TestCase):  # P5B-AC-020
                 self.assertTrue(self.rejected().is_file())
                 self.assertIn("modsys init eval-tasks", data["next"])
                 self.assertIn("routing-tasks.rejected.json", data["next"])
-                verify = ok(self.root, "init", "verify")  # never stuck on the refused file
-                self.assertIsNone(verify["routing"])
-                self.assertIn("modsys init eval-tasks", verify["next"])
+                code, out, err = run("init", "verify", "--json", "--root", str(self.root))
+                self.assertEqual((code, out), (2, ""))  # never measured as if nothing happened
+                self.assertIn(REFUSED, err)
                 code, data, err = self.eval_tasks()  # no --force: it runs again
                 self.assertEqual((code, err, data["status"], data["tasks"]),
                                  (0, "", "written", 30))
                 self.assertEqual(state(self.root)["phases"]["eval-tasks"]["status"], "done")
+
+    def test_verify_and_finish_while_the_tasks_are_refused(self):  # re-review out-of-scope 1
+        self.assertEqual(self.eval_tasks()[0], 0)
+        good = self.tasks.read_bytes()
+        ok(self.root, "init", "verify")  # passed: a later refused run must not ride on it
+        self.assertEqual(self.eval_tasks("--tasks-mode", "invalid", force=True)[0], 1)
+        for argv in (("verify",), ("finish",)):
+            with self.subTest(argv=argv):
+                code, out, err = run("init", *argv, "--json", "--root", str(self.root))
+                self.assertEqual((code, out), (2, ""))
+                self.assertIn(REFUSED, err)
+        self.assertEqual(state(self.root)["phases"]["finish"]["status"], "pending")
+        self.tasks.write_bytes(good)  # a person writes the file by hand, then --force
+        verify = ok(self.root, "init", "verify", "--force")
+        self.assertEqual((verify["passed"], verify["routing"]["tasks"]), (True, 30))
+        self.assertIn(REFUSED, run("init", "finish", "--root", str(self.root))[2])
+        data = ok(self.root, "init", "finish", "--force")
+        self.assertTrue(data["forced"])
+        self.assertEqual(state(self.root)["forced"]["reason"], "routing tasks refused")
 
     def resume(self, *flags: str) -> dict:
         code, out, err = run("init", "resume", *flags, "--json", "--root", str(self.root))

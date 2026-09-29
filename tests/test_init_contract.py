@@ -144,6 +144,26 @@ class InterruptTest(ContractRepo):
         ok(self.root, "init", "finish")
         self.assertEqual(state(self.root)["phase"], "finished")
 
+    def test_ctrl_c_right_after_the_commit_point(self):  # N-7: the state says finished: kept
+        from modsys.init_flow import InitFlow
+        before = self.verified()
+        real = InitFlow.save_state
+
+        def save(flow, s):
+            real(flow, s)
+            if s["phases"]["finish"]["status"] == "done":
+                raise KeyboardInterrupt  # renamed into place, before apply() returns
+
+        with mock.patch("modsys.init_flow.InitFlow.save_state", autospec=True, side_effect=save):
+            self.assertEqual(self.call("init", "finish"), (130, "", "modsys: interrupted\n"))
+        self.assertEqual(state(self.root)["phase"], "finished")
+        self.assertNotEqual(protected_sha(self.root), before)  # the writes stand
+        self.assertTrue((self.root / "modules/cart/MODULE.md").is_file())
+        self.assertIn("modsys:begin", (self.root / "AGENTS.md").read_text())
+        self.assertTrue((self.root / "CLAUDE.md").is_symlink())
+        self.assertIn("init is finished", ok(self.root, "init", "status")["next"])
+        self.assertEqual(len(ok(self.root, "list")), 6)
+
     def test_an_unexpected_error(self):
         ok(self.root, "init", "fanout")
         with mock.patch("modsys.init_work.Work.claim", side_effect=RuntimeError("boom")), \

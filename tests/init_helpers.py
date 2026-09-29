@@ -83,17 +83,29 @@ IDENTITY = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
             "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
 
 
-def gh_shim(bin_dir: Path, log: Path, code: int = 0) -> Path:
+def gh_shim(bin_dir: Path, log: Path, code: int = 0, remember: bool = False) -> Path:
     """An executable `gh` in `bin_dir` (put it first on PATH): it appends {argv, body} to `log`
-    as a JSON line, prints a pull request URL and exits `code`."""
+    as a JSON line, prints a pull request URL and exits `code`. `remember`: like `gh`, a second
+    `pr create` for the same head branch is refused — `… already exists:` and the first one's
+    URL on stderr, exit 1 (the log line says `created: false`)."""
     bin_dir.mkdir(parents=True, exist_ok=True)
     shim = bin_dir / "gh"
+    url = "https://example.invalid/bookshop/pull/1"
+    seen = f"{str(log)!r} + '.heads'"
     shim.write_text(
-        f"#!{sys.executable}\nimport json, sys\nargs = sys.argv[1:]\nbody = None\n"
+        f"#!{sys.executable}\nimport json, os, sys\nargs = sys.argv[1:]\nbody = None\n"
         f"if '--body-file' in args:\n    body = open(args[args.index('--body-file') + 1]).read()\n"
+        f"head = args[args.index('--head') + 1] if '--head' in args else None\n"
+        f"heads = open({seen}).read().split() if os.path.exists({seen}) else []\n"
+        f"again = {remember!r} and head in heads\n"
         f"with open({str(log)!r}, 'a') as fh:\n"
-        f"    fh.write(json.dumps({{'argv': args, 'body': body}}) + '\\n')\n"
-        f"print('https://example.invalid/bookshop/pull/1')\nsys.exit({code})\n")
+        f"    fh.write(json.dumps({{'argv': args, 'body': body, 'created': not again}}) + '\\n')\n"
+        f"if again:\n"
+        f"    print(f'a pull request for branch \"{{head}}\" into branch \"main\" already exists:',"
+        f" file=sys.stderr)\n"
+        f"    print({url!r}, file=sys.stderr)\n    sys.exit(1)\n"
+        f"if {remember!r}:\n    open({seen}, 'a').write(f'{{head}}\\n')\n"
+        f"print({url!r})\nsys.exit({code})\n")
     shim.chmod(0o755)
     return shim
 

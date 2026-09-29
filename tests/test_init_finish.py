@@ -211,6 +211,7 @@ class RefusalsTest(FinishRepo):  # P5B-AC-024 (SI-16, SI-18)
         for argv in (("fanout",), ("run", "--executor", executor()), ("reconcile",)):
             ok(root, "init", *argv)
         staged = root / WORK / "staging/registry.json"
+        original = staged.read_bytes()  # as reconcile wrote it
         doc = json.loads(staged.read_text())
         doc["modules"]["catalog"]["keywords"].append("bookshelf")
         staged.write_text(json.dumps(doc, indent=2) + "\n")
@@ -220,6 +221,21 @@ class RefusalsTest(FinishRepo):  # P5B-AC-024 (SI-16, SI-18)
         self.assertIn("the staging registry changes catalog, already in the registry — finish "
                       "never rewrites a registry module: make that change in "
                       "modules/registry.json itself, then run modsys init reconcile --force", err)
+        self.assertNotIn("the registry changed since init reconcile", err)
+        # N-5: finish reads the staging registry once — the edit check hashes the bytes it
+        # parsed, even when the file changes on disk right after the parse
+        from modsys import init_finish
+        parse = init_finish.staged_registry
+
+        def then_put_back(flow, work):
+            got = parse(flow, work)
+            staged.write_bytes(original)
+            return got
+
+        with mock.patch("modsys.init_finish.staged_registry", side_effect=then_put_back):
+            code, out, err = run("init", "finish", "--root", str(root))
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("the staging registry changes catalog, already in the registry", err)
         self.assertNotIn("the registry changed since init reconcile", err)
 
     def test_a_write_failure_is_named_and_put_back(self):  # Task 10 review I1
@@ -235,6 +251,31 @@ class RefusalsTest(FinishRepo):  # P5B-AC-024 (SI-16, SI-18)
         self.assertEqual(protected_sha(self.root), before)
         self.assertEqual(state(self.root)["phases"]["finish"]["status"], "running")
         self.finish()
+
+    def test_a_file_the_rollback_cannot_put_back_is_named(self):  # re-review: never silent
+        from modsys import init_finish
+        (self.root / "CLAUDE.md").write_text("# notes\n")
+        put_back = init_finish.restore
+
+        def stuck(path, data):
+            if path.name in ("CLAUDE.md", "registry.json"):
+                raise PermissionError(13, "Permission denied")
+            return put_back(path, data)
+
+        with mock.patch("modsys.init_finish.restore", side_effect=stuck), \
+                mock.patch("modsys.init_finish.Finish.git_add",
+                           side_effect=init_finish.UsageError("boom")):
+            code, out, err = run("init", "finish", "--json", "--root", str(self.root))
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("modsys: error: boom — could not put back: CLAUDE.md, "
+                      "modules/registry.json (restore them by hand)", err)
+        self.setUp()
+        with mock.patch("modsys.init_finish.restore", side_effect=stuck), \
+                mock.patch("modsys.init_finish.Finish.git_add", side_effect=KeyboardInterrupt):
+            code, out, err = run("init", "finish", "--json", "--root", str(self.root))
+        self.assertEqual((code, out), (130, ""))
+        self.assertEqual(err, "modsys: init finish could not put back: modules/registry.json "
+                              "(restore them by hand)\nmodsys: interrupted\n")
 
     def test_before_reconcile_and_after_finish(self):
         s = state(self.root)
@@ -253,6 +294,12 @@ class RefusalsTest(FinishRepo):  # P5B-AC-024 (SI-16, SI-18)
                 code, out, err = run("init", *argv, "--json", "--root", str(self.root))
                 self.assertEqual((code, out), (2, ""))
                 self.assertIn("already finished — see modsys init status", err)
+        for flags in ((), ("--restart",)):  # N-1: init wrote those modules, not a person
+            with self.subTest(map=flags):
+                code, out, err = run("init", "map", *flags, "--json", "--root", str(self.root))
+                self.assertEqual((code, out), (2, ""))
+                self.assertIn("modsys: error: init is finished — see modsys init status", err)
+                self.assertNotIn("created by hand", err)
         self.assertEqual((self.root / WORK / "state.json").read_bytes(), state_before)
 
 

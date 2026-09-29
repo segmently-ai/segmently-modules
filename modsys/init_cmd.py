@@ -136,7 +136,7 @@ def starter_config(layout: str) -> str:
 
 ACTIONS = ("map", "confirm", "status", "resume", "fanout", "next", "done", "run", "reconcile",
            "eval-tasks", "verify", "finish")
-FORCE_ACTIONS = ("reconcile", "eval-tasks", "finish")
+FORCE_ACTIONS = ("reconcile", "eval-tasks", "verify", "finish")
 PR_ACTIONS = ("finish", "resume")
 BRANCH = "modsys/init"
 EXECUTOR_ACTIONS = ("run", "resume", "eval-tasks")
@@ -180,8 +180,10 @@ def register(sub, common) -> None:
                    help="run, resume, finish: never wait for a person")
     p.add_argument("--force", action="store_true",
                    help="reconcile: rebuild the staging registry from entry.json, discarding "
-                        "edits made to it; eval-tasks: write the tasks again; finish: even when "
-                        "verify has not passed (recorded)")
+                        "edits made to it; eval-tasks: write the tasks again; verify: measure a "
+                        "tasks file written by hand although the last eval-tasks run was "
+                        "refused; finish: even when verify has not passed or the routing tasks "
+                        "were refused (recorded)")
     p.add_argument("--agents-md", action="append", dest="agents_md", metavar="FILE",
                    help="finish: an instruction file for the managed block (repeatable; "
                         "default: CLAUDE.md and AGENTS.md when they exist)")
@@ -453,7 +455,7 @@ def run_action(args, root: Path, config_dir: Path) -> int:
                     "next": flow.next_step(flow.load_state(), work)}
             emit("init", data, args.json, _render_eval_tasks)
             return EXIT_FINDINGS if problems else EXIT_OK
-        result = check.run()
+        result = check.run(args.force)
         state = result.pop("state")
         data = {"action": "verify", "verify": f"{work}/verify.json", **result,
                 "next": flow.next_step(flow.load_state(), work)}

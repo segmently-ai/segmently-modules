@@ -280,6 +280,22 @@ class ExistingModuleTest(unittest.TestCase):  # P5B-AC-051 (reconcile keeps it a
             self.assertEqual([j["kind"] for j in report["judgement"]], ["duplicate"])
             self.assertFalse([e for e in report["edges"] if "catalog" == e["from"]])
 
+    def test_a_name_only_modules_created_by_hand_share(self):  # N-6: no row about them
+        with tempfile.TemporaryDirectory() as tmp:
+            root = shop(Path(tmp).resolve())
+            for name, what, words in (("catalog", "Book titles, authors and ISBN lookups.",
+                                       "catalog, book, isbn, author, title"),
+                                      ("ui-kit", "The shared buttons, prices and layout parts.",
+                                       "button, layout, widget, theme, component")):
+                ok(root, "create", name, "--non-interactive", "--description", what,
+                   "--keywords", words)
+            ok(root, "init", "fanout")
+            ok(root, "init", "run", "--executor", executor())
+            ok(root, "init", "reconcile")
+            report = json.loads((root / WORK / "reconcile.json").read_text())
+            self.assertEqual(report["duplicates"], [])  # formatPrice: catalog and ui-kit only
+            self.assertFalse([j for j in report["judgement"] if j["kind"] == "duplicate"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -238,6 +238,20 @@ class VerifyTest(VerifyRepo):  # P5B-AC-022 (SI-16, SI-17)
         self.assertEqual((code, out), (2, ""))
         self.assertIn("staging changed since verify", err)
 
+    def test_a_symlinked_staging_module_dir(self):  # re-review out-of-scope 2: never read
+        self.assertEqual(self.verify()[0], 0)
+        staging = self.root / WORK / "staging"
+        shutil.move(staging / "cart", self.base / "cart-elsewhere")
+        (staging / "cart").symlink_to(self.base / "cart-elsewhere")
+        before = protected_sha(self.root)
+        for argv in (("init", "verify"), ("init", "finish"), ("init", "finish", "--force")):
+            with self.subTest(argv=argv):
+                err = self.refused(*argv)
+                self.assertIn(f"the staging dir {WORK}/staging/cart is a symlink (write the "
+                              f"files into a real directory)", err)
+        self.assertEqual(protected_sha(self.root), before)
+        self.assertEqual(state(self.root)["phases"]["finish"]["status"], "pending")
+
 
 class OverlayEqualsFinalTest(VerifyRepo):  # P5B-AC-022 (verify reads what finish writes)
     def test_the_same_lint_and_routing_after_finish(self):

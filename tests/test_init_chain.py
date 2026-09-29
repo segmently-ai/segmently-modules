@@ -208,6 +208,52 @@ class PullRequestRetryTest(ChainRepo):  # P5B-AC-025 (the retries), SI-20
         self.assertIn("pr         https://example.invalid/bookshop/pull/1",
                       run("init", "status", "--root", str(root))[1].splitlines())
 
+    def killed(self, root: Path, when) -> None:
+        """`init finish --open-pr`, killed right after the step `when(state)` recognises and
+        before the state records it."""
+        from modsys.init_flow import InitFlow
+        real = InitFlow.save_state
+
+        def save(flow, s):
+            if when(s):
+                raise KeyboardInterrupt
+            return real(flow, s)
+
+        with mock.patch.dict(os.environ, self.env), \
+                mock.patch("modsys.init_flow.InitFlow.save_state", autospec=True,
+                           side_effect=save):
+            code, _, err = run_json("init", "finish", "--open-pr", "--root", str(root))
+        self.assertEqual((code, err), (130, "modsys: interrupted\n"))
+
+    def test_a_commit_made_but_not_recorded(self):  # N-2: never "nothing to commit" forever
+        root = self.verified()
+        remote = bare_remote(root, self.base / "remote.git")
+        self.killed(root, lambda s: (s.get("open_pr") or {}).get("committed") is True)
+        self.assertEqual(state(root)["open_pr"]["committed"], False)
+        self.assertEqual(git(root, "rev-list", "--count", "main..modsys/init").strip(), "1")
+        data = self.resume(root, "--open-pr", fake=None)
+        self.assertEqual((data["ran"], state(root)["pr"]),
+                         (["pr"], "https://example.invalid/bookshop/pull/1"))
+        self.assertEqual(len(self.prs()), 1)
+        self.assertEqual(git(root, "rev-list", "--count", "main..modsys/init").strip(), "1")
+        self.assertEqual(git(remote, "rev-parse", "modsys/init"), git(root, "rev-parse", "HEAD"))
+        record = state(root)["open_pr"]
+        self.assertEqual((record["committed"], record["pushed"]), (True, True))
+
+    def test_a_pr_created_but_not_recorded(self):  # N-2: gh's "already exists" is that PR
+        root = self.verified()
+        bare_remote(root, self.base / "remote.git")
+        gh_shim(self.base / "bin", self.log, remember=True)
+        self.killed(root, lambda s: str(s.get("pr")).startswith("https://"))
+        self.assertEqual(state(root)["pr"], "pending")
+        data = self.resume(root, "--open-pr", fake=None)
+        self.assertEqual((data["ran"], state(root)["pr"]),
+                         (["pr"], "https://example.invalid/bookshop/pull/1"))
+        self.assertEqual([c["created"] for c in self.prs()], [True, False])  # one PR, not two
+        self.assertEqual(git(root, "rev-list", "--count", "main..HEAD").strip(), "1")
+        data = self.resume(root, "--open-pr", fake=None)
+        self.assertEqual((data["ran"], data["message"]), ([], "init is finished"))
+
 
 class StagingOnlyChainTest(ChainRepo):  # P5B-AC-011 (every phase before gate 7)
     def test_only_finish_changes_the_protected_files(self):

@@ -16,9 +16,10 @@ belongs to the module with the most files (under its confirmed paths) whose path
 it as a whole word (a file counts once); the others move it from `keywords` to
 `negative_keywords` — unless that leaves one below `[create] min_keywords` (a `keyword-floor`
 judgement item) or the most files are a tie (a `keyword-tie` item: nothing moves). Duplicates:
-a name defined in two confirmed modules or more — a module already in the registry included —
-Python top-level `def` / `class`, JS/TS `export function|class|const|interface|type` — never a
-name starting with `_`, a re-export, `export default` or a test file (`test_*.py`,
+a name defined in two confirmed modules or more, at least one of them new (a module already in
+the registry counts as the other) — Python top-level `def` / `class`, JS/TS
+`export function|class|const|interface|type` — never a name starting with `_`, a re-export,
+`export default` or a test file (`test_*.py`,
 `*_test.py`, `*.test.*`, `*.spec.*`, anything under a `tests/` directory): reported with
 file:line, never changed. A module already in the registry is never changed, gets no edge and
 never moves a keyword. The script runs no agent and no command but git (the file set);
@@ -151,7 +152,9 @@ class Reconcile:
                          "moved": moved})
         return rows, judgement
 
-    def duplicates(self, files: dict) -> list[dict]:
+    def duplicates(self, files: dict, new: set[str]) -> list[dict]:
+        """The names defined in two modules or more, at least one of them `new` (a name only
+        modules created by hand share is theirs: init never writes them)."""
         defined: dict[str, list[dict]] = {}
         for module in sorted(files):
             for rel in files[module]:
@@ -170,7 +173,8 @@ class Reconcile:
                                                              "line": line})
         return [{"name": n, "definitions": sorted(d, key=lambda x: (x["module"], x["file"],
                                                                     x["line"]))}
-                for n, d in sorted(defined.items()) if len({x["module"] for x in d}) > 1]
+                for n, d in sorted(defined.items())
+                if len(owners := {x["module"] for x in d}) > 1 and owners & new]
 
     # --- the phase ------------------------------------------------------------------------
 
@@ -204,7 +208,7 @@ class Reconcile:
                                    if m in confirmed}, flow.files())
         edges = self.edges(new, confirmed)
         collisions, judgement = self.collisions(new, {m: files[m] for m in new})
-        duplicates = self.duplicates(files)  # a module created by hand included: a row only
+        duplicates = self.duplicates(files, set(new))  # one created by hand counts: a row only
         judgement += [{"kind": "duplicate", "name": d["name"], "definitions": d["definitions"]}
                       for d in duplicates]
         judgement.sort(key=lambda j: (j["kind"], j.get("keyword") or j.get("name"),

@@ -140,8 +140,8 @@ class RefusalTest(unittest.TestCase):  # P32-AC-011
             err = self.refused("x", "--glob", "a/**", "--module", "tasks")
         finally:
             os.chmod(self.team, 0o600)
-        self.assertIn("cannot write", err)
-        self.assertIn(str(self.team.name), err)
+        self.assertIn("cannot write .modsys/config.toml:", err)  # root-relative
+        self.assertNotIn(str(self.root), err)
         self.assertIn("nothing written", err)
 
     def test_id_defined_in_any_layer(self):
@@ -150,12 +150,14 @@ class RefusalTest(unittest.TestCase):  # P32-AC-011
         pack.write_text('id = "acme"\n[[code_map]]\nid = "pack-rule"\npattern = "p/{module}/**"\n')
         (self.root / ".modsys" / "config.user.toml").write_text(
             '[[code_map]]\nid = "user-rule"\nmodule = "lists"\nglobs = ["u/**"]\n')
-        for rule_id, where in (("team-rule", "config.toml"), ("pack-rule", "pack acme"),
-                               ("user-rule", "config.user.toml")):
+        for rule_id, where in (("team-rule", "defined in .modsys/config.toml;"),
+                               ("pack-rule", "defined in pack acme (.modsys/packs/acme/pack.toml)"),
+                               ("user-rule", "defined in .modsys/config.user.toml;")):
             with self.subTest(rule_id=rule_id):
                 err = self.refused(rule_id, "--glob", "z/**", "--module", "tasks")
                 self.assertIn("already defined", err)
                 self.assertIn(where, err)
+                self.assertNotIn(str(self.root), err)  # root-relative
 
     def test_no_team_config(self):
         self.team.unlink()

@@ -71,17 +71,18 @@ def _toml_string(value: str) -> str:
 
 
 def _defined_in(ws, rule_id: str) -> str | None:
-    """The layer file that already defines a `[[code_map]]` rule with this id, if any."""
+    """The layer file that already defines a `[[code_map]]` rule with this id, if any
+    (root-relative when it lies inside the root)."""
     def has(rules) -> bool:
         return any(isinstance(r, dict) and r.get("id") == rule_id for r in as_list(rules))
 
     for pack in discover_packs(ws.config_dir):
         if has(pack["data"].get("code_map")):
-            return f"pack {pack['id']} ({pack['path']})"
+            return f"pack {pack['id']} ({ws.rel(pack['path'])})"
     for name in ("config.toml", "config.user.toml"):
         path = ws.config_dir / name
         if path.exists() and has(read_toml(path).get("code_map")):
-            return str(path)
+            return ws.rel(path)
     return None
 
 
@@ -139,16 +140,16 @@ def add_rule(ws, rule_id, pattern: str | None, globs: list[str] | None, module: 
             if isinstance(r, dict) and r.get("id") == rule_id] != [rule]:
         raise UsageError(f"appending the rule would make {team} invalid (it does not read back "
                          f"as written); nothing written")
+    try:
+        shown = team.relative_to(ws.root).as_posix()
+    except ValueError:
+        shown = str(team)
     if not dry_run:
         try:
             with open(team, "ab") as fh:  # append mode, one write: never a rewrite
                 fh.write(payload)
         except OSError as e:
-            raise UsageError(f"cannot write {team}: {e.strerror}; nothing written") from None
-    try:
-        shown = team.relative_to(ws.root).as_posix()
-    except ValueError:
-        shown = str(team)
+            raise UsageError(f"cannot write {shown}: {e.strerror}; nothing written") from None
     return {"id": rule_id, "file": shown, "block": "\n".join(lines) + "\n", "dry_run": dry_run}
 
 

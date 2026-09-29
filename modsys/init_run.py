@@ -68,7 +68,8 @@ def tail(data: bytes) -> str:
 def changed_paths(root: Path) -> list[tuple[str, str]]:
     """(status code, root-relative path) of every change `git status --porcelain=v1 -z
     --untracked-files=all` reports — paths as they are (never quoted), a rename's or copy's
-    source path as an entry of its own (in `-z` output it is the field after the new path)."""
+    source path as an entry of its own (in `-z` output it is the field after the new path),
+    staged (column X) or in the work tree (column Y)."""
     proc = subprocess.run(["git", "-C", str(root), "status", "--porcelain=v1", "-z",
                            "--untracked-files=all"], capture_output=True, env=git_env())
     parts = proc.stdout.split(b"\0")
@@ -80,7 +81,7 @@ def changed_paths(root: Path) -> list[tuple[str, str]]:
             continue
         code = entry[:2]
         out.append((code, entry[3:]))
-        if code[0] in "RC" and i < len(parts):
+        if ("R" in code or "C" in code) and i < len(parts):
             out.append((code, parts[i].decode("utf-8", "surrogateescape")))
             i += 1
     return out
