@@ -76,6 +76,15 @@ class Reconcile:
             out[name] = [f for f in files if any(r.match(f) for r in rx)]
         return out
 
+    def item(self, state: dict, module: str) -> dict:
+        """A new module's work item (its `roles`): missing is the refusal a claim gives
+        (`Work.missing`), damaged or of the wrong shape `Work.item`'s — exit 2, nothing
+        written."""
+        item = self.work.item(module)
+        if item is None:
+            raise UsageError(self.work.missing(state, module))
+        return item
+
     def entry(self, module: str, item: dict) -> dict:
         written = json.loads((self.work.staging_dir(module) / "entry.json")
                              .read_text(encoding="utf-8"))
@@ -200,7 +209,7 @@ class Reconcile:
             raise UsageError("an entry.json changed since init done — " + "; ".join(
                 f"{m}: {', '.join(p)}" for m, p in broken.items()) + " — fix it, then run "
                 "modsys init done <module> and modsys init reconcile")
-        new = {m: self.entry(m, self.work.item(m)) for m in sorted(state["modules"])
+        new = {m: self.entry(m, self.item(state, m)) for m in sorted(state["modules"])
                if m not in existing}
         files = self.module_files({m: confirmed[m] for m in sorted(state["modules"])
                                    if m in confirmed}, flow.files())

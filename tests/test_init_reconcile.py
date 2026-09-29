@@ -329,16 +329,32 @@ class LifecycleTest(ReconcileRepo):  # P5B-AC-015 (SI-5, SI-16)
         self.assertEqual((code, out), (2, ""))
         self.assertIn("cart: entry.json: invalid JSON", err)
 
-    def test_a_work_item_of_the_wrong_shape(self):  # follow-up C: named, not internal
-        path = self.root / WORK / "work/cart.json"
-        path.write_text(json.dumps({**json.loads(path.read_text()), "roles": None}))
-        before = (self.root / WORK / "state.json").read_bytes()
-        code, out, err = run("init", "reconcile", "--json", "--root", str(self.root))
-        self.assertEqual((code, out), (2, ""))
-        self.assertEqual(err, f"modsys: error: {WORK}/work/cart.json: roles is not a list of "
-                              f"strings — fix it, or start over: modsys init map --restart\n")
-        self.assertEqual((self.root / WORK / "state.json").read_bytes(), before)
-        self.assertFalse((self.staging / "registry.json").exists())
+    def test_a_work_item_missing_or_of_the_wrong_shape(self):  # follow-up C and its extension
+        rows = ((None, f"{WORK}/work/cart.json is missing — start over: modsys init map "
+                       f"--restart"),  # the refusal a claim gives (Work.missing)
+                ({"roles": None}, f"{WORK}/work/cart.json: roles is not a list of strings — "
+                                  f"fix it, or start over: modsys init map --restart"))
+        for change, message in rows:
+            for earlier in (False, True):  # no reconcile yet, or one before (rebuilt: --force)
+                with self.subTest(change=change, earlier=earlier):
+                    self.setUp()
+                    if earlier:
+                        self.reconcile()
+                    cart = self.root / WORK / "work/cart.json"
+                    if change is None:
+                        cart.unlink()
+                    else:
+                        cart.write_text(json.dumps({**json.loads(cart.read_text()), **change}))
+                    paths = [self.root / WORK / "state.json", self.staging / "registry.json",
+                             self.root / WORK / "reconcile.json"]
+                    before = [p.read_bytes() if p.exists() else None for p in paths]
+                    code, out, err = run("init", "reconcile", *(("--force",) if earlier else ()),
+                                         "--json", "--root", str(self.root))
+                    self.assertEqual((code, out), (2, ""))
+                    self.assertEqual(err, f"modsys: error: {message}\n")
+                    self.assertEqual([p.read_bytes() if p.exists() else None for p in paths],
+                                     before)  # nothing written
+                    self.assertEqual(before[1] is None, not earlier)
 
 
 class ExistingModuleTest(unittest.TestCase):  # P5B-AC-051 (reconcile keeps it as it is)

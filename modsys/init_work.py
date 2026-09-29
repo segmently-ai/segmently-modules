@@ -206,8 +206,9 @@ class Work:
     def fanout(self) -> dict:
         """Write one work item per included confirmed module and every module's state entry.
         Re-run while every item is pending: the same bytes. Refused after gate 3 is open, when
-        an item left pending (run `init resume` / `init run`), or when a module directory exists
-        without a registry entry (nothing written)."""
+        an item left pending (run `init resume` / `init run`), when a module directory exists
+        without a registry entry, or when a work item file already there cannot be read
+        (nothing written)."""
         flow = self.flow
         state = flow.load_state()
         if state is None or state["phases"]["gate-map"]["status"] != "done" \
@@ -233,10 +234,15 @@ class Work:
         files = flow.files()
         items = {c["name"]: self.build_item(c, included, files, c["name"] in registry)
                  for c in sorted(candidates, key=lambda c: c["name"])}
+        before = {}  # the items as they are (`status`), read before anything is written
+        for path in sorted(self.dir.glob("*.json")) if self.dir.is_dir() else []:
+            try:
+                before[path.name] = path.read_bytes()
+            except OSError as e:
+                raise UsageError(f"cannot read {flow.rel(path)}: {e.strerror or e} — remove it, "
+                                 f"then run modsys init fanout; nothing written") from None
         flow.mark(state, "fanout", "running")
         texts = {name: serialize(item) for name, item in items.items()}
-        before = {p.name: p.read_bytes() for p in self.dir.glob("*.json")} \
-            if self.dir.is_dir() else {}
         for name, text in texts.items():
             flow.write(self.item_path(name), text)
         for stale in sorted(set(before) - {f"{n}.json" for n in items}):

@@ -2,6 +2,7 @@
 neighbours, roles, staging dir and a prompt rendered from the template chain — and the modules
 created by hand after gate 3 (D15(d), SI-30)."""
 import json
+import os
 import re
 import string
 import tempfile
@@ -248,6 +249,34 @@ class StaleItemTest(FanoutRepo):  # Task 4 review M2: a failed removal is a name
         self.assertIn(f"modsys: error: cannot write {WORK}/work/zz-gone.json: Permission denied",
                       err)
         self.assertNotIn("internal error", err)
+
+    def test_a_work_item_that_cannot_be_read(self):  # follow-up extension: named, not internal
+        rows = [("dangling", "No such file or directory"), ("directory", "Is a directory")]
+        if os.geteuid() != 0:  # (a root user reads a mode-0 file anyway)
+            rows.append(("mode 0", "Permission denied"))
+        for kind, reason in rows:
+            with self.subTest(kind=kind):
+                root = shop(self.base, name=kind.replace(" ", "-"))
+                ok(root, "init", "fanout")
+                cart = root / WORK / "work/cart.json"
+                if kind == "dangling":
+                    cart.unlink()
+                    cart.symlink_to(self.base / "nowhere.json")
+                elif kind == "directory":
+                    cart.unlink()
+                    cart.mkdir()
+                else:
+                    cart.chmod(0)
+                before = (root / WORK / "state.json").read_bytes()
+                code, out, err = text(root, "init", "fanout", "--json")
+                self.assertEqual((code, out), (2, ""))
+                self.assertEqual(err, f"modsys: error: cannot read {WORK}/work/cart.json: "
+                                      f"{reason} — remove it, then run modsys init fanout; "
+                                      f"nothing written\n")
+                self.assertEqual((root / WORK / "state.json").read_bytes(), before)
+                cart.rmdir() if kind == "directory" else cart.unlink()  # the way out it names
+                self.assertEqual(ok(root, "init", "fanout")["status"], "written")
+                self.assertEqual(self.item(root, "cart")["module"], "cart")
 
 
 if __name__ == "__main__":
