@@ -2,7 +2,8 @@
 chooses — `MODSYS_PYTHON`, the names on PATH, the directories outside $HOME one at a time, then
 `uv` — and how it runs the plugin's engine. Stub interpreters (sh scripts) log every start; a
 temp copy of the launcher points its directory line at stub directories (SI-11). Each case
-runs under `sh` and, when present, `dash`."""
+runs under `sh` and, when present, `dash` (without it, `DashTest` is a visible skip)."""
+import json
 import os
 import re
 import shutil
@@ -16,13 +17,14 @@ from pathlib import Path
 ENGINE = Path(__file__).resolve().parents[1]
 LAUNCHER = ENGINE / "tools/launcher.sh"
 DIRS_LINE = 'DIRS="/opt/homebrew/bin /usr/local/bin /usr/bin"\n'
-SHELLS = ["sh"] + (["dash"] if shutil.which("dash") else [])
+DASH = shutil.which("dash")
+SHELLS = ["sh"] + (["dash"] if DASH else [])
 GOOD = """#!/bin/sh
 echo "start $0" >> "$STUB_LOG"
 [ "$1" = "-c" ] && exit 0
 echo "run $0" >> "$STUB_LOG"
 echo "PYTHONPATH=$PYTHONPATH" >> "$STUB_LOG"
-echo "PYTHONDONTWRITEBYTECODE=$PYTHONDONTWRITEBYTECODE PYTHONSAFEPATH=$PYTHONSAFEPATH" \\
+echo "PYTHONDONTWRITEBYTECODE=$PYTHONDONTWRITEBYTECODE PYTHONSAFEPATH=${PYTHONSAFEPATH-unset}" \\
     >> "$STUB_LOG"
 for a in "$@"; do echo "arg=[$a]" >> "$STUB_LOG"; done
 if [ -n "$STUB_STDIN" ]; then read -r line; echo "stdin=$line" >> "$STUB_LOG"; fi
@@ -41,7 +43,8 @@ class LauncherRepo(unittest.TestCase):
         self.tmp = Path(self._tmp.name).resolve()
         self.plugin = self.tmp / "my plugin"  # a space in the plugin path
         (self.plugin / "bin").mkdir(parents=True)
-        (self.plugin / "runtime").mkdir()
+        (self.plugin / "runtime/modsys").mkdir(parents=True)
+        (self.plugin / "runtime/modsys/__main__.py").write_text("")  # the stubs never read it
         self.path_dir = self.tmp / "path"
         self.stand_in = [self.tmp / d for d in ("opt-homebrew-bin", "usr-local-bin", "usr-bin")]
         for d in [self.path_dir, *self.stand_in]:
@@ -68,13 +71,13 @@ class LauncherRepo(unittest.TestCase):
         return path
 
     def launch(self, shell: str, *argv: str, env: dict | None = None, stdin: str | None = None,
-               target: Path | None = None):
+               target: Path | str | None = None, cwd: Path | None = None):
         self.log.write_text("")
         base = {"PATH": str(self.path_dir), "STUB_LOG": str(self.log),
                 "HOME": os.environ.get("HOME", "/")}
         proc = subprocess.run([shutil.which(shell), str(target or self.launcher), *argv],
                               env={**base, **(env or {})}, input=stdin, capture_output=True,
-                              text=True)
+                              text=True, cwd=cwd)
         return proc, self.log.read_text().splitlines()
 
     def ran(self, lines: list[str]) -> str | None:
@@ -133,7 +136,8 @@ class ChoiceTest(LauncherRepo):  # P6-AC-006
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertEqual([l for l in lines if l.startswith("arg=")], [
                     "arg=[run]", "arg=[--no-project]", "arg=[--python]", "arg=[>=3.11]",
-                    "arg=[python]", "arg=[-m]", "arg=[modsys]", "arg=[lint]", "arg=[--json]"])
+                    "arg=[python]", "arg=[-P]", "arg=[-m]", "arg=[modsys]", "arg=[lint]",
+                    "arg=[--json]"])
             for row, env in ((8, {"UV_VERSION_EXIT": "1"}), (9, None)):
                 with self.subTest(shell=shell, row=row):
                     if row == 9:
@@ -163,6 +167,11 @@ class ChoiceTest(LauncherRepo):  # P6-AC-006
                     self.assertIn(why, proc.stderr)
                     self.assertIsNone(self.ran(lines))  # the PATH stub never runs
                     self.assertNotIn(f"start {self.path_dir}/python3.14", lines)
+            with self.subTest(shell=shell, value="a backslash"):  # printed as it is: one line
+                proc, _ = self.launch(shell, "list", env={"MODSYS_PYTHON": "/no/such\\ndir"})
+                self.assertEqual((proc.returncode, proc.stdout), (127, ""))
+                self.assertEqual(proc.stderr, "modsys: MODSYS_PYTHON=/no/such\\ndir: not found — "
+                                              "unset it, or point it at Python 3.11 or newer\n")
 
     def reset(self) -> None:
         for d in [self.path_dir, *self.stand_in]:
@@ -185,10 +194,11 @@ class InvocationTest(LauncherRepo):  # P6-AC-007
                                           env={"PYTHONPATH": "/elsewhere"})
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertIn(f"PYTHONPATH={self.plugin}/runtime:/elsewhere", lines)
-                self.assertIn("PYTHONDONTWRITEBYTECODE=1 PYTHONSAFEPATH=1", lines)
+                # -P is a flag of the engine's process: nothing it starts inherits it
+                self.assertIn("PYTHONDONTWRITEBYTECODE=1 PYTHONSAFEPATH=unset", lines)
                 self.assertEqual([l for l in lines if l.startswith("arg=")], [
-                    "arg=[-m]", "arg=[modsys]", "arg=[a b]", 'arg=["q"]', "arg=[$HOME]",
-                    "arg=[]"])
+                    "arg=[-P]", "arg=[-m]", "arg=[modsys]", "arg=[a b]", 'arg=["q"]',
+                    "arg=[$HOME]", "arg=[]"])
                 self.assertEqual([l for l in lines if l.startswith("start ")],
                                  [f"start {self.path_dir}/python3.14"] * 2)  # probe + run
 
@@ -221,6 +231,49 @@ class InvocationTest(LauncherRepo):  # P6-AC-007
                 proc, lines = self.launch(shell, "x", env={"HOME": str(home)})
                 self.assertEqual(self.ran(lines), str(self.path_dir / "python3.14"))
 
+    def test_cdpath_and_a_relative_call(self):  # final review M-2
+        decoy = self.tmp / "decoy"
+        (decoy / "bin").mkdir(parents=True)
+        for shell in SHELLS:
+            with self.subTest(shell=shell):
+                proc, lines = self.launch(shell, "x", target="bin/modsys", cwd=self.plugin,
+                                          env={"CDPATH": str(decoy)})
+                self.assertEqual((proc.returncode, proc.stderr), (0, ""))
+                self.assertIn(f"PYTHONPATH={self.plugin}/runtime", lines)
+
+    def test_a_plugin_without_its_runtime_runs_no_other_modsys(self):
+        shutil.rmtree(self.plugin / "runtime")
+        other = self.tmp / "other"  # another modsys the caller's PYTHONPATH holds
+        (other / "modsys").mkdir(parents=True)
+        (other / "modsys/__main__.py").write_text("print('the wrong modsys')\n")
+        for shell in SHELLS:
+            with self.subTest(shell=shell):
+                proc, lines = self.launch(shell, "--version", env={"PYTHONPATH": str(other)})
+                self.assertEqual((proc.returncode, proc.stdout), (127, ""))
+                self.assertEqual(proc.stderr, f"modsys: {self.plugin} has no runtime/modsys — "
+                                              "reinstall the plugin\n")
+                self.assertEqual(lines, [])  # no interpreter started
+
+    def test_a_symlink_without_readlink_and_a_colon(self):
+        (self.path_dir / "readlink").unlink()
+        os.symlink(self.launcher, self.tmp / "link")
+        for shell in SHELLS:
+            with self.subTest(shell=shell):
+                proc, lines = self.launch(shell, "x", target=self.tmp / "link")
+                self.assertEqual((proc.returncode, proc.stdout), (127, ""))
+                self.assertEqual(proc.stderr, f"modsys: cannot follow the symlink {self.tmp}/link "
+                                              "(readlink)\n")
+                self.assertEqual(lines, [])
+        colon = self.tmp / "a:b"
+        shutil.copytree(self.plugin, colon)
+        for shell in SHELLS:
+            with self.subTest(shell=shell, what="a colon"):
+                proc, lines = self.launch(shell, "x", target=colon / "bin/modsys")
+                self.assertEqual((proc.returncode, proc.stdout), (127, ""))
+                self.assertEqual(proc.stderr, f"modsys: {colon} holds a \":\" — install the "
+                                              "plugin elsewhere\n")
+                self.assertEqual(lines, [])
+
     def test_a_missing_name_starts_nothing(self):
         (self.path_dir / "python3.14").unlink()
         self.stub(self.path_dir, "python3.12", GOOD)
@@ -239,16 +292,49 @@ class InvocationTest(LauncherRepo):  # P6-AC-007
         # 100644 in git: the builder gives bin/modsys its 0755
 
 
+class DashTest(unittest.TestCase):  # final review T-7: the dash half never goes missing quietly
+    @unittest.skipUnless(DASH, "dash not installed — the launcher cases ran under sh only")
+    def test_the_dash_half_runs(self):
+        self.assertEqual(SHELLS, ["sh", "dash"])
+
+
 class RealEngineTest(unittest.TestCase):  # P6-AC-007 (the Then): the real engine, the real Python
+    def plugin(self, tmp: Path) -> Path:
+        plugin = tmp / "p"
+        (plugin / "bin").mkdir(parents=True)
+        shutil.copy(LAUNCHER, plugin / "bin/modsys")
+        (plugin / "bin/modsys").chmod(0o755)
+        shutil.copytree(ENGINE / "modsys", plugin / "runtime/modsys",
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        return plugin
+
+    def test_what_the_engine_starts_imports_as_anywhere(self):  # final review M-1
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            plugin = self.plugin(tmp)
+            repo = tmp / "repo"
+            shutil.copytree(ENGINE / "tests/fixtures/bookshop", repo)
+            (repo / ".modsys/config.toml").write_text(
+                f'[[hooks.post_sync]]\nid = "notify"\nrun = ["{sys.executable}", '
+                f'"./tools/notify.py"]\n')
+            (repo / "tools").mkdir()
+            (repo / "tools/helper.py").write_text("WORD = 'from the sibling'\n")
+            (repo / "tools/notify.py").write_text(  # imports its sibling, as a script does
+                "import json, os\nimport helper\nprint(json.dumps({'messages': [helper.WORD, "
+                "os.environ.get('PYTHONSAFEPATH', 'unset')]}))\n")
+            env = {k: v for k, v in os.environ.items() if k != "PYTHONSAFEPATH"}
+            proc = subprocess.run([str(plugin / "bin/modsys"), "sync", "--files", "README.md",
+                                   "--root", str(repo), "--json"], cwd=repo, capture_output=True,
+                                  text=True, env={**env, "MODSYS_PYTHON": sys.executable})
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            hook = json.loads(proc.stdout)["data"]["hooks"]["hooks"][0]
+            self.assertEqual((hook["status"], hook["messages"]),
+                             ("ok", ["from the sibling", "unset"]))
+
     def test_version_and_the_working_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp).resolve()
-            plugin = tmp / "p"
-            (plugin / "bin").mkdir(parents=True)
-            shutil.copy(LAUNCHER, plugin / "bin/modsys")
-            (plugin / "bin/modsys").chmod(0o755)
-            shutil.copytree(ENGINE / "modsys", plugin / "runtime/modsys",
-                            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            plugin = self.plugin(tmp)
             shadow = tmp / "cwd/modsys"  # a `modsys` package in the working directory and on
             shadow.mkdir(parents=True)  # the caller's PYTHONPATH never wins
             (shadow / "__init__.py").write_text("raise SystemExit('the wrong modsys')\n")
