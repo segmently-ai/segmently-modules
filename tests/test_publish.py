@@ -1,0 +1,235 @@
+"""`tools/publish.py` (P6 D4, row 6.2): the channel versions, the two marketplace files per
+channel and their merge by name, the structural check of the Codex marketplace and `claude
+plugin validate` of the laid-out tree (when `claude` is on PATH)."""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import tomllib
+import unittest
+from pathlib import Path
+
+import modsys
+from tests.plugin_helpers import (CLAUDE, ENGINE, NO_CLAUDE, claude_env, copy_engine, load_tool,
+                                  run_tool)
+
+publish = load_tool("publish")
+builder = publish.build_plugins
+NAMES = ["modsys", "modsys-qa", "modsys-ui"]
+
+
+def precedence(version: str) -> tuple:
+    """SemVer 2.0 precedence of X.Y.Z[-pre] (enough for these versions): the release before its
+    pre-releases."""
+    core, _, pre = version.partition("-")
+    return tuple(int(x) for x in core.split(".")) + ((1,) if not pre else (0, pre))
+
+
+class VersionTest(unittest.TestCase):  # P6-AC-013 (SI-5, SI-6)
+    def test_the_table(self):
+        self.assertEqual(publish.channel_version("stable", "0.1.0.dev0", "3fa9c1e2" + "0" * 56),
+                         "0.1.0")
+        self.assertEqual(publish.channel_version("dev", "0.1.0.dev0", "3fa9c1e2" + "0" * 56),
+                         "0.1.0-dev.h3fa9c1e2")
+        digits = publish.channel_version("dev", "0.1.0.dev0", "01234567" + "8" * 56)
+        self.assertEqual(digits, "0.1.0-dev.h01234567")
+        self.assertTrue(builder.semver_ok(digits))
+        self.assertFalse(builder.semver_ok("0.1.0-dev.01234567"))  # why the `h`
+        after = publish.channel_version("dev", "0.1.1.dev0", "ab" * 32)
+        self.assertEqual(after, "0.1.1-dev.habababab")
+        self.assertGreater(precedence(after), precedence("0.1.0"))
+        self.assertEqual(publish.channel_version("stable", "0.1.0", "0" * 64), "0.1.0")
+        for bad in ("0.1", "0.1.0rc1", "v0.1.0"):
+            with self.assertRaises(builder.BuildError):
+                publish.base_version(bad)
+
+    def test_one_version_source(self):
+        data = tomllib.loads((ENGINE / "pyproject.toml").read_text(encoding="utf-8"))
+        self.assertEqual(data["project"]["version"], modsys.__version__)
+
+
+class ContentHashTest(unittest.TestCase):  # P6-AC-013 (the hash input)
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.base = Path(cls._tmp.name).resolve()
+        cls.engine = copy_engine(cls.base / "engine")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def hash_of(self, name: str, version: str | None = None) -> str:
+        out = self.base / name
+        builder.build(self.engine, out, version)
+        return publish.content_hash(out)
+
+    def test_what_moves_the_hash(self):
+        first = self.hash_of("a")
+        self.assertEqual(self.hash_of("b"), first)
+        self.assertEqual(self.hash_of("c", "9.9.9"), first)  # the manifests are not input
+        (self.engine / "tests").mkdir(exist_ok=True)
+        (self.engine / "tests/new_test.txt").write_text("x\n")
+        self.assertEqual(self.hash_of("d"), first)  # outside the shipped trees
+        skill = self.engine / "modsys/defaults/packs/qa/skills/qa-acceptance/SKILL.md"
+        original = skill.read_bytes()
+        skill.write_bytes(original + b"\n")
+        try:
+            self.assertNotEqual(self.hash_of("e"), first)
+        finally:
+            skill.write_bytes(original)
+
+    def test_a_dev_build_and_its_launcher(self):
+        out = self.base / "dev"
+        version = publish.build_channel(self.engine, out, "dev")
+        self.assertRegex(version, r"^0\.1\.0-dev\.h[0-9a-f]{8}$")
+        self.assertEqual(publish.build_channel(self.engine, self.base / "dev2", "dev"), version)
+        for name in NAMES:
+            for rel in builder.MANIFESTS:
+                self.assertEqual(json.loads((out / name / rel).read_text())["version"], version)
+        proc = subprocess.run([str(out / "modsys/bin/modsys"), "--version"],
+                              capture_output=True, text=True,
+                              env={**os.environ, "MODSYS_PYTHON": sys.executable})
+        self.assertEqual((proc.returncode, proc.stdout.strip()), (0, "modsys 0.1.0.dev0"))
+
+
+class MarketplaceTest(unittest.TestCase):  # P6-AC-012
+    def test_the_files_per_channel(self):
+        files = {ch: publish.marketplaces(ch) for ch in ("stable", "dev")}
+        claude, codex = files["stable"]
+        self.assertEqual(list(claude), ["name", "owner", "description", "plugins"])
+        self.assertEqual((claude["name"], claude["owner"]), ("modsys", {"name": "modsys "
+                                                                         "maintainers"}))
+        self.assertEqual([e["name"] for e in claude["plugins"]], NAMES)
+        for entry in claude["plugins"]:
+            self.assertEqual(list(entry), ["name", "source", "description"])
+            self.assertEqual(entry["source"], f"./plugins/{entry['name']}")
+        self.assertEqual(codex, {"name": "modsys", "plugins": [
+            {"name": n, "source": {"source": "local", "path": f"./plugins/{n}"}} for n in NAMES]})
+        dev_claude, dev_codex = files["dev"]
+        self.assertEqual((dev_claude["name"], dev_codex["name"]), ("modsys-dev", "modsys-dev"))
+        self.assertEqual({k: v for k, v in dev_claude.items() if k not in ("name",
+                                                                           "description")},
+                         {k: v for k, v in claude.items() if k not in ("name", "description")})
+        self.assertEqual(dev_codex["plugins"], codex["plugins"])
+
+    def test_the_merge_keeps_what_is_not_ours(self):
+        other = {"name": "other-tool", "source": "./plugins/other-tool", "category": "x"}
+        stale = {"name": "modsys", "source": "./old", "version": "0.0.1"}
+        claude, codex = publish.marketplaces(
+            "stable", {"name": "x", "owner": {"name": "someone"}, "metadata": {"a": 1},
+                       "plugins": [other, stale]},
+            {"name": "x", "interface": {"displayName": "X"},
+             "plugins": [{"name": "other-tool", "source": {"source": "git", "url": "u"}}]})
+        self.assertEqual([e["name"] for e in claude["plugins"]],
+                         ["other-tool", "modsys", "modsys-qa", "modsys-ui"])
+        self.assertEqual(claude["plugins"][0], other)
+        self.assertNotIn("version", claude["plugins"][1])
+        self.assertEqual((claude["name"], claude["metadata"]), ("modsys", {"a": 1}))
+        self.assertEqual(codex["interface"], {"displayName": "X"})
+        self.assertEqual(codex["plugins"][0], {"name": "other-tool",
+                                               "source": {"source": "git", "url": "u"}})
+
+    def test_the_codex_check(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            for name in NAMES:
+                (root / "plugins" / name).mkdir(parents=True)
+            _, codex = publish.marketplaces("dev")
+            path = root / publish.CODEX_MARKETPLACE
+            path.parent.mkdir(parents=True)
+            path.write_text(publish.dump(codex))
+            self.assertEqual(publish.codex_problems(root), [])
+            for change, problem in (
+                    ({"path": "../x"}, "plugin 'modsys': source.path '../x' does not start "
+                                       "with ./"),
+                    ({"path": "./../x"}, "plugin 'modsys': source.path './../x' leaves the "
+                                         "marketplace root"),
+                    ({"path": "/abs"}, "plugin 'modsys': source.path '/abs' does not start "
+                                       "with ./"),
+                    ({"path": "./plugins/missing"}, "plugin 'modsys': source.path "
+                                                    "'./plugins/missing' is not a directory")):
+                with self.subTest(change=change):
+                    bad = json.loads(publish.dump(codex))
+                    bad["plugins"][0]["source"].update(change)
+                    path.write_text(json.dumps(bad))
+                    self.assertEqual(publish.codex_problems(root), [problem])
+            bad = json.loads(publish.dump(codex))
+            bad["plugins"][1]["name"] = "modsys"
+            del bad["plugins"][2]["name"]
+            path.write_text(json.dumps(bad))
+            self.assertEqual(publish.codex_problems(root), [
+                "plugin 'modsys': the name is used twice", "plugins[2]: name is missing"])
+
+
+class LayoutTest(unittest.TestCase):  # P6-AC-011 (the marketplace), P6-AC-012
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.base = Path(cls._tmp.name).resolve()
+        cls.engine = copy_engine(cls.base / "engine")
+        cls.trees = {}
+        for channel in ("dev", "stable"):
+            proc = run_tool(cls.engine, "publish", "--channel", channel, "--out",
+                            str(cls.base / channel))
+            assert proc.returncode == 0, proc.stderr
+            cls.trees[channel] = (cls.base / channel, proc.stdout)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_every_entry_has_its_plugin(self):
+        for channel, (root, stdout) in self.trees.items():
+            version = re.search(r"version (\S+),", stdout).group(1)
+            self.assertEqual(version == "0.1.0", channel == "stable")
+            claude = json.loads((root / publish.CLAUDE_MARKETPLACE).read_text())
+            for entry in claude["plugins"]:
+                manifest = root / entry["source"] / ".claude-plugin/plugin.json"
+                self.assertEqual(json.loads(manifest.read_text())["version"], version)
+            self.assertEqual(publish.codex_problems(root), [])
+            self.assertEqual(publish.plugin_problems(root, version), [])
+            self.assertEqual(publish.plugin_problems(root, "9.9.9"), [
+                f"plugin '{n}': {rel} does not carry version 9.9.9" for n in NAMES
+                for rel in builder.MANIFESTS])
+        self.assertEqual(sorted(p.name for p in (self.base / "dev").iterdir()),
+                         [".agents", ".claude-plugin", "plugins"])
+
+    def test_an_existing_out_is_refused(self):
+        proc = run_tool(self.engine, "publish", "--channel", "dev", "--out", str(self.base))
+        self.assertEqual((proc.returncode, proc.stdout), (2, ""))
+        self.assertIn("exists — give a new directory", proc.stderr)
+        proc = run_tool(self.engine, "publish", "--channel", "beta", "--out", "x")
+        self.assertEqual((proc.returncode, proc.stdout), (2, ""))
+        self.assertIn("usage:", proc.stderr)
+
+    @unittest.skipUnless(CLAUDE, NO_CLAUDE)
+    def test_claude_validates_the_marketplace(self):
+        env = claude_env(self.base / "claude-config")
+        for channel, (root, _) in self.trees.items():
+            with self.subTest(channel=channel):
+                proc = subprocess.run([CLAUDE, "plugin", "validate", "--strict", "--json",
+                                       str(root)], capture_output=True, text=True, timeout=120,
+                                      env=env)
+                report = json.loads(proc.stdout)
+                self.assertEqual((proc.returncode, report["manifest"]["type"],
+                                  report["manifest"]["errors"], report["manifest"]["warnings"]),
+                                 (0, "marketplace", [], []))
+        for n, change in enumerate(({"name": "modsys"}, {"source": "../plugins/modsys-qa"})):
+            with self.subTest(change=change):  # the check can fail (PR: a missing directory
+                broken = self.base / f"broken-{n}"  # passes Claude's check — ours catches it)
+                shutil.copytree(self.trees["dev"][0], broken)
+                doc = json.loads((broken / publish.CLAUDE_MARKETPLACE).read_text())
+                doc["plugins"][1].update(change)
+                (broken / publish.CLAUDE_MARKETPLACE).write_text(json.dumps(doc))
+                proc = subprocess.run([CLAUDE, "plugin", "validate", "--strict", "--json",
+                                       str(broken)], capture_output=True, text=True,
+                                      timeout=120, env=env)
+                self.assertEqual(proc.returncode, 1)
+
+
+if __name__ == "__main__":
+    unittest.main()
