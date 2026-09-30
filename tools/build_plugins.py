@@ -214,32 +214,34 @@ def readme(name: str, skills: list[str]) -> str:
                  "`MODSYS_PYTHON` to choose the interpreter.")
         needs = ("- Codex: `codex plugin marketplace add <owner>/<publish repo> --ref stable`, "
                  f"then `codex plugin add {name}@modsys`. Codex puts no plugin command on "
-                 "PATH, so install the CLI first: `uv tool install "
-                 "git+ssh://git@github.com/<owner>/<repo>.git` (or `pipx install "
-                 "git+ssh://git@github.com/<owner>/<repo>.git`).\n")
+                 "PATH, so install the CLI first, at the plugin's version: `uv tool install "
+                 "git+ssh://git@github.com/<owner>/<repo>.git@v<version>` (or `pipx install "
+                 "git+ssh://git@github.com/<owner>/<repo>.git@v<version>`).\n")
     else:
         what += (" It needs the `modsys` plugin (the modsys command line and the core skills).")
         needs = ("- Codex: `codex plugin marketplace add <owner>/<publish repo> --ref stable`, "
                  f"then `codex plugin add modsys@modsys` and `codex plugin add {name}@modsys` — "
-                 "Codex has no plugin dependencies, so add both — and install the CLI first: "
-                 "`uv tool install git+ssh://git@github.com/<owner>/<repo>.git` (or `pipx "
-                 "install git+ssh://git@github.com/<owner>/<repo>.git`).\n")
+                 "Codex has no plugin dependencies, so add both — and install the CLI first, "
+                 "at the plugins' version: `uv tool install "
+                 "git+ssh://git@github.com/<owner>/<repo>.git@v<version>` (or `pipx install "
+                 "git+ssh://git@github.com/<owner>/<repo>.git@v<version>`).\n")
     return (f"# {name}\n\n{spec['description']}.\n\n{what}\n\n## Install\n\n"
             f"- Claude Code: `claude plugin marketplace add <owner>/<publish repo>#stable`, then "
             f"`claude plugin install {name}@modsys`"
             + (" (it installs `modsys` too)" if name != CORE else "") + ".\n"
             + needs
             + "- Cursor, Gemini CLI, GitHub Copilot: there is no plugin for them — install the "
-              "CLI, enable the pack (`[packs] builtin` in `.modsys/config.toml`) and run "
-              "`modsys packs sync --agent cursor` (`--agent gemini`, `--agent copilot`): it "
-              "copies the skills into `.agents/skills/`.\n\n"
+              "CLI, set modsys up in the repository (`modsys init` enables the `core` pack; or "
+              "set `[packs] builtin` in `.modsys/config.toml`), then run `modsys packs sync "
+              "--agent cursor` (`--agent gemini`, `--agent copilot`): it copies the skills into "
+              "`.agents/skills/`; these agents need the default `\"repo\"` delivery.\n\n"
               "The `dev` channel: `#dev` / `--ref dev` and the marketplace `modsys-dev` (e.g. "
               f"`{name}@modsys-dev`).\n\n"
               "In a repository whose agents get the built-in skills from these plugins, set "
               "`builtin_delivery = \"plugin\"` under `[packs]` in `.modsys/config.toml`: `modsys "
-              "packs sync` then copies none of them (an agent that also had the copies would "
-              "see each skill twice). Cursor, Gemini CLI and Copilot need `\"repo\"` (the "
-              "default).\n")
+              "packs sync` then copies none of them and removes the copies it made (with the "
+              "default `\"repo\"` delivery and the plugin, an agent sees each built-in skill "
+              "twice). Cursor, Gemini CLI and Copilot need `\"repo\"` (the default).\n")
 
 
 def write(path: Path, data: bytes, mode: int) -> None:

@@ -1,8 +1,9 @@
 # modsys CI: the unit suite on two Pythons, the adoption eval, a reproducible plugin build, the
 # launcher under dash, and Claude Code's own validator with a throw-away install of the built
 # plugins. No model call and no credential: Claude Code is installed as it comes and only its
-# `plugin validate`, `plugin marketplace add`, `plugin install` and `plugin list` commands run.
-# It runs on every push to any branch — the branch of a pull request included.
+# `plugin validate`, `plugin marketplace add`, `plugin install` and `plugin list` commands run;
+# the installed plugins are checked (all three enabled) and the installed launcher runs.
+# It runs on every push, of a branch or a tag — the branch of a pull request included.
 name: ci
 
 on:
@@ -14,6 +15,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -52,4 +54,15 @@ jobs:
           claude plugin marketplace add "$RUNNER_TEMP/publish"
           claude plugin install modsys-ui@modsys-dev --scope user
           claude plugin install modsys-qa@modsys-dev --scope user
-          claude plugin list --json
+          set -o pipefail
+          claude plugin list --json | python -c '
+          import json, subprocess, sys
+          enabled = {r["id"]: r["installPath"] for r in json.load(sys.stdin) if r.get("enabled")}
+          wanted = [f"{name}@modsys-dev" for name in ("modsys", "modsys-ui", "modsys-qa")]
+          missing = [w for w in wanted if w not in enabled]
+          if missing:
+              sys.exit(f"not installed and enabled: {missing}")
+          launcher = enabled["modsys@modsys-dev"] + "/bin/modsys"
+          print(subprocess.run([launcher, "--version"], check=True, capture_output=True,
+                               text=True).stdout.strip())
+          '

@@ -24,16 +24,23 @@ Each plugin has three manifests — `.claude-plugin/plugin.json` (Claude Code), 
 Agent Plugins manifest Codex reads) and `.codex-plugin/plugin.json` — and a `README.md`, all
 rendered from one table in the builder. The build reads git's index and the work tree, never an
 installed copy: an untracked file never ships, a file's mode comes from the index, and nothing
-carries a timestamp — two builds of one tree are byte-identical. A refusal (not a git work
-tree, a tracked file missing, a symlink in a skill, a `--version` that is not SemVer 2.0) is
-exit 2 and leaves `--out` as it was.
+carries a timestamp — two builds of one tree are byte-identical. A tracked file with
+uncommitted changes ships as it is on disk; one `warning:` line names such files. The builder
+replaces only its own output: an `--out` whose `modsys`, `modsys-ui` or `modsys-qa` is not an
+earlier build of that plugin — or is this repository, or holds it (`--out ..` from the
+checkout) — is refused. The three directories are renamed into place together at the end, so
+a refusal (not a git work tree, a tracked file missing, a symlink in a skill, a `--version`
+that is not SemVer 2.0, git missing), a failure or Ctrl-C is exit 2 (130) and leaves `--out`
+as it was — a missing `--out` is not even created.
 
 `bin/modsys` (source: `tools/launcher.sh`, POSIX `sh`) runs the plugin's own engine with the
 first Python 3.11 or newer it finds: `MODSYS_PYTHON`; `python3.14` … `python3.11`, `python3` on
 `PATH`; the same names in `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` (one directory at a
 time — they work where a sandbox denies the home directory); then `uv run`. Nothing found is
 exit 127 naming the three ways out; an unusable `MODSYS_PYTHON` is exit 127 too — never a
-silent fall-through.
+silent fall-through — and so is a plugin without its `runtime/`. The engine runs with
+`python -P`: the working directory never shadows the plugin's engine, while an executor or a
+hook the engine starts imports its own modules as it would anywhere.
 
 ## Channels, versions, tags
 
@@ -76,25 +83,52 @@ MODSYS_GUARD=/path/to/the/private/guard.py python3 tools/release.py \
 | 7 commit | `release modsys <version> (<channel>)`; `stable` adds the tags |
 | 8 smoke install | a throw-away `CLAUDE_CONFIG_DIR`: add the marketplace, install `modsys-ui` (its dependency `modsys` comes with it) and `modsys-qa`, check the nine core skills, run the installed `bin/modsys --version` and `lint` on the bookshop fixture — no model call |
 
-Then, for `stable`, the commit that starts the next version here (`X.Y.(Z+1).dev0`). A build
-the channel already holds is "nothing to release" (exit 0, nothing committed). **All or
-nothing:** a failed step or Ctrl-C puts both repositories back — branches, tags, HEAD, work
-tree — and removes every temp directory. Exit `0` done · `1` a step failed · `2` a refusal ·
-`130` interrupted.
+Then, for `stable`, the commit that starts the next version here (`X.Y.(Z+1).dev0`) — so
+`stable` needs `__version__` = `X.Y.Z.devN` (step 2 says so otherwise). A build the channel
+already holds is "nothing to release" (exit 0, nothing committed). The run leaves the publish
+repository on the channel branch.
+
+**The channel branch.** An existing local branch is used; a clone that has the branch only as
+`origin/<channel>` gets a local branch made from it (tracking it); a local branch behind or
+diverged from `origin/<channel>` is refused at step 2 — run `git pull` there first (the tool
+never fetches: it compares with the refs the clone already has). A channel that exists nowhere
+starts at the first commit behind the publish repository's HEAD that is not a release commit of
+this tool (an empty branch when there is none): `dev` and `stable` start from the same commit
+whatever is checked out, and neither holds the other's releases or changelog entries.
+
+**All or nothing, up to the push:** a failed step, Ctrl-C, SIGTERM or a closed terminal puts
+back what the run wrote — the branches and tags it made or moved, HEAD, the index and the
+files it writes — and removes every temp directory. Nothing else is touched: a branch, a tag
+or an untracked file that appeared beside the run stays. The put-back always finishes (a second
+Ctrl-C is ignored) and is checked: "both repositories are as they were" is printed only when
+that is true; otherwise the message names the repository, the command that failed and the refs
+to reset by hand (exit 1). Do not work in either repository during a run: one that changed
+between step 2 and the run's first write to it is a refusal that writes nothing there. Exit `0`
+done · `1` a step failed · `2` a refusal · `130` interrupted.
 
 - **The guard.** `MODSYS_GUARD` names the private leak guard — a script the host project keeps
-  outside this repository, run as `<python> <guard> --target DIR`; it must exit 0 and print a
-  `… CLEAN` line. It is never copied here: a path inside this repository is refused.
+  outside this repository, run as `<python> <guard> --target DIR` from your working directory;
+  it must exit 0 and print a `… CLEAN` line. Hits are its `<n> hit(s)` line; any other exit or
+  a missing verdict is "the leak guard failed", with its last line. It is never copied here: a
+  path inside this repository is refused.
 - **No repository slug before the public release.** The organisation of `--publish-slug` must
   appear nowhere in this repository (files, history) or in the build; the slug is written only
   into the publish repository's own README section. Docs here use `<owner>/<repo>`.
 - **The publish repository is shared ground.** Entries, plugins and text the release does not
-  own are kept as they are; a marketplace file that is not valid JSON, or a `README.md` that is
-  not a regular file, fails the step instead of being overwritten.
+  own are kept as they are, with their line endings; a marketplace file that is not valid JSON,
+  a `README.md` that is not a regular file, or section markers damaged by a hand edit fail the
+  step instead of being overwritten, and a symlinked `plugins`, `.claude-plugin` or `.agents`
+  is refused. The release commit must hold the build — every path, mode and byte — whatever
+  the repository's ignore rules or `core.fileMode` say, or step 7 fails.
 - **Without `claude` on `PATH`** steps 5 and 8 skip the Claude Code checks and say so; `--push`
   is then refused.
 - **`--push`** pushes the channel branch (and the tags) of the publish repository, then this
-  repository's branch and `v<version>` — an owner command, each time. Creating the publish
+  repository's branch and `v<version>` — an owner command, each time; it is refused before step 1
+  when a repository it pushes has no `origin`. A failed or interrupted push is never put back:
+  the release stays committed and tagged locally, and the tool prints what was pushed and the
+  `git push` commands left to run. Without `--push` it prints the same commands at the end —
+  that is how a finished release is pushed by hand (a second run does not push it: `dev` has
+  nothing to release, `stable` would release the next version). Creating the publish
   repository on GitHub is the owner's as well.
 
 ## Before a stable release: the skill evals
@@ -115,13 +149,14 @@ to run the `claude plugin eval` suite by hand on a machine that allows it.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push to any branch (so on every commit of a pull
-request from a branch of the repository), on Python 3.11 and 3.14: the unit suite, the adoption
-eval, two plugin builds compared byte for byte, the launcher test under `dash`, and — with
-Claude Code installed as it comes, without credentials — `claude plugin validate --strict` on
-the three plugins and the dev marketplace plus a throw-away install (`CLAUDE_CONFIG_DIR` in the
-runner's temp directory). It makes no model call and reads no secret; nothing runs on a
-schedule. The private guard is not part of CI — the release and the `pre-push` hook run it —
-and neither are the skill evals (above). The release repeats the validation and runs the full
-smoke install, so a CI run without Claude Code would lose nothing the release does not check
-again.
+`.github/workflows/ci.yml` runs on every push (branches and tags — so on every commit of a pull
+request from a branch of the repository), on Python 3.11 and 3.14, within 30 minutes: the unit
+suite, the adoption eval, two plugin builds compared byte for byte, the launcher test under
+`dash`, and — with Claude Code installed as it comes, without credentials — `claude plugin
+validate --strict` on the three plugins and the dev marketplace plus a throw-away install
+(`CLAUDE_CONFIG_DIR` in the runner's temp directory) that checks all three plugins are installed
+and enabled and runs the installed `bin/modsys --version`. It makes no model call and reads no
+secret; nothing runs on a schedule. The private guard is not part of CI — the release and the
+`pre-push` hook run it — and neither are the skill evals (above). The release repeats the
+validation and runs the full smoke install, so a CI run without Claude Code would lose nothing
+the release does not check again.

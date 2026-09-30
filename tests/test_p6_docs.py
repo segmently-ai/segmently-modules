@@ -3,6 +3,8 @@ import re
 import unittest
 from pathlib import Path
 
+from tests.plugin_helpers import load_tool
+
 ENGINE = Path(__file__).resolve().parents[1]
 
 
@@ -82,7 +84,8 @@ class InstallFromGitDocsTest(unittest.TestCase):  # P6-AC-025 (the D6 part), P6-
 class CiDocsTest(unittest.TestCase):  # P6-AC-025 (the D8 part, SI-2)
     def test_releasing_says_what_ci_runs(self):
         text = flat("docs/releasing.md")
-        for needle in ("## CI", "`.github/workflows/ci.yml` runs on every push to any branch",
+        for needle in ("## CI", "`.github/workflows/ci.yml` runs on every push (branches and "
+                       "tags",
                        "on Python 3.11 and 3.14", "without credentials", "It makes no model call "
                        "and reads no secret; nothing runs on a schedule",
                        "The private guard is not part of CI",
@@ -105,6 +108,23 @@ class InstallDocsTest(unittest.TestCase):  # P6-AC-025 (D10), P6-AC-021 (D13)
                        "`modsys-dev`", '`builtin_delivery = "plugin"`',
                        "[docs/releasing.md](docs/releasing.md)"):
             self.assertIn(needle, readme)
+
+    def test_what_each_route_needs_first(self):  # task-11 review I1, M1; final review M-18
+        readme = (ENGINE / "README.md").read_text(encoding="utf-8")
+        other = readme.split("**Cursor, Gemini CLI, GitHub Copilot**", 1)[1].split("\n**", 1)[0]
+        plugins = [load_tool("build_plugins").readme(name, ["x"]).split("- Cursor", 1)[1]
+                   .split("\n", 1)[0] for name in ("modsys", "modsys-ui", "modsys-qa")]
+        for text in (other, *plugins):  # modsys set up in the repository, then the sync
+            self.assertLess(text.index("`modsys init` enables the `core` pack"),
+                            text.index("packs sync --agent cursor"))
+            self.assertIn("`[packs] builtin`", text)
+            self.assertIn('the default `"repo"` delivery', text)
+        codex = readme.split("**Codex**", 1)[1].split("\n**", 1)[0]  # the CLI at the plugin's
+        self.assertIn("uv tool install git+ssh://git@github.com/<owner>/<repo>.git@v<version>",
+                      codex)  # version, not the default branch
+        self.assertIn('keeps the default `"repo"` delivery and has run `modsys packs sync` '
+                      "shows a plugin user every built-in skill twice", " ".join(codex.split()))
+        self.assertNotIn("<owner>/modsys", readme)
 
     def test_every_repository_url_is_a_placeholder(self):
         docs = [ENGINE / "README.md", *sorted((ENGINE / "docs").glob("*.md"))]

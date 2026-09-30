@@ -27,19 +27,26 @@ claude plugin install modsys-qa@modsys     # optional: the acceptance-criteria s
 ```
 
 **Codex** — the plugin carries the skills; install the command line first (a Codex plugin puts
-nothing on `PATH`):
+nothing on `PATH`), at the released version the plugin comes from:
 
 ```bash
-uv tool install git+ssh://git@github.com/<owner>/<repo>.git   # or pipx install, below
+uv tool install git+ssh://git@github.com/<owner>/<repo>.git@v<version>   # or pipx install, below
 codex plugin marketplace add <owner>/<publish repo> --ref stable
 codex plugin add modsys@modsys
 ```
 
-**Cursor, Gemini CLI, GitHub Copilot** — no plugin: install the command line, then copy the
-skills into the repository (`.agents/skills/`):
+A repository that keeps the default `"repo"` delivery and has run `modsys packs sync` shows a
+plugin user every built-in skill twice — the plugin's and the copy; `builtin_delivery =
+"plugin"` (below) makes `packs sync` remove the copies it made.
+
+**Cursor, Gemini CLI, GitHub Copilot** — no plugin: install the command line, set modsys up in
+the repository (`modsys init` enables the `core` pack; or set `[packs] builtin` in
+`.modsys/config.toml` yourself), then copy the skills into `.agents/skills/` — these agents
+need the default `"repo"` delivery:
 
 ```bash
 uv tool install git+ssh://git@github.com/<owner>/<repo>.git
+modsys init                                 # once: the config, with [packs] builtin = ["core"]
 modsys packs sync --agent cursor            # or --agent gemini, --agent copilot
 modsys packs sync --agent cursor --remove   # later: take the copies out again
 ```
@@ -55,7 +62,7 @@ whose agents get the built-in skills from the plugins sets `builtin_delivery = "
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
 pip install /path/to/modsys                       # a checkout
-pip install git+https://github.com/<owner>/modsys.git   # or the repository
+pip install git+https://github.com/<owner>/<repo>.git   # or the repository
 modsys --help
 ```
 

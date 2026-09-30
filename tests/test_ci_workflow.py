@@ -34,8 +34,29 @@ class CiWorkflowTest(unittest.TestCase):  # P6-AC-020
                         'python tools/build_plugins.py --out "$RUNNER_TEMP/build-a"',
                         'python tools/build_plugins.py --out "$RUNNER_TEMP/build-b"',
                         'diff -r "$RUNNER_TEMP/build-a" "$RUNNER_TEMP/build-b"',
-                        "dash -n tools/launcher.sh", "python -m unittest tests.test_launcher"):
+                        "dash -n tools/launcher.sh", "python -m unittest tests.test_launcher",
+                        "timeout-minutes: 30"):
             self.assertIn(command, self.lines)
+
+    def test_every_check_can_fail_and_runs_in_order(self):  # task-10 review M1, M2
+        for bad in ("continue-on-error", "|| true", "set +e", "; true"):
+            self.assertNotIn(bad, self.text)
+        self.assertIsNone(re.search(r"^\s*(?:- )?if:", self.text, re.M))  # no step skips itself
+        at = {line: n for n, line in enumerate(self.lines)}
+        builds = [at[f'python tools/build_plugins.py --out "$RUNNER_TEMP/build-{x}"']
+                  for x in "ab"]
+        self.assertLess(max(builds), at['diff -r "$RUNNER_TEMP/build-a" "$RUNNER_TEMP/build-b"'])
+        claude = [n for n, line in enumerate(self.lines) if line.startswith("claude ")]
+        self.assertLess(at['python tools/publish.py --channel dev --out "$RUNNER_TEMP/publish"'],
+                        min(claude))
+        listed = at["claude plugin list --json | python -c '"]
+        self.assertEqual(listed, max(claude))  # the last claude line is checked, not printed
+        self.assertLess(at["set -o pipefail"], listed)
+        check = "\n".join(self.lines[listed:])
+        for needle in ('if r.get("enabled")', '("modsys", "modsys-ui", "modsys-qa")',
+                       'sys.exit(f"not installed and enabled: {missing}")',
+                       '"/bin/modsys"', '"--version"', "check=True"):
+            self.assertIn(needle, check)  # all three enabled; the INSTALLED launcher runs
 
     def test_no_secret_no_model_call_no_guard(self):
         for bad in ("secrets.", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GH_TOKEN",
@@ -48,7 +69,7 @@ class CiWorkflowTest(unittest.TestCase):  # P6-AC-020
         self.assertIn("run: npm install -g @anthropic-ai/claude-code", self.lines)
         self.assertIn("CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude-config", self.lines)
         calls = [l[len("claude "):] for l in self.lines if l.startswith("claude ")]
-        self.assertEqual(len(calls), 6)
+        self.assertEqual(len(calls), 6)  # the list's output piped into the check
         for call in calls:
             self.assertTrue(call.startswith(CLAUDE_COMMANDS), call)
         self.assertIn('python tools/publish.py --channel dev --out "$RUNNER_TEMP/publish"',
