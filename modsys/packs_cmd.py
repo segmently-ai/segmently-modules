@@ -19,7 +19,8 @@ from importlib import resources
 from pathlib import Path
 
 from modsys.code_map_cmd import _toml_string
-from modsys.config import BUILTIN_PACKS, DEFAULT_PACK_PRIORITY, core_defaults, discover_packs
+from modsys.config import (BUILTIN_PACKS, BUILTIN_PLUGINS, DEFAULT_PACK_PRIORITY,
+                           builtin_delivery, core_defaults, discover_packs)
 from modsys.create import NAME, article
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.skill_sync import (NO_RECORD, STATUSES, apply_plan, conflict_kind, managed_agents,
@@ -211,6 +212,18 @@ def pack_rows(ws) -> list[dict]:
     return rows
 
 
+def sync_notes(ws, plugin: bool) -> list[str]:
+    """The `note:` lines of a `packs sync` run (`data.notes`): under `builtin_delivery =
+    "plugin"`, the plugins that provide the enabled built-in packs' skills."""
+    notes = []
+    provided = [p["id"] for p in discover_packs(ws.config_dir) if p["builtin"]]
+    if plugin and provided:
+        notes.append('builtin_delivery = "plugin": the built-in skills come from the plugins '
+                     + ", ".join(f"{BUILTIN_PLUGINS[p]} ({p})" for p in provided)
+                     + " — packs sync copies none of them")
+    return notes
+
+
 def sync(ws, agents: list[str] | None, check: bool, dry_run: bool) -> dict:
     """`packs sync`: plan every (agent, skill), then apply the plans unless `check` /
     `dry_run`; a conflicting or invalid skill is never written, the others are."""
@@ -223,8 +236,9 @@ def sync(ws, agents: list[str] | None, check: bool, dry_run: bool) -> dict:
                                 or managed_agents(ws.root)))
     if not chosen:
         raise UsageError("choose --agent claude and/or --agent codex, or set [packs] agents")
+    plugin = builtin_delivery(ws.config) == "plugin"
     try:
-        plans = plan_sync(ws, chosen)
+        plans = plan_sync(ws, chosen, plugin)
     except OSError as e:  # planning only reads: an unreadable agent copy stops the run
         raise UsageError(f"cannot read {ws.rel(e.filename or ws.root)}: "
                          f"{e.strerror or e}") from None
@@ -242,7 +256,7 @@ def sync(ws, agents: list[str] | None, check: bool, dry_run: bool) -> dict:
     failed = (any(r["status"] != "unchanged" for r in rows) if check
               else bool(summary["conflict"] or summary["invalid"]))
     return {"agents": chosen, "check": check, "dry_run": dry_run, "skills": rows,
-            "summary": summary, "failed": failed}
+            "summary": summary, "failed": failed, "notes": sync_notes(ws, plugin)}
 
 
 def _refuse_flags(args, action: str, allowed: tuple[str, ...]) -> None:
@@ -316,7 +330,8 @@ def _hint(ws, r) -> str:
             "orphan-edit": "revert the edit, or delete the directory if the skill is no longer "
                            "wanted",
             "orphan-bad-marker": f"restore the marker (git checkout -- {here}) or delete the "
-                                 f"directory"}.get(kind, "move it away, then sync again")
+                                 f"directory",
+            "plugin": ""}.get(kind, "move it away, then sync again")  # its reason names the fixes
 
 
 def _render_sync(d, ws) -> None:
@@ -340,6 +355,8 @@ def _render_sync(d, ws) -> None:
         if r["reason"]:
             hint = _hint(ws, r)
             print(f"  {r['reason']}" + (f" — {hint}" if hint else ""))
+    for note in d["notes"]:
+        print(f"note: {note}")
     s = d["summary"]
     counts = ", ".join(f"{s[k]} {k}" for k in STATUSES)
     if d["check"]:

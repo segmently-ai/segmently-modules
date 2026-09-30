@@ -41,6 +41,35 @@ first, so a team pack and the team config override them). Removing an id from `b
 syncing again removes that pack's skills from the agents' directories — unless a copy was edited
 locally (a conflict, left in place) or ejected (below).
 
+## From the repository or from a plugin
+
+The built-in skills reach an agent one of two ways — never both, or the agent sees every skill
+twice and cannot tell which to trigger:
+
+- **`builtin_delivery = "repo"`** (the default): `modsys packs sync` copies them into
+  `.claude/skills/` and `.agents/skills/`, and the team commits the copies.
+- **`builtin_delivery = "plugin"`**: the modsys plugins provide them — `core` in the plugin
+  `modsys`, `ui` in `modsys-ui`, `qa` in `modsys-qa` (install the ones whose packs `builtin`
+  enables). Set it when the team installs the plugins:
+
+  ```toml
+  [packs]
+  builtin = ["core"]
+  builtin_delivery = "plugin"   # the plugins provide the built-in skills
+  ```
+
+  `modsys packs sync` then copies no built-in skill, removes the copies it made earlier (an
+  edited copy is a conflict and stays) and prints a `note:` naming the plugins; plain `lint`
+  reports each copy still there (MS067, info). `modsys eject` of a built-in skill is refused
+  (ejecting means owning a copy: that needs `"repo"`), and a skill ejected earlier is a `packs
+  sync` conflict until the copy is deleted or the delivery goes back to `"repo"`. The built-in
+  packs' roles and templates, `agents-md` and every repository pack's skills are the same
+  under both.
+
+The engine cannot see which plugins an agent has installed: installing the plugin in a
+repository that keeps `"repo"` delivery gives the agent each built-in skill twice — set
+`"plugin"` there, or leave the plugin out.
+
 ## The core skills
 
 | Skill | Use it when | Scope | Main commands |

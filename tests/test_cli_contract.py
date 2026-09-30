@@ -53,7 +53,7 @@ GOLDEN = [
     (("packs", "new", "team", "--role", "reviewer", "--skill", "api-review", "--dry-run"),
      {"pack", "dir", "files", "dry_run"}),
     (("packs", "sync", "--agent", "claude", "--dry-run"),
-     {"agents", "check", "dry_run", "skills", "summary", "failed"}),
+     {"agents", "check", "dry_run", "skills", "summary", "failed", "notes"}),  # P6 D2: notes
     (("packs", "new", "team2", "--skill", "notes"), {"pack", "dir", "files", "dry_run"}),
     (("eject", "notes", "--dry-run"), {"skill", "pack", "version", "dir", "files", "dry_run"}),
     (("eject", "notes"), {"skill", "pack", "version", "dir", "files", "dry_run"}),

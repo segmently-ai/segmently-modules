@@ -4,9 +4,11 @@ MS052 a [[code_map]] rule whose `module` is not in the registry · MS053 two [[c
 route one file to two different modules · MS060-MS062, MS064, MS065 pack checks (unknown
 pack.toml keys, role templates, skills agents cannot load, skills reading unconfigured roles,
 shadowed skill ids) · MS063 ejected skills behind their pack · MS066 a repository pack that
-replaces a built-in pack (info) ·
+replaces a built-in pack (info) · MS067 a managed copy of a built-in skill while
+`builtin_delivery = "plugin"` (info) ·
 with --changed: MS050 code changed but no doc of its module · MS051 frozen legacy snapshot
 modified or deleted (report narrowed to the changed modules)."""
+import os
 import re
 from collections import Counter
 from dataclasses import asdict, dataclass
@@ -15,15 +17,17 @@ from pathlib import Path
 
 from modsys.changes import (changed_files, code_map_routes, diff_names, map_files, repo_files,
                             target_names, work_tree_error)
-from modsys.config import (BUILTIN_PACKS, PACK_META_KEYS, ROLE_SCHEMA, discover_packs,
-                           enabled_roles)
+from modsys.config import (BUILTIN_PACKS, PACK_META_KEYS, ROLE_SCHEMA, builtin_delivery,
+                           discover_packs, enabled_roles)
 from modsys.fields import value_matches
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.query import role_paths
 from modsys.registry import as_dict, as_list, stub_head
 from modsys.rules import edge_problems, status_problem
-from modsys.skills import (EJECTED, SKILL_KEYS, behind_reason, declared_skills, ejected_copies,
-                           ejected_symlinks, inside, pack_skills, read_ejected, source_problem)
+from modsys.skill_sync import read_marker
+from modsys.skills import (AGENT_DIRS, EJECTED, SKILL_KEYS, behind_reason, declared_skills,
+                           ejected_copies, ejected_symlinks, inside, pack_skills, read_ejected,
+                           source_problem)
 from modsys.workspace import Workspace
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "error": 2}
@@ -320,6 +324,37 @@ def pack_findings(ws) -> list[Finding]:
             out.append(Finding("MS063", "warning", "*", f"ejected skill '{sid}' is behind pack "
                                f"'{skill.pack}' ({reason}) — review: modsys eject {sid} --diff",
                                where))
+    if builtin_delivery(ws.config) == "plugin":
+        out += plugin_copies(ws, {sid for sid, s in skills.items() if s.builtin})
+    return out
+
+
+def plugin_copies(ws, builtin: set[str]) -> list[Finding]:
+    """MS067 (info): under `builtin_delivery = "plugin"`, each copy `packs sync` made of a
+    built-in skill (a valid marker of that skill) in an agent directory — each real directory
+    once; an unreadable directory is skipped. The next `packs sync` removes them."""
+    out, seen = [], set()
+    for rel in dict.fromkeys(AGENT_DIRS.values()):
+        base = ws.root / rel
+        real = os.path.realpath(base)
+        if real in seen:
+            continue
+        seen.add(real)
+        try:
+            dests = sorted(base.iterdir()) if base.is_dir() else []
+        except OSError:
+            continue
+        for dest in dests:
+            try:
+                marker = (read_marker(dest) if dest.name in builtin and dest.is_dir()
+                          and not dest.is_symlink() else None)
+            except OSError:  # an entry that cannot be read: not a copy lint can vouch for
+                continue
+            if marker is not None and marker["skill"] == dest.name:
+                out.append(Finding("MS067", "info", "*", f"'{ws.rel(dest)}' is a copy of the "
+                                   f"built-in skill '{dest.name}' while builtin_delivery = "
+                                   f'"plugin" (the plugin provides it) — run modsys packs sync '
+                                   f"to remove it", ws.rel(dest)))
     return out
 
 

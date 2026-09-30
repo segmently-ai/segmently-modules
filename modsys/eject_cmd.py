@@ -15,6 +15,7 @@ import os
 import shutil
 from pathlib import Path
 
+from modsys.config import builtin_delivery
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.skill_sync import copy_file, sync_command
 from modsys.store import atomic_write
@@ -67,6 +68,10 @@ def eject(ws, skill_id: str, dry_run: bool) -> dict:
         raise UsageError(f"unknown skill '{skill_id}' (pack skills: "
                          f"{', '.join(skills) or 'none'})")
     skill = skills[skill_id]
+    if skill.builtin and builtin_delivery(ws.config) == "plugin":
+        raise UsageError(f"skill '{skill_id}' comes from the built-in pack '{skill.pack}': "
+                         f'builtin_delivery = "plugin" — the plugin provides this skill; eject '
+                         f'needs "repo"')
     problem = source_problem(skill.source, skill_id, skill.pack_dir)
     if problem:
         raise UsageError(f"skill '{skill_id}' of pack '{skill.pack}' is not loadable: {problem} "

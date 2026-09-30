@@ -165,6 +165,7 @@ overrides each key (`--fail-on`, `--base`, `--fail-under`).
 |---|---|---|
 | `agents` | unset | the agents `modsys packs sync` writes pack skills for when no `--agent` flag is given: `claude` (`.claude/skills/`) and / or `codex` (`.agents/skills/`); any other name is refused (exit 2 naming the file). Like every array, a higher layer ADDS to a lower one's list; `--agent` flags replace it |
 | `builtin` | `[]` | the engine's built-in packs to enable: `core` (the core agent skills), `ui` (a `designer` role and a UI review skill), `qa` (a `qa_acceptance` role and acceptance-criteria skills). Set it in `config.toml` or `config.user.toml` (the two lists add up; a repeated id counts once; a pack cannot set it); an unknown id is refused (exit 2 naming the file and the known ids). An enabled built-in pack is a pack layer below every repository pack; its version is the engine version. A repository pack with the same id (`.modsys/packs/ui/`) replaces it, enabled or not |
+| `builtin_delivery` | `"repo"` | where the agents get the enabled built-in packs' skills: `"repo"` — `modsys packs sync` copies them into the agents' skill directories — or `"plugin"` — the modsys plugins provide them (`core` → `modsys`, `ui` → `modsys-ui`, `qa` → `modsys-qa`): `packs sync` copies none of them and removes the copies it made earlier (an edited copy is a conflict and stays), `modsys eject` of a built-in skill is refused (`eject needs "repo"`), an ejected built-in skill is a `packs sync` conflict, and plain `lint` reports each copy still there (MS067, info). The built-in packs' roles and templates, `agents-md` and a repository pack's skills (any id) are the same under both. Set it in `config.toml` or `config.user.toml` (a scalar: the user's wins); a pack cannot set it (exit 2 naming its `pack.toml`); any other value is exit 2 naming the file and `repo, plugin` |
 
 ## `[init]`
 
@@ -492,6 +493,7 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS064 | warning | a skill's `reads_roles` names a role no layer configures, or a disabled one (plain `lint` only) |
 | MS065 | warning | two packs declare the same skill id: the lower-precedence one is shadowed (plain `lint` only) |
 | MS066 | info | a repository pack takes a built-in pack's id (`core`, `qa`, `ui`) and replaces that built-in pack, enabled or not; info never fails a gate (plain `lint` only) |
+| MS067 | info | `[packs] builtin_delivery = "plugin"` and an agent directory still holds a copy `packs sync` made of a built-in skill (its `.modsys-managed` marker): the plugin provides the skill, so the agent sees it twice — `modsys packs sync` removes the copy; path = the copy's directory; info never fails a gate (plain `lint` only) |
 
 MS053 compares every pair of `[[code_map]]` rules over the repository's files (git-tracked +
 new, not ignored; `[coverage]` filters do not apply) after `exclusive` precedence: a pair is

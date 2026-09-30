@@ -11,6 +11,8 @@ from modsys.output import UsageError
 PACK_META_KEYS = {"id", "version", "priority", "requires", "description", "skills", "agents"}
 DEFAULT_PACK_PRIORITY = 50
 BUILTIN_PACKS = ("core", "qa", "ui")  # the packs the engine ships: modsys/defaults/packs/<id>/
+BUILTIN_PLUGINS = {"core": "modsys", "qa": "modsys-qa", "ui": "modsys-ui"}  # pack -> its plugin
+BUILTIN_DELIVERY = ("repo", "plugin")  # [packs] builtin_delivery: packs sync, or the plugins
 REGISTRY_LAYOUTS = ("single", "per-module")
 
 
@@ -43,7 +45,7 @@ LAYER_SCHEMA = {
                "default_status": "str"},
     "coverage": {"include": "list[str]", "exclude": "list[str]"},
     "ci": {"fail_on": "str", "base": "str", "coverage_fail_under": "number"},
-    "packs": {"agents": "list[str]", "builtin": "list[str]"},
+    "packs": {"agents": "list[str]", "builtin": "list[str]", "builtin_delivery": "str"},
     "init": {"exclude": "list[str]", "co_change_commits": "int", "max_parallel": "int",
              "routing_min_hit_rate": "number"},
 }
@@ -112,6 +114,10 @@ def validate_layer(layer: dict, source) -> None:
             raise UsageError(f"{source}: [packs] agents: unknown agent {unknown[0]!r} "
                              f"(agents: {', '.join(AGENT_DIRS)})")
     _check_builtin(layer.get("packs", {}).get("builtin"), source)
+    delivery = layer.get("packs", {}).get("builtin_delivery")
+    if delivery is not None and delivery not in BUILTIN_DELIVERY:
+        raise UsageError(f"{source}: [packs] builtin_delivery: expected one of "
+                         f"{', '.join(BUILTIN_DELIVERY)}, got {delivery!r}")
     layout = layer.get("paths", {}).get("registry_layout")
     if layout is not None and layout not in REGISTRY_LAYOUTS:
         raise UsageError(f"{source}: [paths] registry_layout: expected one of "
@@ -145,6 +151,14 @@ def _check_builtin(ids, source) -> None:
     if unknown:
         raise UsageError(f"{source}: [packs] builtin: unknown built-in pack {unknown[0]!r} "
                          f"(built-in packs: {', '.join(BUILTIN_PACKS)})")
+
+
+def builtin_delivery(config: dict) -> str:
+    """`[packs] builtin_delivery` (P6 D2): "repo" (the default) — `packs sync` copies the
+    built-in packs' skills into the agents' directories — or "plugin" — the modsys plugins
+    provide them, and `packs sync` removes the copies it made. Set in the team or the user
+    config (the user's wins); a pack cannot set it."""
+    return (config.get("packs") or {}).get("builtin_delivery", "repo")
 
 
 def shown(path: Path, root: Path | None):
@@ -215,6 +229,11 @@ def discover_packs(config_dir: Path, root: Path | None = None, user: bool = True
             team = shown(config_dir / "config.toml", root)
             raise UsageError(f"{shown(pack_toml, root)}: [packs] builtin: a pack cannot enable "
                              f"built-in packs — set it in {team}")
+        if isinstance(data.get("packs"), dict) and "builtin_delivery" in data["packs"]:
+            team = shown(config_dir / "config.toml", root)
+            raise UsageError(f"{shown(pack_toml, root)}: [packs] builtin_delivery: a pack cannot "
+                             f"choose how the built-in skills are delivered — set it in {team} "
+                             f"(or config.user.toml)")
         validate_skills(data, pack_toml)
         packs.append({"id": pack_id, "priority": priority, "path": pack_toml, "data": data,
                       "builtin": False})

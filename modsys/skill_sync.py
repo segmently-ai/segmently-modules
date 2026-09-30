@@ -39,6 +39,7 @@ NOT_MANAGED = f"not managed by modsys (no {MANAGED})"
 BAD_MARKER = f"{MANAGED} is not a valid marker"
 NO_RECORD = f"has no valid {EJECTED} record"  # an `invalid` ejected copy: lint MS063, not MS062
 ORPHAN_BAD_MARKER = f"{BAD_MARKER} (not removed)"
+PLUGIN_PROVIDES = 'builtin_delivery = "plugin" (the plugin provides this skill)'
 _OTHER_PACK = re.compile(r"managed for pack '(.*)', skill '.*'")
 _EDIT = re.compile(r" \(locally (?:edited|deleted)\)(?:; |$)")
 
@@ -109,6 +110,22 @@ def skill_sources(ws) -> dict[str, Source]:
                          source_problem(skill.source, sid, skill.pack_dir))
         src.files = {} if src.problem else source_hashes(src.dir, ws.rel)
         out[sid] = src
+    return out
+
+
+def plugin_sources(ws, sources: dict[str, Source]) -> dict[str, Source]:
+    """`[packs] builtin_delivery = "plugin"` (P6 D2): the built-in packs' skills are not
+    materialized — the copies an earlier sync made become orphans that `packs sync` removes —
+    and an ejected copy of one is a conflict: syncing it would put the skill next to the
+    plugin's. A repository pack's skill (any id) is synced as always."""
+    builtin = {sid for sid, s in pack_skills(ws.config_dir).items() if s.builtin}
+    out = {}
+    for sid, src in sources.items():
+        if sid in builtin and src.kind == "ejected" and not src.blocked:
+            src.blocked = (f"ejected to {ws.rel(src.dir)} while {PLUGIN_PROVIDES} — delete the "
+                           f"ejected copy, or set [packs] builtin_delivery = \"repo\"")
+        if sid not in builtin or src.kind == "ejected":
+            out[sid] = src
     return out
 
 
@@ -269,6 +286,8 @@ def conflict_kind(reason: str) -> tuple[str, str | None]:
     `in-the-way` (something the sync must not write over)."""
     if reason == ORPHAN_BAD_MARKER:
         return "orphan-bad-marker", None
+    if PLUGIN_PROVIDES in reason:
+        return "plugin", None
     if reason.endswith("(locally edited; not removed)"):
         return "orphan-edit", None
     if reason == NOT_MANAGED:
@@ -355,11 +374,13 @@ def managed_agents(root: Path) -> list[str]:
     return out
 
 
-def plan_sync(ws, agents: list[str]) -> list[Plan]:
+def plan_sync(ws, agents: list[str], plugin: bool = False) -> list[Plan]:
     """Every (agent, skill) plan, agents in the given order, skills by id; an agent whose
     directory is the same real directory as an earlier agent's repeats that agent's plans
-    with `same_as` (applied once)."""
+    with `same_as` (applied once). `plugin`: `builtin_delivery = "plugin"` (`plugin_sources`)."""
     sources = skill_sources(ws)
+    if plugin:
+        sources = plugin_sources(ws, sources)
     plans, seen = [], {}
     for agent in agents:
         agent_dir = ws.root / AGENT_DIRS[agent]
