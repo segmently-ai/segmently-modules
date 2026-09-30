@@ -1,18 +1,24 @@
 """`tools/publish.py` (P6 D4, row 6.2): the channel versions, the two marketplace files per
 channel and their merge by name, the structural check of the Codex marketplace and `claude
 plugin validate` of the laid-out tree (when `claude` is on PATH)."""
+import contextlib
+import io
 import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
+import textwrap
 import tomllib
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import modsys
+from tests.helpers import git
 from tests.plugin_helpers import (CLAUDE, ENGINE, NO_CLAUDE, claude_env, copy_engine, load_tool,
                                   run_tool)
 
@@ -70,7 +76,7 @@ class ContentHashTest(unittest.TestCase):  # P6-AC-013 (the hash input)
     def test_what_moves_the_hash(self):
         first = self.hash_of("a")
         self.assertEqual(self.hash_of("b"), first)
-        self.assertEqual(self.hash_of("c", "9.9.9"), first)  # the manifests are not input
+        self.assertEqual(self.hash_of("c", "9.9.9"), first)  # the version is not input
         (self.engine / "tests").mkdir(exist_ok=True)
         (self.engine / "tests/new_test.txt").write_text("x\n")
         self.assertEqual(self.hash_of("d"), first)  # outside the shipped trees
@@ -81,6 +87,20 @@ class ContentHashTest(unittest.TestCase):  # P6-AC-013 (the hash input)
             self.assertNotEqual(self.hash_of("e"), first)
         finally:
             skill.write_bytes(original)
+        self.assertEqual(self.hash_of("f"), first)
+        rel = "modsys/defaults/packs/qa/skills/qa-acceptance/SKILL.md"
+        git(self.engine, "update-index", "--chmod=+x", rel)  # a mode in the index moves it
+        try:
+            self.assertNotEqual(self.hash_of("g"), first)
+        finally:
+            git(self.engine, "update-index", "--chmod=-x", rel)
+        for key, value in (("keywords", ["qa", "criteria"]), ("description", "Another text")):
+            with self.subTest(manifest=key):  # a manifest-only change moves it too
+                with mock.patch.dict(builder.PLUGINS["modsys-qa"], {key: value}):
+                    self.assertNotEqual(self.hash_of(f"h-{key}"), first)
+        with mock.patch.dict(builder.AUTHOR, {"name": "someone else"}):
+            self.assertNotEqual(self.hash_of("i"), first)
+        self.assertEqual(self.hash_of("j"), first)
 
     def test_a_dev_build_and_its_launcher(self):
         out = self.base / "dev"
@@ -133,6 +153,57 @@ class MarketplaceTest(unittest.TestCase):  # P6-AC-012
         self.assertEqual(codex["plugins"][0], {"name": "other-tool",
                                                "source": {"source": "git", "url": "u"}})
 
+    def test_the_merge_with_entries_of_every_shape(self):
+        extra = {"name": "modsys-extra", "source": "./plugins/modsys-extra",  # not ours: a
+                 "description": "An add-on, café — keeps its bytes"}  # glob would have caught it
+        odd = [{"name": ["modsys"]}, {"name": {"a": 1}}, {"name": 7}, {"source": "./x"}, "text",
+               None]
+        stale = {"name": "modsys", "source": "./old"}
+        again = {"name": "modsys", "source": "./older"}
+        old = {"name": "x", "plugins": [extra, stale, *odd, again,
+                                        {"name": "modsys-ui", "source": "./a"},
+                                        {"name": "modsys-ui", "source": "./b"}]}
+        for which in (0, 1):
+            with self.subTest(file=("claude", "codex")[which]):
+                new = publish.marketplaces("dev", old if which == 0 else None,
+                                           old if which == 1 else None)[which]
+                ours = [e for e in new["plugins"] if isinstance(e, dict)
+                        and isinstance(e.get("name"), str) and e["name"] in NAMES]
+                self.assertEqual([e["name"] for e in ours], ["modsys", "modsys-ui",
+                                                             "modsys-qa"])  # never twice
+                self.assertEqual(new["plugins"][:2], [extra, ours[0]])
+                self.assertEqual(new["plugins"][2:8], odd)  # kept as they are, where they are
+                self.assertEqual(new["plugins"][8:], ours[1:])
+                text = publish.dump(new)
+                self.assertIn(textwrap.indent(json.dumps(extra, indent=2, ensure_ascii=False),
+                                              "    "), text)  # the same bytes in the file
+                self.assertEqual(text.count('"name": "modsys"'), 1)
+
+    def test_an_old_file_the_merge_cannot_use(self):
+        for bad in ([], "text", 5, [{"name": "other-tool"}]):
+            with self.subTest(old=bad):
+                with self.assertRaises(builder.BuildError) as caught:
+                    publish.marketplaces("dev", bad, None)
+                self.assertIn(".claude-plugin/marketplace.json is not a JSON object",
+                              str(caught.exception))
+                with self.assertRaises(builder.BuildError) as caught:
+                    publish.marketplaces("dev", None, bad)
+                self.assertIn(".agents/plugins/marketplace.json is not a JSON object",
+                              str(caught.exception))
+        for bad in ({"other-tool": {}}, "modsys", 3):
+            with self.subTest(plugins=bad):
+                with self.assertRaises(builder.BuildError) as caught:
+                    publish.marketplaces("dev", {"name": "x", "plugins": bad}, None)
+                self.assertIn(".claude-plugin/marketplace.json: plugins is not a list",
+                              str(caught.exception))
+                with self.assertRaises(builder.BuildError) as caught:
+                    publish.marketplaces("dev", None, {"name": "x", "plugins": bad})
+                self.assertIn(".agents/plugins/marketplace.json: plugins is not a list",
+                              str(caught.exception))
+        claude, codex = publish.marketplaces("dev", {"name": "x"}, {})  # no list yet: ours
+        self.assertEqual([e["name"] for e in claude["plugins"]], NAMES)
+        self.assertEqual([e["name"] for e in codex["plugins"]], NAMES)
+
     def test_the_codex_check(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve()
@@ -163,6 +234,37 @@ class MarketplaceTest(unittest.TestCase):  # P6-AC-012
             path.write_text(json.dumps(bad))
             self.assertEqual(publish.codex_problems(root), [
                 "plugin 'modsys': the name is used twice", "plugins[2]: name is missing"])
+            bad = json.loads(publish.dump(codex))
+            source = {"source": "local", "path": "./plugins/modsys"}
+            bad["plugins"] += [{"name": ["modsys"], "source": source},
+                               {"name": {"a": 1}, "source": source}, {"name": 7}, "text"]
+            path.write_text(json.dumps(bad))
+            self.assertEqual(publish.codex_problems(root), [
+                "plugins[3]: name is not a string", "plugins[4]: name is not a string",
+                "plugins[5]: name is not a string",
+                "plugins[5]: source is not an object with a source type",
+                "plugins[6]: name is missing",
+                "plugins[6]: source is not an object with a source type"])
+
+    def test_the_codex_check_compares_real_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            root = tmp / "root"
+            for name in NAMES:
+                (root / "plugins" / name).mkdir(parents=True)
+            (tmp / "outside").mkdir()
+            shutil.rmtree(root / "plugins/modsys-ui")
+            os.symlink(tmp / "outside", root / "plugins/modsys-ui")  # a link out of the root
+            _, codex = publish.marketplaces("dev")
+            (root / publish.CODEX_MARKETPLACE).parent.mkdir(parents=True)
+            (root / publish.CODEX_MARKETPLACE).write_text(publish.dump(codex))
+            problem = ["plugin 'modsys-ui': source.path './plugins/modsys-ui' leaves the "
+                       "marketplace root"]
+            self.assertEqual(publish.codex_problems(root), problem)
+            (tmp / "other").mkdir()  # the same root spelled with `..`: nothing more leaves it
+            self.assertEqual(publish.codex_problems(tmp / "other" / ".." / "root"), problem)
+            os.symlink(root, tmp / "alias")
+            self.assertEqual(publish.codex_problems(tmp / "alias"), problem)
 
 
 class LayoutTest(unittest.TestCase):  # P6-AC-011 (the marketplace), P6-AC-012
@@ -197,6 +299,59 @@ class LayoutTest(unittest.TestCase):  # P6-AC-011 (the marketplace), P6-AC-012
                 for rel in builder.MANIFESTS])
         self.assertEqual(sorted(p.name for p in (self.base / "dev").iterdir()),
                          [".agents", ".claude-plugin", "plugins"])
+
+    def test_modes_whatever_the_umask_and_no_bytecode(self):
+        out = self.base / "umask"
+        proc = subprocess.run(
+            ["/bin/sh", "-c", 'umask 077 && exec "$0" "$@"', sys.executable,
+             str(self.engine / "tools/publish.py"), "--channel", "dev", "--out", str(out)],
+            capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        for path in [out, *out.rglob("*")]:
+            rel = path.relative_to(out).as_posix()
+            want = 0o755 if path.is_dir() or rel == "plugins/modsys/bin/modsys" else 0o644
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), want, rel)
+        self.assertFalse((self.engine / "tools/__pycache__").exists())
+
+    @unittest.skipIf(os.geteuid() == 0, "root writes into a read-only directory")
+    def test_an_out_that_cannot_be_written(self):
+        locked = self.base / "locked"
+        locked.mkdir()
+        locked.chmod(0o555)
+        try:
+            for out in (locked / "out", locked / "deeper/out"):
+                proc = run_tool(self.engine, "publish", "--channel", "dev", "--out", str(out))
+                self.assertEqual((proc.returncode, proc.stdout), (2, ""), proc.stderr)
+                self.assertTrue(proc.stderr.startswith("publish.py: error: cannot write "
+                                                       f"{locked}/"), proc.stderr)
+                self.assertIn(": Permission denied", proc.stderr)
+                self.assertEqual(proc.stderr.count("\n"), 1)  # never a traceback
+                self.assertEqual(list(locked.iterdir()), [])
+        finally:
+            locked.chmod(0o755)
+
+    def test_a_failure_removes_out_and_the_parents_it_made(self):
+        def half_written(plugins, dest, channel):
+            (dest / "plugins/modsys").mkdir(parents=True)
+            (dest / "plugins/modsys/README.md").write_text("half\n")
+            raise failure
+
+        for failure, code, line in (
+                (PermissionError(13, "Permission denied", "/somewhere/x"), 2,
+                 "publish.py: error: cannot write /somewhere/x: Permission denied\n"),
+                (shutil.Error([("a", "/somewhere/b", "No space left on device")]), 2,
+                 "publish.py: error: cannot write /somewhere/b: No space left on device\n"),
+                (builder.BuildError("planted"), 2, "publish.py: error: planted\n"),
+                (KeyboardInterrupt(), 130, "publish.py: interrupted\n")):
+            with self.subTest(failure=type(failure).__name__):
+                out = self.base / "fresh/deeper/out"
+                stdout, stderr = io.StringIO(), io.StringIO()
+                with mock.patch.object(publish, "build_channel", return_value="0.0.0"), \
+                        mock.patch.object(publish, "layout", half_written), \
+                        contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                    got = publish.main(["--channel", "dev", "--out", str(out)])
+                self.assertEqual((got, stdout.getvalue(), stderr.getvalue()), (code, "", line))
+                self.assertFalse((self.base / "fresh").exists())
 
     def test_an_existing_out_is_refused(self):
         proc = run_tool(self.engine, "publish", "--channel", "dev", "--out", str(self.base))

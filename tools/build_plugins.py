@@ -12,21 +12,29 @@ manifest rendered from the one PLUGINS table below. The engine is read from git'
 this work tree — never from an installed copy: `git ls-files modsys/` decides what ships (an
 untracked file never does), a file's mode comes from the index (100755 → 0755, else 0644;
 `bin/modsys` 0755), directories are 0755, and nothing carries a timestamp: two builds of one
-tree are byte-identical. The three plugins are built in a temp directory and moved into --out
-at the end (only those three directories are replaced), so an interrupted or refused build
-leaves --out as it was.
+tree are byte-identical. A tracked file that differs from its commit still ships as it is on
+disk; one stderr `warning:` line names such files.
+The three plugins are built in a temp directory inside --out and renamed into place at the end,
+all or nothing (only those three directories are replaced; the earlier ones are renamed aside
+first and renamed back on any failure), so an interrupted or refused build leaves --out as it
+was — and does not create it. --out is refused when `<out>/<plugin>` is this engine tree or
+holds it, or exists and is not a build of that plugin: the builder replaces only its own output.
 Exit 0 built · 2 a refusal (stdout empty, stderr `build_plugins.py: error: …`) · 130 Ctrl-C."""
 import argparse
 import json
 import os
 import re
 import shutil
+import signal
 import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import tomllib
 from pathlib import Path
+
+sys.dont_write_bytecode = True  # running a tool never leaves tools/__pycache__ in the engine
 
 ENGINE = Path(__file__).resolve().parents[1]
 PROG = "build_plugins.py"
@@ -53,19 +61,49 @@ SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
                     r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
                     r"(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
                     r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$")  # semver.org, SemVer 2.0
-INTERRUPT_AFTER = "MODSYS_BUILD_INTERRUPT_AFTER"  # test seam: Ctrl-C after building that plugin
+# Test seam: `<plugin>` = Ctrl-C after building that plugin; `swap:<plugin>` = Ctrl-C after that
+# plugin was renamed into --out.
+INTERRUPT_AFTER = "MODSYS_BUILD_INTERRUPT_AFTER"
+# git's location variables (a parent git hook exports them): they would point git at another
+# repository or index — the same list as the engine's `changes.git_env`.
+GIT_LOCATION_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+                     "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_PREFIX")
 
 
 class BuildError(Exception):
     """A refusal: exit 2, nothing written."""
 
 
+class GitMissing(BuildError):
+    """git cannot be started at all."""
+
+
+class Stranded(BuildError):
+    """The swap could not be undone: the earlier directories are in the staging directory."""
+
+
 def semver_ok(version: str) -> bool:
     return bool(SEMVER.fullmatch(version))
 
 
+def git_env() -> dict:
+    """The environment of every git call of the tools: without git's location variables."""
+    return {k: v for k, v in os.environ.items() if k not in GIT_LOCATION_VARS}
+
+
+def run_git(where: Path, *args: str) -> subprocess.CompletedProcess:
+    """`git -C where …` for the three tools: the location variables dropped, the output decoded
+    as UTF-8 (a path that is not UTF-8 survives as surrogates); GitMissing when git cannot be
+    started."""
+    try:
+        return subprocess.run(["git", "-C", str(where), *args], capture_output=True,
+                              encoding="utf-8", errors="surrogateescape", env=git_env())
+    except OSError as e:
+        raise GitMissing(f"git is not installed or cannot run: {e.strerror or e}") from None
+
+
 def git(engine: Path, *args: str) -> str:
-    proc = subprocess.run(["git", "-C", str(engine), *args], capture_output=True, text=True)
+    proc = run_git(engine, *args)
     if proc.returncode:
         raise BuildError(f"git {' '.join(args[:2])} failed in {engine}: "
                          f"{proc.stderr.strip() or proc.returncode}")
@@ -90,6 +128,8 @@ def tracked(engine: Path) -> dict[str, int]:
     a refusal naming it; `__pycache__`, `*.pyc` and the engine's markers never ship."""
     try:
         top = git(engine, "rev-parse", "--show-toplevel").strip()
+    except GitMissing:
+        raise
     except BuildError:
         raise BuildError(f"{engine} is not a git work tree — the build ships the files git "
                          f"tracks under modsys/ (build from a clone, not an export)") from None
@@ -146,14 +186,14 @@ def license_of(engine: Path) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def manifests(name: str, version: str, license: str | None = None) -> dict[str, dict]:
+def manifests(name: str, version: str, spdx: str | None = None) -> dict[str, dict]:
     """The three manifests of plugin `name` — {path in the plugin: JSON value}, key order fixed —
     all rendered from PLUGINS: `dependencies` (a bare name, no range) only for Claude Code."""
     spec = PLUGINS[name]
     shared = {"name": name, "version": version, "description": spec["description"],
               "author": dict(AUTHOR), "keywords": KEYWORDS + spec["keywords"]}
-    if license:
-        shared["license"] = license
+    if spdx:
+        shared["license"] = spdx
     claude = dict(shared)
     if name != CORE:
         claude["dependencies"] = [CORE]
@@ -203,8 +243,8 @@ def readme(name: str, skills: list[str]) -> str:
 
 
 def write(path: Path, data: bytes, mode: int) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
         os.chmod(path, mode)
     except OSError as e:
@@ -219,7 +259,7 @@ def read(engine: Path, rel: str) -> bytes:
 
 
 def build_one(engine: Path, files: dict[str, int], name: str, version: str,
-              license: str | None, dest: Path) -> int:
+              spdx: str | None, dest: Path) -> int:
     """Write plugin `name` into `dest`; the number of files written."""
     skills = pack_skills(engine, PLUGINS[name]["pack"])
     count = 0
@@ -242,7 +282,7 @@ def build_one(engine: Path, files: dict[str, int], name: str, version: str,
         for rel in sorted(files):
             write(dest / "runtime" / rel, read(engine, rel), files[rel])
         count += 1 + len(files)
-    for rel, value in manifests(name, version, license).items():
+    for rel, value in manifests(name, version, spdx).items():
         write(dest / rel, (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode(),
               0o644)
     write(dest / "README.md", readme(name, list(skills)).encode(), 0o644)
@@ -251,39 +291,154 @@ def build_one(engine: Path, files: dict[str, int], name: str, version: str,
     return count + len(MANIFESTS) + 1
 
 
+def modified(engine: Path) -> list[str]:
+    """The tracked files that ship (`modsys/`, tools/launcher.sh) and differ from their commit —
+    staged or not: the build ships them as they are on disk."""
+    out = git(engine, "--no-optional-locks", "status", "--porcelain", "-z",
+              "--untracked-files=no", "--", "modsys", "tools/launcher.sh").split("\0")
+    names, skip = [], False
+    for entry in out:
+        if skip or len(entry) < 4:  # the second path of a rename / copy, or the end
+            skip = False
+            continue
+        names.append(entry[3:])
+        skip = entry[0] in "RC" or entry[1] in "RC"
+    return sorted(names)
+
+
+def is_build(path: Path, name: str) -> bool:
+    """`path` is a directory holding an earlier build of plugin `name` (its Claude Code manifest
+    names it) — the only thing the builder replaces."""
+    if path.is_symlink() or not path.is_dir():
+        return False
+    try:
+        doc = json.loads((path / MANIFESTS[0]).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(doc, dict) and doc.get("name") == name
+
+
+def check_out(engine: Path, out: Path) -> None:
+    """Refuse an --out whose `<out>/<plugin>` is not the builder's to replace: the engine tree
+    itself or a directory holding it (real paths — replacing it would delete the engine, `.git`
+    included), or anything that exists and is not an earlier build of that plugin."""
+    here = Path(os.path.realpath(engine))
+    for name in PLUGINS:
+        final = out / name
+        real = Path(os.path.realpath(final))
+        if real == here or real in here.parents:
+            raise BuildError(f"--out {out}: {final} is this engine tree or holds it — the "
+                             f"build would replace it; give another directory")
+        if os.path.lexists(final) and not is_build(final, name):
+            raise BuildError(f"{final} exists and is not a build of the {name} plugin (no "
+                             f"{MANIFESTS[0]} naming it) — the build replaces only its own "
+                             f"output; remove it or give another --out")
+
+
+def make_dirs(path: Path) -> list[Path]:
+    """Create `path` and its missing parents; the directories created, the deepest first (a
+    failed build removes them again)."""
+    missing, at = [], path
+    while not os.path.lexists(at) and at != at.parent:
+        missing.append(at)
+        at = at.parent
+    try:
+        for d in reversed(missing):
+            d.mkdir()
+    except OSError as e:
+        remove_dirs(missing)
+        raise BuildError(f"cannot write {e.filename or path}: {e.strerror or e}") from None
+    return missing
+
+
+def remove_dirs(dirs: list[Path]) -> None:
+    for d in dirs:  # the deepest first; one that is not empty (or not there) stays
+        try:
+            d.rmdir()
+        except OSError:
+            pass
+
+
+def swap(out: Path, staging: Path) -> None:
+    """Rename the three plugins built in `staging/new` into `out`, all or nothing: each earlier
+    `<out>/<name>` is renamed aside (into `staging/old`) first, and any failure or Ctrl-C
+    renames everything back — read from the directories themselves, so an interrupt between two
+    renames undoes exactly what happened. Stranded when the way back fails: `staging` is kept."""
+    new, old = staging / "new", staging / "old"
+    try:
+        old.mkdir()
+        for name in PLUGINS:
+            final = out / name
+            if os.path.lexists(final):
+                os.rename(final, old / name)
+            os.rename(new / name, final)
+            if os.environ.get(INTERRUPT_AFTER) == f"swap:{name}":
+                raise KeyboardInterrupt
+    except BaseException as e:
+        main_thread = threading.current_thread() is threading.main_thread()
+        before = signal.signal(signal.SIGINT, signal.SIG_IGN) if main_thread else None
+        try:  # a second Ctrl-C never interrupts the way back
+            stuck = []
+            for name in reversed(list(PLUGINS)):
+                final = out / name
+                try:
+                    if not os.path.lexists(new / name) and os.path.lexists(final):
+                        os.rename(final, new / name)  # the new one was in place: take it out
+                    if os.path.lexists(old / name):
+                        os.rename(old / name, final)
+                except OSError as back:
+                    stuck.append(f"{final} ({back.strerror or back})")
+        finally:
+            if main_thread:
+                signal.signal(signal.SIGINT, before)
+        if stuck:
+            raise Stranded(f"cannot put back {', '.join(stuck)} — the earlier directories are "
+                           f"in {old}, the new ones in {new}") from None
+        if isinstance(e, OSError):
+            raise BuildError(f"cannot write {e.filename or out}: {e.strerror or e}") from None
+        raise
+
+
 def build(engine: Path, out: Path, version: str | None = None) -> dict:
     """Build the three plugins into `out` (replacing only them). {version, out, plugins:
-    {name: files}}; BuildError on a refusal — nothing written then."""
+    {name: files}, modified: the shipped tracked files with uncommitted changes}; BuildError on
+    a refusal — nothing written then, `out` not even created."""
     if version is not None and not semver_ok(version):
         raise BuildError(f"--version {version!r}: a SemVer 2.0 version is required "
                          f"(e.g. 0.2.0, 0.2.0-dev.habcdef12)")
     version = version or engine_version(engine)
     files = tracked(engine)
-    license = license_of(engine)
+    spdx = license_of(engine)
     if not (engine / "tools/launcher.sh").is_file():
         raise BuildError("tools/launcher.sh is missing")
-    temp = Path(tempfile.mkdtemp(prefix="modsys-plugins-"))
+    check_out(engine, out)  # before --out is touched
+    changed = modified(engine)
+    created = make_dirs(out)
+    staging, keep, built = None, False, False
     try:
+        try:
+            staging = Path(tempfile.mkdtemp(prefix=".modsys-build-", dir=out))
+        except OSError as e:
+            raise BuildError(f"cannot write {out}: {e.strerror or e}") from None
         counts = {}
         for name in PLUGINS:
-            counts[name] = build_one(engine, files, name, version, license, temp / name)
+            counts[name] = build_one(engine, files, name, version, spdx,
+                                     staging / "new" / name)
             if os.environ.get(INTERRUPT_AFTER) == name:
                 raise KeyboardInterrupt
-        for name in PLUGINS:  # --out is touched only now, once all three are built
-            final = out / name
-            try:
-                out.mkdir(parents=True, exist_ok=True)
-                if final.is_symlink() or final.is_file():
-                    final.unlink()
-                elif final.exists():
-                    shutil.rmtree(final)
-                shutil.move(str(temp / name), str(final))
-            except OSError as e:
-                raise BuildError(f"cannot write {e.filename or final}: {e.strerror or e}") \
-                    from None
+        swap(out, staging)  # --out's plugin directories are touched only now
+        built = True
+    except Stranded:
+        keep = True
+        raise
+    except OSError as e:
+        raise BuildError(f"cannot write {e.filename or out}: {e.strerror or e}") from None
     finally:
-        shutil.rmtree(temp, ignore_errors=True)
-    return {"version": version, "out": str(out), "plugins": counts}
+        if staging and not keep:
+            shutil.rmtree(staging, ignore_errors=True)
+        if not built:
+            remove_dirs(created)
+    return {"version": version, "out": str(out), "plugins": counts, "modified": changed}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -304,6 +459,11 @@ def main(argv: list[str] | None = None) -> int:
         return 130
     for name, count in result["plugins"].items():
         print(f"built {name} {result['version']}: {count} files in {result['out']}/{name}")
+    changed = result["modified"]
+    if changed:  # the work tree's bytes ship: say so, once
+        more = f", … and {len(changed) - 5} more" if len(changed) > 5 else ""
+        print(f"{PROG}: warning: built from a work tree with uncommitted changes: "
+              f"{', '.join(changed[:5])}{more}", file=sys.stderr)
     return 0
 
 

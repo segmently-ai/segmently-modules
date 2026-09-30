@@ -113,6 +113,18 @@ class LayoutTest(BuilderRepo):  # P6-AC-008
             self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertEqual(tree(tmp / "out"), tree(self.out))
 
+    def test_git_location_variables_of_the_caller_are_dropped(self):  # a run from a git hook
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            proc = run_tool(self.engine, "build_plugins", "--out", str(tmp / "out"),
+                            env={"GIT_INDEX_FILE": str(tmp / "another-index"),
+                                 "GIT_DIR": str(tmp / "another.git"),
+                                 "GIT_WORK_TREE": str(tmp)})
+            self.assertEqual((proc.returncode, proc.stderr), (0, ""))
+            self.assertEqual(tree(tmp / "out"), tree(self.out))
+            self.assertEqual(sorted(p.name for p in tmp.iterdir()), ["out"])
+        self.assertFalse((self.engine / "tools/__pycache__").exists())
+
     def test_the_default_out_is_git_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:
             engine = copy_engine(Path(tmp).resolve() / "engine")
@@ -338,6 +350,111 @@ class RefusalTest(unittest.TestCase):  # P6-AC-028, P6-AC-033
         git(self.engine, "add", str(link))
         git(self.engine, "commit", "-q", "-m", "a symlink")
         self.assertIn("extra.md is tracked as a symlink", self.refused())
+
+    def test_out_at_or_above_the_engine(self):  # the engine copy lives in a directory `modsys`
+        engine = copy_engine(self.tmp / "work/modsys")
+        link = self.tmp / "link"
+        os.symlink(self.tmp / "work", link)
+        before = tree(engine)
+        self.assertIn(".git/HEAD", before)
+        for out in (self.tmp / "work", link, engine / "..", engine):
+            with self.subTest(out=out):
+                proc = run_tool(engine, "build_plugins", "--out", str(out))
+                self.assertEqual((proc.returncode, proc.stdout), (2, ""), proc.stderr)
+                self.assertTrue(proc.stderr.startswith("build_plugins.py: error: "), proc.stderr)
+                self.assertIn("is this engine tree or holds it" if out != engine
+                              else "exists and is not a build of the modsys plugin",
+                              proc.stderr)
+                self.assertEqual(tree(engine), before)  # nothing deleted, `.git` included
+                self.assertEqual(sorted(p.name for p in (self.tmp / "work").iterdir()),
+                                 ["modsys"])
+
+    def test_a_foreign_directory_is_never_replaced(self):
+        (self.out / "modsys").mkdir(parents=True)
+        (self.out / "modsys/keep.txt").write_text("not a build\n")
+        err = self.refused()
+        self.assertIn(f"{self.out}/modsys exists and is not a build of the modsys plugin", err)
+        shutil.rmtree(self.out)
+        self.assertEqual(run_tool(self.engine, "build_plugins", "--out", str(self.out))
+                         .returncode, 0)
+        manifest = self.out / "modsys-qa/.claude-plugin/plugin.json"
+        manifest.write_text(manifest.read_text().replace('"modsys-qa"', '"another-plugin"'))
+        self.assertIn("modsys-qa exists and is not a build of the modsys-qa plugin",
+                      self.refused())
+        shutil.rmtree(self.out / "modsys-qa")
+        (self.out / "modsys-qa").write_text("a file\n")
+        self.assertIn("modsys-qa exists and is not a build", self.refused())
+
+    def test_the_swap_is_all_or_nothing(self):
+        self.assertEqual(run_tool(self.engine, "build_plugins", "--out", str(self.out))
+                         .returncode, 0)
+        (self.out / "modsys/stale.txt").write_text("old\n")
+        for seam in ("swap:modsys", "swap:modsys-qa"):  # after the first and the last rename
+            with self.subTest(seam=seam):
+                err = self.refused("--version", "0.9.0", code=130,
+                                   env={"MODSYS_BUILD_INTERRUPT_AFTER": seam})
+                self.assertEqual(err, "build_plugins.py: interrupted\n")
+        if os.geteuid() == 0:
+            self.skipTest("root renames a read-only directory")
+        (self.out / "modsys-ui").chmod(0o555)  # the second replacement cannot be renamed aside
+        try:
+            err = self.refused("--version", "0.9.0")
+        finally:
+            (self.out / "modsys-ui").chmod(0o755)
+        self.assertIn("build_plugins.py: error: cannot write ", err)
+        self.assertNotIn("Traceback", err)
+
+    def test_no_git_and_an_out_that_cannot_be_written(self):
+        empty = self.tmp / "empty-path"
+        empty.mkdir()
+        err = self.refused(env={"PATH": str(empty)})
+        self.assertTrue(err.startswith("build_plugins.py: error: git is not installed or cannot "
+                                       "run"), err)
+        self.assertEqual(err.count("\n"), 1)
+        if os.geteuid() == 0:
+            self.skipTest("root writes into a read-only directory")
+        locked = self.tmp / "locked"
+        locked.mkdir()
+        locked.chmod(0o555)
+        try:
+            for out in (locked, locked / "deeper/out"):
+                proc = run_tool(self.engine, "build_plugins", "--out", str(out))
+                self.assertEqual((proc.returncode, proc.stdout), (2, ""), proc.stderr)
+                self.assertTrue(proc.stderr.startswith("build_plugins.py: error: cannot write "),
+                                proc.stderr)
+                self.assertEqual(list(locked.iterdir()), [])
+        finally:
+            locked.chmod(0o755)
+
+    def test_a_refused_build_does_not_create_out(self):
+        out = self.tmp / "new/deeper/out"
+        proc = run_tool(self.engine, "build_plugins", "--out", str(out),
+                        env={"MODSYS_BUILD_INTERRUPT_AFTER": "modsys-ui"})
+        self.assertEqual(proc.returncode, 130)
+        self.assertFalse((self.tmp / "new").exists())
+
+    def test_uncommitted_changes_are_named(self):
+        proc = run_tool(self.engine, "build_plugins", "--out", str(self.out))
+        self.assertEqual((proc.returncode, proc.stderr), (0, ""))
+        (self.engine / "modsys/scratch.py").write_text("x = 1\n")  # untracked: never ships
+        launcher = self.engine / "tools/launcher.sh"
+        launcher.write_text(launcher.read_text() + "# edited\n")
+        cli = self.engine / "modsys/cli.py"
+        cli.write_text(cli.read_text() + "# edited\n")
+        proc = run_tool(self.engine, "build_plugins", "--out", str(self.out))
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(proc.stderr, "build_plugins.py: warning: built from a work tree with "
+                                      "uncommitted changes: modsys/cli.py, tools/launcher.sh\n")
+        self.assertTrue((self.out / "modsys/bin/modsys").read_text().endswith("# edited\n"))
+        roles = sorted((self.engine / "modsys/defaults/templates/roles").glob("*.md"))[:5]
+        for path in roles:
+            path.write_text(path.read_text() + "\nEdited.\n")
+        git(self.engine, "add", "--", str(roles[0]))  # staged or not: uncommitted
+        proc = run_tool(self.engine, "build_plugins", "--out", str(self.out))
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(proc.stderr.count("\n"), 1)
+        self.assertTrue(proc.stderr.rstrip().endswith(", … and 2 more"), proc.stderr)
+        self.assertEqual(proc.stderr.count("modsys/"), 5)
 
     def test_a_usage_error(self):
         proc = run_tool(self.engine, "build_plugins", "--frobnicate")

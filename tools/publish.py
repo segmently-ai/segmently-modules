@@ -11,10 +11,13 @@ plugin marketplace add` read; `tools/release.py` writes the same into the publis
 Channels are branches of the publish repository; each has its own marketplace name:
 `stable` → `modsys`, `dev` → `modsys-dev` (two marketplaces can be added side by side).
 Versions (one source: the engine's `__version__`, X.Y.Z or X.Y.Z.devN): `stable` = X.Y.Z;
-`dev` = X.Y.Z-dev.h<8 hex> — the content hash of the three plugin trees without their
-manifests (the files that carry the version), so a rebuild of the same tree is the same
-version, and the `h` keeps an all-digit hash a valid SemVer identifier. A version lives only in
-each plugin's manifests, never in a marketplace entry."""
+`dev` = X.Y.Z-dev.h<8 hex> — the content hash of the three plugin trees, their manifests
+read with the `version` blanked (the one value made from the hash), so a rebuild of the same
+tree is the same version and any other change — a manifest key too — is a new one; the `h`
+keeps an all-digit hash a valid SemVer identifier. A version lives only in each plugin's
+manifests, never in a marketplace entry.
+Exit 0 laid out · 2 a refusal or a write failure (stdout empty, stderr `publish.py: error: …`;
+--out and every directory the run created are removed) · 130 Ctrl-C (the same clean-up)."""
 import argparse
 import hashlib
 import json
@@ -25,6 +28,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.dont_write_bytecode = True  # running a tool never leaves tools/__pycache__ in the engine
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_plugins  # noqa: E402  (a sibling script)
 
@@ -53,17 +57,27 @@ def channel_version(channel: str, engine_version: str, content: str) -> str:
     return base if channel == "stable" else f"{base}-dev.h{content[:8]}"
 
 
+def blank_version(data: bytes) -> bytes:
+    """A manifest's bytes with its `version` blanked — what the content hash reads."""
+    try:
+        doc = json.loads(data)
+    except ValueError:
+        return data
+    return dump({**doc, "version": ""}).encode() if isinstance(doc, dict) else data
+
+
 def content_hash(plugins: Path) -> str:
     """sha256 over (path, mode, bytes) of every file of the three plugin directories in
-    `plugins`, in path order — the manifests excluded (they carry the version)."""
+    `plugins`, in path order — a manifest with its `version` blanked (the version is made from
+    this hash; any other manifest change moves it)."""
     h = hashlib.sha256()
     for name in sorted(build_plugins.PLUGINS):
         root = plugins / name
         for path in sorted(p for p in root.rglob("*") if p.is_file()):
             rel = path.relative_to(root).as_posix()
-            if rel in build_plugins.MANIFESTS:
-                continue
             data = path.read_bytes()
+            if rel in build_plugins.MANIFESTS:
+                data = blank_version(data)
             h.update(f"{name}/{rel}\0{path.stat().st_mode & 0o777:o}\0{len(data)}\0".encode())
             h.update(data)
     return h.hexdigest()
@@ -88,34 +102,48 @@ def entries(channel: str) -> dict[str, tuple[dict, dict]]:
             for name in sorted(build_plugins.PLUGINS)}
 
 
-def merge_plugins(existing, ours: list[dict]) -> list[dict]:
-    """The `plugins` list: every entry we do not own kept as it is and where it is, ours
-    replaced in place (merged by name), the missing ones of ours appended in name order."""
+def merge_plugins(existing, ours: list[dict], where: str = "the marketplace file") -> list[dict]:
+    """The `plugins` list: every entry we do not own kept as it is and where it is (whatever
+    its shape: an entry whose `name` is not a string is not ours), ours replaced in place
+    (merged by name; a second entry with one of our names is dropped — the list never holds a
+    name of ours twice), the missing ones of ours appended in name order. A `plugins` value
+    that is not a list is a BuildError naming `where`: its entries could not be kept."""
+    if existing is None:
+        existing = []
+    if not isinstance(existing, list):
+        raise build_plugins.BuildError(f"{where}: plugins is not a list — fix it: the release "
+                                       f"merges its entries into it")
     mine = {e["name"]: e for e in ours}
     out, seen = [], set()
-    for entry in existing if isinstance(existing, list) else []:
+    for entry in existing:
         name = entry.get("name") if isinstance(entry, dict) else None
-        if name in mine:
+        if not isinstance(name, str) or name not in mine:
+            out.append(entry)
+        elif name not in seen:
             out.append(mine[name])
             seen.add(name)
-        else:
-            out.append(entry)
     return out + [e for name, e in sorted(mine.items()) if name not in seen]
 
 
 def marketplaces(channel: str, claude_old=None, codex_old=None) -> tuple[dict, dict]:
     """The two marketplace files of a channel, merged into the ones on the branch (None: new).
-    Ours: `name`, and `owner` / `description` of the Claude one; other keys are kept."""
+    Ours: `name`, and `owner` / `description` of the Claude one; other keys are kept. An old
+    file that is not a JSON object is a BuildError naming it."""
     ours = entries(channel)
-    claude = claude_old if isinstance(claude_old, dict) else {}
-    codex = codex_old if isinstance(codex_old, dict) else {}
+    for rel, old in ((CLAUDE_MARKETPLACE, claude_old), (CODEX_MARKETPLACE, codex_old)):
+        if old is not None and not isinstance(old, dict):
+            raise build_plugins.BuildError(f"{rel} is not a JSON object — fix it: the release "
+                                           f"merges its entries into it")
+    claude, codex = claude_old or {}, codex_old or {}
     name = MARKETPLACES[channel]
     claude = {"name": name, "owner": dict(OWNER), "description": DESCRIPTION[channel],
               **{k: v for k, v in claude.items() if k not in ("name", "owner", "description",
                                                              "plugins")},
-              "plugins": merge_plugins(claude.get("plugins"), [c for c, _ in ours.values()])}
+              "plugins": merge_plugins(claude.get("plugins"), [c for c, _ in ours.values()],
+                                       CLAUDE_MARKETPLACE)}
     codex = {"name": name, **{k: v for k, v in codex.items() if k not in ("name", "plugins")},
-             "plugins": merge_plugins(codex.get("plugins"), [x for _, x in ours.values()])}
+             "plugins": merge_plugins(codex.get("plugins"), [x for _, x in ours.values()],
+                                      CODEX_MARKETPLACE)}
     return claude, codex
 
 
@@ -126,8 +154,8 @@ def dump(value) -> str:
 def codex_problems(root: Path) -> list[str]:
     """The structural check of `.agents/plugins/marketplace.json` under `root` (Codex documents
     no validator): a JSON object with a `name` and a `plugins` list; every entry an object with
-    a unique `name` and a `source` object; a `local` source's `path` starts with `./`, stays
-    inside `root` and is a directory."""
+    a unique `name` (a string) and a `source` object; a `local` source's `path` starts with
+    `./`, stays inside `root` (real paths: a symlink out of it leaves it) and is a directory."""
     path = root / CODEX_MARKETPLACE
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
@@ -141,15 +169,19 @@ def codex_problems(root: Path) -> list[str]:
     plugins = doc.get("plugins")
     if not isinstance(plugins, list):
         return problems + [f"{CODEX_MARKETPLACE}: plugins is not a list"]
-    seen = set()
+    seen, real_root = set(), Path(os.path.realpath(root))
     for i, entry in enumerate(plugins):
         name = entry.get("name") if isinstance(entry, dict) else None
-        label = f"plugin '{name}'" if isinstance(name, str) and name else f"plugins[{i}]"
-        if not isinstance(name, str) or not name:
+        named = isinstance(name, str) and bool(name)
+        label = f"plugin '{name}'" if named else f"plugins[{i}]"
+        if named:
+            if name in seen:
+                problems.append(f"{label}: the name is used twice")
+            seen.add(name)
+        elif name is None or name == "":
             problems.append(f"{label}: name is missing")
-        elif name in seen:
-            problems.append(f"{label}: the name is used twice")
-        seen.add(name)
+        else:
+            problems.append(f"{label}: name is not a string")
         source = entry.get("source") if isinstance(entry, dict) else None
         if not isinstance(source, dict) or not isinstance(source.get("source"), str):
             problems.append(f"{label}: source is not an object with a source type")
@@ -160,8 +192,8 @@ def codex_problems(root: Path) -> list[str]:
         if not isinstance(rel, str) or not rel.startswith("./"):
             problems.append(f"{label}: source.path {rel!r} does not start with ./")
             continue
-        target = Path(os.path.normpath(root / rel))
-        if target != root and root not in target.parents:
+        target = Path(os.path.realpath(root / rel))
+        if target != real_root and real_root not in target.parents:
             problems.append(f"{label}: source.path {rel!r} leaves the marketplace root")
         elif not target.is_dir():
             problems.append(f"{label}: source.path {rel!r} is not a directory")
@@ -195,13 +227,27 @@ def plugin_problems(root: Path, version: str) -> list[str]:
 
 def layout(plugins: Path, dest: Path, channel: str) -> None:
     """A publish tree in `dest` (a new directory): `plugins/<name>/` copied from the build in
-    `plugins` and the channel's two marketplace files."""
+    `plugins` and the channel's two marketplace files — directories 0755 and the two files 0644
+    whatever the umask (the plugins keep the builder's modes)."""
     for name in build_plugins.PLUGINS:
         shutil.copytree(plugins / name, dest / "plugins" / name)
     claude, codex = marketplaces(channel)
     for rel, value in ((CLAUDE_MARKETPLACE, claude), (CODEX_MARKETPLACE, codex)):
         (dest / rel).parent.mkdir(parents=True, exist_ok=True)
         (dest / rel).write_text(dump(value), encoding="utf-8")
+        os.chmod(dest / rel, 0o644)
+    for d in (dest, dest / "plugins", *(p for rel in (CLAUDE_MARKETPLACE, CODEX_MARKETPLACE)
+                                        for p in (dest / rel).parents if dest in p.parents)):
+        os.chmod(d, 0o755)
+
+
+def write_error(e: OSError, fallback: Path) -> str:
+    """`cannot write <path>: <reason>` for a failed write (shutil's list of failed copies:
+    the first one)."""
+    if isinstance(e, shutil.Error) and e.args and isinstance(e.args[0], list) and e.args[0]:
+        _, dst, why = e.args[0][0]
+        return f"cannot write {dst}: {why}"
+    return f"cannot write {e.filename or fallback}: {e.strerror or e}"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -215,16 +261,27 @@ def main(argv: list[str] | None = None) -> int:
     if os.path.lexists(out):
         print(f"{PROG}: error: {out} exists — give a new directory", file=sys.stderr)
         return 2
+    created: list[Path] = []  # the parents of --out this run made: gone again on a failure
+
+    def clean_up() -> None:
+        shutil.rmtree(out, ignore_errors=True)
+        build_plugins.remove_dirs(created)
+
     try:
         with tempfile.TemporaryDirectory() as tmp:
             version = build_channel(build_plugins.ENGINE, Path(tmp), args.channel)
+            created += build_plugins.make_dirs(out.parent)
             layout(Path(tmp), out, args.channel)
     except build_plugins.BuildError as e:
-        shutil.rmtree(out, ignore_errors=True)
+        clean_up()
         print(f"{PROG}: error: {e}", file=sys.stderr)
         return 2
+    except OSError as e:
+        clean_up()
+        print(f"{PROG}: error: {write_error(e, out)}", file=sys.stderr)
+        return 2
     except KeyboardInterrupt:
-        shutil.rmtree(out, ignore_errors=True)
+        clean_up()
         print(f"{PROG}: interrupted", file=sys.stderr)
         return 130
     print(f"{args.channel}: marketplace {MARKETPLACES[args.channel]}, version {version}, "
