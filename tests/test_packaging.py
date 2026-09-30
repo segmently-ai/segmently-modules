@@ -3,7 +3,10 @@ a second top-level directory (like `evals/`) otherwise makes `pip install` / `pi
 with "Multiple top-level packages discovered in a flat-layout" (C1) — and ship every file under
 `modsys/defaults/`, the built-in packs at any depth included (P4B-AC-010)."""
 import glob
+import importlib.metadata
 import importlib.util
+import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -16,6 +19,18 @@ from tests.plugin_helpers import copy_engine
 
 ENGINE = Path(__file__).resolve().parents[1]
 PYPROJECT = ENGINE / "pyproject.toml"
+
+
+def no_wheel_backend() -> str | None:
+    """Why this Python cannot build a wheel offline (a visible skip), or None: pip and
+    setuptools, and `bdist_wheel` — the `wheel` package, or setuptools 70.1 and newer."""
+    if not (importlib.util.find_spec("setuptools") and importlib.util.find_spec("pip")):
+        return "setuptools or pip is not installed for this Python"
+    if importlib.util.find_spec("wheel"):
+        return None
+    found = re.findall(r"\d+", importlib.metadata.version("setuptools"))[:2]
+    return (None if tuple(int(x) for x in found) >= (70, 1)
+            else "setuptools below 70.1 without the wheel package: no bdist_wheel")
 
 
 class PackagingTest(unittest.TestCase):
@@ -47,16 +62,23 @@ class PackagingTest(unittest.TestCase):
         self.assertEqual(data["project"]["dependencies"], [])
         self.assertEqual(data["project"]["scripts"], {"modsys": "modsys.cli:main"})
 
-    @unittest.skipUnless(importlib.util.find_spec("setuptools") and
-                         importlib.util.find_spec("pip"),
-                         "setuptools or pip is not installed for this Python")
+    def test_every_data_file_lies_under_defaults(self):  # D6 x D1: the wheel ships
+        tracked = subprocess.run(["git", "-C", str(ENGINE), "ls-files", "-z", "--", "modsys"],
+                                 capture_output=True, text=True, check=True).stdout.split("\0")
+        self.assertIn("modsys/defaults/packs/core/pack.toml", tracked)  # `modsys/defaults/`
+        self.assertEqual([p for p in tracked if p and not p.endswith(".py")  # as package data,
+                          and not p.startswith("modsys/defaults/")], [])  # the plugin all of it
+
+    @unittest.skipIf(no_wheel_backend(), no_wheel_backend() or "")
     def test_a_wheel_ships_every_default_file_and_no_tool(self):  # P6-AC-018 (offline)
+        env = {k: v for k, v in os.environ.items() if not k.startswith("PIP_")}
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp).resolve()
             src = copy_engine(tmp / "engine", {"tests/test_x.py": "", "evals/x.py": ""})
             proc = subprocess.run([sys.executable, "-m", "pip", "wheel", "--no-deps", "--no-index",
                                    "--no-build-isolation", "-q", "-w", str(tmp / "wheel"),
-                                   str(src)], capture_output=True, text=True)
+                                   str(src)], capture_output=True, text=True,
+                                  env={**env, "PIP_CONFIG_FILE": os.devnull})  # not the user's
             self.assertEqual(proc.returncode, 0, proc.stderr[-2000:])
             names = zipfile.ZipFile(next((tmp / "wheel").glob("*.whl"))).namelist()
         shipped = sorted(n for n in names if n.startswith("modsys/defaults/"))
