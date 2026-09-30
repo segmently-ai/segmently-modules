@@ -1,4 +1,4 @@
-"""P6 docs: each task's user-facing docs say what its code does — `builtin_delivery` (D2)."""
+"""P6 docs: each task's user-facing docs say what its code does."""
 import unittest
 from pathlib import Path
 
@@ -43,6 +43,29 @@ class AgentsDocsTest(unittest.TestCase):  # P6-AC-025 (the D5 part)
         for needle in ("## Other agents", "`modsys packs sync --agent cursor --remove`",
                        "Cursor, Gemini CLI and GitHub Copilot have no modsys plugin"):
             self.assertIn(needle, skills)
+
+
+class ReleasingDocsTest(unittest.TestCase):  # P6-AC-025 (docs/releasing.md: D1, D3, D4, D7, D9)
+    def test_the_maintainer_doc(self):
+        text = flat("docs/releasing.md")
+        for needle in ("python3 tools/build_plugins.py", "python3 tools/publish.py --channel dev",
+                       "python3 tools/release.py", "--publish-slug <owner>/<publish repo>",
+                       "| `stable` | `stable` | `modsys` | `X.Y.Z` |",
+                       "| `dev` | `dev` | `modsys-dev` | `X.Y.Z-dev.h<8 hex>` |",
+                       "`<plugin>--v<version>`", "`MODSYS_GUARD` names the private leak guard",
+                       "The organisation of `--publish-slug` must appear nowhere",
+                       "a throw-away `CLAUDE_CONFIG_DIR`", "no model call", "All or nothing",
+                       "an owner command, each time", "Creating the publish repository on GitHub "
+                       "is the owner's as well", "`MODSYS_PYTHON`",
+                       "## Before a stable release: the skill evals",
+                       "should-trigger at least 0.8 and false-trigger at most 0.1",
+                       "never in a pipeline"):
+            self.assertIn(needle, text)
+        evals = flat("evals/skills/README.md")  # D9: the plugin-eval suite is run by hand
+        self.assertIn("It is not a release gate and never runs in CI", evals)
+        self.assertNotIn("the gate", evals)
+        self.assertIn("that suite is run by hand, never by the unit suite or CI",
+                      flat("docs/skills.md"))
 
 
 if __name__ == "__main__":

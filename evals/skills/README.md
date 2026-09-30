@@ -25,9 +25,13 @@ adds its starting change (a new component, a long doc, a broken registry entry, 
 
 ## Running them
 
+This suite is run by hand, on a machine that allows runs with `Bash` (Requirements, below). It
+is not a release gate and never runs in CI: before a stable release the outcome cases and a
+trigger check run as subagents of a Claude Code session (`docs/releasing.md`).
+
 ```bash
 python3 evals/skills/run.py --dry-run                 # assemble the plugin, print the command
-python3 evals/skills/run.py                           # the gate: every case, the flags below
+python3 evals/skills/run.py                           # every case, with the flags below
 python3 evals/skills/run.py --case module-scout-trigger --runs 1 --ablation none \
   --threshold 0.5 --max-cost-usd 5 --allow-tools Bash Write Edit --trust-plugin --no-publish
 ```
@@ -36,14 +40,14 @@ python3 evals/skills/run.py --case module-scout-trigger --runs 1 --ablation none
 built-in skills under `skills/`, these cases under `evals/` with their scaffold, and a runtime
 with this engine, the fixture and a `modsys` launcher — and runs `claude plugin eval` on it with
 the launcher first on `PATH`, so the agent's sandboxed shell runs this checkout's modsys. Without
-flags it uses the gate flags: `--ablation none --runs 2 --threshold 0.5 --max-cost-usd 20
+flags it uses its default flags: `--ablation none --runs 2 --threshold 0.5 --max-cost-usd 20
 --allow-tools Bash Write Edit --trust-plugin --no-publish`. With your own flags, it adds
 `--max-cost-usd 20` when they set no cost cap and `--no-publish` when they lack it, so a probe
 never runs uncapped or publishes; `--trust-plugin` is never added — a trust grant is yours to
 pass. `--scaffold` and `--json <out>/result.json` are always there. It prints one line per case
 (score, cost, how many runs fired the skill, the first run error) and the overall score.
 
-The gate passes with exit `0` and an overall score of at least 0.8. Exit `2` (a cost ceiling hit,
+A full run passes with exit `0` and an overall score of at least 0.8. Exit `2` (a cost ceiling hit,
 a rejected credential) or a run error such as an unavailable service is "not run", never a pass.
 
 Requirements: Claude Code 2.1.269 or later, logged in; git 2.31 or later; a Python outside your

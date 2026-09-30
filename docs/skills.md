@@ -190,5 +190,6 @@ Whether the skills fire on the requests they are written for is measured with `c
 eval`: `evals/skills/` in the modsys repository holds a trigger case per skill, an outcome case
 per writer (`module-sync`, `module-create`, `module-split`) and a negative case, and
 `evals/skills/run.py` runs them against a plugin assembled from the built-in packs — see
-`evals/skills/README.md` there. Every run is a billed model call, so they run at release gates,
-not in the unit suite.
+`evals/skills/README.md` there. Every run is a billed model call, so that suite is run by hand,
+never by the unit suite or CI; before a stable release the outcome cases and a trigger check run
+as subagents of a Claude Code session ([releasing.md](releasing.md)).
