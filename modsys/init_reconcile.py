@@ -12,9 +12,10 @@ Edges: the proposal's import edges between confirmed modules become `depends-on`
 from <m> (<n> import(s), init reconcile)"), one per direction; a writer's own edge to the same
 module (any relation) wins. Collisions: a keyword (any case) that two new modules or more hold
 belongs to the module with the most files (under its confirmed paths) whose path or text holds
-it as a whole word (a file counts once); the others lose it from `keywords` — never a
-negative keyword, which would pull them out of every task that uses the word — unless that
-leaves one below `[create] min_keywords` (a `keyword-floor` judgement item) or the most files
+it as a whole word (a file counts once); another holder loses it from `keywords` only when
+none of its own files holds it (D14: a module whose code holds the word keeps it) — never a
+negative keyword, which would pull it out of every task that uses the word — unless that
+leaves it below `[create] min_keywords` (a `keyword-floor` judgement item) or the most files
 are a tie (a `keyword-tie` item: nothing is removed). Duplicates:
 a name defined in two confirmed modules or more, at least one of them new (a module already in
 the registry counts as the other) — Python top-level `def` / `class`, JS/TS
@@ -145,8 +146,8 @@ class Reconcile:
                                   "files": counts})
                 continue
             removed = []
-            for other in (m for m in mods if m != owners[0]):
-                entry = new[other]
+            for other in (m for m in mods if m != owners[0] and counts[m] == 0):
+                entry = new[other]  # a holder whose own files hold the keyword keeps it (D14)
                 keep = [k for k in entry["keywords"] if k.lower() != kw]
                 if len(set(keep)) < floor:
                     judgement.append({"kind": "keyword-floor", "keyword": kw, "module": other,

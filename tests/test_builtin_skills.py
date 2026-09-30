@@ -397,10 +397,12 @@ class InitAndAdoptSkillsTest(unittest.TestCase):  # P5B-AC-028, P5B-AC-029 (D6, 
         self.assertIn(["init", "done", "X", "--json"], cmds)
         self.assertIn(["eval", "routing", "--prompt", "--json"], cmds)
 
-    def test_module_init_step_6_removes_a_shared_keyword(self):  # P5C-AC-014 (D1, D5)
+    def test_module_init_step_6_removes_a_shared_keyword(self):  # P5C-AC-014, P6-AC-038 (D14)
         root = builtin_packs_root() / "core/skills/module-init"
         text = " ".join((root / "SKILL.md").read_text("utf-8").split())
-        self.assertIn("removes it from the others (no negative keyword)", text)
+        self.assertIn("removes it only from the modules whose code never mentions it (no negative "
+                      "keyword)", text)
+        self.assertNotIn("removes it from the others", text)
         for rel in ("SKILL.md", "references/phases.md"):
             self.assertNotIn("negative_keywords", (root / rel).read_text("utf-8"))
 

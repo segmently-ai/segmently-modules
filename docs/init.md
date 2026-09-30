@@ -135,9 +135,10 @@ files and reports in `reconcile.json`:
 - `edges` — the import edges between modules become `depends-on` edges (a writer's own edge to
   the same module wins);
 - `collisions` — a keyword two new modules hold belongs to the one with the most files whose
-  path or text holds it; the others lose it from their keywords — never a negative keyword,
-  which would pull them out of every task that uses the word (unless removing it leaves one
-  below the keyword minimum, or it is a tie: then it is a judgement item);
+  path or text holds it; another module loses it from its keywords only when none of its own
+  files holds it — a module whose code holds the word keeps it — and never as a negative
+  keyword, which would pull it out of every task that uses the word (unless removing it leaves
+  one below the keyword minimum, or it is a tie: nothing is removed and it is a judgement item);
 - `duplicates` — a name defined in two modules, at least one of them new (Python top-level
   `def` / `class`, JS/TS `export function|class|const|interface|type`), with file:line — a
   module created by hand counts as the other (a report row: its entry is never changed); a

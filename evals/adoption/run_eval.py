@@ -954,9 +954,11 @@ def init_flow(sc: Scenario) -> None:
         collisions = [(c["keyword"], c["owner"], c["removed"]) for c in data["collisions"]]
         staged = json.loads((work / "staging/registry.json").read_text(encoding="utf-8"))
         negated = [m for m, e in staged["modules"].items() if "negative_keywords" in e]
-        check((duplicates, collisions, negated) == ([("formatPrice", ["catalog", "ui-kit"])],
-                                                    [("price", "cart", ["catalog"])], []),
-              f"duplicates {duplicates}, collisions {collisions}, negated {negated}")
+        kept = "price" in staged["modules"]["catalog"]["keywords"]  # D14: a catalog file holds it
+        check((duplicates, collisions, negated, kept) == ([("formatPrice", ["catalog", "ui-kit"])],
+                                                          [("price", "cart", [])], [], True),
+              f"duplicates {duplicates}, collisions {collisions}, negated {negated}, "
+              f"catalog keeps price {kept}")
         check((work / "staging/registry.json").read_bytes() == seen["registry"],
               "the rebuilt staging registry differs from the resumed run's")
 

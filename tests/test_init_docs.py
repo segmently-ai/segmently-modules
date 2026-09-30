@@ -57,13 +57,20 @@ class InitDocsTest(unittest.TestCase):  # P5B-AC-037
         for sid in ("module-init", "module-adopt"):
             self.assertIn(f"| `{sid}` |", skills)
 
-    def test_reconcile_removes_a_shared_keyword(self):  # P5C-AC-015 (D1)
+    def test_reconcile_removes_a_shared_keyword(self):  # P5C-AC-015 (D1), P6-AC-038 (D14)
         text = flat("docs/init.md")
-        self.assertIn("the others lose it from their keywords — never a negative keyword", text)
+        self.assertIn("another module loses it from its keywords only when none of its own files "
+                      "holds it — a module whose code holds the word keeps it — and never as a "
+                      "negative keyword", text)
         self.assertNotIn("negative_keywords", text)
         row = contract_row("| `init reconcile` |")
         self.assertIn("`collisions` `[{keyword, owner, others, files: {module: n}, removed}]`",
                       row)
+        self.assertIn("another holder loses it from `keywords` only when none of its own files "
+                      "holds it", row)
+        self.assertIn("`kept by <module>, … (their files hold it)`", row)
+        for doc in (text, row):  # no rule without its condition (P6-AC-038)
+            self.assertNotIn("the others lose it", doc)
         self.assertIn("<the fields create asks for>, related_modules?}", row)
         self.assertIsNone(re.search(r"\bmoved\b", row))
         self.assertNotIn("negative_keywords", row)
