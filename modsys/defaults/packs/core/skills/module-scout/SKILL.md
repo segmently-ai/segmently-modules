@@ -29,6 +29,8 @@ Read-only: it runs modsys read verbs and reads files. It never edits a file, nev
 writer verb and never commits. Everything it knows about the registry, the module layout and
 the roles comes from `modsys` — never from a path it assumes.
 
+If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
+
 ## Steps
 
 1. Make sure modsys answers here.

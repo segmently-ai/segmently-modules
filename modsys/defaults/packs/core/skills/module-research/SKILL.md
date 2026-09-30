@@ -26,6 +26,8 @@ code does, and where the two part ways. `module-scout` is the quick version with
 Read-only: it runs modsys read verbs, reads docs and code, and searches the code. It never
 edits a file — gaps are reported, not fixed — and never commits.
 
+If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
+
 ## Steps
 
 1. Pin the question in one sentence, and the module(s) it is about. Unsure which modules?

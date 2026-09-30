@@ -68,5 +68,15 @@ class ReleasingDocsTest(unittest.TestCase):  # P6-AC-025 (docs/releasing.md: D1,
                       flat("docs/skills.md"))
 
 
+class InstallFromGitDocsTest(unittest.TestCase):  # P6-AC-025 (the D6 part), P6-AC-021
+    def test_the_readme_lines_use_placeholders(self):
+        readme = (ENGINE / "README.md").read_text(encoding="utf-8")
+        for needle in ("uv tool install git+ssh://git@github.com/<owner>/<repo>.git",
+                       "uvx --from git+ssh://git@github.com/<owner>/<repo>.git modsys --version",
+                       "pipx install git+ssh://git@github.com/<owner>/<repo>.git",
+                       "Add `@v<version>` to the URL"):
+            self.assertIn(needle, readme)
+
+
 if __name__ == "__main__":
     unittest.main()

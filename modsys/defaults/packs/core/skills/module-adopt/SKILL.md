@@ -29,6 +29,8 @@ the answers to the questions below in that file. It never edits the registry or 
 never edits a `*.legacy.md` file, never edits an existing `config.toml` without a yes, and
 never commits: the user reviews and commits.
 
+If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
+
 ## Steps
 
 1. **See what adopt infers, writing nothing.**

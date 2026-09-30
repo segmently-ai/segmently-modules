@@ -26,6 +26,8 @@ plainly whether it may ship: every Must-fix blocks, everything else is advice.
 Writes: one review file, and only at a path the user names (otherwise the review stays in the
 conversation). It never edits code, module docs or a `*.legacy.md` file, and never commits.
 
+If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
+
 ## Steps
 
 1. Find the modules the change touches.

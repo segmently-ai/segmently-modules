@@ -31,6 +31,8 @@ docs through its writers, the staging registry's keywords, and — after the use
 agents' block). It never edits code, never edits a `*.legacy.md` file, never touches a module
 that was already in the registry, and never commits: the user reviews and commits.
 
+If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
+
 ## Steps
 
 1. **Where are we?** Run `modsys init status --json` first and continue from the recorded phase

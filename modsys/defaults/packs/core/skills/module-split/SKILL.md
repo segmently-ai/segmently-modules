@@ -32,6 +32,8 @@ index and baselines), and routing rules for the children's code (the `code-map a
 `*.legacy.md` file is written once, as a byte copy, and never edited afterwards. It never
 changes the parent's keywords, never edits code, and never commits.
 
+If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
+
 ## Steps
 
 1. Analyse.

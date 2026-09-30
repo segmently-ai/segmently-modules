@@ -22,6 +22,16 @@ pip install git+https://github.com/<owner>/modsys.git   # or the repository
 modsys --help
 ```
 
+Or the command line alone, from git (Python 3.11 or newer; no other dependency):
+
+```bash
+uv tool install git+ssh://git@github.com/<owner>/<repo>.git   # on PATH; uv fetches a Python when none fits
+uvx --from git+ssh://git@github.com/<owner>/<repo>.git modsys --version   # or run it without installing
+pipx install git+ssh://git@github.com/<owner>/<repo>.git      # needs a Python 3.11+ already installed
+```
+
+Add `@v<version>` to the URL to pin a release tag.
+
 ## Greenfield in 5 minutes
 
 A new todo API with three features: tasks, lists, reminders.

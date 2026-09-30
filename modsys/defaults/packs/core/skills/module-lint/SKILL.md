@@ -27,6 +27,8 @@ Writes: registry fields through the `registry` verb and small doc fixes (a missi
 stale path) — only for the findings it fixes. It never edits a `*.legacy.md` file, never
 changes code, never changes the team config or a pack without asking, and never commits.
 
+If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
+
 ## Steps
 
 1. Run the gate.

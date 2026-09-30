@@ -27,6 +27,8 @@ Writes: the module's `qa_acceptance` doc, and its entry in the module's registry
 `context_files` when the doc is new. It never edits code or another doc, never edits a
 `*.legacy.md` file, and never commits.
 
+If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
+
 ## Steps
 
 1. Load the module.

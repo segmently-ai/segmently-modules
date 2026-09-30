@@ -30,6 +30,8 @@ registry fields (through the `registry` verb or queued proposals). It never edit
 file, never edits code, never commits, and never touches a module the change did not reach
 unless the user asks.
 
+If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
+
 ## Steps
 
 1. Pin the change. `<base>` is the commit this work branched off: the output of

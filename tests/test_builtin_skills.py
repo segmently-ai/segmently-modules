@@ -4,6 +4,7 @@ parsed by the real CLI parser (the guard can fail: SI-7), no machine paths, `--j
 skill parses, the sections, each core skill's scope and verbs (D3), the writer rules, generic
 text. `CORE` and `PACK_SKILLS` list what each skill must say; a skill is added with its row."""
 import contextlib
+import hashlib
 import io
 import re
 import shlex
@@ -241,6 +242,39 @@ class NamesAndLoadingTest(SkillRules):  # P4B-AC-014
             for name, text in skill_files(directory).items():
                 with self.subTest(skill=sid, file=name):
                     self.assertIsNone(length_problem(text))
+
+
+class InstallLineTest(SkillRules):  # P6-AC-019 (D6, SI-4)
+    LINE = ("If `modsys` is not found, tell the user how to install it — the `modsys` plugin "
+            "for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or "
+            "`pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it "
+            "runs.")
+    DESCRIPTIONS = {  # sha256[:16] of each description at f1f5e46: a body edit never moves one
+        "module-adopt": "3409f228fda67c5d", "module-create": "3d1a2d2954de0900",
+        "module-discover": "fa2b6d6ba50b01fd", "module-init": "b64769f4c169e5b0",
+        "module-lint": "bc2538a0a39d1da0", "module-research": "2c773e1a29f3fd6d",
+        "module-scout": "83221c73a41cb280", "module-split": "25b942d14038d7dd",
+        "module-sync": "18cbb93e3e8533c2", "qa-acceptance-baseline": "2a0efce95123748f",
+        "qa-acceptance": "283ee6d99570ba9f", "designer-review": "83a63b52f3a24d79"}
+
+    def test_every_body_holds_the_one_line(self):
+        skills = self.all_skills()
+        self.assertEqual(len(skills), 12)
+        for sid, (_, directory) in skills.items():
+            with self.subTest(skill=sid):
+                text = (directory / "SKILL.md").read_text("utf-8")
+                front, body = text.split("\n---\n", 1)
+                self.assertEqual(body.splitlines().count(self.LINE), 1)
+                self.assertNotIn("not found", front)  # the body, never the description
+                self.assertLess(body.index(self.LINE), body.index("\n## Steps\n"))
+        urls = re.findall(r"github\.com(\S*)", self.LINE)  # placeholders only (D13)
+        self.assertEqual(urls, ["/<owner>/<repo>.git`,", "/<owner>/<repo>.git`"])
+
+    def test_no_description_changed(self):
+        found = {sid: hashlib.sha256(read_front_matter(directory / "SKILL.md")["description"]
+                                     .encode()).hexdigest()[:16]
+                 for sid, (_, directory) in self.all_skills().items()}
+        self.assertEqual(found, self.DESCRIPTIONS)
 
 
 class CommandGuardTest(SkillRules):  # P4B-AC-018

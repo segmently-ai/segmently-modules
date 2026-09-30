@@ -26,6 +26,8 @@ modules' existing baselines instead of repeating them.
 Writes: one Markdown file with the criteria, at the path the user names. It never edits code,
 module docs or a `*.legacy.md` file, and never commits.
 
+If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
+
 ## Steps
 
 1. Find the modules. Put the task text in a temporary file outside the repository, then

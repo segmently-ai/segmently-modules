@@ -27,6 +27,8 @@ Read-only: it runs modsys read verbs, reads docs and searches code. The only fil
 is the JSON result, and only at a path the user names. It never edits the repository's docs or
 code and never commits.
 
+If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
+
 ## Steps
 
 1. Pick the input.

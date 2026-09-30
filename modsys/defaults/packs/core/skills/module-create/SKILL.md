@@ -27,6 +27,8 @@ Writes: the new module's docs (scaffolded by the `create` verb, then filled in),
 entry, and a routing rule for its code in the team config (the `code-map add` verb). It never
 edits another module, never edits a `*.legacy.md` file, and never commits.
 
+If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
+
 ## Steps
 
 1. Check the name is free and not a duplicate in disguise.
