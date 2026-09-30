@@ -1,0 +1,55 @@
+# modsys CI: the unit suite on two Pythons, the adoption eval, a reproducible plugin build, the
+# launcher under dash, and Claude Code's own validator with a throw-away install of the built
+# plugins. No model call and no credential: Claude Code is installed as it comes and only its
+# `plugin validate`, `plugin marketplace add`, `plugin install` and `plugin list` commands run.
+# It runs on every push to any branch — the branch of a pull request included.
+name: ci
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Build backend for the packaging test (the engine itself has no dependency)
+        run: python -m pip install "setuptools>=62.3" wheel
+      - name: Claude Code, without credentials
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Unit suite
+        run: python -m unittest discover -s tests
+      - name: Adoption eval (E-A)
+        run: python evals/adoption/run_eval.py > /dev/null
+      - name: Plugins, two builds, byte-identical
+        run: |
+          python tools/build_plugins.py --out "$RUNNER_TEMP/build-a"
+          python tools/build_plugins.py --out "$RUNNER_TEMP/build-b"
+          diff -r "$RUNNER_TEMP/build-a" "$RUNNER_TEMP/build-b"
+      - name: Launcher under dash
+        run: |
+          dash -n tools/launcher.sh
+          python -m unittest tests.test_launcher
+      - name: claude plugin validate and a throw-away install of the dev tree
+        env:
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude-config
+        run: |
+          python tools/publish.py --channel dev --out "$RUNNER_TEMP/publish"
+          for plugin in modsys modsys-ui modsys-qa; do
+            claude plugin validate --strict "$RUNNER_TEMP/publish/plugins/$plugin"
+          done
+          claude plugin validate --strict "$RUNNER_TEMP/publish"
+          claude plugin marketplace add "$RUNNER_TEMP/publish"
+          claude plugin install modsys-ui@modsys-dev --scope user
+          claude plugin install modsys-qa@modsys-dev --scope user
+          claude plugin list --json

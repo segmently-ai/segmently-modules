@@ -112,3 +112,16 @@ session — never in a pipeline:
 
 A description is never changed after its trigger check passed. `evals/skills/README.md` says how
 to run the `claude plugin eval` suite by hand on a machine that allows it.
+
+## CI
+
+`.github/workflows/ci.yml` runs on every push to any branch (so on every commit of a pull
+request from a branch of the repository), on Python 3.11 and 3.14: the unit suite, the adoption
+eval, two plugin builds compared byte for byte, the launcher test under `dash`, and — with
+Claude Code installed as it comes, without credentials — `claude plugin validate --strict` on
+the three plugins and the dev marketplace plus a throw-away install (`CLAUDE_CONFIG_DIR` in the
+runner's temp directory). It makes no model call and reads no secret; nothing runs on a
+schedule. The private guard is not part of CI — the release and the `pre-push` hook run it —
+and neither are the skill evals (above). The release repeats the validation and runs the full
+smoke install, so a CI run without Claude Code would lose nothing the release does not check
+again.

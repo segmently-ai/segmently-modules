@@ -78,5 +78,16 @@ class InstallFromGitDocsTest(unittest.TestCase):  # P6-AC-025 (the D6 part), P6-
             self.assertIn(needle, readme)
 
 
+class CiDocsTest(unittest.TestCase):  # P6-AC-025 (the D8 part, SI-2)
+    def test_releasing_says_what_ci_runs(self):
+        text = flat("docs/releasing.md")
+        for needle in ("## CI", "`.github/workflows/ci.yml` runs on every push to any branch",
+                       "on Python 3.11 and 3.14", "without credentials", "It makes no model call "
+                       "and reads no secret; nothing runs on a schedule",
+                       "The private guard is not part of CI",
+                       "The release repeats the validation and runs the full smoke install"):
+            self.assertIn(needle, text)
+
+
 if __name__ == "__main__":
     unittest.main()
