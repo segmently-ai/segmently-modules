@@ -15,6 +15,43 @@ Status: pre-release, private. Python ≥ 3.11, stdlib only; git for `coverage`,
 
 ## Install
 
+Pick the route your agent uses — every one gives the same `modsys` command line.
+
+**Claude Code** — the plugin carries the skills and the command line:
+
+```bash
+claude plugin marketplace add <owner>/<publish repo>#stable
+claude plugin install modsys@modsys        # the core skills and `modsys` itself
+claude plugin install modsys-ui@modsys     # optional: the designer-review skill
+claude plugin install modsys-qa@modsys     # optional: the acceptance-criteria skills
+```
+
+**Codex** — the plugin carries the skills; install the command line first (a Codex plugin puts
+nothing on `PATH`):
+
+```bash
+uv tool install git+ssh://git@github.com/<owner>/<repo>.git   # or pipx install, below
+codex plugin marketplace add <owner>/<publish repo> --ref stable
+codex plugin add modsys@modsys
+```
+
+**Cursor, Gemini CLI, GitHub Copilot** — no plugin: install the command line, then copy the
+skills into the repository (`.agents/skills/`):
+
+```bash
+uv tool install git+ssh://git@github.com/<owner>/<repo>.git
+modsys packs sync --agent cursor            # or --agent gemini, --agent copilot
+modsys packs sync --agent cursor --remove   # later: take the copies out again
+```
+
+The `dev` channel carries every change before a release: `#dev` instead of `#stable`, `--ref
+dev`, and the marketplace `modsys-dev` (`claude plugin install modsys@modsys-dev`). A repository
+whose agents get the built-in skills from the plugins sets `builtin_delivery = "plugin"` under
+`[packs]`, so `packs sync` does not copy them a second time
+([docs/skills.md](docs/skills.md#from-the-repository-or-from-a-plugin)).
+
+**The command line alone** — in a virtual environment, from a checkout or the repository:
+
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
 pip install /path/to/modsys                       # a checkout
@@ -22,7 +59,7 @@ pip install git+https://github.com/<owner>/modsys.git   # or the repository
 modsys --help
 ```
 
-Or the command line alone, from git (Python 3.11 or newer; no other dependency):
+Or from git, without a checkout (Python 3.11 or newer; no other dependency):
 
 ```bash
 uv tool install git+ssh://git@github.com/<owner>/<repo>.git   # on PATH; uv fetches a Python when none fits
@@ -428,3 +465,5 @@ MS060–MS065: [docs/writing-a-pack.md](docs/writing-a-pack.md).
 - `modsys <verb> --help` — flags and limits of one verb.
 - [evals/adoption/](evals/adoption/README.md) — the adoption evals (a deterministic script and
   blind-agent prompts).
+- [docs/releasing.md](docs/releasing.md) — for maintainers: building the plugins, channels and
+  versions, the release and its checks, CI.

@@ -73,6 +73,12 @@ plugin: they get the built-in skills only with `"repo"` delivery (`packs sync` s
 
 ## Other agents
 
+```bash
+modsys packs sync --agent cursor                   # Cursor
+modsys packs sync --agent gemini --agent copilot   # Gemini CLI and GitHub Copilot: one write
+modsys packs sync --agent cursor --remove          # take the copies out again
+```
+
 `modsys packs sync --agent cursor`, `--agent gemini` and `--agent copilot` write the skills into
 `.agents/skills/` — the directory Codex reads too, written once however many of these agents
 sync. GitHub Copilot also reads `.claude/skills/`: a repository that syncs for `claude` and for

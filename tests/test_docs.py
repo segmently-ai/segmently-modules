@@ -10,12 +10,14 @@ from modsys.cli import build_parser
 from modsys.config import LAYER_SCHEMA, PACK_META_KEYS, ROLE_SCHEMA
 from modsys.fields import CORE_FIELDS, DECLARATION_KEYS
 from modsys.hooks import HOOK_SCHEMA
+from modsys.skills import AGENT_DIRS
 
 ENGINE = Path(__file__).resolve().parents[1]
 CONFIG_DOC = ENGINE / "docs" / "configuration.md"
 USER_DOCS = [ENGINE / "README.md", ENGINE / "docs" / "configuration.md",
              ENGINE / "docs" / "cli-contract.md", ENGINE / "docs" / "writing-a-pack.md",
-             ENGINE / "docs" / "skills.md", ENGINE / "docs" / "init.md"]  # P5b D12: + init.md
+             ENGINE / "docs" / "skills.md", ENGINE / "docs" / "init.md",  # P5b D12: + init.md
+             ENGINE / "docs" / "releasing.md"]  # P6 D10
 _FENCE = re.compile(r"^([ \t]*)(`{3,})[^\n]*\n(.*?)^\1\2\s*$", re.M | re.S)
 
 
@@ -73,6 +75,18 @@ class CommandsInDocsTest(unittest.TestCase):
                     self.assertEqual(used - flags, set())
                     seen += 1
         self.assertGreaterEqual(seen, 15)
+
+    def test_agent_names_and_remove_in_commands(self):  # P6-AC-025 (D5, D10)
+        agents, removes = set(), 0
+        for doc in USER_DOCS:
+            for argv in commands(doc.read_text(encoding="utf-8")):
+                named = [argv[i + 1] for i, a in enumerate(argv[:-1]) if a == "--agent"]
+                with self.subTest(doc=doc.name, argv=argv):
+                    self.assertEqual([a for a in named if a not in AGENT_DIRS], [])
+                agents |= set(named)
+                removes += "--remove" in argv
+        self.assertEqual(agents, set(AGENT_DIRS))  # every agent is shown at least once
+        self.assertGreaterEqual(removes, 2)
 
     def test_readme_walks_through_init_coverage_and_the_gate(self):
         used = {argv[1] for argv in commands((ENGINE / "README.md").read_text(encoding="utf-8"))}
