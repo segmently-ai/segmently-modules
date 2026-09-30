@@ -28,5 +28,22 @@ class DeliveryDocsTest(unittest.TestCase):  # P6-AC-025 (the D2 part)
             self.assertIn(needle, contract)
 
 
+class AgentsDocsTest(unittest.TestCase):  # P6-AC-025 (the D5 part)
+    def test_the_five_agents_and_remove(self):
+        config = flat("docs/configuration.md")
+        self.assertIn("`claude` (`.claude/skills/`), `codex`, `cursor`, `gemini`, `copilot` (all "
+                      "four read `.agents/skills/`", config)
+        contract = flat("docs/cli-contract.md")
+        for needle in ("sync `[--agent claude\\|codex\\|cursor\\|gemini\\|copilot]… [--check] "
+                       "[--dry-run] [--remove]`", "`--remove` (needs `--agent`; with `--check` "
+                       "exit 2", "GitHub Copilot sees each skill twice",
+                       "a marker in `.agents/skills` means codex"):
+            self.assertIn(needle, contract)
+        skills = flat("docs/skills.md")
+        for needle in ("## Other agents", "`modsys packs sync --agent cursor --remove`",
+                       "Cursor, Gemini CLI and GitHub Copilot have no modsys plugin"):
+            self.assertIn(needle, skills)
+
+
 if __name__ == "__main__":
     unittest.main()

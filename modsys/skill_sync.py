@@ -1,5 +1,7 @@
 """`modsys packs sync`: copy pack skills into the agents' skill directories — claude
-`<root>/.claude/skills/<skill>/`, codex `<root>/.agents/skills/<skill>/` — and keep them there.
+`<root>/.claude/skills/<skill>/`; codex, cursor, gemini and copilot
+`<root>/.agents/skills/<skill>/` (one directory, written once) — and keep them there;
+`--remove` takes every managed copy of an agent's directory out again (`plan_remove`).
 
 Every (agent, skill) gets its status BEFORE anything is written:
   created    the destination directory does not exist
@@ -29,8 +31,9 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from modsys.skills import (AGENT_DIRS, EJECTED, MANAGED, ejected_copies, ejected_symlinks,
-                           pack_skills, read_ejected, sha256_file, source_hashes, source_problem)
+from modsys.skills import (AGENT_DIRS, DEFAULT_AGENTS, EJECTED, MANAGED, ejected_copies,
+                           ejected_symlinks, pack_skills, read_ejected, sha256_file, source_hashes,
+                           source_problem)
 
 MANAGED_SCHEMA = "modsys.managed/1"
 STATUSES = ("created", "updated", "unchanged", "removed", "conflict", "invalid")
@@ -50,7 +53,7 @@ def sync_command(agents: list[str] | None, configured: list[str] | None) -> str:
     — claude and codex when no agent was chosen."""
     if configured and (agents is None or list(agents) == list(configured)):
         return "modsys packs sync"
-    return "modsys packs sync " + " ".join(f"--agent {a}" for a in agents or AGENT_DIRS)
+    return "modsys packs sync " + " ".join(f"--agent {a}" for a in agents or DEFAULT_AGENTS)
 
 
 @dataclass
@@ -364,9 +367,13 @@ def apply_plan(plan: Plan) -> None:
 def managed_agents(root: Path) -> list[str]:
     """The agents whose skill directory already holds a skill `packs sync` manages (a valid
     marker proves an earlier sync), in the engine's order — `packs sync` uses them when neither
-    `--agent` nor `[packs] agents` names any."""
-    out = []
+    `--agent` nor `[packs] agents` names any. A directory several agents read counts once, for
+    the first of them: a marker in `.agents/skills` means `codex`."""
+    out, seen = [], set()
     for agent, rel in AGENT_DIRS.items():
+        if rel in seen:
+            continue
+        seen.add(rel)
         base = root / rel
         if base.is_dir() and any(d.is_dir() and not d.is_symlink() and read_marker(d)
                                  for d in sorted(base.iterdir())):
@@ -395,6 +402,25 @@ def plan_sync(ws, agents: list[str], plugin: bool = False) -> list[Plan]:
         mine = [plan_skill(agent, agent_dir / sid, src) for sid, src in sources.items()]
         mine += plan_orphans(agent, agent_dir, set(sources))
         plans += sorted(mine, key=lambda p: p.skill)
+    return plans
+
+
+def plan_remove(ws, agents: list[str]) -> list[Plan]:
+    """`packs sync --remove` (P6 D5): every managed copy in the agents' directories becomes a
+    `removed` plan — an edited one, or one whose marker is damaged, a `conflict` — as for a
+    skill no pack declares any more; a directory without a marker (or with another skill's)
+    gets no plan. An agent whose directory is an earlier agent's repeats its plans (`same_as`)."""
+    plans, seen = [], {}
+    for agent in agents:
+        agent_dir = ws.root / AGENT_DIRS[agent]
+        real = os.path.realpath(agent_dir)
+        if real in seen:
+            plans += [Plan(agent, p.skill, agent_dir / p.skill, p.status, p.source, p.marker,
+                           p.write, p.delete, p.reason, same_as=seen[real])
+                      for p in plans if p.agent == seen[real]]
+            continue
+        seen[real] = agent
+        plans += plan_orphans(agent, agent_dir, set())
     return plans
 
 

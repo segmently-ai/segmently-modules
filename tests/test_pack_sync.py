@@ -330,8 +330,8 @@ class SyncAgentsTest(SyncRepo):  # P4A-AC-016
     def test_the_agents_come_from_flags_or_config(self):
         code, out, err = run("packs", "sync", "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertIn("modsys: error: choose --agent claude and/or --agent codex, or set "
-                      "[packs] agents", err)
+        self.assertIn("modsys: error: choose --agent claude, codex, cursor, gemini or copilot "
+                      "(repeatable), or set [packs] agents", err)  # P6 D5 (SI-9)
         self.config('[packs]\nagents = ["claude"]\n')
         self.assertEqual(self.statuses(self.sync(agents=())), [("claude", "api-review",
                                                                 "created")])
@@ -350,18 +350,19 @@ class SyncAgentsTest(SyncRepo):  # P4A-AC-016
                                            "removed": 0, "conflict": 0, "invalid": 0})
         self.assertTrue(self.dest("SKILL.md", agent_dir=".agents/skills").is_file())
 
-    def test_unknown_agents(self):
-        self.config('[packs]\nagents = ["cursor"]\n')
+    def test_unknown_agents(self):  # P6 D5: cursor is an agent now — windsurf is not
+        self.config('[packs]\nagents = ["windsurf"]\n')
         for argv in (("list", "--json"), ("packs", "list", "--json")):
             with self.subTest(argv=argv):
                 code, out, err = run(*argv, *self.R)
                 self.assertEqual((code, out), (2, ""))
-                self.assertIn(".modsys/config.toml: [packs] agents: unknown agent 'cursor' "
-                              "(agents: claude, codex)", err)
+                self.assertIn(".modsys/config.toml: [packs] agents: unknown agent 'windsurf' "
+                              "(agents: claude, codex, cursor, gemini, copilot)", err)
         self.config("")
-        code, out, err = run("packs", "sync", "--agent", "cursor", "--json", *self.R)
+        code, out, err = run("packs", "sync", "--agent", "windsurf", "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertIn("unknown agent 'cursor' (agents: claude, codex)", err)
+        self.assertIn("unknown agent 'windsurf' (agents: claude, codex, cursor, gemini, copilot)",
+                      err)
 
     def test_check_and_dry_run(self):
         self.assertEqual(self.statuses(self.sync("--check", code=1)),
@@ -421,6 +422,9 @@ class SyncAgentsTest(SyncRepo):  # P4A-AC-016
         self.assertEqual(out.splitlines(), [
             "created    claude  .claude/skills/api-review  (team 0.1.0)",
             "created    codex   .agents/skills/api-review  (team 0.1.0)",
+            "note: GitHub Copilot reads both .claude/skills and .agents/skills, so it sees each "
+            "skill twice — where Copilot works, sync only one of the two directories (Copilot "
+            "reads either)",  # P6 D5 (SI-20)
             "packs sync: 2 created, 0 updated, 0 unchanged, 0 removed, 0 conflict, 0 invalid"])
         out = run("packs", "sync", "--agent", "claude", "--check", *self.R)[1]
         self.assertEqual(out.splitlines()[-1], "packs sync --check: 0 created, 0 updated, "
@@ -561,8 +565,8 @@ class PacksConfigAndContractTest(SyncRepo):  # D7 [packs], D10 init starter, P4A
 
 
 class AgentsFromManagedCopiesTest(SyncRepo):  # P5A-AC-009 (D0d)
-    REFUSAL = ("modsys: error: choose --agent claude and/or --agent codex, or set [packs] "
-               "agents\n")
+    REFUSAL = ("modsys: error: choose --agent claude, codex, cursor, gemini or copilot "
+               "(repeatable), or set [packs] agents\n")  # P6 D5 (SI-9): the five agents
 
     def agents(self, *argv) -> list[str]:
         code, env, err = run_json("packs", "sync", *argv, *self.R)

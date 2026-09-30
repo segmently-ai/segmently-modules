@@ -6,10 +6,10 @@ skills.
         `SKILL.md` per `--skill` (reading every `--role`); every refusal writes nothing
   list  the active packs in precedence order (repository packs, then the enabled built-in
         packs), with their roles and skills
-  sync [--agent claude|codex]… [--check]
+  sync [--agent claude|codex|cursor|gemini|copilot]… [--check] [--remove]
         copy every pack skill into the agents' skill directories (`skill_sync`); agents = the
         flags, else `[packs] agents`, else the agents whose directories already hold managed
-        skills (an earlier sync)"""
+        skills (an earlier sync); `--remove` (with `--agent`) deletes the copies instead"""
 import functools
 import os
 import re
@@ -24,14 +24,15 @@ from modsys.config import (BUILTIN_PACKS, BUILTIN_PLUGINS, DEFAULT_PACK_PRIORITY
 from modsys.create import NAME, article
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.skill_sync import (NO_RECORD, STATUSES, apply_plan, conflict_kind, managed_agents,
-                               plan_sync, row, sync_command)
+                               plan_remove, plan_sync, row, sync_command)
 from modsys.skills import (AGENT_DIRS, NAME_RULE, declared_skills, ejected_dir, is_ejected,
                            pack_skills, read_front_matter, skill_id_ok)
 from modsys.workspace import Workspace
 
 ACTIONS = ("new", "list", "sync")
 NEW_FLAGS = ("--role", "--skill", "--description", "--priority")
-SYNC_FLAGS = ("--agent", "--check")
+SYNC_FLAGS = ("--agent", "--check", "--remove")
+NO_PLUGIN = ("cursor", "gemini", "copilot")  # agents no modsys plugin exists for (P6 D5)
 ROLE_NAME = re.compile(r"^[a-z][a-z0-9_]*(-[a-z0-9]+)*$")
 FIRST_ROLE_ORDER, ROLE_ORDER_STEP = 100, 10
 PACK_DESCRIPTION = "Describe what this pack adds: its roles and skills."
@@ -46,9 +47,10 @@ def register(sub, common) -> None:
                                    "--skill (each skill reads every --role). list: the "
                                    "installed packs in precedence order with their roles and "
                                    "skills. sync: copy every pack skill into the agents' skill "
-                                   "directories (claude: .claude/skills/, codex: "
-                                   ".agents/skills/); a locally edited or foreign copy is a "
-                                   "conflict and is never overwritten.")
+                                   "directories (claude: .claude/skills/; codex, cursor, "
+                                   "gemini and copilot: .agents/skills/); a locally edited or "
+                                   "foreign copy is a conflict and is never overwritten; "
+                                   "--remove deletes the copies instead.")
     p.add_argument("action", choices=ACTIONS)
     p.add_argument("name", nargs="?", metavar="ID",
                    help="new: the pack id (lowercase words joined by '-', max 48)")
@@ -62,11 +64,15 @@ def register(sub, common) -> None:
     p.add_argument("--priority", type=int,
                    help=f"new: precedence among packs (default {DEFAULT_PACK_PRIORITY}; a "
                         f"lower number wins)")
-    p.add_argument("--agent", action="append", dest="agents", metavar="claude|codex",
+    p.add_argument("--agent", action="append", dest="agents",
+                   metavar="claude|codex|cursor|gemini|copilot",
                    help="sync: an agent to write skills for (repeatable; default: [packs] "
                         "agents)")
     p.add_argument("--check", action="store_true",
                    help="sync: write nothing; exit 1 unless every skill is unchanged (CI)")
+    p.add_argument("--remove", action="store_true",
+                   help="sync: delete every copy packs sync made in the --agent directories "
+                        "(an edited copy stays; other files are never touched)")
     p.add_argument("--dry-run", action="store_true",
                    help="new, sync: report what would be written, write nothing")
     p.set_defaults(func=run)
@@ -212,33 +218,91 @@ def pack_rows(ws) -> list[dict]:
     return rows
 
 
-def sync_notes(ws, plugin: bool) -> list[str]:
+def _names(words: list[str]) -> str:
+    return ", ".join(words)
+
+
+def sync_notes(ws, chosen: list[str], plugin: bool) -> list[str]:
     """The `note:` lines of a `packs sync` run (`data.notes`): under `builtin_delivery =
-    "plugin"`, the plugins that provide the enabled built-in packs' skills."""
+    "plugin"`, the plugins that provide the enabled built-in packs' skills and the chosen
+    agents no plugin exists for; Copilot's duplicates when `claude` syncs together with an
+    agent of `.agents/skills` (Copilot reads both directories)."""
     notes = []
     provided = [p["id"] for p in discover_packs(ws.config_dir) if p["builtin"]]
     if plugin and provided:
         notes.append('builtin_delivery = "plugin": the built-in skills come from the plugins '
                      + ", ".join(f"{BUILTIN_PLUGINS[p]} ({p})" for p in provided)
                      + " — packs sync copies none of them")
+        bare = [a for a in chosen if a in NO_PLUGIN]
+        if bare:
+            verb, pronoun = ("gets", "it") if len(bare) == 1 else ("get", "them")
+            notes.append(f"{_names(bare)} {verb} no built-in skills: no modsys plugin exists "
+                         f'for {pronoun} — set [packs] builtin_delivery = "repo" to sync the '
+                         f"built-in skills for {pronoun}")
+    if "claude" in chosen and any(AGENT_DIRS[a] != AGENT_DIRS["claude"] for a in chosen):
+        notes.append("GitHub Copilot reads both .claude/skills and .agents/skills, so it sees "
+                     "each skill twice — where Copilot works, sync only one of the two "
+                     "directories (Copilot reads either)")
     return notes
 
 
-def sync(ws, agents: list[str] | None, check: bool, dry_run: bool) -> dict:
+def remove_scope(ws, agents: list[str] | None, check: bool) -> list[str]:
+    """The agents `packs sync --remove` removes the copies of (P6 D5): the `--agent` flags
+    only. Refused (exit 2, nothing written) without `--agent`, with `--check`, and while an
+    agent of `[packs] agents` that reads the same directory is not among the flags."""
+    if check:
+        raise UsageError("--check and --remove cannot be combined (--check never writes)")
+    if not agents:
+        raise UsageError("--remove needs --agent: the agents whose copies to remove "
+                         "(--agent claude|codex|cursor|gemini|copilot, repeatable)")
+    chosen = list(dict.fromkeys(agents))
+    real = {os.path.realpath(ws.root / AGENT_DIRS[a]) for a in chosen}
+    configured = (ws.config.get("packs") or {}).get("agents") or []
+    kept = [a for a in dict.fromkeys(configured) if a not in chosen
+            and os.path.realpath(ws.root / AGENT_DIRS[a]) in real]
+    if kept:
+        where, verb = AGENT_DIRS[kept[0]], "reads" if len(kept) == 1 else "read"
+        raise UsageError(f"--remove would delete the copies {_names(kept)} still {verb} in "
+                         f"{where} ([packs] agents lists {_names(kept)}) — add "
+                         + " ".join(f"--agent {a}" for a in kept)
+                         + ", or take it out of [packs] agents first; nothing written")
+    return chosen
+
+
+def remove_notes(ws, chosen: list[str]) -> list[str]:
+    """`--remove`: the agents that read a directory it empties without being among the flags."""
+    real = {os.path.realpath(ws.root / AGENT_DIRS[a]) for a in chosen}
+    others = [a for a in AGENT_DIRS if a not in chosen
+              and os.path.realpath(ws.root / AGENT_DIRS[a]) in real]
+    if not others:
+        return []
+    dirs = sorted({AGENT_DIRS[a] for a in others})
+    return [f"{', '.join(dirs)} is also where {_names(others)} read skills — the copies are "
+            f"gone for them too"]
+
+
+def sync(ws, agents: list[str] | None, check: bool, dry_run: bool,
+         remove: bool = False) -> dict:
     """`packs sync`: plan every (agent, skill), then apply the plans unless `check` /
-    `dry_run`; a conflicting or invalid skill is never written, the others are."""
+    `dry_run`; a conflicting or invalid skill is never written, the others are. `remove`:
+    plan the removal of every managed copy in the `--agent` directories instead."""
     if check and dry_run:
         raise UsageError("--check and --dry-run cannot be combined (--check never writes)")
     for agent in agents or []:
         if agent not in AGENT_DIRS:
             raise UsageError(f"unknown agent {agent!r} (agents: {', '.join(AGENT_DIRS)})")
-    chosen = list(dict.fromkeys(agents or (ws.config.get("packs") or {}).get("agents")
-                                or managed_agents(ws.root)))
+    if remove:
+        chosen = remove_scope(ws, agents, check)
+    else:
+        chosen = list(dict.fromkeys(agents or (ws.config.get("packs") or {}).get("agents")
+                                    or managed_agents(ws.root)))
     if not chosen:
-        raise UsageError("choose --agent claude and/or --agent codex, or set [packs] agents")
+        *first, last = AGENT_DIRS
+        raise UsageError(f"choose --agent {', '.join(first)} or {last} (repeatable), or set "
+                         f"[packs] agents")
     plugin = builtin_delivery(ws.config) == "plugin"
     try:
-        plans = plan_sync(ws, chosen, plugin)
+        plans = plan_remove(ws, chosen) if remove else plan_sync(ws, chosen, plugin)
     except OSError as e:  # planning only reads: an unreadable agent copy stops the run
         raise UsageError(f"cannot read {ws.rel(e.filename or ws.root)}: "
                          f"{e.strerror or e}") from None
@@ -255,15 +319,19 @@ def sync(ws, agents: list[str] | None, check: bool, dry_run: bool) -> dict:
     summary = {s: sum(r["status"] == s for r in rows) for s in STATUSES}
     failed = (any(r["status"] != "unchanged" for r in rows) if check
               else bool(summary["conflict"] or summary["invalid"]))
+    if not remove:
+        notes = sync_notes(ws, chosen, plugin)
+    else:  # only when a copy went (or would go): the other readers lose it too
+        notes = remove_notes(ws, chosen) if summary["removed"] else []
     return {"agents": chosen, "check": check, "dry_run": dry_run, "skills": rows,
-            "summary": summary, "failed": failed, "notes": sync_notes(ws, plugin)}
+            "summary": summary, "failed": failed, "notes": notes}
 
 
 def _refuse_flags(args, action: str, allowed: tuple[str, ...]) -> None:
     given = {"ID": args.name, "--role": args.roles, "--skill": args.skills,
              "--description": args.description, "--priority": args.priority,
              "--agent": args.agents, "--check": args.check or None,
-             "--dry-run": args.dry_run or None}
+             "--dry-run": args.dry_run or None, "--remove": args.remove or None}
     used = [flag for flag, value in given.items() if value is not None and flag not in allowed]
     if used:
         raise UsageError(f"packs {action} takes no {used[0]}")
@@ -277,8 +345,9 @@ def run(args) -> int:
         return EXIT_OK
     if args.action == "sync":
         _refuse_flags(args, "sync", SYNC_FLAGS + ("--dry-run",))
-        data = sync(ws, args.agents, args.check, args.dry_run)
-        emit("packs", data, args.json, functools.partial(_render_sync, ws=ws))
+        data = sync(ws, args.agents, args.check, args.dry_run, args.remove)
+        emit("packs", data, args.json, functools.partial(_render_sync, ws=ws,
+                                                          remove=args.remove))
         return EXIT_FINDINGS if data["failed"] else EXIT_OK
     _refuse_flags(args, "new", ("ID",) + NEW_FLAGS + ("--dry-run",))
     if args.name is None:
@@ -334,9 +403,11 @@ def _hint(ws, r) -> str:
             "plugin": ""}.get(kind, "move it away, then sync again")  # its reason names the fixes
 
 
-def _render_sync(d, ws) -> None:
+def _render_sync(d, ws, remove: bool = False) -> None:
     if not d["skills"]:
-        print("no pack skills (add one: modsys packs new ID --skill NAME)")
+        print("nothing to remove: no copy made by packs sync in " + ", ".join(dict.fromkeys(
+            AGENT_DIRS[a] for a in d["agents"])) if remove
+            else "no pack skills (add one: modsys packs new ID --skill NAME)")
     upstream = pack_skills(ws.config_dir)
     for r in d["skills"]:
         where = f"({r['pack']} {r['version']}" if r["version"] else f"({r['pack']}"
@@ -368,7 +439,8 @@ def _render_sync(d, ws) -> None:
                if s["conflict"] or s["invalid"] else [])) or "in sync"
         print(f"packs sync --check: {counts}: {state}")
     else:
-        print(f"packs sync: {counts}" + ("  (dry run: nothing written)" if d["dry_run"] else ""))
+        print(f"packs sync{' --remove' if remove else ''}: {counts}"
+              + ("  (dry run: nothing written)" if d["dry_run"] else ""))
 
 
 def _render_list(rows) -> None:

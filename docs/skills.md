@@ -68,7 +68,19 @@ twice and cannot tell which to trigger:
 
 The engine cannot see which plugins an agent has installed: installing the plugin in a
 repository that keeps `"repo"` delivery gives the agent each built-in skill twice — set
-`"plugin"` there, or leave the plugin out.
+`"plugin"` there, or leave the plugin out. Cursor, Gemini CLI and GitHub Copilot have no modsys
+plugin: they get the built-in skills only with `"repo"` delivery (`packs sync` says so).
+
+## Other agents
+
+`modsys packs sync --agent cursor`, `--agent gemini` and `--agent copilot` write the skills into
+`.agents/skills/` — the directory Codex reads too, written once however many of these agents
+sync. GitHub Copilot also reads `.claude/skills/`: a repository that syncs for `claude` and for
+an agent of `.agents/skills` gives Copilot every skill twice (`packs sync` prints a note) — where
+Copilot works, keep one of the two directories. `modsys packs sync --agent cursor --remove`
+takes the copies out again: every copy `packs sync` made in that directory is removed, an edited
+copy stays (a conflict), and nothing else there is touched; it refuses while `[packs] agents`
+lists another agent that reads the same directory.
 
 ## The core skills
 

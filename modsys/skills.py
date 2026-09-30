@@ -22,7 +22,11 @@ SKILL_ID_MAX = 64
 SKILL_KEYS = ("path", "reads_roles")
 NAME_RULE = "1–64 characters: lowercase letters and digits, words joined by single hyphens"
 DESCRIPTION_MAX = 1024
-AGENT_DIRS = {"claude": ".claude/skills", "codex": ".agents/skills"}  # where agents read skills
+# where each agent reads skills, in the engine's agent order (P6 D5: cursor, gemini and copilot
+# share codex's `.agents/skills` — one write per directory, however many agents read it)
+AGENT_DIRS = {"claude": ".claude/skills", "codex": ".agents/skills", "cursor": ".agents/skills",
+              "gemini": ".agents/skills", "copilot": ".agents/skills"}
+DEFAULT_AGENTS = ("claude", "codex")  # the agents a hint names when none was chosen
 MANAGED = ".modsys-managed"  # the marker `packs sync` writes into every skill it manages
 EJECTED = ".modsys-ejected"  # the record `modsys eject` writes into an ejected copy
 EJECTED_SCHEMA = "modsys.ejected/1"
