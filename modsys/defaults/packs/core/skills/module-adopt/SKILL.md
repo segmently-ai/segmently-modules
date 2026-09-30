@@ -46,43 +46,48 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    registry uses, the code-map rule or the commented-out suggestion, the doc budgets (commented
    out). `inferred.skipped` names the keys no type expresses: lint keeps reporting them.
 
-2. **Ask what adopt never guesses** — only these, one at a time, and only when they apply:
+2. **Write it.**
+
+   ```bash
+   modsys adopt --json
+   ```
+
+   With no config yet, it creates `<config_dir>/config.toml` — a new file: adopt never edits
+   an existing one, so nothing of the user's changes. Write it without waiting for the answers
+   of step 4: the user asked for a config that reads the registry as it is. When a config
+   already exists, it writes `<config_dir>/adopt.proposed.toml` instead: explain that file,
+   then help the user merge what they want into `config.toml` by hand — edit `config.toml`
+   only after the user says yes to each change — and delete the proposal afterwards.
+
+3. **Show the lint report.**
+
+   ```bash
+   modsys lint --json
+   ```
+
+   Run it: never report a lint result you did not run. Group the findings by code (count, one
+   example each) and say what each code means. Fix nothing here: hand the fixes to
+   `module-lint`, by name, and say which findings it can fix safely and which need a decision.
+
+4. **Then ask what adopt never guesses** — only these, one at a time, and only when they
+   apply:
 
    - a role's `applies_when`: should a tag (`create --tag <tag>`) scaffold that role's doc for
      new modules?
    - a field's `deprecated`: is any inferred field on its way out (and what replaces it)?
    - a budget: should a commented-out doc budget become active?
 
-3. **Write it.**
+   Add each answer to the config only on the user's yes. When no one can answer now, list the
+   open questions in the report: the config already reads the registry without them.
 
-   ```bash
-   modsys adopt --json
-   ```
-
-   With no config yet, it creates `<config_dir>/config.toml`. When a config already exists, it
-   writes `<config_dir>/adopt.proposed.toml` instead: explain that file, then help the user merge
-   what they want into `config.toml` by hand — edit `config.toml` only after the user says yes
-   to each change — and delete the proposal afterwards. Add the user's answers from step 2 the
-   same way.
-
-4. **Show the lint report.**
-
-   ```bash
-   modsys lint --json
-   ```
-
-   Group the findings by code (count, one example each) and say what each code means. Fix
-   nothing here: hand the fixes to `module-lint`, by name, and say which findings it can fix
-   safely and which need a decision.
-
-5. **Report** the file written, the answers applied, the lint counts and the next steps from
-   `data.next_steps` (for instance `modsys init --json` for the `.gitignore` lines). Ask the user to
-   review and commit.
+5. **Report** the file written, the answers applied (and the questions still open), the lint
+   counts and the next steps from `data.next_steps` (for instance `modsys init --json` for the
+   `.gitignore` lines). Ask the user to review and commit.
 
 ## Gates
 
-- Before step 3: the user has seen the dry run.
-- Every edit of an existing `config.toml`: an explicit yes.
+- Before step 2: the dry run is shown and explained.
+- Every answer of step 4, and every edit of an existing `config.toml`: an explicit yes.
 
 ## Exit codes
 

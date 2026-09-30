@@ -332,14 +332,22 @@ def pack_findings(ws) -> list[Finding]:
 def plugin_copies(ws, builtin: set[str]) -> list[Finding]:
     """MS067 (info): under `builtin_delivery = "plugin"`, each copy `packs sync` made of a
     built-in skill (a valid marker of that skill) in an agent directory — each real directory
-    once; an unreadable directory is skipped. The next `packs sync` removes them."""
+    once; an unreadable directory is skipped. The message names the sync that removes it: a
+    bare `packs sync`, or `--agent <the directory's agent>` when `[packs] agents` leaves that
+    directory out (a bare sync never touches it then)."""
     out, seen = [], set()
+    configured = [a for a in (ws.config.get("packs") or {}).get("agents") or []
+                  if a in AGENT_DIRS]
+    covered = {os.path.realpath(ws.root / AGENT_DIRS[a]) for a in configured}
     for rel in dict.fromkeys(AGENT_DIRS.values()):
         base = ws.root / rel
         real = os.path.realpath(base)
         if real in seen:
             continue
         seen.add(real)
+        agent = next(a for a, d in AGENT_DIRS.items() if d == rel)
+        command = ("modsys packs sync" if not configured or real in covered
+                   else f"modsys packs sync --agent {agent}")
         try:
             dests = sorted(base.iterdir()) if base.is_dir() else []
         except OSError:
@@ -353,8 +361,10 @@ def plugin_copies(ws, builtin: set[str]) -> list[Finding]:
             if marker is not None and marker["skill"] == dest.name:
                 out.append(Finding("MS067", "info", "*", f"'{ws.rel(dest)}' is a copy of the "
                                    f"built-in skill '{dest.name}' while builtin_delivery = "
-                                   f'"plugin" (the plugin provides it) — run modsys packs sync '
-                                   f"to remove it", ws.rel(dest)))
+                                   f'"plugin" (the plugin provides it) — {command} removes it '
+                                   f"when it is unedited (an edited copy, or the copy of an "
+                                   f"ejected skill, stays: a packs sync conflict)",
+                                   ws.rel(dest)))
     return out
 
 

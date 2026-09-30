@@ -222,14 +222,15 @@ def _names(words: list[str]) -> str:
     return ", ".join(words)
 
 
-def sync_notes(ws, chosen: list[str], plugin: bool) -> list[str]:
+def sync_notes(ws, chosen: list[str], plugin: bool, rows: list[dict]) -> list[str]:
     """The `note:` lines of a `packs sync` run (`data.notes`): under `builtin_delivery =
     "plugin"`, the plugins that provide the enabled built-in packs' skills and the chosen
-    agents no plugin exists for; Copilot's duplicates when `claude` syncs together with an
-    agent of `.agents/skills` (Copilot reads both directories)."""
+    agents no plugin exists for; Copilot's duplicates (it reads both directories) when `claude`
+    syncs together with an agent of `.agents/skills` — under `"plugin"` only when a copy stays
+    in both (a row that is not `removed`): the built-in skills are in neither there."""
     notes = []
-    provided = [p["id"] for p in discover_packs(ws.config_dir) if p["builtin"]]
-    if plugin and provided:
+    provided = [p["id"] for p in discover_packs(ws.config_dir) if p["builtin"]] if plugin else []
+    if provided:
         notes.append('builtin_delivery = "plugin": the built-in skills come from the plugins '
                      + ", ".join(f"{BUILTIN_PLUGINS[p]} ({p})" for p in provided)
                      + " — packs sync copies none of them")
@@ -239,7 +240,9 @@ def sync_notes(ws, chosen: list[str], plugin: bool) -> list[str]:
             notes.append(f"{_names(bare)} {verb} no built-in skills: no modsys plugin exists "
                          f'for {pronoun} — set [packs] builtin_delivery = "repo" to sync the '
                          f"built-in skills for {pronoun}")
-    if "claude" in chosen and any(AGENT_DIRS[a] != AGENT_DIRS["claude"] for a in chosen):
+    dirs = ({AGENT_DIRS[r["agent"]] for r in rows if r["status"] != "removed"} if plugin
+            else {AGENT_DIRS[a] for a in chosen})
+    if AGENT_DIRS["claude"] in dirs and len(dirs) > 1:
         notes.append("GitHub Copilot reads both .claude/skills and .agents/skills, so it sees "
                      "each skill twice — where Copilot works, sync only one of the two "
                      "directories (Copilot reads either)")
@@ -269,16 +272,25 @@ def remove_scope(ws, agents: list[str] | None, check: bool) -> list[str]:
     return chosen
 
 
-def remove_notes(ws, chosen: list[str]) -> list[str]:
-    """`--remove`: the agents that read a directory it empties without being among the flags."""
+def remove_notes(ws, chosen: list[str], dry_run: bool) -> list[str]:
+    """`--remove`: the agents that read a directory it empties without being among the flags;
+    the agents among the flags that `[packs] agents` still lists (a bare sync copies again)."""
     real = {os.path.realpath(ws.root / AGENT_DIRS[a]) for a in chosen}
     others = [a for a in AGENT_DIRS if a not in chosen
               and os.path.realpath(ws.root / AGENT_DIRS[a]) in real]
-    if not others:
-        return []
-    dirs = sorted({AGENT_DIRS[a] for a in others})
-    return [f"{', '.join(dirs)} is also where {_names(others)} read skills — the copies are "
-            f"gone for them too"]
+    notes = []
+    if others:
+        dirs = sorted({AGENT_DIRS[a] for a in others})
+        notes.append(f"{', '.join(dirs)} is also where {_names(others)} read skills — the "
+                     f"copies {'would be' if dry_run else 'are'} gone for them too")
+    listed = [a for a in (ws.config.get("packs") or {}).get("agents") or [] if a in chosen]
+    if listed:
+        verb, pronoun = ("is", "its") if len(listed) == 1 else ("are", "their")
+        notes.append(f"{_names(listed)} {verb} still in [packs] agents: the next packs sync "
+                     f"copies {pronoun} skills again and packs sync --check is stale — take "
+                     f"{'it' if len(listed) == 1 else 'them'} out of [packs] agents to keep "
+                     f"the copies gone")
+    return notes
 
 
 def sync(ws, agents: list[str] | None, check: bool, dry_run: bool,
@@ -320,9 +332,9 @@ def sync(ws, agents: list[str] | None, check: bool, dry_run: bool,
     failed = (any(r["status"] != "unchanged" for r in rows) if check
               else bool(summary["conflict"] or summary["invalid"]))
     if not remove:
-        notes = sync_notes(ws, chosen, plugin)
+        notes = sync_notes(ws, chosen, plugin, rows)
     else:  # only when a copy went (or would go): the other readers lose it too
-        notes = remove_notes(ws, chosen) if summary["removed"] else []
+        notes = remove_notes(ws, chosen, dry_run) if summary["removed"] else []
     return {"agents": chosen, "check": check, "dry_run": dry_run, "skills": rows,
             "summary": summary, "failed": failed, "notes": notes}
 
@@ -404,10 +416,15 @@ def _hint(ws, r) -> str:
 
 
 def _render_sync(d, ws, remove: bool = False) -> None:
-    if not d["skills"]:
+    if not d["skills"] and remove:
         print("nothing to remove: no copy made by packs sync in " + ", ".join(dict.fromkeys(
-            AGENT_DIRS[a] for a in d["agents"])) if remove
-            else "no pack skills (add one: modsys packs new ID --skill NAME)")
+            AGENT_DIRS[a] for a in d["agents"])))
+    elif not d["skills"] and builtin_delivery(ws.config) == "plugin":
+        print('nothing to copy: the built-in skills come from the modsys plugins '
+              '(builtin_delivery = "plugin"); a repository pack\'s skills are copied (add one: '
+              'modsys packs new ID --skill NAME)')
+    elif not d["skills"]:
+        print("no pack skills (add one: modsys packs new ID --skill NAME)")
     upstream = pack_skills(ws.config_dir)
     for r in d["skills"]:
         where = f"({r['pack']} {r['version']}" if r["version"] else f"({r['pack']}"

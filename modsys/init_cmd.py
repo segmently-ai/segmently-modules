@@ -593,7 +593,8 @@ def _render_reconcile(d) -> None:
     for c in d["collisions"]:
         owner = c["owner"] or "a tie"
         removed = f"; removed from {', '.join(c['removed'])}" if c["removed"] else ""
-        kept = [m for m in c["others"] if c["owner"] and c["files"].get(m)]
+        # a tie has no owner: nothing is kept and nothing removed
+        kept = [m for m in c["others"] if c["owner"] and c["files"].get(m, 0) > 0]
         if kept:  # D14: the holders whose own files hold the keyword keep it
             removed += f"; kept by {', '.join(kept)} (their files hold it)"
         print(f"collision     '{c['keyword']}' — owner {owner}{removed}")

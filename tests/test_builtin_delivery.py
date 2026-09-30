@@ -260,6 +260,47 @@ class OneDeliveryTest(DeliveryRepo):  # P6-AC-002
         self.assertNotIn("MS067", {f["code"] for f in env["data"]["findings"]})
 
 
+class PluginTextsTest(DeliveryRepo):  # final review M-14, M-15 (T-9)
+    def test_ms067_names_the_sync_that_removes_it(self):
+        self.sync(*AGENTS)
+        (self.root / ".modsys/config.toml").write_text(
+            '[packs]\nbuiltin = ["core", "ui", "qa"]\nbuiltin_delivery = "plugin"\n'
+            'agents = ["claude"]\n', encoding="utf-8")
+
+        def found() -> dict:
+            code, env, err = run_json("lint", "--fail-on", "never", *self.R)
+            self.assertEqual((code, err), (0, ""))
+            return {f["path"]: f["message"] for f in env["data"]["findings"]
+                    if f["code"] == "MS067"}
+
+        tail = ("removes it when it is unedited (an edited copy, or the copy of an ejected "
+                "skill, stays: a packs sync conflict)")
+        messages = found()
+        self.assertEqual(len(messages), 24)
+        for path, message in messages.items():
+            command = ("modsys packs sync" if path.startswith(".claude/")
+                       else "modsys packs sync --agent codex")  # [packs] agents leaves it out
+            self.assertTrue(message.endswith(f'(the plugin provides it) — {command} {tail}'),
+                            message)
+        self.sync()  # the bare sync: claude only
+        self.assertEqual(sorted({p.split("/")[0] for p in found()}), [".agents"])
+        self.sync("--agent", "codex")
+        self.assertEqual(found(), {})
+
+    def test_nothing_to_copy_says_where_the_skills_come_from(self):
+        shutil.rmtree(self.root / ".modsys/packs/team")
+        self.config('"plugin"')
+        code, out, err = run("packs", "sync", *AGENTS, *self.R)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(out.splitlines(), [
+            'nothing to copy: the built-in skills come from the modsys plugins '
+            '(builtin_delivery = "plugin"); a repository pack\'s skills are copied (add one: '
+            'modsys packs new ID --skill NAME)',
+            f'note: builtin_delivery = "plugin": the built-in skills come from {PLUGINS} — '
+            'packs sync copies none of them',  # and no Copilot note: nothing is in two places
+            "packs sync: 0 created, 0 updated, 0 unchanged, 0 removed, 0 conflict, 0 invalid"])
+
+
 class TransitionsTest(DeliveryRepo):  # P6-AC-026
     def test_repo_plugin_repo(self):
         self.config(builtin=("core",))

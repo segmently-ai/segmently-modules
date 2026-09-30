@@ -37,4 +37,4 @@ Every code the `lint` and `ci` verbs report. **Safe** = a mechanical fix the ski
 | MS064 | a skill reads a role that is not configured or disabled (`*`) | Ask the pack's owner |
 | MS065 | two packs declare one skill id; one is shadowed (`*`) | Ask: rename one of the skills |
 | MS066 | a repository pack takes a built-in pack's id and replaces that pack (`*`, info) | Nothing to fix when the team owns that pack on purpose; otherwise ask to rename the repository pack |
-| MS067 | a copy of a built-in skill in an agent directory while the plugin provides it (`builtin_delivery = "plugin"`, `*`, info) | Safe: `modsys packs sync --json` removes the unedited copies; an edited copy stays a conflict — ask |
+| MS067 | a copy of a built-in skill in an agent directory while the plugin provides it (`builtin_delivery = "plugin"`, `*`, info) | Safe: the sync the finding names (`modsys packs sync --json`, with `--agent <agent>` when `[packs] agents` leaves that directory out) removes an unedited copy; an edited copy or an ejected skill's copy stays a conflict — ask |

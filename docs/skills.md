@@ -60,7 +60,8 @@ twice and cannot tell which to trigger:
 
   `modsys packs sync` then copies no built-in skill, removes the copies it made earlier (an
   edited copy is a conflict and stays) and prints a `note:` naming the plugins; plain `lint`
-  reports each copy still there (MS067, info). `modsys eject` of a built-in skill is refused
+  reports each copy still there (MS067, info) with the sync that removes it (`--agent <agent>`
+  when `[packs] agents` leaves that directory out). `modsys eject` of a built-in skill is refused
   (ejecting means owning a copy: that needs `"repo"`), and a skill ejected earlier is a `packs
   sync` conflict until the copy is deleted or the delivery goes back to `"repo"`. The built-in
   packs' roles and templates, `agents-md` and every repository pack's skills are the same
@@ -86,7 +87,8 @@ an agent of `.agents/skills` gives Copilot every skill twice (`packs sync` print
 Copilot works, keep one of the two directories. `modsys packs sync --agent cursor --remove`
 takes the copies out again: every copy `packs sync` made in that directory is removed, an edited
 copy stays (a conflict), and nothing else there is touched; it refuses while `[packs] agents`
-lists another agent that reads the same directory.
+lists another agent that reads the same directory, and a note says when `[packs] agents` still
+lists the agent (the next `packs sync` copies its skills again).
 
 ## The core skills
 
@@ -100,7 +102,7 @@ lists another agent that reads the same directory.
 | `module-split` | a module doc is over budget (MS030 / MS031): proposes children, stops for confirmation, moves sections verbatim | writes the children and the parent index | `show`, `create --parent`, `code-map add`, `lint` |
 | `module-lint` | the gate fails: explains each finding, fixes the safe ones, leaves decisions to you | writes safe fixes | `ci`, `lint`, `registry` |
 | `module-init` | a codebase without modules: maps the code, stops for you to confirm the candidates (gate 3), has one writer per module document it (subagents, or one at a time), reconciles, measures routing, stops again before anything lands (gate 7) | writes through `init`, after your yes | `init status`, `init map`, `init confirm`, `init fanout`, `init next`, `init done`, `init reconcile`, `eval routing --prompt`, `init verify`, `init finish` |
-| `module-adopt` | a registry and docs another tool wrote: infers the config, explains each inference, asks what it cannot guess, shows lint by code, fixes nothing (hands that to `module-lint`) | writes the config `adopt` infers | `adopt --dry-run`, `adopt`, `lint` |
+| `module-adopt` | a registry and docs another tool wrote: infers the config, explains each inference, writes it, shows lint by code, then asks what it cannot guess, fixes nothing (hands that to `module-lint`) | writes the config `adopt` infers | `adopt --dry-run`, `adopt`, `lint` |
 
 A typical task: `module-scout` while it is discussed, `module-discover` once it is agreed,
 the work, then `module-sync`; `module-create`, `module-split` and `module-lint` when the

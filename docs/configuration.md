@@ -493,7 +493,7 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS064 | warning | a skill's `reads_roles` names a role no layer configures, or a disabled one (plain `lint` only) |
 | MS065 | warning | two packs declare the same skill id: the lower-precedence one is shadowed (plain `lint` only) |
 | MS066 | info | a repository pack takes a built-in pack's id (`core`, `qa`, `ui`) and replaces that built-in pack, enabled or not; info never fails a gate (plain `lint` only) |
-| MS067 | info | `[packs] builtin_delivery = "plugin"` and an agent directory still holds a copy `packs sync` made of a built-in skill (its `.modsys-managed` marker): the plugin provides the skill, so the agent sees it twice — `modsys packs sync` removes the copy; path = the copy's directory; info never fails a gate (plain `lint` only) |
+| MS067 | info | `[packs] builtin_delivery = "plugin"` and an agent directory still holds a copy `packs sync` made of a built-in skill (its `.modsys-managed` marker): the plugin provides the skill, so the agent sees it twice — `modsys packs sync` removes an unedited copy (the message says `--agent <agent>` when `[packs] agents` leaves that directory out; an edited copy or an ejected skill's copy stays a conflict); path = the copy's directory; info never fails a gate (plain `lint` only) |
 
 MS053 compares every pair of `[[code_map]]` rules over the repository's files (git-tracked +
 new, not ignored; `[coverage]` filters do not apply) after `exclusive` precedence: a pair is

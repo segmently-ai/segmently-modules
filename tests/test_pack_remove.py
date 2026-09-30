@@ -3,6 +3,7 @@ A's skill directory goes; an edited copy stays a conflict; unmanaged files, the 
 and the config are never touched; the refusals that keep a shared directory safe."""
 import hashlib
 import json
+import os
 import shutil
 import tempfile
 import unittest
@@ -178,8 +179,46 @@ class RemoveScopeTest(RemoveRepo):  # P6-AC-032 (SI-10)
                          {("cursor", None), ("codex", "cursor")})
         self.assertEqual(data["summary"]["removed"], 20)  # 10 removed once, 10 same_as rows
         self.assertEqual(data["notes"], [".agents/skills is also where gemini, copilot read "
-                                         "skills — the copies are gone for them too"])
+                                         "skills — the copies are gone for them too",
+                                         "codex, cursor are still in [packs] agents: the next "
+                                         "packs sync copies their skills again and packs sync "
+                                         "--check is stale — take them out of [packs] agents "
+                                         "to keep the copies gone"])
         self.assertTrue((self.root / ".claude/skills/module-sync").is_dir())
+
+    def test_a_mirrored_directory(self):  # PR-9: real paths decide what is shared
+        (self.root / ".claude/skills").mkdir(parents=True)
+        (self.root / ".agents").mkdir()
+        os.symlink("../.claude/skills", self.root / ".agents/skills")
+        self.config(["claude", "codex"])
+        self.sync()
+        err = self.refused("--agent", "codex", "--remove")
+        self.assertIn("--remove would delete the copies claude still reads in .claude/skills "
+                      "([packs] agents lists claude) — add --agent claude", err)
+        data = self.sync("--agent", "claude", "--agent", "codex", "--remove")
+        self.assertEqual({(r["agent"], r.get("same_as")) for r in data["skills"]},
+                         {("claude", None), ("codex", "claude")})
+        self.assertEqual(data["summary"]["removed"], 20)  # 10 removed once, 10 same_as rows
+        self.assertEqual(list((self.root / ".claude/skills").iterdir()), [])
+
+    def test_a_configured_agent_and_a_dry_run_are_named(self):  # final review M-15, M-16
+        self.sync("--agent", "cursor")
+        code, out, err = run("packs", "sync", "--agent", "cursor", "--remove", "--dry-run",
+                             *self.R)
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("note: .agents/skills is also where codex, gemini, copilot read skills — "
+                      "the copies would be gone for them too", out.splitlines())
+        self.config(["claude", "codex"])
+        self.sync()
+        data = self.sync("--agent", "claude", "--remove")
+        self.assertEqual(data["summary"]["removed"], 10)
+        self.assertEqual(data["notes"], [
+            "claude is still in [packs] agents: the next packs sync copies its skills again "
+            "and packs sync --check is stale — take it out of [packs] agents to keep the copies "
+            "gone"])
+        code, out, err = run("packs", "sync", "--check", *self.R)  # what the note says
+        self.assertEqual(code, 1)
+        self.assertIn("stale", out.splitlines()[-1])
 
     def test_no_config_the_other_readers_are_named(self):
         self.sync("--agent", "cursor")

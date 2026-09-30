@@ -75,7 +75,12 @@ CORE: dict[str, tuple[str, list[tuple[str, ...]], list[str]]] = {
                       "`deprecated`", "a commented-out doc budget", "Group the findings by code",
                       "Fix nothing here", "hand the fixes to `module-lint`",
                       "`<config_dir>/adopt.proposed.toml`", "only after the user says yes",
-                      "never edits the registry or a module doc", "never commits"]),
+                      "never edits the registry or a module doc", "never commits",
+                      # G11: write first, then ask — an agent that cannot reach the user
+                      # still leaves the config the request asked for
+                      "adopt never edits an existing one", "Write it without waiting",
+                      "never report a lint result you did not run",
+                      "Add each answer to the config only on the user's yes"]),
 }
 PACK_SKILLS: dict[str, tuple[str, str, list[tuple[str, ...]], list[str]]] = {
     "designer-review": ("ui", "writer", [("discover",), ("show", "--role", "designer")],
@@ -267,6 +272,7 @@ class InstallLineTest(SkillRules):  # P6-AC-019 (D6, SI-4)
                 self.assertEqual(body.splitlines().count(self.LINE), 1)
                 self.assertNotIn("not found", front)  # the body, never the description
                 self.assertLess(body.index(self.LINE), body.index("\n## Steps\n"))
+                self.assertIn(f"\n\n{self.LINE}\n\n", body)  # its own paragraph
         urls = re.findall(r"github\.com(\S*)", self.LINE)  # placeholders only (D13)
         self.assertEqual(urls, ["/<owner>/<repo>.git`,", "/<owner>/<repo>.git`"])
 
@@ -423,6 +429,14 @@ class InitAndAdoptSkillsTest(unittest.TestCase):  # P5B-AC-028, P5B-AC-029 (D6, 
         self.assertTrue(cmds)
         self.assertEqual([v for v in WRITER_VERBS if uses(cmds, v)], [])
 
+    def test_module_adopt_writes_before_it_asks(self):  # G11: the order of the steps
+        steps = section((builtin_packs_root() / "core/skills/module-adopt/SKILL.md")
+                        .read_text("utf-8"), "## Steps")
+        order = [steps.index(s) for s in ("modsys adopt --dry-run --json", "**Write it.**",
+                                          "modsys adopt --json", "modsys lint --json",
+                                          "**Then ask what adopt never guesses**", "**Report**")]
+        self.assertEqual(order, sorted(order))
+
     def test_module_init_parses_the_phases_it_runs(self):
         files = skill_files(builtin_packs_root() / "core/skills/module-init")
         self.assertEqual(sorted(files), ["SKILL.md", "references/phases.md"])
@@ -445,6 +459,8 @@ class InitAndAdoptSkillsTest(unittest.TestCase):  # P5B-AC-028, P5B-AC-029 (D6, 
         phases = " ".join((root / "references/phases.md").read_text("utf-8").split())
         for needle in ("including the things and actions its `## Purpose` paragraph names even "
                        "where the code names them differently",
+                       "routing matches whole words without stemming, so single words with the "
+                       "plural and verb forms of the key nouns",  # kept from f1f5e46
                        "each key verb in every form tasks use: base, `-s`, `-ed`, `-ing`"):
             self.assertIn(needle, phases)
 
