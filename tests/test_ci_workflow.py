@@ -35,7 +35,7 @@ class CiWorkflowTest(unittest.TestCase):  # P6-AC-020
                         'python tools/build_plugins.py --out "$RUNNER_TEMP/build-b"',
                         'diff -r "$RUNNER_TEMP/build-a" "$RUNNER_TEMP/build-b"',
                         "dash -n tools/launcher.sh", "python -m unittest tests.test_launcher",
-                        "timeout-minutes: 30"):
+                        "timeout-minutes: 45"):
             self.assertIn(command, self.lines)
 
     def test_every_check_can_fail_and_runs_in_order(self):  # task-10 review M1, M2

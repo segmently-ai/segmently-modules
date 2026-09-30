@@ -55,6 +55,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -219,6 +220,14 @@ def dir_hits(root: Path, org: str) -> list[str]:
     needle = org.lower().encode()
     return [f"build {p.relative_to(root).as_posix()}" for p in sorted(root.rglob("*"))
             if p.is_file() and needle in p.read_bytes().lower()]
+
+
+def linked_parents(root: Path) -> list[str]:
+    """The directories the release writes below (`plugins`, `.claude-plugin`, `.agents`,
+    `.agents/plugins`) that are a symlink or a file in the work tree at `root` — a write through
+    one would leave the repository."""
+    return [rel for rel in PARENTS if (root / rel).is_symlink()
+            or (os.path.lexists(root / rel) and not (root / rel).is_dir())]
 
 
 def newline_of(text: str) -> str:
@@ -405,11 +414,9 @@ class Release:
                               f"stable release makes the release commit itself ({version}"
                               f".devN → {version}): set __version__ and pyproject.toml to the "
                               f".devN version to release")
-        for rel in PARENTS:
-            path = self.pub.path / rel
-            if path.is_symlink() or (os.path.lexists(path) and not path.is_dir()):
-                raise Refused(f"{rel} in the publish repo is a symlink or a file — the release "
-                              f"writes below it: make it a directory of the repository")
+        for rel in linked_parents(self.pub.path):
+            raise Refused(f"{rel} in the publish repo is a symlink or a file — the release "
+                          f"writes below it: make it a directory of the repository")
         local, remote = f"refs/heads/{self.channel}", f"refs/remotes/origin/{self.channel}"
         if self.pub.has(local) and self.pub.has(remote) and self.pub.git(
                 "merge-base", "--is-ancestor", remote, local, check=False).returncode:
@@ -527,6 +534,10 @@ class Release:
         root = pub.path
         self.made_dirs = [root / rel for rel in reversed(PARENTS) if not (root / rel).exists()]
         self.checkout_channel()
+        for rel in linked_parents(root):  # the channel's tree, not the one step 2 saw
+            raise Failed(f"{rel} is a symlink or a file on the {self.channel} branch of the "
+                         f"publish repo — the release writes below it: make it a directory "
+                         f"there; nothing was written")
         old = {rel: read_json(root, rel) for rel in MARKETPLACE_FILES}
         claude, codex = publish.marketplaces(self.channel, old[MARKETPLACE_FILES[0]],
                                              old[MARKETPLACE_FILES[1]])
@@ -706,7 +717,7 @@ class Release:
 
     def by_hand(self) -> str:
         """The push commands that did not run (or did not go through), one per line."""
-        return "\n".join(f"  git -C {repo.path} {' '.join(args)}"
+        return "\n".join("  " + shlex.join(["git", "-C", str(repo.path), *args])
                          for repo, args in self.pushes() if repo.label not in self.pushed)
 
     def push(self) -> str:
@@ -855,12 +866,16 @@ class Release:
 TERMINATE = tuple(s for s in (signal.SIGTERM, getattr(signal, "SIGHUP", None)) if s)
 
 
-def set_signals(signals: tuple, handler) -> dict:
+def set_signals(signals: tuple, handler, keep_ignored: bool = False) -> dict:
     """Set `handler` for `signals`; {signal: the handler before} to put them back (nothing in
-    a thread that is not the main one: signals are the main thread's)."""
+    a thread that is not the main one: signals are the main thread's). `keep_ignored`: a signal
+    the caller ignores stays ignored (`nohup` keeps a release running when the terminal
+    closes)."""
     before = {}
     for sig in signals:
         try:
+            if keep_ignored and signal.getsignal(sig) is signal.SIG_IGN:
+                continue
             before[sig] = signal.signal(sig, handler)
         except ValueError:
             pass
@@ -914,7 +929,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--push", action="store_true",
                         help="push the channel branch and the tags (an owner command)")
     args = parser.parse_args(argv)
-    held = set_signals(TERMINATE, as_interrupt)
+    held = set_signals(TERMINATE, as_interrupt, keep_ignored=True)
     try:
         repo = args.publish_repo.absolute()
         why = refusal(args, repo)

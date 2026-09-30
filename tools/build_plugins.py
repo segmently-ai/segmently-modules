@@ -353,6 +353,24 @@ def make_dirs(path: Path) -> list[Path]:
     return missing
 
 
+def remove_tree(path: Path) -> bool:
+    """Remove `path` — the staging directory, which may hold an earlier build a user made
+    unreadable in part (a directory of mode 000): every directory met is made searchable and
+    writable first. True when it is gone."""
+    stack = [path]
+    while stack:
+        at = stack.pop()
+        try:
+            if at.is_symlink() or not at.is_dir():
+                continue
+            os.chmod(at, 0o700)
+            stack.extend(Path(entry.path) for entry in os.scandir(at))
+        except OSError:
+            continue
+    shutil.rmtree(path, ignore_errors=True)
+    return not os.path.lexists(path)
+
+
 def remove_dirs(dirs: list[Path]) -> None:
     for d in dirs:  # the deepest first; one that is not empty (or not there) stays
         try:
@@ -416,7 +434,7 @@ def build(engine: Path, out: Path, version: str | None = None) -> dict:
     check_out(engine, out)  # before --out is touched
     changed = modified(engine)
     created = make_dirs(out)
-    staging, keep, built = None, False, False
+    staging, keep, built, left = None, False, False, None
     try:
         try:
             staging = Path(tempfile.mkdtemp(prefix=".modsys-build-", dir=out))
@@ -436,11 +454,12 @@ def build(engine: Path, out: Path, version: str | None = None) -> dict:
     except OSError as e:
         raise BuildError(f"cannot write {e.filename or out}: {e.strerror or e}") from None
     finally:
-        if staging and not keep:
-            shutil.rmtree(staging, ignore_errors=True)
+        if staging and not keep and not remove_tree(staging):
+            left = str(staging)  # nothing is lost: it held the earlier build
         if not built:
             remove_dirs(created)
-    return {"version": version, "out": str(out), "plugins": counts, "modified": changed}
+    return {"version": version, "out": str(out), "plugins": counts, "modified": changed,
+            "left": left}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -461,6 +480,9 @@ def main(argv: list[str] | None = None) -> int:
         return 130
     for name, count in result["plugins"].items():
         print(f"built {name} {result['version']}: {count} files in {result['out']}/{name}")
+    if result["left"]:
+        print(f"{PROG}: warning: cannot remove {result['left']} (the earlier build) — delete "
+              f"it by hand", file=sys.stderr)
     changed = result["modified"]
     if changed:  # the work tree's bytes ship: say so, once
         more = f", … and {len(changed) - 5} more" if len(changed) > 5 else ""

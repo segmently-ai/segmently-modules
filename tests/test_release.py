@@ -8,6 +8,7 @@ leak guard."""
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -83,7 +84,7 @@ class ReleaseRepo(unittest.TestCase):
         self.base = Path(self._tmp.name).resolve()
         self.engine = copy_engine(self.base / "engine", EXTRA,
                                   prefixes=("modsys/", "tools/", "tests/fixtures/bookshop/"))
-        self.pub = self.base / "publish"
+        self.pub = self.base / "publish repo"  # a space: every printed command is quoted
         self.pub.mkdir()
         git(self.pub, "init", "-q", "-b", "main")
         self.bin = self.base / "bin"
@@ -198,8 +199,9 @@ class RunTest(ReleaseRepo):  # P6-AC-014, 015, 017
         self.assertEqual(self.log(self.pub, "dev"), [f"release modsys {version} (dev)"])
         self.assertEqual(git(self.pub, "tag", "-l"), "")
         self.assertIn("push: not requested — the release is committed locally; to publish it "
-                      f"(an owner command), run:\n  git -C {self.pub} push --atomic origin "
-                      "refs/heads/dev\n", proc.stdout)
+                      f"(an owner command), run:\n  git -C {shlex.quote(str(self.pub))} push "
+                      "--atomic origin refs/heads/dev\n", proc.stdout)
+        self.assertIn(" -C '", proc.stdout)  # the path with a space, quoted for the shell
         with tempfile.TemporaryDirectory() as tmp:
             build = Path(tmp) / "build"
             subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, sys.argv[1]); "
@@ -251,7 +253,8 @@ class RunTest(ReleaseRepo):  # P6-AC-014, 015, 017
         self.assertIn("- 0.1.0 (stable): engine ", log)
         self.assertNotIn("(dev)", log)  # the channel's own entries only
         self.assertIn("bin/modsys --version = modsys 0.1.0", proc.stdout)
-        self.assertIn(f"  git -C {self.pub} push --atomic origin refs/heads/stable "
+        self.assertIn(f"  git -C {shlex.quote(str(self.pub))} push --atomic origin "
+                      "refs/heads/stable "
                       "refs/tags/v0.1.0 refs/tags/modsys--v0.1.0 refs/tags/modsys-ui--v0.1.0 "
                       f"refs/tags/modsys-qa--v0.1.0\n  git -C {self.engine} push --atomic "
                       "origin refs/heads/main refs/tags/v0.1.0\n", proc.stdout)
@@ -414,8 +417,8 @@ class PushTest(ReleaseRepo):  # final review I-4, M-9: the push is never put bac
                       "refs/heads/stable", proc.stderr)
         self.assertIn("— nothing is put back: the release is committed and tagged locally; "
                       "pushed: nothing; left to push by hand:\n"
-                      f"  git -C {self.pub} push --atomic origin refs/heads/stable "
-                      "refs/tags/v0.1.0 ", proc.stderr)
+                      f"  git -C {shlex.quote(str(self.pub))} push --atomic origin "
+                      "refs/heads/stable refs/tags/v0.1.0 ", proc.stderr)
         self.assertIn(f"\n  git -C {self.engine} push --atomic origin refs/heads/main "
                       "refs/tags/v0.1.0\n", proc.stderr)
         self.assertNotIn("as they were", proc.stderr)
@@ -436,7 +439,7 @@ class PushTest(ReleaseRepo):  # final review I-4, M-9: the push is never put bac
         self.assertIn("pushed: publish repo; left to push by hand:\n"
                       f"  git -C {self.engine} push --atomic origin refs/heads/main "
                       "refs/tags/v0.1.0\n", proc.stderr)
-        self.assertNotIn(f"git -C {self.pub} push", proc.stderr)
+        self.assertNotIn(f"git -C {shlex.quote(str(self.pub))} push", proc.stderr)
         self.assertEqual(sorted(self.refs(remotes["publish"])),
                          ["refs/heads/stable"] + [f"refs/tags/{t.format('0.1.0')}" for t in TAGS])
         self.assertEqual(self.refs(remotes["engine"]), ["refs/heads/main"])
@@ -661,6 +664,17 @@ class RefusalTest(ReleaseRepo):  # P6-AC-030 (SI-1, SI-16, SI-17)
                       "makes the release commit itself", err)
         self.assertFalse((self.base / "claude.log").exists())  # before the suite, the build
 
+    def test_a_release_under_nohup_keeps_running(self):  # re-review N-4
+        (self.pub / "scratch.txt").write_text("x\n")  # step 2 refuses: step 1 got through
+        proc = subprocess.run(  # SIGHUP (and SIGTERM) ignored by the caller, as nohup does;
+            ["/bin/sh", "-c", 'trap "" HUP TERM; exec "$0" "$@"', sys.executable,  # the
+             str(self.engine / "tools/release.py"), "--publish-repo", str(self.pub),  # guard
+             "--channel", "dev", "--publish-slug", SLUG], capture_output=True, text=True,
+            env={**os.environ, **self.env, "FAKE_GUARD_MODE": "hangup"})  # sends SIGHUP
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+        self.assertIn("the publish repo is dirty: scratch.txt", proc.stderr)
+        self.assertNotIn("interrupted", proc.stderr)
+
     def test_flags(self):
         self.claude_on_path(False)
         self.assertIn("--push needs claude on PATH", self.refused("--push"))
@@ -789,6 +803,36 @@ class AllOrNothingTest(ReleaseRepo):  # P6-AC-031 (SI-16)
         err = self.failed("dev", "step 6 publish repo failed")
         self.assertIn("CHANGELOG.md in the publish repo is not a regular file", err)
         self.assertEqual(outside.read_text(), "not the release's\n")
+
+    def test_a_symlinked_directory_on_the_channel_branch(self):  # re-review N-1
+        outside = self.base / "outside"
+        (outside / "modsys").mkdir(parents=True)
+        (outside / "modsys/THEIRS.txt").write_text("not the release's\n")
+        self.commit(self.pub, "README.md", "# Plugins\n", "root")
+        git(self.pub, "switch", "-q", "-c", "dev")
+        os.symlink(outside, self.pub / "plugins")  # on `dev` only: step 2 sees `main`
+        git(self.pub, "add", "--", "plugins")
+        git(self.pub, "commit", "-q", "-m", "plugins is a link")
+        git(self.pub, "switch", "-q", "main")
+        err = self.failed("dev", "step 6 publish repo failed")  # a local dev, not checked out
+        self.assertIn("plugins is a symlink or a file on the dev branch of the publish repo", err)
+        bare = self.base / "clone-origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(bare)], check=True)
+        git(self.pub, "remote", "add", "origin", str(bare))
+        git(self.pub, "push", "-q", "origin", "main", "dev")
+        clone = self.base / "clone"  # dev only as origin/dev
+        subprocess.run(["git", "clone", "-q", str(bare), str(clone)], check=True,
+                       capture_output=True)
+        before = self.state(clone)
+        proc = self.release("dev", pub=clone)
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn("step 6 publish repo failed: plugins is a symlink or a file on the dev "
+                      "branch", proc.stderr)
+        self.assertTrue(proc.stderr.rstrip().endswith("both repositories are as they were"))
+        self.assertEqual(self.state(clone), before)
+        self.assertEqual(sorted(p.relative_to(outside).as_posix() for p in outside.rglob("*")),
+                         ["modsys", "modsys/THEIRS.txt"])  # nothing written outside
+        self.assertEqual((outside / "modsys/THEIRS.txt").read_text(), "not the release's\n")
 
     def planted(self, repo: Path) -> list:
         return [(repo / "NOTES.txt").is_file(),

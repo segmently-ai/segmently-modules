@@ -404,6 +404,33 @@ class RefusalTest(unittest.TestCase):  # P6-AC-028, P6-AC-033
         self.assertIn("build_plugins.py: error: cannot write ", err)
         self.assertNotIn("Traceback", err)
 
+    def test_out_holds_only_the_plugins_after_every_run(self):  # re-review N-2
+        (self.out / "other-tool").mkdir(parents=True)
+        (self.out / "other-tool/keep.txt").write_text("keep\n")
+        want = ["modsys", "modsys-qa", "modsys-ui", "other-tool"]  # no staging directory
+
+        def listing() -> list[str]:
+            return sorted(p.name for p in self.out.iterdir())
+
+        self.assertEqual(run_tool(self.engine, "build_plugins", "--out", str(self.out))
+                         .returncode, 0)
+        self.assertEqual(listing(), want)
+        self.refused("--version", "v1")
+        self.assertEqual(listing(), want)
+        self.refused("--version", "0.9.0", code=130,
+                     env={"MODSYS_BUILD_INTERRUPT_AFTER": "swap:modsys-ui"})
+        self.assertEqual(listing(), want)
+        if os.geteuid() == 0:
+            self.skipTest("root removes any directory")
+        locked = self.out / "modsys-ui/x"  # the earlier build holds what cannot be listed
+        locked.mkdir()
+        (locked / "f").write_text("f\n")
+        locked.chmod(0)
+        proc = run_tool(self.engine, "build_plugins", "--out", str(self.out))
+        self.assertEqual((proc.returncode, proc.stderr), (0, ""))
+        self.assertEqual(listing(), want)  # the earlier build is gone, with it
+        self.assertFalse((self.out / "modsys-ui/x").exists())
+
     def test_no_git_and_an_out_that_cannot_be_written(self):
         empty = self.tmp / "empty-path"
         empty.mkdir()

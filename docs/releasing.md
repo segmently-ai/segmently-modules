@@ -96,15 +96,16 @@ starts at the first commit behind the publish repository's HEAD that is not a re
 this tool (an empty branch when there is none): `dev` and `stable` start from the same commit
 whatever is checked out, and neither holds the other's releases or changelog entries.
 
-**All or nothing, up to the push:** a failed step, Ctrl-C, SIGTERM or a closed terminal puts
-back what the run wrote — the branches and tags it made or moved, HEAD, the index and the
-files it writes — and removes every temp directory. Nothing else is touched: a branch, a tag
-or an untracked file that appeared beside the run stays. The put-back always finishes (a second
-Ctrl-C is ignored) and is checked: "both repositories are as they were" is printed only when
-that is true; otherwise the message names the repository, the command that failed and the refs
-to reset by hand (exit 1). Do not work in either repository during a run: one that changed
-between step 2 and the run's first write to it is a refusal that writes nothing there. Exit `0`
-done · `1` a step failed · `2` a refusal · `130` interrupted.
+**All or nothing, up to the push:** a failed step, Ctrl-C, SIGTERM or a closed terminal (unless
+the run was started ignoring it, as `nohup` does) puts back what the run wrote — the branches
+and tags it made or moved, HEAD, the index and the files it writes — and removes every temp
+directory. Nothing else is touched: a branch, a tag or an untracked file that appeared beside
+the run stays. The put-back always finishes (a second Ctrl-C is ignored) and is checked: "both
+repositories are as they were" is printed only when that is true; otherwise the message names
+the repository, the command that failed and the refs to reset by hand (exit 1). Do not work in
+either repository during a run: one that changed between step 2 and the run's first write to it
+is a refusal that writes nothing there. Exit `0` done · `1` a step failed · `2` a refusal ·
+`130` interrupted.
 
 - **The guard.** `MODSYS_GUARD` names the private leak guard — a script the host project keeps
   outside this repository, run as `<python> <guard> --target DIR` from your working directory;
@@ -150,7 +151,7 @@ to run the `claude plugin eval` suite by hand on a machine that allows it.
 ## CI
 
 `.github/workflows/ci.yml` runs on every push (branches and tags — so on every commit of a pull
-request from a branch of the repository), on Python 3.11 and 3.14, within 30 minutes: the unit
+request from a branch of the repository), on Python 3.11 and 3.14, within 45 minutes: the unit
 suite, the adoption eval, two plugin builds compared byte for byte, the launcher test under
 `dash`, and — with Claude Code installed as it comes, without credentials — `claude plugin
 validate --strict` on the three plugins and the dev marketplace plus a throw-away install
