@@ -63,7 +63,8 @@ def claude_env(config_dir: Path) -> dict:
     """The environment of a real `claude` call: a throw-away config, no credentials."""
     config_dir.mkdir(parents=True, exist_ok=True)
     env = {k: v for k, v in os.environ.items()
-           if k not in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")}
+           if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
+                        "CLAUDE_CODE_OAUTH_TOKEN")}
     return {**env, "CLAUDE_CONFIG_DIR": str(config_dir)}
 
 

@@ -4,7 +4,8 @@ call — argv, `CLAUDE_CONFIG_DIR`, which credential variables were set — as a
 validate`, `plugin marketplace add <dir>`, `plugin install <p>@<m> --scope user` (a
 directory marketplace; a plugin's `dependencies` are installed with it, as Claude Code 2.1.284
 does), `plugin list --json`, `plugin details <p>`. Any other call exits 99 and is logged as
-forbidden. `FAKE_CLAUDE_FAIL=validate|install` makes that call exit 1. State lives in
+forbidden. `FAKE_CLAUDE_FAIL=validate|install` makes that call exit 1, `=details` makes
+`plugin details` name no skill exactly. State lives in
 `$CLAUDE_CONFIG_DIR/fake-state.json`; installs are copies under `$CLAUDE_CONFIG_DIR/cache/`."""
 import json
 import os
@@ -12,7 +13,7 @@ import shutil
 import sys
 from pathlib import Path
 
-SECRETS = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
+SECRETS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN")
 
 
 def main(argv: list[str]) -> int:
@@ -60,6 +61,8 @@ def main(argv: list[str]) -> int:
         pid = next(p for p in state["installed"] if p == argv[2] or p.split("@")[0] == argv[2])
         skills = sorted(p.parent.name for p in
                         Path(state["installed"][pid]["path"]).glob("skills/*/SKILL.md"))
+        if fail == "details":  # every name only as a part of a longer one
+            skills = [f"{skill}-more" for skill in skills]
         print(f"{pid}\n  Skills ({len(skills)})  {', '.join(skills)}")
     state_path.write_text(json.dumps(state))
     return 0
