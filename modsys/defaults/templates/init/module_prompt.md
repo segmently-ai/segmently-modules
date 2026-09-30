@@ -27,10 +27,14 @@ A JSON object with exactly these keys:
 - `description`: one sentence of ${description_min}–${description_max} characters — what the module does, why
   it exists, when a task belongs here;
 - `keywords`: at least ${min_keywords} distinct words a developer would type in a task about this
-  module (domain words, not file names). Routing matches whole words exactly, without stemming,
-  so give the words in the forms tasks use: single words, with the plural and verb forms of the
-  key nouns (`suggestion`, `suggestions`, `suggest`); a phrase of several words only when
-  developers write exactly that phrase;
+  module (domain words, not file names). Give the words for what the module handles as a task
+  would name them, including the things and actions its `## Purpose` paragraph names, even where
+  the code names them differently (a payments module: `card`, `decline`, `charge`). Routing
+  matches whole words exactly, without stemming, so give the words in the forms tasks use:
+  single words, with the plural and verb forms of the key nouns (`suggestion`, `suggestions`,
+  `suggest`), and each key verb in every form tasks use — base, `-s`, `-ed`, `-ing` (`charge`,
+  `charges`, `charged`, `charging`); a phrase of several words only when developers write
+  exactly that phrase;
 - `related_modules` (optional): edges `{"module": "<name>", "relation": "<relation>",
   "description": "<one sentence>"}` to the neighbours above or to other modules of the
   registry; a relation is one of: ${relations}.${ask_fields}

@@ -406,6 +406,14 @@ class InitAndAdoptSkillsTest(unittest.TestCase):  # P5B-AC-028, P5B-AC-029 (D6, 
         for rel in ("SKILL.md", "references/phases.md"):
             self.assertNotIn("negative_keywords", (root / rel).read_text("utf-8"))
 
+    def test_module_init_writers_brief_asks_for_domain_words(self):  # P6-AC-040 (D15)
+        root = builtin_packs_root() / "core/skills/module-init"
+        phases = " ".join((root / "references/phases.md").read_text("utf-8").split())
+        for needle in ("including the things and actions its `## Purpose` paragraph names even "
+                       "where the code names them differently",
+                       "each key verb in every form tasks use: base, `-s`, `-ed`, `-ing`"):
+            self.assertIn(needle, phases)
+
     def test_module_init_step_5_names_the_invented_check(self):  # P5C-AC-014 (D2, D5)
         root = builtin_packs_root() / "core/skills/module-init"
         text = " ".join((root / "SKILL.md").read_text("utf-8").split())

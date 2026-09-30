@@ -118,6 +118,55 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
         self.assertNotIn("${", prompt)
         self.assertIn("<one sentence: what the module does, why, when to use it>", prompt)
 
+    def test_the_keywords_bullet(self):  # P6-AC-040 (D15): domain words, every verb form
+        root = shop(self.base)
+        ok(root, "init", "fanout")
+        for module in SIX:
+            prompt = self.item(root, module)["prompt"]
+            self.assertNotIn("${", prompt)
+            flat = " ".join(prompt.split())
+            for needle in ("Routing matches whole words exactly, without stemming",
+                           "the plural and verb forms of the key nouns (`suggestion`, "
+                           "`suggestions`, `suggest`)",
+                           "Give the words for what the module handles as a task would name "
+                           "them, including the things and actions its `## Purpose` paragraph "
+                           "names, even where the code names them differently (a payments "
+                           "module: `card`, `decline`, `charge`)",
+                           "each key verb in every form tasks use — base, `-s`, `-ed`, `-ing` "
+                           "(`charge`, `charges`, `charged`, `charging`)"):
+                self.assertIn(needle, flat)
+            self.assertNotIn("copy the paragraph", flat)  # SI-25: the words, not the text
+        source = (engine_templates() / "init/module_prompt.md").read_text(encoding="utf-8")
+        self.assertEqual(set(string.Template(source).get_identifiers()), {  # f1f5e46's set
+            "ask_fields", "description_max", "description_min", "docs", "files", "files_note",
+            "min_keywords", "module", "module_doc", "modules_dir", "neighbours", "paths",
+            "relations", "staging_dir"})
+
+    def test_only_the_keywords_bullet_changed(self):  # P6-AC-041 (D15)
+        old_bullet = (  # the bullet at f1f5e46, pinned
+            "- `keywords`: at least ${min_keywords} distinct words a developer would type in a "
+            "task about this\n  module (domain words, not file names). Routing matches whole "
+            "words exactly, without stemming,\n  so give the words in the forms tasks use: "
+            "single words, with the plural and verb forms of the\n  key nouns (`suggestion`, "
+            "`suggestions`, `suggest`); a phrase of several words only when\n  developers write "
+            "exactly that phrase;\n")
+        bullet = re.compile(r"^- `keywords`:.*?\n(?=- `related_modules`)", re.S | re.M)
+        new = shop(self.base, name="new")
+        ok(new, "init", "fanout")
+        old = shop(self.base, name="old")
+        override = old / ok(old, "templates", "override", "init/module_prompt.md")["file"]
+        source = override.read_text(encoding="utf-8")
+        self.assertEqual(len(bullet.findall(source)), 1)
+        override.write_text(bullet.sub(lambda m: old_bullet, source), encoding="utf-8")
+        ok(old, "init", "fanout")
+        for module in SIX:
+            with self.subTest(module=module):
+                a, b = self.item(old, module), self.item(new, module)
+                self.assertEqual({k: v for k, v in a.items() if k != "prompt"},
+                                 {k: v for k, v in b.items() if k != "prompt"})
+                self.assertNotEqual(a["prompt"], b["prompt"])
+                self.assertEqual(bullet.sub("", a["prompt"]), bullet.sub("", b["prompt"]))
+
     def test_a_custom_modules_dir(self):  # final review M-5: the layout init done checks
         root = shop(self.base, config='[paths]\nmodules_dir = "docs/modules"\n'
                                       'module_doc = "README.md"\n')
