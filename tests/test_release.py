@@ -10,6 +10,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -17,7 +18,7 @@ import unittest
 from pathlib import Path
 
 from tests.helpers import git
-from tests.plugin_helpers import ENGINE, copy_engine, load_tool, run_tool
+from tests.plugin_helpers import ENGINE, copy_engine, default_signals, load_tool, run_tool
 
 SLUG = "example-org/modsys-plugins"
 PLANT = """import os, subprocess, unittest
@@ -79,6 +80,9 @@ TAGS = ["modsys--v{0}", "modsys-qa--v{0}", "modsys-ui--v{0}", "v{0}"]
 
 
 class ReleaseRepo(unittest.TestCase):
+    """Every release runs through `run_tool`: SIGINT, SIGTERM and SIGHUP at their defaults in
+    the release, however the suite itself was started (a detached suite ignores two of them)."""
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.base = Path(self._tmp.name).resolve()
@@ -670,7 +674,8 @@ class RefusalTest(ReleaseRepo):  # P6-AC-030 (SI-1, SI-16, SI-17)
             ["/bin/sh", "-c", 'trap "" HUP TERM; exec "$0" "$@"', sys.executable,  # the
              str(self.engine / "tools/release.py"), "--publish-repo", str(self.pub),  # guard
              "--channel", "dev", "--publish-slug", SLUG], capture_output=True, text=True,
-            env={**os.environ, **self.env, "FAKE_GUARD_MODE": "hangup"})  # sends SIGHUP
+            env={**os.environ, **self.env, "FAKE_GUARD_MODE": "hangup"},  # sends SIGHUP
+            preexec_fn=default_signals)  # the defaults first; the trap then ignores the two
         self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
         self.assertIn("the publish repo is dirty: scratch.txt", proc.stderr)
         self.assertNotIn("interrupted", proc.stderr)
@@ -910,6 +915,27 @@ class AllOrNothingTest(ReleaseRepo):  # P6-AC-031 (SI-16)
         self.git_wrapper('case "$*" in *"commit -q -m release modsys"*"(dev)"*) '
                          'kill -TERM $PPID; sleep 5; exit 1 ;; esac')
         self.failed("dev", "release.py: interrupted", code=130)
+
+
+class SignalDefaultsTest(unittest.TestCase):  # the gate runs the suite detached: nohup … &
+    def test_a_tool_the_tests_start_gets_the_default_signals(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = Path(tmp)
+            (engine / "tools").mkdir()
+            (engine / "tools/probe.py").write_text(
+                "import signal\nprint(*(signal.getsignal(s) is signal.SIG_IGN for s in "
+                "(signal.SIGINT, signal.SIGTERM, signal.SIGHUP)))\n")
+            held = {s: signal.signal(s, signal.SIG_IGN)  # what `nohup … &` leaves the suite
+                    for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)}
+            try:
+                ignored = run_tool(engine, "probe").stdout.split()
+                nohup = subprocess.run([sys.executable, str(engine / "tools/probe.py")],
+                                       capture_output=True, text=True).stdout.split()
+            finally:
+                for sig, handler in held.items():
+                    signal.signal(sig, handler)
+        self.assertEqual(nohup, ["True", "True", "True"])  # the case this helper exists for
+        self.assertEqual(ignored, ["False", "False", "False"])
 
 
 class SectionsTest(unittest.TestCase):  # P6-AC-016: only our sections change

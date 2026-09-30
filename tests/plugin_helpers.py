@@ -4,6 +4,7 @@ throw-away Claude Code configuration for the real `claude` when it is on PATH.""
 import importlib.util
 import os
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -14,6 +15,15 @@ from tests.helpers import git
 ENGINE = Path(__file__).resolve().parents[1]
 CLAUDE = shutil.which("claude")
 NO_CLAUDE = "claude not on PATH"  # the visible skip reason (P6-AC-011)
+SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+
+
+def default_signals() -> None:
+    """`preexec_fn` of a process a test starts: Ctrl-C, SIGTERM and SIGHUP at their defaults
+    in the child, whatever the suite's own caller set — a suite started with `nohup … &`
+    ignores SIGINT and SIGHUP, and a tool keeps an ignored signal ignored."""
+    for sig in SIGNALS:
+        signal.signal(sig, signal.SIG_DFL)
 
 
 def engine_files(prefixes=("modsys/", "tools/")) -> list[str]:
@@ -53,10 +63,11 @@ def load_tool(name: str):
 
 
 def run_tool(engine: Path, name: str, *argv: str, env: dict | None = None, **kw):
-    """Run `tools/<name>.py` of the engine copy `engine` with this Python."""
+    """Run `tools/<name>.py` of the engine copy `engine` with this Python, the signals at their
+    defaults (`default_signals`)."""
     return subprocess.run([sys.executable, str(engine / "tools" / f"{name}.py"), *argv],
                           capture_output=True, text=True, env={**os.environ, **(env or {})},
-                          **kw)
+                          **{"preexec_fn": default_signals, **kw})
 
 
 def claude_env(config_dir: Path) -> dict:
