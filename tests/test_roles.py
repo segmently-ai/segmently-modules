@@ -660,15 +660,19 @@ class EdgesTest(unittest.TestCase):  # P61-AC-028
         self.assertEqual(holder(self.root, "shelf"), {
             **before, "context_files": {"roles": {"reviewer": "modules/shelf/roles/reviewer.md"}}})
 
-    def test_garbage_context_files_are_refused(self):
+    def test_garbage_context_files_are_refused(self):  # a dry run refuses what the run would
         for value, needle in ((["x"], "context_files of 'shelf' is not an object"),
+                              (None, "context_files of 'shelf' is not an object"),
                               ({"roles": 5}, "context_files.roles of 'shelf' is not an object"),
+                              ({"roles": None},
+                               "context_files.roles of 'shelf' is not an object"),
                               ({"roles": {"reviewer": 5}},
                                "context_files.roles.reviewer of 'shelf' is not a path")):
             with self.subTest(value=value):
                 mutate_registry(self.root, lambda d: d["modules"]["shelf"].update(
                     context_files=value))
-                self.assertIn(needle, self.refused("roles", "add", "reviewer", "shelf"))
+                for dry in ((), ("--dry-run",)):
+                    self.assertIn(needle, self.refused("roles", "add", "reviewer", "shelf", *dry))
 
     def test_a_registered_path_outside_the_repository_is_refused(self):
         mutate_registry(self.root, lambda d: d["modules"]["shelf"]["context_files"].update(

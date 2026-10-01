@@ -270,12 +270,11 @@ def _values(ws, holder: dict, target: str) -> dict:
 def _plan_target(ws, role: str, target: str, holder: dict, recreate: bool) -> dict:
     """One target's row: {module, status, path, command?} plus what to write (`write`: root-
     relative paths, `text`) and whether to register `path` (`register`)."""
-    cf = holder.get("context_files")
-    if cf is not None and not isinstance(cf, dict):
+    cf = holder.get("context_files")  # a key that is present must hold an object (null too)
+    if "context_files" in holder and not isinstance(cf, dict):
         raise UsageError(f"context_files of '{target}' is not an object — fix it first "
                          f"(modsys lint)")
-    roles = as_dict(cf).get("roles")
-    if roles is not None and not isinstance(roles, dict):
+    if "roles" in as_dict(cf) and not isinstance(cf["roles"], dict):
         raise UsageError(f"context_files.roles of '{target}' is not an object — fix it first "
                          f"(modsys lint)")
     value = _registered(holder, role)
