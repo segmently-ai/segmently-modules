@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 from modsys import roles_cmd
+from modsys.output import UsageError
 from modsys.store import file_lock
 from modsys.workspace import Workspace
 from tests.helpers import copy_fixture, make_repo, mutate_registry, run, run_json
@@ -681,6 +682,46 @@ class EdgesTest(unittest.TestCase):  # P61-AC-028
         self.assertIn("../elsewhere/reviewer.md: a role doc path must lie inside the "
                       "repository", err)
 
+    def test_a_trailing_slash_names_the_module(self):  # final review M-4
+        code, env, err = run_json("roles", "add", "reviewer", "shelf/", "shelf", *self.R)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(env["data"]["results"], [
+            {"module": "shelf", "status": "created", "path": "modules/shelf/roles/reviewer.md"}])
+        (self.root / "modules/shelf/roles/reviewer.md").unlink()
+        code, env, err = run_json("roles", "add", "reviewer", "shelf/", *self.R)
+        self.assertEqual(env["data"]["results"], [
+            {"module": "shelf", "status": "missing", "path": "modules/shelf/roles/reviewer.md",
+             "command": "modsys roles add reviewer shelf --recreate"}])
+        code, out, err = run("roles", "add", "reviewer", "shelf//", *self.R)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(out.splitlines()[0],
+                         "missing        shelf                            modules/shelf/roles/"
+                         "reviewer.md  — modsys roles add reviewer shelf --recreate")
+
+    def test_two_targets_writing_one_doc_path_are_refused(self):  # final review M-4
+        shared = "modules/shared/reviewer.md"  # registered for both, missing on disk
+        for name in ("shelf", "orders"):
+            mutate_registry(self.root, lambda d: d["modules"][name]["context_files"].update(
+                roles={"reviewer": shared}))
+        for argv in (("--all",), ("orders", "shelf")):
+            for dry in ((), ("--dry-run",)):
+                with self.subTest(argv=argv + dry):
+                    err = self.refused("roles", "add", "reviewer", *argv, "--recreate", *dry)
+                    first, second = ("shelf", "orders") if argv == ("--all",) else argv
+                    self.assertEqual(err, f"modsys: error: '{first}' and '{second}' would both "
+                                          f"write {shared} — a role doc path belongs to one "
+                                          f"target; nothing written\n")
+        mutate_registry(self.root, lambda d: (  # shelf's doc at orders' own (unregistered) path
+            d["modules"]["shelf"]["context_files"].update(
+                roles={"reviewer": "modules/orders/roles/reviewer.md"}),
+            d["modules"]["orders"]["context_files"].pop("roles")))
+        err = self.refused("roles", "add", "reviewer", "--all", "--recreate")
+        self.assertIn("'shelf' and 'orders' would both write modules/orders/roles/reviewer.md",
+                      err)
+        code, env, err = run_json("roles", "add", "reviewer", "--all", "--dry-run", *self.R)
+        self.assertEqual((code, err), (0, ""))  # without --recreate only orders writes it
+        self.assertEqual([r["status"] for r in env["data"]["results"]], ["missing", "created"])
+
 
 class RefusalsTest(Repo):  # P61-AC-033
     def refused_clean(self, *argv) -> str:
@@ -851,6 +892,34 @@ class AllOrNothingTest(unittest.TestCase):  # P61-AC-034
         self.assertTrue(all((self.root / p).is_file() for p in self.DOCS))
         self.assertEqual([holder(self.root, m)["context_files"]["roles"]["reviewer"]
                           for m in ("shelf", "orders", "checkout")], self.DOCS)
+
+    def test_the_docs_go_while_the_lock_is_held(self):  # final review M-4
+        """A failed run removes its docs and the directories it made inside the registry lock:
+        a `roles add` waiting for the lock never plans against a doc that then goes (it would
+        report `registered` and leave a registration without its file, MS004)."""
+        registry, seen = self.root / "modules/registry.json", []
+        real_unlink, real_rmdir = Path.unlink, Path.rmdir
+
+        def held() -> bool:
+            try:
+                with file_lock(registry, timeout_s=0):
+                    return False
+            except UsageError:
+                return True
+
+        def spy(real):
+            def call(path, *args, **kwargs):
+                if self.root in path.parents and "roles" in path.parts:
+                    seen.append((path.relative_to(self.root).as_posix(), held()))
+                return real(path, *args, **kwargs)
+            return call
+
+        with mock.patch.object(Path, "unlink", spy(real_unlink)), \
+                mock.patch.object(Path, "rmdir", spy(real_rmdir)):
+            self.failing("modsys.roles_cmd._register", KeyboardInterrupt, 130)
+        dirs = [p.rsplit("/", 1)[0] for p in reversed(self.DOCS)]  # deepest, last made first
+        self.assertEqual(seen, [(p, True) for p in self.DOCS + dirs])
+        self.assertEqual([d for d in dirs if (self.root / d).exists()], [])
 
 
 class SurfaceTest(Repo):  # P61-AC-026, P61-AC-037 (the `roles` part)

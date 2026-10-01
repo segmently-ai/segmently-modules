@@ -11,8 +11,10 @@ added to EXISTING modules (a team's new role, or a role a newer engine brings).
         registered only, the file never overwritten (`registered`); registered with the file on
         disk → nothing (`exists`); registered, the file missing → nothing (`missing`, with the
         command that writes it) or, with --recreate, the doc rendered at the registered path
-        (`recreated`). One registry lock; the docs are written first and removed again when
-        the registry write fails; every refusal comes before the first write."""
+        (`recreated`). One registry lock; the docs are written first and removed again —
+        still under the lock — when the registry write fails; every refusal comes before the
+        first write: also two targets that would write one doc path. An explicit TARGET is
+        taken without its trailing `/` (`checkout/` is `checkout`)."""
 import argparse
 import contextlib
 import copy
@@ -126,6 +128,7 @@ def _resolve(ws, modules: dict, arg: str) -> str:
     of `modules`; an unknown name and a pointer stub (SI-P61-2) are refusals."""
     mdir, doc = ws.config["paths"]["modules_dir"], ws.config["paths"]["module_doc"]
     target = resolve_module_arg(arg, mdir)
+    target = target.rstrip("/") or target  # `checkout/` names the module `checkout`
     parent, _, child = target.partition("/")
     stub = UsageError(f"'{target}' is a pointer stub ({_rel_dir(ws, target)}/{doc}), not a "
                       f"module — roles add writes no doc into it")
@@ -304,10 +307,19 @@ def _plan_target(ws, role: str, target: str, holder: dict, recreate: bool) -> di
 def plan_add(ws, role: str, every: bool, names: list[str], recreate: bool,
              modules: dict) -> list[dict]:
     """Every target's row against `modules` (the registry as read, or as locked); validates
-    everything — targets, registered values, paths — and writes nothing."""
+    everything — targets, registered values, paths, no doc path written for two targets — and
+    writes nothing."""
     targets = all_targets(ws, modules) if every else \
         list(dict.fromkeys(_resolve(ws, modules, arg) for arg in names))
-    return [_plan_target(ws, role, t, _holder(modules, t), recreate) for t in targets]
+    rows = [_plan_target(ws, role, t, _holder(modules, t), recreate) for t in targets]
+    writer: dict[str, str] = {}
+    for row in rows:
+        for rel in row["write"]:
+            if rel in writer:
+                raise UsageError(f"'{writer[rel]}' and '{row['module']}' would both write {rel} "
+                                 f"— a role doc path belongs to one target; nothing written")
+            writer[rel] = row["module"]
+    return rows
 
 
 def write_new_doc(path: Path, text: str, rel: str) -> None:
@@ -366,18 +378,17 @@ def apply_add(ws, role: str, every: bool, names: list[str], recreate: bool) -> l
     """Under one registry lock: plan again against the locked registry, write the docs, then
     the registry (per-module: the changed entry files, then the index). On any failure — a
     registry that changed since it was read, a failed write, Ctrl-C — the registry files are
-    put back while the lock is still held, then the written docs are removed with the
-    directories this run created, and the error is raised. Once the registry is written the
-    run is done: a Ctrl-C after that point leaves every write in place (docs and entries
-    agree)."""
+    put back, then the written docs are removed with the directories this run created, both
+    while the lock is still held (a writer waiting for it never plans against a doc that then
+    goes), and the error is raised. Once the registry is written the run is done: a Ctrl-C
+    after that point leaves every write in place (docs and entries agree)."""
     store = open_store(ws)
     store.lock_timeout_s = LOCK_TIMEOUT_S
     per_module = ws.config["paths"]["registry_layout"] == "per-module"
-    written: list[Path] = []
-    made: list[Path] = []
-    done = False
-    try:
-        with store.locked():
+    with store.locked():
+        written: list[Path] = []
+        made: list[Path] = []
+        try:
             original = store.load()
             raw = copy.deepcopy(original.raw)
             rows = plan_add(ws, role, every, names, recreate, raw["modules"])
@@ -401,18 +412,21 @@ def apply_add(ws, role: str, every: bool, names: list[str], recreate: bool) -> l
             except BaseException as e:
                 _put_back(ws, saved, stage, e)
                 raise
-            done = True  # the commit point
-    except BaseException:
-        if done:
+        except BaseException:
+            _remove(written, made)  # still under the lock
             raise
-        for path in written:
-            with contextlib.suppress(FileNotFoundError):
-                path.unlink()
-        for d in reversed(made):  # deepest first; only the ones that are empty again go
-            with contextlib.suppress(OSError):
-                d.rmdir()
-        raise
-    return [_public(row) for row in rows]
+    return [_public(row) for row in rows]  # the commit point was reached
+
+
+def _remove(written: list[Path], made: list[Path]) -> None:
+    """Remove the docs a failed run wrote, then the directories it created that are empty
+    again (deepest first)."""
+    for path in written:
+        with contextlib.suppress(FileNotFoundError):
+            path.unlink()
+    for d in reversed(made):
+        with contextlib.suppress(OSError):
+            d.rmdir()
 
 
 def _put_back(ws, saved: dict, stage: list[Path], error: BaseException) -> None:
