@@ -37,20 +37,27 @@ class ModuleSyncRoleSectionTest(unittest.TestCase):
         head, _, _ = self.text[4:].partition("\n---\n")
         self.assertEqual(head, f"name: {SYNC_NAME}\ndescription: {SYNC_DESCRIPTION}")
 
-    def test_the_section_has_the_five_steps_in_order(self):
+    def section(self):
         self.assertEqual(self.text.count("\n## A new role\n"), 1)
-        section = self.text.split("\n## A new role\n", 1)[1].split("\n## ", 1)[0]
-        steps = ["modsys roles add ROLE --all --dry-run", "modsys roles add ROLE --all --json",
-                 "fill each new doc", "modsys lint", "modsys next"]
-        at = 0
-        for step in steps:
-            found = section.lower().find(step.lower(), at)
-            self.assertGreater(found, -1, f"{step!r} missing or out of order")
-            at = found + len(step)
+        return self.text.split("\n## A new role\n", 1)[1].split("\n## ", 1)[0]
+
+    def test_the_section_has_the_five_steps_in_order(self):
+        steps = re.findall(r"^(\d)\. (.*)", self.section(), re.M)
+        self.assertEqual([n for n, _ in steps], ["1", "2", "3", "4", "5"])
+        starts = ["`modsys roles add ROLE --all --dry-run`", "`modsys roles add ROLE --all --json`",
+                  "Fill each new doc", "`modsys lint", "`modsys next"]
+        for (n, line), start in zip(steps, starts):
+            self.assertTrue(line.startswith(start), f"step {n}: {line!r}")
 
     def test_the_section_names_no_tool_but_modsys_and_git(self):
-        section = self.text.split("\n## A new role\n", 1)[1].split("\n## ", 1)[0]
-        self.assertNotIn("<owner>", section)
+        spans = re.findall(r"`([^`]+)`", self.section())
+        commands = [s for s in spans if not s.startswith("-")]  # a flag is not a command
+        self.assertTrue(commands)
+        for command in commands:
+            self.assertRegex(command, r"^(modsys|git) ", command)
+
+    def test_the_section_keeps_the_placeholder_out(self):
+        self.assertNotIn("<owner>", self.section())
 
 
 class ReadmeTest(unittest.TestCase):
