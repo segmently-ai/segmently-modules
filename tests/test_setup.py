@@ -28,7 +28,7 @@ COPILOT = ("  note: GitHub Copilot reads both .claude/skills and .agents/skills,
            "reads either)")
 BEGIN, END = "<!-- modsys:begin v1 -->", "<!-- modsys:end -->"
 TEAM_NOTES = "# Team notes\n\nRun the tests before a commit.\n"
-TEAM_PACK = ('id = "team"\nversion = "1.0.0"\ndescription = "Team skills"\n\n'
+TEAM_PACK = ('id = "team"\nversion = "9.0.0"\ndescription = "Team skills"\n\n'
              '[skills.team-review]\npath = "skills/team-review"\n')
 TEAM_SKILL = ("---\nname: team-review\ndescription: Review a change the way the team does.\n"
               "---\n\n# team-review\n\nBody.\n")

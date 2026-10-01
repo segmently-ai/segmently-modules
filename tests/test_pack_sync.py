@@ -39,7 +39,7 @@ class SyncRepo(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def pack(self, pack_id: str, skills: list[str], version: str = "0.1.0",
+    def pack(self, pack_id: str, skills: list[str], version: str = "9.0.0",
              priority: int = 50) -> None:
         d = self.root / ".modsys/packs" / pack_id
         d.mkdir(parents=True, exist_ok=True)
@@ -82,13 +82,13 @@ class SyncTransitionsTest(SyncRepo):  # P4A-AC-014
         self.src("references/api.md").write_text("# API\n")
         data = self.sync()
         self.assertEqual(data["skills"], [{
-            "agent": "claude", "skill": "api-review", "pack": "team", "version": "0.1.0",
+            "agent": "claude", "skill": "api-review", "pack": "team", "version": "9.0.0",
             "source": "pack", "dir": ".claude/skills/api-review", "status": "created",
             "files": ["SKILL.md", "references/api.md"], "reason": None}])
         files = {rel: sha(self.src(rel).read_bytes()) for rel in ("SKILL.md", "references/api.md")}
         self.assertEqual(self.dest(".modsys-managed").read_text(), json.dumps(
             {"schema": "modsys.managed/1", "pack": "team", "skill": "api-review",
-             "version": "0.1.0", "source": "pack", "files": files},
+             "version": "9.0.0", "source": "pack", "files": files},
             indent=2, sort_keys=True) + "\n")
         for rel in files:
             self.assertEqual(self.dest(rel).read_bytes(), self.src(rel).read_bytes())
@@ -104,14 +104,14 @@ class SyncTransitionsTest(SyncRepo):  # P4A-AC-014
     def test_updated_when_the_pack_changes(self):
         self.sync()
         self.src("SKILL.md").write_text(SKILL.format(sid="api-review", desc="Version two."))
-        self.pack("team", ["api-review"], version="0.2.0")
+        self.pack("team", ["api-review"], version="9.1.0")
         data = self.sync()
         self.assertEqual((self.statuses(data), data["skills"][0]["files"]),
                          ([("claude", "api-review", "updated")], ["SKILL.md"]))
         self.assertEqual(self.dest("SKILL.md").read_bytes(), self.src("SKILL.md").read_bytes())
         marker = json.loads(self.dest(".modsys-managed").read_text())
         self.assertEqual((marker["version"], marker["files"]["SKILL.md"]),
-                         ("0.2.0", sha(self.src("SKILL.md").read_bytes())))
+                         ("9.1.0", sha(self.src("SKILL.md").read_bytes())))
 
     def test_files_added_and_dropped_by_the_source(self):
         self.src("notes.md").write_text("notes\n")
@@ -171,7 +171,7 @@ class SyncTransitionsTest(SyncRepo):  # P4A-AC-014
         self.pack("team", [])  # the pack no longer declares the skill
         data = self.sync()
         self.assertEqual(data["skills"], [{
-            "agent": "claude", "skill": "api-review", "pack": "team", "version": "0.1.0",
+            "agent": "claude", "skill": "api-review", "pack": "team", "version": "9.0.0",
             "source": "pack", "dir": ".claude/skills/api-review", "status": "removed",
             "files": ["SKILL.md", "references/api.md"], "reason": "left unmanaged files: "
                                                                   "extra.txt"}])
@@ -405,7 +405,7 @@ class SyncAgentsTest(SyncRepo):  # P4A-AC-016
         data = self.sync(agents=("claude", "codex"))
         self.assertEqual([r["status"] for r in data["skills"]], ["unchanged", "unchanged"])
         out = run("packs", "sync", "--agent", "claude", "--agent", "codex", *self.R)[1]
-        self.assertIn("unchanged  codex   .agents/skills/api-review  (team 0.1.0)  same "
+        self.assertIn("unchanged  codex   .agents/skills/api-review  (team 9.0.0)  same "
                       "directory as claude", out)
 
     def test_the_higher_precedence_pack_is_materialized(self):  # P4A-AC-007
@@ -420,8 +420,8 @@ class SyncAgentsTest(SyncRepo):  # P4A-AC-016
     def test_text_output(self):
         out = run("packs", "sync", "--agent", "claude", "--agent", "codex", *self.R)[1]
         self.assertEqual(out.splitlines(), [
-            "created    claude  .claude/skills/api-review  (team 0.1.0)",
-            "created    codex   .agents/skills/api-review  (team 0.1.0)",
+            "created    claude  .claude/skills/api-review  (team 9.0.0)",
+            "created    codex   .agents/skills/api-review  (team 9.0.0)",
             "note: GitHub Copilot reads both .claude/skills and .agents/skills, so it sees each "
             "skill twice — where Copilot works, sync only one of the two directories (Copilot "
             "reads either)",  # P6 D5 (SI-20)
@@ -498,7 +498,7 @@ class SyncHintsTest(SyncRepo):  # fix wave F3: each conflict reason gets a hint 
         self.pack("team", [])
         self.dest("SKILL.md").write_text("# edited\n")
         self.assertEqual(self.text()[:2], [
-            "conflict   claude  .claude/skills/api-review  (team 0.1.0)",
+            "conflict   claude  .claude/skills/api-review  (team 9.0.0)",
             "  SKILL.md (locally edited; not removed) — revert the edit, or delete the directory "
             "if the skill is no longer wanted"])
         self.dest(".modsys-managed").write_text("{}\n")

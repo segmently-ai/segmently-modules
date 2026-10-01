@@ -65,7 +65,8 @@ class PerModuleLayoutTest(unittest.TestCase):
         self.assertEqual((code, env["data"]["written"]), (0, True))
         index = json.loads((self.per / "modules" / "registry.json").read_text())
         self.assertEqual(index["modules"]["catalog"]["status"], "draft")
-        self.assertEqual(index["version"], "1.0.0")  # top-level keys survive rebuilds
+        self.assertEqual(index["version"], json.loads(  # top-level keys survive rebuilds
+            (self.single / "modules" / "registry.json").read_text())["version"])
         self.assertEqual(run("index", "build", "--check", *R)[0], 0)
 
     def test_index_build_stamps_updated_at_only_when_modules_changed(self):

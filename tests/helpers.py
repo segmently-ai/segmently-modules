@@ -122,3 +122,15 @@ def next_release(version: str | None = None) -> str:
 def next_dev(version: str | None = None) -> str:
     """What the engine is at after a stable release of `version`: X.Y.(Z+1).dev0."""
     return f"{next_release(version)}.dev0"
+
+
+def next_minor(version: str | None = None) -> str:
+    """The next minor release of `version` (default: the engine's): X.Y.Z[.devN] -> X.(Y+1).0."""
+    major, minor, _ = release_version(version).split(".")
+    return f"{major}.{int(minor) + 1}.0"
+
+
+def next_major(version: str | None = None) -> str:
+    """The next major release of `version` (default: the engine's): X.Y.Z[.devN] -> (X+1).0.0."""
+    major = release_version(version).split(".")[0]
+    return f"{int(major) + 1}.0.0"

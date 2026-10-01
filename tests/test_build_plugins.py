@@ -160,8 +160,10 @@ class ManifestTest(BuilderRepo):  # P6-AC-009
                 if name != "modsys":
                     self.assertEqual(claude["dependencies"], ["modsys"])
                 self.assertEqual(codex["skills"], "./skills/")
-                self.assertEqual(root["$schema"], "https://agent-plugins.org/schemas/1.0.0/"
-                                                  "plugin.schema.json")
+                # the Agent Plugins schema's own version, written escaped: the version scan
+                # (test_engine_version) must never take it for the engine's
+                self.assertRegex(root["$schema"], r"\Ahttps://agent-plugins\.org/schemas/"
+                                                  r"1\.0\.0/plugin\.schema\.json\Z")
                 self.assertEqual(list(claude["author"]), ["name"])
                 for manifest in (claude, root, codex):
                     self.assertEqual({k: manifest[k] for k in shared},
@@ -187,11 +189,11 @@ class ManifestTest(BuilderRepo):  # P6-AC-009
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "out"
             proc = run_tool(self.engine, "build_plugins", "--out", str(out), "--version",
-                            "1.2.3")
+                            "9.2.3")
             self.assertEqual(proc.returncode, 0, proc.stderr)
             versions = {json.loads((out / n / rel).read_text())["version"]
                         for n in PACKS for rel in MANIFESTS}
-            self.assertEqual(versions, {"1.2.3"})
+            self.assertEqual(versions, {"9.2.3"})
             self.assertIn(f'__version__ = "{ENG}"',
                           (out / "modsys/runtime/modsys/__init__.py").read_text())
 
@@ -315,17 +317,17 @@ class RefusalTest(unittest.TestCase):  # P6-AC-028, P6-AC-033
         self.assertEqual(run_tool(self.engine, "build_plugins", "--out", str(self.out))
                          .returncode, 0)
         (self.out / "modsys/stale.txt").write_text("old\n")
-        err = self.refused("--version", "0.9.0", code=130,
+        err = self.refused("--version", "9.9.0", code=130,
                            env={"MODSYS_BUILD_INTERRUPT_AFTER": "modsys"})
         self.assertEqual(err, "build_plugins.py: interrupted\n")
 
     def test_versions(self):
-        for good in ("0.2.0", "0.2.0-dev.habcdef12"):
+        for good in ("9.2.0", "9.2.0-dev.habcdef12"):
             with self.subTest(version=good):
                 proc = run_tool(self.engine, "build_plugins", "--out", str(self.out),
                                 "--version", good)
                 self.assertEqual(proc.returncode, 0, proc.stderr)
-        for bad in ("v0.2.0", "0.2", "", "0.2.0-dev.01"):
+        for bad in ("v9.2.0", "9.2", "", "9.2.0-dev.01"):
             with self.subTest(version=bad):
                 err = self.refused("--version", bad)
                 self.assertIn(f"--version {bad!r}: a SemVer 2.0 version is required", err)
@@ -392,14 +394,14 @@ class RefusalTest(unittest.TestCase):  # P6-AC-028, P6-AC-033
         (self.out / "modsys/stale.txt").write_text("old\n")
         for seam in ("swap:modsys", "swap:modsys-qa"):  # after the first and the last rename
             with self.subTest(seam=seam):
-                err = self.refused("--version", "0.9.0", code=130,
+                err = self.refused("--version", "9.9.0", code=130,
                                    env={"MODSYS_BUILD_INTERRUPT_AFTER": seam})
                 self.assertEqual(err, "build_plugins.py: interrupted\n")
         if os.geteuid() == 0:
             self.skipTest("root renames a read-only directory")
         (self.out / "modsys-ui").chmod(0o555)  # the second replacement cannot be renamed aside
         try:
-            err = self.refused("--version", "0.9.0")
+            err = self.refused("--version", "9.9.0")
         finally:
             (self.out / "modsys-ui").chmod(0o755)
         self.assertIn("build_plugins.py: error: cannot write ", err)
@@ -418,7 +420,7 @@ class RefusalTest(unittest.TestCase):  # P6-AC-028, P6-AC-033
         self.assertEqual(listing(), want)
         self.refused("--version", "v1")
         self.assertEqual(listing(), want)
-        self.refused("--version", "0.9.0", code=130,
+        self.refused("--version", "9.9.0", code=130,
                      env={"MODSYS_BUILD_INTERRUPT_AFTER": "swap:modsys-ui"})
         self.assertEqual(listing(), want)
         if os.geteuid() == 0:

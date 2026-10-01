@@ -340,7 +340,7 @@ class PlaceholderTest(DriverRepo):  # P5C-AC-012, P5C-AC-013 (D4, SI-11)
     def test_a_pack_template(self):  # only the roles of the module's work item count
         pack = self.root / ".modsys/packs/team"
         (pack / "templates/roles").mkdir(parents=True)
-        (pack / "pack.toml").write_text('id = "team"\nversion = "1.0.0"\n')
+        (pack / "pack.toml").write_text('id = "team"\nversion = "9.0.0"\n')
         (pack / "templates/roles/qa.md").write_text("# ${title} — qa\n\n${pack_hint}\n")
         (pack / "templates/roles/designer.md").write_text("# ${title}\n\n${designer_hint}\n")
         self.assertEqual(self.check("roles/qa.md", "\n${pack_hint}\n"),

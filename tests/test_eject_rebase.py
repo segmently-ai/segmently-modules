@@ -61,12 +61,12 @@ class RebaseRepo(EjectRepo):
 
 class RebaseTransitionsTest(RebaseRepo):  # P5A-AC-013
     def test_a_new_version_with_a_changed_skill(self):
-        self.set_pack("0.2.0", "Reviews API changes, the new way.")
+        self.set_pack("9.1.0", "Reviews API changes, the new way.")
         before = self.copy_files()
         data = self.rebase()
         self.assertEqual(data, {"skill": "api-review", "pack": "team",
-                                "rebased_from": {"pack": "team", "version": "0.1.0"},
-                                "rebased_to": {"pack": "team", "version": "0.2.0"},
+                                "rebased_from": {"pack": "team", "version": "9.0.0"},
+                                "rebased_to": {"pack": "team", "version": "9.1.0"},
                                 "files_changed": 1, "dry_run": False})
         self.assertEqual(json.loads(self.record.read_text())["files"], self.pack_hashes())
         self.assert_rebased(data, before)
@@ -99,10 +99,10 @@ class RebaseTransitionsTest(RebaseRepo):  # P5A-AC-013
         self.assert_rebased(data, before)
 
     def test_a_version_alone(self):
-        self.set_pack("0.2.0", "Reviews API changes.")
+        self.set_pack("9.1.0", "Reviews API changes.")
         before = self.copy_files()
         data = self.rebase()
-        self.assertEqual((data["files_changed"], data["rebased_to"]["version"]), (0, "0.2.0"))
+        self.assertEqual((data["files_changed"], data["rebased_to"]["version"]), (0, "9.1.0"))
         self.assert_rebased(data, before)
         out = run("eject", "api-review", "--diff", *self.R)[1]
         self.assertNotIn("next:", out)
@@ -111,25 +111,25 @@ class RebaseTransitionsTest(RebaseRepo):  # P5A-AC-013
         stamp = (self.record.read_bytes(), self.record.stat().st_mtime_ns)
         data = self.rebase()
         self.assertEqual((data["files_changed"], data["rebased_from"], data["rebased_to"]),
-                         (0, {"pack": "team", "version": "0.1.0"},
-                          {"pack": "team", "version": "0.1.0"}))
+                         (0, {"pack": "team", "version": "9.0.0"},
+                          {"pack": "team", "version": "9.0.0"}))
         self.assertEqual((self.record.read_bytes(), self.record.stat().st_mtime_ns), stamp)
 
     def test_dry_run_and_text(self):
-        self.set_pack("0.2.0", "Reviews API changes, the new way.")
+        self.set_pack("9.1.0", "Reviews API changes, the new way.")
         stamp = (self.record.read_bytes(), self.record.stat().st_mtime_ns)
         data = self.rebase("--dry-run")
         self.assertEqual((data["files_changed"], data["dry_run"]), (1, True))
         self.assertEqual((self.record.read_bytes(), self.record.stat().st_mtime_ns), stamp)
         self.assertEqual(run("eject", "api-review", "--rebase", "--dry-run", *self.R)[1],
-                         "would rebase  api-review: team 0.1.0 -> team 0.2.0 (1 file(s) changed "
+                         "would rebase  api-review: team 9.0.0 -> team 9.1.0 (1 file(s) changed "
                          "in the record; the ejected files are unchanged)\n")
         self.assertEqual(run("eject", "api-review", "--rebase", *self.R)[1],
-                         "rebased  api-review: team 0.1.0 -> team 0.2.0 (1 file(s) changed in "
+                         "rebased  api-review: team 9.0.0 -> team 9.1.0 (1 file(s) changed in "
                          "the record; the ejected files are unchanged)\n")
 
     def test_the_diff_points_at_rebase(self):
-        self.set_pack("0.2.0", "Reviews API changes, the new way.")
+        self.set_pack("9.1.0", "Reviews API changes, the new way.")
         out = run("eject", "api-review", "--diff", *self.R)[1].splitlines()
         self.assertEqual(out[-1], "next: take what you want by hand, then modsys eject "
                                   "api-review --rebase")
@@ -188,7 +188,7 @@ class RebaseRefusalsTest(RebaseRepo):  # P5A-AC-014
 
     @unittest.skipIf(os.geteuid() == 0, "root writes into read-only directories")
     def test_a_read_only_ejected_copy(self):
-        self.set_pack("0.2.0", "Reviews API changes, the new way.")
+        self.set_pack("9.1.0", "Reviews API changes, the new way.")
         os.chmod(self.ejected, 0o555)
         try:
             self.assertIn("cannot write .modsys/overrides/skills/api-review/.modsys-ejected: "
@@ -232,7 +232,7 @@ class RebaseEdgesTest(RebaseRepo):  # P5A-AC-012 (--rebase), P5A-AC-046 (--rebas
 
 class RebaseInterruptTest(RebaseRepo):  # P5A-AC-044: Ctrl-C while the record is written
     def test_the_record_is_old_or_new_never_half(self):
-        self.set_pack("0.2.0", "Reviews API changes, the new way.")
+        self.set_pack("9.1.0", "Reviews API changes, the new way.")
         before = self.record.read_bytes()
         with mock.patch("modsys.store.os.replace", side_effect=KeyboardInterrupt):
             self.assertEqual(run("eject", "api-review", "--rebase", *self.R),

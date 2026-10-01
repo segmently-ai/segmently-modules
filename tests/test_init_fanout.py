@@ -207,7 +207,7 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
                              (None, "engine", engine_templates() / name))
         pack = root / ".modsys/packs/team"
         (pack / "templates/init").mkdir(parents=True)
-        (pack / "pack.toml").write_text('id = "team"\nversion = "1.0.0"\n')
+        (pack / "pack.toml").write_text('id = "team"\nversion = "9.0.0"\n')
         (pack / "templates/init/module_prompt.md").write_text("Pack prompt for ${module}: "
                                                               "${files_note}\n")
         self.assertEqual(ok(root, "templates", "list")[-2]["source"], "pack:team")

@@ -536,7 +536,7 @@ class OwnershipTest(ReleaseRepo):  # P6-AC-016 (SI-17), P6-AC-021
                                                     "path": "./plugins/modsys-extra"}}]}),
             "README.md": "# Plugins\n\nIntro text.\n\n<!-- modsys:begin -->\nold\n"
                          "<!-- modsys:end -->\n\nOutro text.\n",
-            "CHANGELOG.md": "# Changes\n\n## other-tool\n\n- 1.0.0\n"}
+            "CHANGELOG.md": "# Changes\n\n## other-tool\n\n- 9.0.0\n"}
         for rel, text in files.items():
             (self.pub / rel).parent.mkdir(parents=True, exist_ok=True)
             (self.pub / rel).write_text(text)

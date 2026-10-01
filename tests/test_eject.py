@@ -22,7 +22,7 @@ class EjectRepo(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = copy_fixture(self._tmp.name)
         self.R = ("--root", str(self.root))
-        self.set_pack("0.1.0", "Reviews API changes.")
+        self.set_pack("9.0.0", "Reviews API changes.")
         self.ejected = self.root / ".modsys/overrides/skills/api-review"
 
     def tearDown(self):
@@ -61,14 +61,14 @@ class EjectTest(EjectRepo):  # P4A-AC-017
         self.sync()
         before = {p: p.read_bytes() for p in (self.root / ".claude").rglob("*") if p.is_file()}
         data = self.ok("eject", "api-review")
-        self.assertEqual(data, {"skill": "api-review", "pack": "team", "version": "0.1.0",
+        self.assertEqual(data, {"skill": "api-review", "pack": "team", "version": "9.0.0",
                                 "dir": ".modsys/overrides/skills/api-review",
                                 "files": ["SKILL.md"], "dry_run": False})
         self.assertEqual((self.ejected / "SKILL.md").read_bytes(), self.upstream().read_bytes())
         digest = hashlib.sha256(self.upstream().read_bytes()).hexdigest()
         self.assertEqual((self.ejected / ".modsys-ejected").read_text(), json.dumps(
             {"schema": "modsys.ejected/1", "skill": "api-review", "pack": "team",
-             "version": "0.1.0", "files": {"SKILL.md": digest}}, indent=2, sort_keys=True)
+             "version": "9.0.0", "files": {"SKILL.md": digest}}, indent=2, sort_keys=True)
             + "\n")
         self.assertEqual({p: p.read_bytes() for p in (self.root / ".claude").rglob("*")
                           if p.is_file()}, before)  # eject never touches the agents' copies
@@ -82,7 +82,7 @@ class EjectTest(EjectRepo):  # P4A-AC-017
         self.assertEqual([s for _, s, _ in self.sync()], ["created", "created"])
         for agent_dir in (".claude/skills", ".agents/skills"):
             self.assertIn("Our own review steps.", self.agent_text(agent_dir))
-        self.set_pack("0.2.0", "Upstream version two.")
+        self.set_pack("9.1.0", "Upstream version two.")
         self.assertEqual([s for _, s, _ in self.sync()], ["unchanged", "unchanged"])
         self.assertIn("Our own review steps.", self.agent_text())
 
@@ -116,18 +116,18 @@ class EjectTest(EjectRepo):  # P4A-AC-017
         self.assertEqual((data["dry_run"], data["files"]), (True, ["SKILL.md"]))
         self.assertFalse(self.ejected.exists())
         out = run("eject", "api-review", "--dry-run", *self.R)[1].splitlines()
-        self.assertEqual(out, ["would eject  api-review  (team 0.1.0) -> "
+        self.assertEqual(out, ["would eject  api-review  (team 9.0.0) -> "
                                ".modsys/overrides/skills/api-review", "  SKILL.md",
                                "next: modsys eject api-review (to do it)"])
         out = run("eject", "api-review", *self.R)[1].splitlines()
-        self.assertEqual(out, ["ejected  api-review  (team 0.1.0) -> "
+        self.assertEqual(out, ["ejected  api-review  (team 9.0.0) -> "
                                ".modsys/overrides/skills/api-review", "  SKILL.md",
                                "edit the copy: packs sync materializes the skill from it, and "
                                "the pack never overwrites it",
                                "next: modsys packs sync --agent claude --agent codex (or set "
                                "[packs] agents once)"])
         out = run("packs", "sync", "--agent", "claude", *self.R)[1].splitlines()
-        self.assertEqual(out[0], "created    claude  .claude/skills/api-review  (team 0.1.0, "
+        self.assertEqual(out[0], "created    claude  .claude/skills/api-review  (team 9.0.0, "
                                  "ejected copy)")
 
     def test_the_next_line_works_as_printed(self):  # fix wave F6
@@ -193,7 +193,7 @@ class EjectDiffTest(EjectRepo):  # P4A-AC-018
     def test_nothing_changed(self):
         self.ok("eject", "api-review")
         self.assertEqual(self.diff(), {"skill": "api-review", "pack": "team",
-                                       "ejected_from": "0.1.0", "upstream_version": "0.1.0",
+                                       "ejected_from": "9.0.0", "upstream_version": "9.0.0",
                                        "behind": False, "reason": None,  # P5a D0d
                                        "files": [{"path": "SKILL.md", "status": "same"}],
                                        "diff": ""})
@@ -211,13 +211,13 @@ class EjectDiffTest(EjectRepo):  # P4A-AC-018
 
     def test_behind_by_version_or_by_files(self):
         self.ok("eject", "api-review")
-        self.set_pack("0.2.0", "Reviews API changes.")  # same files, new version
+        self.set_pack("9.1.0", "Reviews API changes.")  # same files, new version
         self.assertTrue(self.diff()["behind"])
         self.assertEqual(self.ms063(), [(
-            "warning", "ejected skill 'api-review' is behind pack 'team' (ejected from 0.1.0, "
-                       "pack is now 0.2.0) — review: modsys eject api-review --diff",
+            "warning", "ejected skill 'api-review' is behind pack 'team' (ejected from 9.0.0, "
+                       "pack is now 9.1.0) — review: modsys eject api-review --diff",
             ".modsys/overrides/skills/api-review")])
-        self.set_pack("0.1.0", "Reviews API changes, version two.")  # new files, same version
+        self.set_pack("9.0.0", "Reviews API changes, version two.")  # new files, same version
         self.assertTrue(self.diff()["behind"])
         self.assertEqual(len(self.ms063()), 1)
 
@@ -264,7 +264,7 @@ class EjectDiffTest(EjectRepo):  # P4A-AC-018
                          ["ejected skill 'api-review' has no valid .modsys-ejected record — "
                           "eject it again or restore the file"])
         self.assertEqual(self.sync(code=1)[0][1], "invalid")
-        self.set_pack("0.2.0", "Changed.")
+        self.set_pack("9.1.0", "Changed.")
         init_git(self.root)
         (self.root / "modules/catalog/MODULE.md").write_text("# Catalog\n\nChanged.\n")
         self.assertEqual(self.ms063("--changed", "--base", "HEAD"), [])
@@ -286,10 +286,10 @@ class EjectDiffTest(EjectRepo):  # P4A-AC-018
 
     def test_text_output(self):
         self.ok("eject", "api-review")
-        self.set_pack("0.2.0", "Version two.")
+        self.set_pack("9.1.0", "Version two.")
         out = run("eject", "api-review", "--diff", *self.R)[1].splitlines()
-        self.assertEqual(out[:4], ["api-review: pack team 0.2.0, ejected at 0.1.0 — behind "
-                                   "(ejected from 0.1.0, pack is now 0.2.0)",  # P5a D0d
+        self.assertEqual(out[:4], ["api-review: pack team 9.1.0, ejected at 9.0.0 — behind "
+                                   "(ejected from 9.0.0, pack is now 9.1.0)",  # P5a D0d
                                    "changed        SKILL.md",
                                    "--- upstream/SKILL.md", "+++ ejected/SKILL.md"])
 
@@ -321,15 +321,15 @@ class DiffReasonTest(EjectRepo):  # P5A-AC-011 (D0d, M-6)
 
     def test_the_decision_table(self):
         self.ok("eject", "api-review")
-        self.assertEqual(self.diff(), (False, None, "api-review: pack team 0.1.0, ejected at "
-                                                    "0.1.0 — up to date"))
-        self.set_pack("0.2.0", "Reviews API changes.")
-        self.assertEqual(self.diff(), (True, "ejected from 0.1.0, pack is now 0.2.0",
-                                       "api-review: pack team 0.2.0, ejected at 0.1.0 — behind "
-                                       "(ejected from 0.1.0, pack is now 0.2.0)"))
-        self.set_pack("0.1.0", "Reviews API changes, version two.")
+        self.assertEqual(self.diff(), (False, None, "api-review: pack team 9.0.0, ejected at "
+                                                    "9.0.0 — up to date"))
+        self.set_pack("9.1.0", "Reviews API changes.")
+        self.assertEqual(self.diff(), (True, "ejected from 9.0.0, pack is now 9.1.0",
+                                       "api-review: pack team 9.1.0, ejected at 9.0.0 — behind "
+                                       "(ejected from 9.0.0, pack is now 9.1.0)"))
+        self.set_pack("9.0.0", "Reviews API changes, version two.")
         self.assertEqual(self.diff()[:2], (True, "the pack's files changed since the eject"))
-        self.set_pack("0.1.0", "Reviews API changes.")
+        self.set_pack("9.0.0", "Reviews API changes.")
         team = self.root / ".modsys/packs/team"
         team.rename(team.with_name("team2"))
         toml = team.with_name("team2") / "pack.toml"
@@ -344,13 +344,13 @@ class DiffReasonTest(EjectRepo):  # P5A-AC-011 (D0d, M-6)
 
     def test_packs_sync_text_shows_both_versions(self):
         self.ok("eject", "api-review")
-        self.set_pack("0.2.0", "Reviews API changes.")
+        self.set_pack("9.1.0", "Reviews API changes.")
         before = self.ok("packs", "sync", "--agent", "claude")["skills"]
         out = run("packs", "sync", "--agent", "claude", *self.R)[1].splitlines()
-        self.assertEqual(out[0], "unchanged  claude  .claude/skills/api-review  (team 0.1.0, "
-                                 "ejected copy; the pack is now 0.2.0)")
+        self.assertEqual(out[0], "unchanged  claude  .claude/skills/api-review  (team 9.0.0, "
+                                 "ejected copy; the pack is now 9.1.0)")
         self.assertEqual([(r["pack"], r["version"], r["source"]) for r in before],
-                         [("team", "0.1.0", "ejected")])
+                         [("team", "9.0.0", "ejected")])
 
 
 class BuiltinDiffReasonTest(FakeBuiltins):  # P5A-AC-011: a built-in pack, the engine moved on
@@ -410,7 +410,7 @@ class SymlinkAtTheEjectedPathTest(EjectRepo):  # P5A-AC-012 (D0d, M-9)
                 self.ejected.unlink()
                 shutil.rmtree(self.root / ".claude")
                 shutil.rmtree(self.root / ".modsys/packs/team/skills/notes")
-                self.set_pack("0.1.0", "Reviews API changes.")
+                self.set_pack("9.0.0", "Reviews API changes.")
                 if target.is_dir():
                     shutil.rmtree(target)
                 elif target.exists():

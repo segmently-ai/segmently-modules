@@ -70,7 +70,7 @@ class FakeBuiltins(unittest.TestCase):
     def repo_pack(self, pack_id: str, body: str, priority: int = 50) -> Path:
         d = self.root / ".modsys/packs" / pack_id
         d.mkdir(parents=True, exist_ok=True)
-        (d / "pack.toml").write_text(f'id = "{pack_id}"\nversion = "1.0.0"\n'
+        (d / "pack.toml").write_text(f'id = "{pack_id}"\nversion = "9.0.0"\n'
                                      f'priority = {priority}\n{body}')
         return d
 
@@ -157,7 +157,7 @@ class BuiltinDiscoveryTest(FakeBuiltins):  # P4B-AC-006
                           ("qa", ["qa_acceptance"], ["qa-check"]),
                           ("ui", ["designer"], ["ui-check"])])
         text = run("packs", "list", *self.R)[1].splitlines()
-        self.assertEqual(text[0], "team 1.0.0 priority 50  .modsys/packs/team")
+        self.assertEqual(text[0], "team 9.0.0 priority 50  .modsys/packs/team")
         self.assertIn(f"core {version} built-in  {self.tree / 'core'}", text)
 
     def test_a_repo_pack_and_the_team_config_win_over_a_builtin_pack(self):
@@ -301,12 +301,12 @@ class BuiltinMachineryTest(FakeBuiltins):  # P4B-AC-008 (mechanics; the shipped 
     def test_a_repository_copy_of_a_builtin_pack_keeps_the_version_rule(self):  # I-3
         shutil.copytree(self.tree / "core", self.root / ".modsys/packs/core")
         toml = self.root / ".modsys/packs/core/pack.toml"
-        toml.write_text('version = "1.0.0"\n' + toml.read_text())
+        toml.write_text('version = "9.0.0"\n' + toml.read_text())
         self.ok("eject", "notes")
-        toml.write_text(toml.read_text().replace('"1.0.0"', '"1.1.0"'))  # same files
+        toml.write_text(toml.read_text().replace('"9.0.0"', '"9.1.0"'))  # same files
         self.assertEqual(self.ms063(), [
-            "ejected skill 'notes' is behind pack 'core' (ejected from 1.0.0, pack is now "
-            "1.1.0) — review: modsys eject notes --diff"])
+            "ejected skill 'notes' is behind pack 'core' (ejected from 9.0.0, pack is now "
+            "9.1.0) — review: modsys eject notes --diff"])
 
     def test_the_agents_md_block_and_templates_list(self):
         self.enable("core", "ui", "qa")

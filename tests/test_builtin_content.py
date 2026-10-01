@@ -210,7 +210,7 @@ class TeamSkillWithACoreIdTest(ShippedPacks):  # P4B-AC-029
         self.enable("core")
         team = self.root / ".modsys/packs/team"
         (team / "skills/module-sync").mkdir(parents=True)
-        (team / "pack.toml").write_text('id = "team"\nversion = "1.0.0"\n'
+        (team / "pack.toml").write_text('id = "team"\nversion = "9.0.0"\n'
                                         '[skills.module-sync]\npath = "skills/module-sync"\n')
         (team / "skills/module-sync/SKILL.md").write_text(
             "---\nname: module-sync\ndescription: The team's own doc sync.\n---\n")

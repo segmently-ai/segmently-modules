@@ -20,7 +20,7 @@ from tests.helpers import (copy_fixture, engine_version, git, init_git, mutate_r
 from tests.plugin_helpers import copy_engine, default_signals
 
 VERSION = modsys.__version__
-TEAM_PACK = ('id = "team"\nversion = "1.0.0"\ndescription = "Team skills"\n\n'
+TEAM_PACK = ('id = "team"\nversion = "9.0.0"\ndescription = "Team skills"\n\n'
              '[skills.team-review]\npath = "skills/team-review"\n\n'
              '[skills.team-notes]\npath = "skills/team-notes"\n')
 SEEDED_CONFIG = ('[packs]\nagents = ["claude"]\n\n[coverage]\nexclude = ["*.md"]\n\n'
@@ -114,7 +114,7 @@ def drop_locks(root: Path) -> None:
 def seeded(tmp: Path) -> Path:
     """A bookshop copy with exactly one finding of each `next` kind: committed as `main` (in
     sync: copies, block, qa and po docs), then on branch `work` a deprecated field (MS011), the
-    team pack moved to 1.1.0 (a stale copy of team-review; the ejected team-notes behind,
+    team pack moved to 9.1.0 (a stale copy of team-review; the ejected team-notes behind,
     MS063), a hand edit inside the CLAUDE.md block, a queued proposal, an undeclared field
     (MS012), an unmapped file under the [[code_map]] config and catalog's code changed."""
     root = copy_fixture(tmp)
@@ -132,7 +132,7 @@ def seeded(tmp: Path) -> Path:
     mutate_registry(root, lambda d: d["modules"]["catalog"].update(
         depends_on_modules=["checkout"]))
     mutate_registry(root, lambda d: d["modules"]["checkout"].update(owner_team="shop"))
-    write(root / ".modsys/packs/team/pack.toml", TEAM_PACK.replace('"1.0.0"', '"1.1.0"'))
+    write(root / ".modsys/packs/team/pack.toml", TEAM_PACK.replace('"9.0.0"', '"9.1.0"'))
     claude = root / "CLAUDE.md"
     claude.write_text(claude.read_text(encoding="utf-8").replace(
         "Read them before a task", "Read them before any task"), encoding="utf-8")
@@ -152,8 +152,8 @@ SEEDED_ITEMS = [
     ("skills", "skill copies not in sync (claude): stale team-review", "modsys packs sync"),
     ("agents-md", "CLAUDE.md: the modsys block is stale", "modsys agents-md --target CLAUDE.md"),
     ("role", "architect: no doc in 4 module(s)", "modsys roles add architect --all"),
-    ("ejected", "ejected skill 'team-notes' is behind pack 'team' (ejected from 1.0.0, pack is "
-                "now 1.1.0)", "modsys eject --diff team-notes"),
+    ("ejected", "ejected skill 'team-notes' is behind pack 'team' (ejected from 9.0.0, pack is "
+                "now 9.1.0)", "modsys eject --diff team-notes"),
     ("proposals", "1 pending proposal file(s), 1 item(s)", "modsys proposals list"),
     ("lint-warning", "1 lint warning(s): MS012", "modsys lint"),
     ("unmapped", "1 file(s) map to no module: src/misc/tool.py", "modsys coverage"),
