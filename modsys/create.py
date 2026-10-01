@@ -209,6 +209,24 @@ def resolve_template(ws, relpath: str, role: str | None = None) -> str:
     return resolve_template_source(ws, relpath, role)[1].read_text(encoding="utf-8")
 
 
+def doc_values(name: str, parent: str | None, description: str, status: str,
+               keywords: list[str]) -> dict:
+    """The placeholders every generated doc of a module shares: name, title (from the name),
+    description, status, keywords (joined with ', ') and parent ('' for a top-level module)."""
+    return {"name": name, "title": name.replace("-", " ").title(), "description": description,
+            "status": status, "keywords": ", ".join(keywords), "parent": parent or ""}
+
+
+def render_role_doc(ws, role: str, values: dict) -> str:
+    """The text of `roles/<role>.md` for a module with `values` (`doc_values`): the winning
+    template (`resolve_template`) with the module's placeholders and role, role_description
+    and article filled in, ending in a newline. `create` and `roles add` both write this."""
+    spec = ws.config["roles"][role]
+    text = string.Template(resolve_template(ws, f"roles/{role}.md", role)).safe_substitute(
+        values, role=role, role_description=spec.get("description", ""), article=article(role))
+    return text if text.endswith("\n") else text + "\n"
+
+
 def _check_name(value: str) -> None:
     if not NAME.fullmatch(value) or len(value) > 48:
         raise UsageError(f"module name {value!r}: use lowercase words joined by '-' (max 48)")
@@ -238,19 +256,15 @@ def plan_create(ws, name: str, parent: str | None, answers: dict) -> dict:
         raise UsageError(f"missing answers: {', '.join(missing)} "
                          f"(pass --answers file.json or the matching flags)")
     status = answers.get("status", _create_cfg(ws)["default_status"])
-    values = {"name": name, "title": name.replace("-", " ").title(),
-              "description": answers["description"].strip(), "status": status,
-              "keywords": ", ".join(answers["keywords"]), "parent": parent or ""}
+    values = doc_values(name, parent, answers["description"].strip(), status,
+                        answers["keywords"])
     doc = ws.config["paths"]["module_doc"]
     files = {f"{rel_dir}/{doc}": string.Template(resolve_template(ws, "MODULE.md"))
              .safe_substitute(values)}
     role_files = {}
     for role in roles_to_scaffold(ws, answers):
-        spec = ws.config["roles"][role]
         rel = f"{rel_dir}/roles/{role}.md"
-        files[rel] = string.Template(resolve_template(ws, f"roles/{role}.md", role)) \
-            .safe_substitute(values, role=role, role_description=spec.get("description", ""),
-                             article=article(role))
+        files[rel] = render_role_doc(ws, role, values)
         role_files[role] = rel
     files = {p: t if t.endswith("\n") else t + "\n" for p, t in files.items()}
     entry = {} if parent else {"name": name}

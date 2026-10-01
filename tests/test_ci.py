@@ -271,7 +271,8 @@ class DocsAndVerbsTest(unittest.TestCase):  # P32-AC-021
     VERBS = {"init", "schema", "match", "show", "related", "list", "lint", "registry", "index",
              "propose", "proposals", "hooks", "sync", "create", "migrate", "context", "discover",
              "coverage", "code-map", "ci", "templates", "packs", "eject", "agents-md",
-             "sync-instructions", "adopt", "eval"}  # P5a D6: + adopt; P5b D3: + eval
+             "sync-instructions", "adopt", "eval",
+             "roles"}  # P5a D6: + adopt; P5b D3: + eval; P6.1 W3: + roles
 
     def doc(self, rel: str) -> str:
         return " ".join((ENGINE / rel).read_text(encoding="utf-8").split())

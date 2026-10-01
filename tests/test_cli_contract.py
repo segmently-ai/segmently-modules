@@ -63,6 +63,8 @@ GOLDEN = [
                                                    "rebased_to", "files_changed", "dry_run"}),
     (("agents-md", "--target", "CLAUDE.md", "--dry-run"), {"targets", "check", "dry_run"}),
     (("eval", "routing", "--prompt"), {"mode", "per_module", "modules", "prompt"}),  # P5b D3
+    (("roles", "list"), {"roles"}),  # P6.1 W3
+    (("roles", "add", "designer", "checkout", "--dry-run"), {"role", "dry_run", "results"}),
 ]
 
 
