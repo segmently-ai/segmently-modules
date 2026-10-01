@@ -6,17 +6,20 @@
 Steps, in this order (each printed with its result):
   1 leak guard   first the release notes, before the guard runs: the lines under the engine's
                  CHANGELOG.md `## [Unreleased]` heading (Keep a Changelog) up to the next `## `
-                 heading, without blank lines and HTML comments. `stable` refuses when the file
-                 is missing or git does not track it, has no such heading, or holds no note
-                 there — no line starting with `- ` or `* ` (blank lines, comments and `### `
-                 sub-headings alone are empty) — and when MODSYS_RELEASE_DATE is set but not a
-                 date; `dev` publishes "no notes yet" then. Two such headings are a refusal on
-                 either channel (naming their lines). Then the private guard `MODSYS_GUARD`
-                 names (run as `<python> <guard> --target DIR` from the caller's working
-                 directory) exits 0 with a `… CLEAN` line on this engine (files and history),
-                 and the organisation of --publish-slug appears nowhere in it (files, commit
-                 and tag messages, patch text — the guard allows the engine's own slug phrase,
-                 this scan allows nothing); the guard is never copied or vendored
+                 heading, without blank lines and comment lines (a line starting with `<!--`,
+                 through its `-->`; a line of text holding a `<!--` is kept as written).
+                 `stable` refuses when the file is missing or git does not track it, has no
+                 such heading, or holds no note there — no line starting with `- ` or `* `
+                 (blank lines, comment lines and `### ` sub-headings alone are empty) — and
+                 when MODSYS_RELEASE_DATE is set but not a date; `dev` publishes "no notes yet"
+                 then. Two such headings (named by line) or a note holding
+                 `<!-- modsys:changelog:` (the publish section's marker) are a refusal on either
+                 channel. Then the private guard `MODSYS_GUARD` names (run as `<python>
+                 <guard> --target DIR` from the caller's working directory) exits 0 with a
+                 `… CLEAN` line on this engine (files and history), and the organisation of
+                 --publish-slug appears nowhere in it (files, commit and tag messages, patch
+                 text — the guard allows the engine's own slug phrase, this scan allows
+                 nothing); the guard is never copied or vendored
   2 clean trees  this engine and the publish repository have no change git would see; the
                  publish repository's `plugins`, `.claude-plugin`, `.agents` and
                  `.agents/plugins` are directories (or absent), never symlinks; its channel
@@ -88,6 +91,7 @@ PROG = "release.py"
 SLUG = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?/[A-Za-z0-9._-]+$")
 README_BEGIN, README_END = "<!-- modsys:begin -->", "<!-- modsys:end -->"
 LOG_BEGIN, LOG_END = "<!-- modsys:changelog:begin -->", "<!-- modsys:changelog:end -->"
+LOG_MARK = "<!-- modsys:changelog:"  # what both begin with: never inside a published note
 OWNED = [f"plugins/{name}" for name in build_plugins.PLUGINS]
 MARKETPLACE_FILES = [publish.CLAUDE_MARKETPLACE, publish.CODEX_MARKETPLACE]
 WRITTEN = [*OWNED, *MARKETPLACE_FILES, "README.md", "CHANGELOG.md"]  # all step 6 writes
@@ -96,7 +100,6 @@ VERSION_FILES = ["modsys/__init__.py", "pyproject.toml"]  # both version commits
 CHANGES = "CHANGELOG.md"  # the engine's release notes (Keep a Changelog), dated by step 4
 ENGINE_FILES = [*VERSION_FILES, CHANGES]  # all the run writes in the engine
 UNRELEASED = "## [Unreleased]"  # the heading of the notes of the next release
-COMMENT = re.compile(r"<!--.*?(?:-->|\Z)", re.S)  # an HTML comment (an open one: to the end)
 DATE = "MODSYS_RELEASE_DATE"  # the test seam of the release commit's date (YYYY-MM-DD)
 RELEASE_SUBJECT = re.compile(r"^release modsys \S+ \((?:dev|stable)\)$")  # step 7's commits
 GUARD = "MODSYS_GUARD"  # the environment variable naming the private leak guard
@@ -324,8 +327,9 @@ def log_entry(version: str, channel: str, sha: str, notes: list[str]) -> str:
 def unreleased(text: str) -> tuple[int | None, list[str]]:
     """The `## [Unreleased]` section of the engine's CHANGELOG.md: the index of its heading line
     (None: no such heading) and its lines up to the next `## ` heading (a `### ` sub-heading
-    does not end it), without HTML comments, blank lines and trailing white space. Two such
-    headings or more are a refusal naming their lines: which notes are meant would be a guess."""
+    does not end it), without comment lines (`comment_free`), blank lines and trailing white
+    space. Two such headings or more are a refusal naming their lines: which notes are meant
+    would be a guess."""
     lines = text.split("\n")
     heads = [n for n, line in enumerate(lines) if line.rstrip() == UNRELEASED]
     if len(heads) > 1:
@@ -337,15 +341,32 @@ def unreleased(text: str) -> tuple[int | None, list[str]]:
         return None, []
     end = next((n for n in range(heads[0] + 1, len(lines)) if lines[n].startswith("## ")),
                len(lines))
-    body = COMMENT.sub("", "\n".join(lines[heads[0] + 1:end]))
-    return heads[0], [line.rstrip() for line in body.split("\n") if line.strip()]
+    return heads[0], [line.rstrip() for line in comment_free(lines[heads[0] + 1:end])
+                      if line.strip()]
+
+
+def comment_free(lines: list[str]) -> list[str]:
+    """`lines` without HTML comment LINES: a line whose text starts with `<!--`, through the
+    line that holds its `-->` (to the end when none does). A `<!--` inside a line of text opens
+    nothing — the line is kept verbatim (a note may name a marker in a code span)."""
+    kept, inside = [], False
+    for line in lines:
+        text = line.strip()
+        if inside:
+            inside = "-->" not in line
+        elif text.startswith("<!--"):
+            inside = "-->" not in text[4:]
+        else:
+            kept.append(line)
+    return kept
 
 
 def pending_notes(text: str | None, channel: str) -> list[str]:
     """The notes a release publishes: the `## [Unreleased]` lines of the engine's CHANGELOG.md
     (`text`; None: there is no such file). Without a note — no line starting with `- ` or `* `
     there (SI-P61-10) — a `stable` release is refused and a `dev` one has none (`no notes
-    yet`)."""
+    yet`). A note holding the publish section's marker (`<!-- modsys:changelog:`) is a refusal
+    on either channel."""
     if text is None:
         if channel == "stable":
             raise Refused(f"{CHANGES} is missing in the engine — a stable release publishes the "
@@ -354,6 +375,11 @@ def pending_notes(text: str | None, channel: str) -> list[str]:
         return []
     at, notes = unreleased(text)
     if any(line.startswith(("- ", "* ")) for line in notes):
+        for line in notes:  # the entry goes into that section: its markers must stay intact
+            if LOG_MARK in line:
+                raise Refused(f"{CHANGES}: the note {line.strip()!r} under `{UNRELEASED}` holds "
+                              f"`{LOG_MARK}` — the marker of the publish repository's changelog "
+                              f"section, which the entry would damage: reword the note")
         return notes
     if channel != "stable":
         return []

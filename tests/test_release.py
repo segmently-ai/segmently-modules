@@ -1061,6 +1061,9 @@ NO_HEADING = ("CHANGELOG.md has no `## [Unreleased]` heading — a stable releas
 NO_FILE = ("CHANGELOG.md is missing in the engine — a stable release publishes the notes under "
            "its `## [Unreleased]` heading: add the file (Keep a Changelog) with the notes of "
            "this release")
+MARKER = ("CHANGELOG.md: the note '- `<!-- modsys:changelog:end -->` closes our section.' "
+          "under `## [Unreleased]` holds `<!-- modsys:changelog:` — the marker of the publish "
+          "repository's changelog section, which the entry would damage: reword the note")
 UNTRACKED = ("CHANGELOG.md is not tracked in the engine — commit it: the release commit dates "
              "its `## [Unreleased]` heading")
 
@@ -1083,10 +1086,19 @@ class NotesTest(unittest.TestCase):  # P61-AC-021, 022, 031, 036 (D6, SI-P61-9/1
         text = ("# Changelog\n\n## [Unreleased]\n\n### Added\n\n- One.\n  more of one\n"
                 "<!-- a comment\n- not a note\n-->\n* Two. <!-- why -->\n\n"
                 "## [0.0.1] - 2026-01-01\n\n- Old.\n")
-        notes = ["### Added", "- One.", "  more of one", "* Two."]  # no blank line, no comment
-        self.assertEqual(self.r.unreleased(text), (2, notes))
+        notes = ["### Added", "- One.", "  more of one", "* Two. <!-- why -->"]  # the comment
+        self.assertEqual(self.r.unreleased(text), (2, notes))  # LINES gone, inline text kept
         for channel in ("stable", "dev"):
             self.assertEqual(self.r.pending_notes(text, channel), notes)
+        probe = ["- `lint` skips lines that start with `<!--`.",  # fix round 1: a `<!--` inside
+                 "- `agents-md` keeps text outside its `<!-- modsys:begin -->` marker.",  # text
+                 "- Second fix."]  # opens no comment — three notes, verbatim
+        text = "## [Unreleased]\n\n" + "\n".join(probe) + "\n\n## [0.0.1] - 2026-01-01\n"
+        for channel in ("stable", "dev"):
+            self.assertEqual(self.r.pending_notes(text, channel), probe)
+        block = ("## [Unreleased]\n\n  <!--\n- not a note\n  still the comment\n-->\n"
+                 "- Kept.\n<!-- one line --> \n<!-- open to the end\n- gone\n")
+        self.assertEqual(self.r.unreleased(block), (0, ["- Kept."]))  # comment lines, dropped
         self.assertEqual(self.r.unreleased("## [Unreleased]\r\n- a\r\n### Sub\r\n- b"),
                          (0, ["- a", "### Sub", "- b"]))  # `### ` does not end it; the file does
         self.assertEqual(self.r.unreleased("# Changelog\n\n## [0.0.1] - 2026-01-01\n\n- a\n"),
@@ -1115,7 +1127,15 @@ class NotesTest(unittest.TestCase):  # P61-AC-021, 022, 031, 036 (D6, SI-P61-9/1
             self.assertEqual(self.refused(three, channel), two_headings(3, "1, 3 and 5"))
         self.assertEqual(self.refused(None), NO_FILE)
         self.assertEqual(self.r.pending_notes(None, "dev"), [])
-        for message in (NO_NOTE, NO_HEADING, NO_FILE, UNTRACKED, two_headings(2, "3 and 7")):
+        marked = ("## [Unreleased]\n\n- One.\n- `<!-- modsys:changelog:end -->` closes our "
+                  "section.\n")
+        for channel in ("stable", "dev"):  # fix round 1: never a damaged publish section
+            self.assertEqual(self.refused(marked, channel), MARKER)
+        self.assertEqual(self.r.pending_notes(  # a comment LINE holding it is dropped, never
+            "## [Unreleased]\n<!-- modsys:changelog:end -->\n- One.\n", "stable"),  # published
+            ["- One."])
+        for message in (NO_NOTE, NO_HEADING, NO_FILE, UNTRACKED, MARKER,
+                        two_headings(2, "3 and 7")):
             self.assertIn("CHANGELOG.md", message)  # P61-AC-036: both named
             self.assertIn("[Unreleased]", message)
 
@@ -1204,11 +1224,13 @@ class NotesRunTest(ReleaseRepo):  # P61-AC-022, 031, 036: the notes through whol
         return [(repo / ".git/index").read_bytes() if (repo / ".git/index").exists() else None
                 for repo in (self.engine, self.pub)]
 
-    def refused_at_step_1(self, message: str, env: dict | None = None) -> None:
+    def refused_at_step_1(self, message: str, env: dict | None = None,
+                          channel: str = "stable") -> None:
         before, index = self.both(), self.index()
-        proc = self.release("stable", env={"FAKE_GUARD_ERROR": "1", **(env or {})})
+        proc = self.release(channel, env={"FAKE_GUARD_ERROR": "1", **(env or {})})
         self.assertEqual((proc.returncode, proc.stderr), (2, f"release.py: error: {message}\n"))
-        self.assertEqual(proc.stdout, "release modsys: channel stable (marketplace modsys), "
+        market = "modsys" if channel == "stable" else "modsys-dev"
+        self.assertEqual(proc.stdout, f"release modsys: channel {channel} (marketplace {market}), "
                                       f"publish repo {self.pub}\n")  # no step finished
         self.assertEqual((self.both(), self.index()), (before, index))
         self.assertEqual(list(self.tmpdir.iterdir()), [])
@@ -1235,6 +1257,13 @@ class NotesRunTest(ReleaseRepo):  # P61-AC-022, 031, 036: the notes through whol
                 else:
                     self.commit(self.engine, "CHANGELOG.md", text, case)
                 self.refused_at_step_1(message)
+        self.commit(self.engine, "CHANGELOG.md", CHANGELOG.replace(  # fix round 1: a note
+            "- Second planted note.\n", "- `<!-- modsys:changelog:end -->` closes our "
+            "section.\n"), "a note holding the marker")
+        for channel in ("stable", "dev"):  # either would write it into the publish section
+            self.refused_at_step_1(MARKER, channel=channel)
+        git(self.engine, "rm", "-q", "--cached", "--", "CHANGELOG.md")
+        git(self.engine, "commit", "-q", "-m", "untracked")
         (self.engine / "CHANGELOG.md").write_text(CHANGELOG)  # notes, but git ignores the file
         (self.engine / ".git/info/exclude").write_text("CHANGELOG.md\n")
         self.refused_at_step_1(UNTRACKED)
