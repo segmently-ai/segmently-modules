@@ -155,7 +155,7 @@ class EmptyRepositoryTest(unittest.TestCase):  # P61-AC-016, P61-AC-017, P61-AC-
             "targets     CLAUDE.md, AGENTS.md"]) + "\n", ""))
         before = snap(self.root)
         self.assertEqual(run("setup", *flags, *self.R), (0, "\n".join([
-            "init        exists       .modsys/config.toml",
+            "init        exists       .modsys/config.toml, modules/registry.json, .gitignore",
             "packs sync  unchanged    18 skill copies",
             COPILOT,
             "agents-md   unchanged    CLAUDE.md, AGENTS.md",
@@ -173,7 +173,8 @@ class EmptyRepositoryTest(unittest.TestCase):  # P61-AC-016, P61-AC-017, P61-AC-
                 self.assertEqual(statuses(data), ["exists", "unchanged", "unchanged"])
                 self.assertEqual((data["agents"], data["targets"]),
                                  (["claude", "codex"], ["CLAUDE.md", "AGENTS.md"]))
-                self.assertIsNone(detail(data, "init"))
+                self.assertEqual({f["status"] for f in detail(data, "init")["files"]},
+                                 {"exists"})  # bare init ran and found everything
                 self.assertEqual({r["status"] for r in detail(data, "packs sync")["skills"]},
                                  {"unchanged"})
                 self.assertEqual(snap(self.root), before)
@@ -354,10 +355,73 @@ class TeamFilesTest(unittest.TestCase):  # P61-AC-030
         code, out, err = run("setup", "--agent", "claude", "--root", str(self.root))
         self.assertEqual((code, err), (1, ""))
         self.assertEqual(out.splitlines()[:2], [
-            "init        exists       .modsys/config.toml",
+            "init        exists       .modsys/config.toml, modules/registry.json, .gitignore",
             "packs sync  conflict     9 skill copies (8 unchanged, 1 conflict)"])
         self.assertIn("agents-md   unchanged    CLAUDE.md", out.splitlines())
         self.assertEqual(snap(self.root / ".claude/skills/module-sync"), self.hand)
+
+
+class ExistingConfigTest(unittest.TestCase):  # fix round 1, finding 1: bare init always runs
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = empty_repo(Path(self._tmp.name).resolve())
+        self.R = ("--root", str(self.root))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_a_config_without_a_registry_gets_one(self):
+        config = '[packs]\nbuiltin = ["core"]\nagents = ["claude"]\n'
+        write(self.root / ".modsys/config.toml", config)
+        dry = setup_json(self.root, "--dry-run")
+        self.assertEqual(statuses(dry), ["created", "created", "created"])
+        self.assertEqual(detail(dry, "init")["files"], [
+            {"path": ".modsys/config.toml", "status": "exists"},
+            {"path": "modules/registry.json", "status": "created"},
+            {"path": ".gitignore", "status": "created"}])
+        self.assertFalse((self.root / "modules").exists())
+        code, out, err = run("setup", *self.R)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(out.splitlines()[0], "init        created      .modsys/config.toml "
+                                              "(exists), modules/registry.json, .gitignore")
+        self.assertEqual((self.root / ".modsys/config.toml").read_text(encoding="utf-8"),
+                         config)
+        self.assertEqual((self.root / "modules/registry.json").read_text(encoding="utf-8"),
+                         EMPTY_REGISTRY)
+        self.assertEqual((self.root / ".gitignore").read_text(encoding="utf-8").splitlines(),
+                         IGNORE_LINES)
+        self.assertEqual(run("lint", *self.R)[0], 0)
+        self.assertEqual(run("next", *self.R), (0, f"modsys {VERSION}\nnothing to do\n", ""))
+        before = snap(self.root)
+        self.assertEqual(statuses(setup_json(self.root)), ["exists", "unchanged", "unchanged"])
+        self.assertEqual(snap(self.root), before)
+
+    def test_only_gitignore_lines_appended_is_updated(self):
+        write(self.root / ".modsys/config.toml", '[packs]\nbuiltin = ["core"]\n')
+        write(self.root / "modules/registry.json", EMPTY_REGISTRY)
+        write(self.root / ".gitignore", "node_modules/\n")
+        data = setup_json(self.root, "--agent", "claude")
+        self.assertEqual(statuses(data)[0], "updated")
+        self.assertEqual([f["status"] for f in detail(data, "init")["files"]],
+                         ["exists", "exists", "updated"])
+        self.assertEqual((self.root / ".gitignore").read_text(encoding="utf-8").splitlines(),
+                         ["node_modules/"] + IGNORE_LINES)
+        code, out, _ = run("setup", "--agent", "claude", *self.R)
+        self.assertEqual(out.splitlines()[0], "init        exists       .modsys/config.toml, "
+                                              "modules/registry.json, .gitignore")
+
+    def test_a_broken_config_stops_setup_at_init(self):
+        for text in ("[packs\n", "code_map = 5\n"):  # not TOML; TOML the config refuses
+            with self.subTest(text=text):
+                write(self.root / ".modsys/config.toml", text)
+                before = snap(self.root)
+                for extra in ((), ("--json",), ("--dry-run",)):
+                    code, out, err = run("setup", *extra, *self.R)
+                    self.assertEqual((code, out), (2, ""))
+                    self.assertTrue(err.startswith("modsys: error: setup stopped at init: "), err)
+                    self.assertEqual(len(err.splitlines()), 1, err)
+                    self.assertNotIn("before it", err)
+                    self.assertEqual(snap(self.root), before)
 
 
 class NothingToCopyTest(unittest.TestCase):  # D5: `skipped` — packs sync has no skill to copy
@@ -375,7 +439,8 @@ class NothingToCopyTest(unittest.TestCase):  # D5: `skipped` — packs sync has 
         code, out, err = run("setup", "--agent", "claude", *self.R)
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(out.splitlines()[:3], [
-            "init        exists       .modsys/config.toml",
+            "init        created      .modsys/config.toml (exists), modules/registry.json, "
+            ".gitignore",
             "packs sync  skipped      nothing to copy",
             '  note: builtin_delivery = "plugin": the built-in skills come from the plugins '
             "modsys (core) — packs sync copies none of them"])
@@ -516,6 +581,31 @@ class ContractTest(unittest.TestCase):  # P61-AC-026, P61-AC-037 (the `setup` pa
         self.assertTrue((self.root / ".modsys/config.toml").is_file())
         self.assertTrue((self.root / "AGENTS.md").is_file())
         self.assertEqual(list(sub.iterdir()), [])
+
+    def test_a_nested_root_is_found_again(self):  # fix round 1, finding 2
+        write(self.root / "CLAUDE.md", TEAM_NOTES)  # the top level's own, not modsys's
+        shop = self.root / "shop"
+        write(shop / "src/catalog.py", "BOOKS = []\n")
+        setup_json(shop, "--agent", "claude")  # --root shop
+        self.assertTrue((shop / ".modsys/config.toml").is_file())
+        before = snap(self.root)
+        cwd = os.getcwd()
+        try:
+            for where in (shop, shop / "src"):
+                os.chdir(where)
+                for argv in (("--agent", "claude"), ()):
+                    with self.subTest(where=where.name, argv=argv):
+                        code, out, err = run("setup", *argv, "--json")
+                        self.assertEqual((code, err), (0, ""))
+                        data = json.loads(out)["data"]
+                        self.assertEqual(statuses(data), ["exists", "unchanged", "unchanged"])
+                        self.assertEqual(detail(data, "init")["root"], str(shop))
+                        self.assertEqual(snap(self.root), before)
+                self.assertEqual(run("next"), (0, f"modsys {VERSION}\nnothing to do\n", ""))
+        finally:
+            os.chdir(cwd)
+        self.assertEqual((self.root / "CLAUDE.md").read_text(encoding="utf-8"), TEAM_NOTES)
+        self.assertFalse((self.root / ".modsys").exists())
 
     def test_an_internal_failure_and_ctrl_c(self):
         with mock.patch.dict(os.environ):

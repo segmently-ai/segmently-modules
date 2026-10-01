@@ -1,8 +1,8 @@
 """`modsys setup [--agent A]… [--target FILE]… [--dry-run]`: the one-command start (P6.1 D5).
 Three existing steps run in-process, in order — each writes exactly what its own verb writes:
 
-  init        bare `modsys init` (the starter config, the empty registry, the .gitignore
-              lines) when `<config_dir>/config.toml` does not exist; else `exists`, not run
+  init        bare `modsys init`, always: it creates only what is missing of the starter
+              config, the empty registry and the .gitignore lines
   packs sync  `modsys packs sync` for the agents: `--agent`, else `[packs] agents`, else the
               agents whose skill directories hold copies an earlier sync made (a marker in
               `.agents/skills` means codex), else claude and codex
@@ -10,16 +10,16 @@ Three existing steps run in-process, in order — each writes exactly what its o
               chosen and AGENTS.md when any other agent is (Gemini CLI reads GEMINI.md:
               `--target GEMINI.md`)
 
-Each step reports one status — `created` (only new files or copies), `updated` (an existing one
-changed), `unchanged`, `exists` (init: the config was there), `skipped` (packs sync: no skill to
-copy), `conflict` / `invalid` (packs sync left a copy unwritten) — and its own `--json` data as
-`detail` (null for a step that did not run). A second run writes nothing. `--dry-run` writes
-nothing and plans the later steps against the config init would write: a scratch config dir
-outside the repository holding that config.toml beside the real config dir's packs, overrides
-and config.user.toml. A step that refuses (exit 2) stops setup at once, naming the step and what
-ran before it; a packs sync conflict (exit 1) lets agents-md run, and setup exits 1. Root:
-`--root`, else the git top-level of the current directory, else the current directory (as
-`init`)."""
+Each step reports one status — `created` (a new file or copy), `updated` (only existing ones
+changed: init appended `.gitignore` lines), `unchanged`, `exists` (init: nothing was missing),
+`skipped` (packs sync: no skill to copy), `conflict` / `invalid` (packs sync left a copy
+unwritten) — and its own `--json` data as `detail`. A second run writes nothing. `--dry-run`
+writes nothing; when init would create the config, it plans the later steps against that config:
+a scratch config dir outside the repository holding that config.toml beside the real config
+dir's packs, overrides and config.user.toml. A step that refuses (exit 2) stops setup at once,
+naming the step and what ran before it; a packs sync conflict (exit 1) lets agents-md run, and
+setup exits 1. Root: `--root`, else the nearest directory with a modsys marker or `.git` above
+the current directory (as every other verb finds it), else the current directory."""
 import contextlib
 import functools
 import os
@@ -36,7 +36,7 @@ from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.packs_cmd import _hint, sync as packs_sync
 from modsys.skill_sync import STATUSES, managed_agents
 from modsys.skills import AGENT_DIRS, DEFAULT_AGENTS
-from modsys.workspace import Workspace
+from modsys.workspace import Workspace, find_root
 
 FINDINGS = ("conflict", "invalid")  # packs sync rows it did not write: exit 1, the run goes on
 CHANGED = ("updated", "added", "removed")  # an existing file or copy changed
@@ -48,9 +48,9 @@ def register(sub, common) -> None:
     p = sub.add_parser("setup", parents=[common],
                        help="the one-command start: starter config and registry, the skill "
                             "copies, the agents-md block (idempotent)",
-                       description="Runs three steps in order: init (the starter config, the "
-                                   "empty registry and the .gitignore lines — exists when "
-                                   "<config_dir>/config.toml does), packs sync for the agents "
+                       description="Runs three steps in order: init (whatever is missing of "
+                                   "the starter config, the empty registry and the .gitignore "
+                                   "lines), packs sync for the agents "
                                    "and agents-md for the instruction files. Agents: --agent, "
                                    "else [packs] agents, else the agents whose skill "
                                    "directories already hold copies packs sync made, else "
@@ -130,6 +130,27 @@ def default_targets(agents: list[str]) -> list[str]:
         (["AGENTS.md"] if any(a != "claude" for a in agents) else [])
 
 
+def setup_root(arg) -> Path:
+    """`--root` (an existing directory), else the root every other verb finds — the nearest
+    directory with a modsys marker or `.git` above the current directory —, else the current
+    directory (no marker, no git: a place where modsys is not set up yet)."""
+    if arg is not None:
+        return init_root(arg)  # resolved; refused unless it is a directory
+    try:
+        return find_root(Path.cwd())
+    except UsageError:
+        return Path.cwd().resolve()
+
+
+def init_status(files: list[dict]) -> str:
+    """`exists` when bare init found everything, `created` when it created a file, else
+    `updated` (it only appended lines to an existing `.gitignore`)."""
+    found = {f["status"] for f in files}
+    if found == {"exists"}:
+        return "exists"
+    return "created" if "created" in found else "updated"
+
+
 def _fold(statuses: list[str]) -> str:
     if any(s in CHANGED for s in statuses):
         return "updated"
@@ -163,19 +184,16 @@ def setup(root: Path, config_dir: Path, agents: list[str] | None, targets: list[
     targets = [_target(SimpleNamespace(root=root), t)[0] for t in targets or []]
     steps, pending = [], None
     config = config_dir / "config.toml"
-    if config.exists():
-        steps.append({"step": "init", "status": "exists", "detail": None})
-    else:
-        try:
-            layout, files = starter(root, config_dir, None, dry_run)
-            if dry_run:
-                pending = next(t for p, s, t in plan_init(root, config_dir, None)[1]
-                               if p == config)
-        except UsageError as e:
-            raise _stopped("init", e, steps, dry_run) from None
-        steps.append({"step": "init", "status": "created",
-                      "detail": {"root": str(root), "layout": layout, "files": files,
-                                 "dry_run": dry_run}})
+    try:  # bare init creates only what is missing: run every time
+        layout, files = starter(root, config_dir, None, dry_run)
+        if dry_run:  # the config it would create (None when config.toml is there)
+            pending = next((t for p, s, t in plan_init(root, config_dir, None)[1]
+                            if p == config and s == "created"), None)
+    except UsageError as e:
+        raise _stopped("init", e, steps, dry_run) from None
+    steps.append({"step": "init", "status": init_status(files),
+                  "detail": {"root": str(root), "layout": layout, "files": files,
+                             "dry_run": dry_run}})
     step = "packs sync"
     try:
         with _workspace(root, config_dir, pending) as ws:
@@ -194,7 +212,7 @@ def setup(root: Path, config_dir: Path, agents: list[str] | None, targets: list[
 
 
 def run(args) -> int:
-    root = init_root(args.root)
+    root = setup_root(args.root)
     config_dir = Path(args.config_dir or root / ".modsys").resolve()
     data, ws = setup(root, config_dir, args.agents, args.targets, args.dry_run)
     emit("setup", data, args.json, functools.partial(_render, ws=ws))
@@ -218,8 +236,7 @@ def _items(rows: list[dict], status: str) -> str:
 def _summary(s: dict, ws) -> str:
     d = s["detail"]
     if s["step"] == "init":
-        return (_items(d["files"], "created") if d
-                else ws.rel(ws.config_dir / "config.toml"))
+        return _items(d["files"], s["status"])
     if s["step"] == "agents-md":
         return _items(d["targets"], s["status"])
     if not d["skills"]:  # under builtin_delivery = "plugin" a note names the plugins
