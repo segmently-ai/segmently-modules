@@ -65,6 +65,7 @@ GOLDEN = [
     (("eval", "routing", "--prompt"), {"mode", "per_module", "modules", "prompt"}),  # P5b D3
     (("roles", "list"), {"roles"}),  # P6.1 W3
     (("roles", "add", "designer", "checkout", "--dry-run"), {"role", "dry_run", "results"}),
+    (("next", "--base", "HEAD"), {"version", "items", "skipped"}),  # P6.1 W4
 ]
 
 
