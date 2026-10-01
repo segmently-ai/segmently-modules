@@ -86,10 +86,13 @@ def text_of(data: dict, version: str = VERSION) -> str:
 
 def snap(root: Path) -> dict:
     """Every file, directory and symlink below `root` — tracked, untracked and ignored alike —
-    by content and mode (a symlink by its link text), outside git's own `.git/` directory."""
+    by content and mode (a symlink by its link text); of git's own `.git/` directory the index
+    only, by content and mtime (a `git diff` that refreshes it rewrites it)."""
     out = {}
     for path in sorted(root.rglob("*")):
         rel, st = path.relative_to(root).as_posix(), path.lstat()
+        if rel == ".git/index":
+            out[rel] = ("index", st.st_mtime_ns, path.read_bytes())
         if rel == ".git" or rel.startswith(".git/"):
             continue
         if stat.S_ISLNK(st.st_mode):
@@ -99,6 +102,13 @@ def snap(root: Path) -> dict:
         else:
             out[rel] = (stat.S_IMODE(st.st_mode), path.read_bytes())
     return out
+
+
+def drop_locks(root: Path) -> None:
+    """Remove every `*.lock` below `root`, `.git/` included: the writers that built the fixture
+    leave their (empty) lock files, which would hide one a read-only verb created."""
+    for path in root.rglob("*.lock"):
+        path.unlink()
 
 
 def seeded(tmp: Path) -> Path:
@@ -216,9 +226,9 @@ class SeededTest(unittest.TestCase):  # P61-AC-011, P61-AC-013, P61-AC-015, SI-P
         stamps = [self.root / p for p in ("modules/registry.json", ".modsys/config.toml",
                                           ".modsys/packs/team/pack.toml",
                                           ".modsys/packs/bookshop/pack.toml")]
+        drop_locks(self.root)
         before = snap(self.root)
         mtimes = [p.stat().st_mtime_ns for p in stamps]
-        locks = sorted(p for p in self.root.rglob("*.lock"))
         for argv in (("next",), ("next", "--base", "main"), ("roles", "list")):
             for extra in ((), ("--json",)):
                 with self.subTest(argv=argv + extra):
@@ -227,7 +237,85 @@ class SeededTest(unittest.TestCase):  # P61-AC-011, P61-AC-013, P61-AC-015, SI-P
                     self.assertTrue(out)
         self.assertEqual(snap(self.root), before)
         self.assertEqual([p.stat().st_mtime_ns for p in stamps], mtimes)
-        self.assertEqual(sorted(p for p in self.root.rglob("*.lock")), locks)
+        self.assertEqual(sorted(self.root.rglob("*.lock")), [])
+
+
+class GitIndexTest(unittest.TestCase):  # P61-AC-013 (the git index; review fix round 1)
+    def test_drift_never_refreshes_the_real_index(self):
+        """`git diff` against the working tree rewrites the index (through `index.lock`) when a
+        tracked file is stat-dirty; `next --base` diffs against a copy of it, and still sees
+        what `lint --changed` and `ci` see — the stat-only file is no drift."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            root = copy_fixture(tmp / "a")
+            write(root / ".modsys/config.toml",
+                  '[[code_map]]\nid = "src"\npattern = "src/{module}/**"\n')
+            write(root / "src/checkout/cart.py", "CART = []\n")
+            init_git(root)
+            git(root, "checkout", "-q", "-b", "work")
+            write(root / "src/checkout/cart.py", "CART = [1]\n")  # checkout's code changed
+            git(root, "add", "src/checkout/cart.py")
+            git(root, "commit", "-q", "-m", "work")
+            index, service = root / ".git/index", root / "src/catalog/service.py"
+            service.write_bytes(service.read_bytes())  # the same bytes: stat-dirty only
+            later = index.stat().st_mtime + 100
+            os.utime(service, (later, later))
+            drop_locks(root)
+            before = snap(root)
+            data = nxt(root, "--base", "main")
+            self.assertEqual(run("next", "--base", "main", "--root", str(root)),
+                             (0, text_of(data), ""))
+            self.assertEqual(snap(root), before)  # the index: the same bytes and mtime
+            self.assertEqual(sorted(root.rglob("*.lock")), [])
+            self.assertEqual([i for i in rows(data) if i[0] == "drift"], [
+                ("drift", "drift since main: code changed without a doc update: checkout",
+                 "modsys sync-instructions --from-diff main..HEAD")])
+            for argv in (("lint", "--changed", "--base", "main"),
+                         ("ci", "--base", "main", "--fail-on", "never")):
+                twin = tmp / argv[0]  # the same tree; these verbs may refresh their index
+                shutil.copytree(root, twin, symlinks=True)
+                with self.subTest(verb=argv[0]):
+                    code, env, err = run_json(*argv, "--root", str(twin))
+                    self.assertEqual(err, "")
+                    if argv[0] == "lint":
+                        findings = env["data"]["findings"]
+                        self.assertEqual(env["data"]["changed"]["files"],
+                                         ["src/checkout/cart.py"])
+                    else:
+                        findings = [f for step in env["data"]["steps"]
+                                    if step["name"] == "drift" for f in step["findings"]]
+                    self.assertEqual(sorted({f["module"] for f in findings
+                                             if f["code"] == "MS050"}), ["checkout"])
+
+
+    def test_the_index_copy_lies_outside_the_root_and_goes_on_every_exit(self):
+        from modsys import next_cmd
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            root = copy_fixture(tmp / "a")
+            init_git(root)
+            scratch = tmp / "scratch"
+            scratch.mkdir()
+            seen, real = [], next_cmd.drift_report
+
+            def spy(ws, base, findings, env=None):  # where the git calls read the index
+                copy = Path(env["GIT_INDEX_FILE"])
+                seen.append((copy.is_file(), root in copy.parents,
+                             copy.read_bytes() == (root / ".git/index").read_bytes()))
+                return real(ws, base, findings, env=env)
+
+            with mock.patch("tempfile.tempdir", str(scratch)):
+                with mock.patch("modsys.next_cmd.drift_report", side_effect=spy):
+                    self.assertEqual(nxt(root, "--base", "HEAD")["items"][-1]["kind"], "role")
+                self.assertEqual(seen, [(True, False, True)])  # a copy, outside the root
+                self.assertEqual(list(scratch.iterdir()), [])
+                for error, code in ((RuntimeError("boom"), 2), (KeyboardInterrupt(), 130)):
+                    with self.subTest(error=type(error).__name__), mock.patch.dict(os.environ), \
+                            mock.patch("modsys.next_cmd.drift_report", side_effect=error):
+                        os.environ.pop("MODSYS_DEBUG", None)
+                        self.assertEqual(run("next", "--base", "HEAD", "--root", str(root))[0],
+                                         code)
+                        self.assertEqual(list(scratch.iterdir()), [])
 
 
 class NothingToDoTest(unittest.TestCase):  # P61-AC-012
@@ -288,6 +376,7 @@ class UpgradeTest(unittest.TestCase):  # P61-AC-010, P61-AC-014 (D2: no state fi
         targets = sorted(BOOKSHOP + ["reviews"])
         engine = copy_engine(self.tmp / "engine")
         append(engine / "modsys/defaults/config.toml", SECURITY)
+        drop_locks(root)
         before = snap(root)
         row = {r["name"]: r for r in engine_json(engine, root, "roles", "list")["roles"]}
         self.assertEqual((row["security"]["docs"], row["security"]["missing"]), ([], targets))
@@ -297,6 +386,7 @@ class UpgradeTest(unittest.TestCase):  # P61-AC-010, P61-AC-014 (D2: no state fi
         self.assertEqual(engine_cli(engine, root, "next"),
                          (0, text_of(data), ""))
         self.assertEqual(snap(root), before)  # (1) and (2) read only
+        self.assertEqual(sorted(root.rglob("*.lock")), [])
         results = engine_json(engine, root, "roles", "add", "security", "--all")["results"]
         self.assertEqual(sorted(r["module"] for r in results if r["status"] == "created"), targets)
         row = {r["name"]: r for r in engine_json(engine, root, "roles", "list")["roles"]}
@@ -320,6 +410,7 @@ class UpgradeTest(unittest.TestCase):  # P61-AC-010, P61-AC-014 (D2: no state fi
                      *(("roles", "add", role, "--all") for role in ("qa", "po", "architect"))):
             must(*argv, *R)
         self.assertEqual(run("next", *R), (0, f"modsys {VERSION}\nnothing to do\n", ""))
+        drop_locks(root)
         return root
 
     def test_what_an_upgrade_brought_without_a_state_file(self):  # P61-AC-014
@@ -344,6 +435,7 @@ class UpgradeTest(unittest.TestCase):  # P61-AC-010, P61-AC-014 (D2: no state fi
                         "changed since the eject)", "modsys eject --diff module-scout")])
         self.assertEqual(engine_cli(engine, root, "next"), (0, text_of(data), ""))
         self.assertEqual(snap(root), before)  # nothing written, no "last seen version" file
+        self.assertEqual(sorted(root.rglob("*.lock")), [])
 
     def test_a_new_engine_version_alone_brings_the_copies(self):  # P61-AC-014 (d), D2
         root = self.upgraded_repo()
@@ -362,6 +454,7 @@ class UpgradeTest(unittest.TestCase):  # P61-AC-010, P61-AC-014 (D2: no state fi
              "modsys packs sync")])  # a built-in pack's version moves no ejected copy (MS063)
         self.assertEqual(engine_cli(engine, root, "next")[1].splitlines()[0], f"modsys {newer}")
         self.assertEqual(snap(root), before)
+        self.assertEqual(sorted(root.rglob("*.lock")), [])
 
 
 class EdgesTest(unittest.TestCase):  # P61-AC-029, SI-P61-4, SI-P61-5, SI-P61-7, SI-P61-8

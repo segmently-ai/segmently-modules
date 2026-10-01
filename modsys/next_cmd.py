@@ -22,14 +22,17 @@ The kinds, in rank order (D4):
   drift         with --base: MS050 / MS051 since REF (`sync-instructions --from-diff REF..HEAD`)
 A kind that cannot run is named in `skipped` (JSON only) with the reason. No config and no
 registry: one item, `modsys setup` (SI-P61-8). Exit 0 with or without items."""
+import contextlib
 import os
 import re
+import shutil
+import tempfile
 from pathlib import Path
 from shlex import quote
 
 from modsys import __version__
 from modsys.agents_md_cmd import _BEGIN, END, _bare, _lines, agents_md
-from modsys.changes import commit_ref, repo_files, work_tree_error
+from modsys.changes import commit_ref, git, repo_files, work_tree_error
 from modsys.config import enabled_roles
 from modsys.coverage_cmd import coverage_report
 from modsys.lint import drift_report, lint_registry
@@ -211,14 +214,35 @@ def unmapped(ws, no_git: str | None) -> list[tuple]:
     return [("unmapped", f"{len(files)} file(s) map to no module: {shown}", "modsys coverage")]
 
 
+@contextlib.contextmanager
+def index_copy(root: Path):
+    """`{"GIT_INDEX_FILE": <a copy of the repository's index>}` for the git calls of `drift`:
+    `git diff` against the working tree rewrites the index (through `index.lock`) whenever a
+    tracked file is stat-dirty, so it refreshes a copy in a temp dir outside the root instead —
+    the same answer, the real index untouched. No index file: none is copied (git reads an
+    empty one, as it would). The temp dir goes on every exit, Ctrl-C included."""
+    real = Path(git(root, "rev-parse", "--git-path", "index").rstrip("\n"))
+    real = real if real.is_absolute() else Path(root) / real  # relative to `-C root`
+    tmp = Path(tempfile.mkdtemp(prefix="modsys-next-"))
+    try:
+        copy = tmp / "index"
+        if real.is_file():
+            shutil.copy2(real, copy)  # its mtime too: git's racy-entry check reads it
+        yield {"GIT_INDEX_FILE": str(copy)}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def drift(ws, base: str | None, no_git: str | None) -> list[tuple]:
     """`ci`'s drift since `base` (the working tree and new files against it): the targets
-    whose code changed without a doc update (MS050) and frozen snapshots changed (MS051)."""
+    whose code changed without a doc update (MS050) and frozen snapshots changed (MS051) —
+    computed against a copy of the git index (`index_copy`)."""
     if base is None:
         raise Skip("no --base")
     if no_git:
         raise Skip(no_git)
-    findings, _ = drift_report(ws, base, [])
+    with index_copy(ws.root) as env:
+        findings, _ = drift_report(ws, base, [], env=env)
     parts = []
     for code, what in (("MS050", "code changed without a doc update"),
                        ("MS051", "a frozen snapshot changed")):

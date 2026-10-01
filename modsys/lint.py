@@ -420,11 +420,13 @@ def drift_findings(ws, files: list[str], frozen_touched: list[str]) -> tuple[lis
     return out, {t.partition("/")[0] for t in mapping}
 
 
-def drift_report(ws, base: str, findings: list[Finding]) -> tuple[list[Finding], dict]:
+def drift_report(ws, base: str, findings: list[Finding],
+                 env: dict | None = None) -> tuple[list[Finding], dict]:
     """`lint --changed`: `findings` narrowed to the top-level modules the change since `base`
-    touches, plus MS050/MS051; and the change as {base, files, modules}."""
-    files = changed_files(ws.root, base=base)
-    frozen = [f for f in diff_names(ws.root, base, "--diff-filter=MD")
+    touches, plus MS050/MS051; and the change as {base, files, modules}. `env`: set on top of
+    the git environment of every git call (`next` points `GIT_INDEX_FILE` at a copy)."""
+    files = changed_files(ws.root, base=base, env=env)
+    frozen = [f for f in diff_names(ws.root, base, "--diff-filter=MD", env=env)
               if f.endswith(".legacy.md")]  # a renamed snapshot shows as D (--no-renames)
     drift, touched = drift_findings(ws, files, frozen)
     narrowed = [f for f in findings if f.module.partition("/")[0] in touched] + drift
