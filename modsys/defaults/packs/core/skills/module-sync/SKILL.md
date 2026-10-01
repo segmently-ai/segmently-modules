@@ -125,7 +125,12 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 ## A new role
 
 When the team (or a newer modsys) adds a role, the existing modules lack its doc. Add it to all
-of them, one step at a time:
+of them, one step at a time.
+
+If `modsys roles list --json` does not list the role, declare it first: a [roles.ROLE] table in
+the team config, .modsys/config.toml, with order, standard = true (every module gets the doc)
+and a one-line description — ask the user what the role is for when that is not clear — or the
+same table in a pack the team owns. Then continue with step 1.
 
 1. `modsys roles add ROLE --all --dry-run` — show the plan to the user: which docs would be
    created or registered, and which registered docs are missing on disk.

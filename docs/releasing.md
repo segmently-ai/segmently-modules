@@ -68,11 +68,22 @@ lays out `plugins/` with both marketplace files — `.claude-plugin/marketplace.
 ## Release notes
 
 Before a stable release write its notes in `CHANGELOG.md`, as lines under the `## [Unreleased]`
-heading (Keep a Changelog style). A stable release is refused without them. The release commit
-dates the section: `## [Unreleased]` becomes `## [X.Y.Z] - DATE` below a new, empty
-`## [Unreleased]`; set `MODSYS_RELEASE_DATE=YYYY-MM-DD` for a fixed date, else the local date is
-used. The notes also go into the publish repository's changelog entry. A dev release publishes
-the pending `[Unreleased]` lines, or `no notes yet` when there are none.
+heading (Keep a Changelog style); a note is a line starting with `- ` or `* `. A stable release
+is refused without one (blank lines, comment lines and `### ` sub-headings alone hold no note),
+when `CHANGELOG.md` is missing or git does not track it, and when `MODSYS_RELEASE_DATE` is set
+but is not a date. The release commit dates the section: `## [Unreleased]` becomes
+`## [X.Y.Z] - DATE` below a new, empty `## [Unreleased]`; set `MODSYS_RELEASE_DATE=YYYY-MM-DD`
+for a fixed date, else the local date is used. The notes also go into the publish repository's
+changelog entry. A dev release publishes the pending `[Unreleased]` lines, or `no notes yet`
+when there are none.
+
+The published notes are the lines under the heading up to the next `## ` heading, without blank
+lines and without comment lines: a comment line — one whose text starts with `<!--`, through the
+line that holds its `-->` — is dropped; a `<!--` inside a line of text is kept as written. On
+either channel, dev as well as stable, the release is refused when `CHANGELOG.md` holds two
+`## [Unreleased]` headings (the error names their lines: keep one), and when a note holds
+`<!-- modsys:changelog:` — the marker of the publish repository's changelog section, which the
+entry would damage: reword that note.
 
 ## Release
 
@@ -83,10 +94,10 @@ MODSYS_GUARD=/path/to/the/private/guard.py python3 tools/release.py \
 
 | Step | What it does |
 |---|---|
-| 1 leak guard | the private guard `MODSYS_GUARD` names reports this repository clean (files and history), and the organisation of `--publish-slug` appears nowhere in it |
+| 1 leak guard | first the notes check: the notes under `## [Unreleased]` in `CHANGELOG.md` — `stable` needs at least one note (a tracked file; `MODSYS_RELEASE_DATE`, when set, a date), `dev` publishes `no notes yet` without; two `## [Unreleased]` headings or a note holding the changelog marker are refused on both (see Release notes); then the private guard `MODSYS_GUARD` names reports this repository clean (files and history), and the organisation of `--publish-slug` appears nowhere in it |
 | 2 clean trees | this repository and the publish repository have no uncommitted change; for `stable` the version is not tagged yet in either |
 | 3 tests | the unit suite and the adoption eval |
-| 4 build | `stable`: the release commit here (`X.Y.Z.devN` → `X.Y.Z`); then the three plugins with the channel's version |
+| 4 build | `stable`: the release commit here (`X.Y.Z.devN` → `X.Y.Z`, and in `CHANGELOG.md` the `## [Unreleased]` heading becomes `## [X.Y.Z] - DATE` below a new, empty `## [Unreleased]`); then the three plugins with the channel's version |
 | 5 validate | the guard and the organisation scan over the build; our checks of the publish tree; `claude plugin validate --strict` of each plugin and the marketplace |
 | 6 publish repo | on the channel's branch: exactly `plugins/modsys`, `plugins/modsys-ui`, `plugins/modsys-qa` replaced, both marketplace files merged by plugin name, its own sections of `README.md` and `CHANGELOG.md` |
 | 7 commit | `release modsys <version> (<channel>)`; `stable` adds the tags |

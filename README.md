@@ -85,15 +85,31 @@ Add `@v<version>` to the URL to pin a release tag.
 ```bash
 modsys setup                       # init, packs sync and the agents-md block in one command (--dry-run first)
 modsys next                        # the daily loop: what the repository needs now, with the command for each
-modsys roles add designer --all    # a new role: its doc for every existing module (--dry-run first)
 ```
 
 `modsys setup` picks the agents from the skill directories it finds (else `claude` and `codex`)
-and writes `CLAUDE.md` for Claude and `AGENTS.md` for every other agent. Gemini CLI reads
-`GEMINI.md`, so run `modsys setup --target GEMINI.md` for it. `modsys next` is read-only: one
-ranked list of what to fix (lint errors, stale skill copies, a role without docs, …), each item
-with the modsys command that fixes it. `modsys roles list` shows, per role, which modules have its
-doc and which do not.
+and writes `CLAUDE.md` for Claude and `AGENTS.md` for every other agent; a later run refreshes
+the instruction files that already hold the modsys block. Gemini CLI reads `GEMINI.md`, so run
+`modsys setup --target GEMINI.md` for it. `modsys next` is read-only: one ranked list of what to
+fix (lint errors, stale skill copies, a role without docs, …), each item with the modsys command
+that fixes it.
+
+A role your team adds — say, a security review of every module — is declared once in
+`.modsys/config.toml` (`standard = true`: every module gets its doc):
+
+```toml
+[roles.security]
+order = 50
+standard = true
+description = "Threats, secrets and permissions the module touches"
+```
+
+```bash
+modsys roles add security --all --dry-run   # the plan: the doc each existing module would get
+modsys roles add security --all             # write and register them; an existing file is never overwritten
+```
+
+`modsys roles list` shows, per role, which modules have its doc and which do not.
 
 ## Greenfield in 5 minutes
 

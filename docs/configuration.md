@@ -273,6 +273,15 @@ Roles are the audiences of per-module docs (`roles/<role>.md`). Defaults: `devel
 | `description` | — | one line, shown in the scaffolded doc |
 | `template` | — | pack roles: the template path inside the pack |
 
+A role the team declares — here, a security review that every module gets:
+
+```toml
+[roles.security]
+order = 50
+standard = true
+description = "Threats, secrets and permissions the module touches"
+```
+
 `create` resolves a template (first hit wins): `<config_dir>/overrides/templates/<path>` →
 the role's own pack `template` → `<pack>/templates/<path>` in pack precedence order → the
 engine's defaults: `MODULE.md`, one template per standard role (`roles/developer.md`,
@@ -285,9 +294,10 @@ managed block `modsys agents-md` keeps in agent instruction files (`${modules_di
 
 **A role added after modules exist.** `create` only scaffolds docs for new modules. Once a role
 is declared (here, in a pack, or by a newer engine), give the EXISTING modules its doc with
-`modsys roles add ROLE --all` — run it with `--dry-run` first; it renders the doc as `create`
-would, registers it, never overwrites a file that is already there, and writes nothing when
-nothing is missing. `--recreate` writes the doc of a registered role whose file is gone.
+`modsys roles add ROLE --all` — run it with `--dry-run` first (for the role above:
+`modsys roles add security --all --dry-run`, then `modsys roles add security --all`); it renders
+the doc as `create` would, registers it, never overwrites a file that is already there, and
+writes nothing when nothing is missing. `--recreate` writes the doc of a registered role whose file is gone.
 `modsys roles list` shows, per role, the modules that have its doc and those that do not;
 `modsys next` names a standard role with missing docs (for instance after an upgrade) together
 with the command. Fill each new doc with what that role needs for that module.
