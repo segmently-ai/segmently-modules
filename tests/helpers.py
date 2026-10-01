@@ -2,6 +2,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -92,3 +93,32 @@ def init_git(root: Path) -> None:
     git(root, "init", "-q", "-b", "main")
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "init")
+
+
+_VERSION_LINE = re.compile(r'^__version__ = "([^"]+)"$', re.M)
+_VERSION_FORM = re.compile(r"(\d+)\.(\d+)\.(\d+)(?:\.dev(\d+))?")
+
+
+def engine_version(engine: Path | None = None) -> str:
+    """`__version__` of the engine source under test (`modsys/__init__.py` read as text, never
+    an installed copy) — the one place tests learn the version from."""
+    root = engine or Path(__file__).resolve().parents[1]
+    text = (root / "modsys/__init__.py").read_text(encoding="utf-8")
+    return _VERSION_LINE.search(text).group(1)
+
+
+def release_version(version: str | None = None) -> str:
+    """The release form of `version` (default: the engine's): X.Y.Z.devN -> X.Y.Z."""
+    major, minor, patch, _ = _VERSION_FORM.fullmatch(version or engine_version()).groups()
+    return f"{major}.{minor}.{patch}"
+
+
+def next_release(version: str | None = None) -> str:
+    """The release after `version`'s: X.Y.Z[.devN] -> X.Y.(Z+1) — what a second stable run makes."""
+    major, minor, patch = release_version(version).split(".")
+    return f"{major}.{minor}.{int(patch) + 1}"
+
+
+def next_dev(version: str | None = None) -> str:
+    """What the engine is at after a stable release of `version`: X.Y.(Z+1).dev0."""
+    return f"{next_release(version)}.dev0"

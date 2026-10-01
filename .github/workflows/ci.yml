@@ -3,11 +3,15 @@
 # plugins. No model call and no credential: Claude Code is installed as it comes and only its
 # `plugin validate`, `plugin marketplace add`, `plugin install` and `plugin list` commands run;
 # the installed plugins are checked (all three enabled) and the installed launcher runs.
-# It runs on every push, of a branch or a tag — the branch of a pull request included.
+# It runs on a push to main, on a version tag and on pull requests (a pull request's branch is
+# not run twice).
 name: ci
 
 on:
   push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
 
 permissions:
   contents: read
@@ -21,8 +25,8 @@ jobs:
       matrix:
         python: ["3.11", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
       - name: Build backend for the packaging test (the engine itself has no dependency)

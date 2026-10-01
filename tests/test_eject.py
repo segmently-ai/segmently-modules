@@ -11,7 +11,7 @@ from unittest import mock
 from pathlib import Path
 
 from modsys.skills import is_behind, pack_skills, read_ejected
-from tests.helpers import copy_fixture, init_git, run, run_json
+from tests.helpers import copy_fixture, engine_version, init_git, run, run_json
 from tests.test_builtin_packs import FakeBuiltins
 
 SKILL = "---\nname: api-review\ndescription: {desc}\n---\n\n# api-review\n"
@@ -361,7 +361,8 @@ class BuiltinDiffReasonTest(FakeBuiltins):  # P5A-AC-011: a built-in pack, the e
             data = self.ok("eject", "notes", "--diff")
             out = run("eject", "notes", "--diff", *self.R)[1].splitlines()
         self.assertEqual((data["behind"], data["reason"]), (False, None))
-        self.assertEqual(out[0], "notes: pack core 99.0.0, ejected at 0.1.0.dev0 — up to date "
+        self.assertEqual(out[0], f"notes: pack core 99.0.0, ejected at {engine_version()} — "
+                                 "up to date "
                                  "(the engine version moved; the skill's files did not)")
 
 

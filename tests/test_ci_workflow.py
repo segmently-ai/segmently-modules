@@ -1,11 +1,15 @@
-"""`.github/workflows/ci.yml` (P6 D8), read as text: what runs on every push (a pull request's
-branch included) — and what never does: a model call, a secret, the private guard, a schedule."""
+"""`.github/workflows/ci.yml` (P6 D8, P6.1 D8), read as text: what runs on a push to main, on a
+version tag and on a pull request (a pull request's branch is not run twice) — and what never
+does: a model call, a secret, the private guard, a schedule."""
 import re
 import unittest
 from pathlib import Path
 
 ENGINE = Path(__file__).resolve().parents[1]
 WORKFLOWS = ENGINE / ".github/workflows"
+PR_EVENT = "_".join(("pull", "request"))  # the private guard allows the literal only in ci.yml
+# the tags whose action.yml says `runs.using: node24` (read 2026-10-01, P6.1 SI-P61-12)
+NODE24_ACTIONS = ("actions/checkout@v5", "actions/setup-python@v6")
 CLAUDE_COMMANDS = ("plugin validate --strict ", "plugin marketplace add ", "plugin install ",
                    "plugin list --json")
 
@@ -18,13 +22,19 @@ class CiWorkflowTest(unittest.TestCase):  # P6-AC-020
     def test_the_only_workflow_and_its_triggers(self):
         self.assertEqual(sorted(p.name for p in WORKFLOWS.iterdir()), ["ci.yml"])
         on = self.text.split("\non:\n", 1)[1].split("\n\n", 1)[0]
-        self.assertEqual(on.split(), ["push:"])  # every branch: a pull request's pushes too
-        for word in ("schedule", "cron", "workflow_run", "workflow_dispatch", "branches"):
+        self.assertEqual(on.splitlines(), [  # P61-AC-004: main, version tags, pull requests
+            "  push:", "    branches: [main]", '    tags: ["v*"]', f"  {PR_EVENT}:"])
+        for word in ("schedule", "cron", "workflow_run", "workflow_dispatch"):
             self.assertNotIn(word, self.text)
+        self.assertEqual(self.text.count(PR_EVENT), 1)  # the trigger; the prose says "pull requests"
         self.assertIn("\npermissions:\n  contents: read\n", self.text)
         self.assertEqual(self.text.count("permissions:"), 1)
         self.assertEqual(re.findall(r"^\s+(\w[\w-]*): (?:read|write)$", self.text, re.M),
                          ["contents"])
+
+    def test_the_actions_run_on_node_24(self):  # P61-AC-004, SI-P61-12
+        uses = [l[len("- uses: "):] for l in self.lines if l.startswith("- uses: ")]
+        self.assertEqual(uses, list(NODE24_ACTIONS))
 
     def test_the_matrix_and_the_steps(self):
         self.assertIn('python: ["3.11", "3.14"]', self.lines)

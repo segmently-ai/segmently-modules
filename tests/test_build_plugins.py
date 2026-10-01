@@ -15,10 +15,11 @@ import unittest
 from pathlib import Path
 
 from modsys.config import BUILTIN_PLUGINS
-from tests.helpers import git
+from tests.helpers import engine_version, git
 from tests.plugin_helpers import (CLAUDE, ENGINE, NO_CLAUDE, claude_env, copy_engine, load_tool,
                                   run_tool, tree)
 
+ENG = engine_version()  # the tree under test: never a literal
 PACKS = {"modsys": "core", "modsys-ui": "ui", "modsys-qa": "qa"}
 MANIFESTS = (".claude-plugin/plugin.json", "plugin.json", ".codex-plugin/plugin.json")
 ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?")
@@ -135,7 +136,7 @@ class LayoutTest(BuilderRepo):  # P6-AC-008
             built = engine / "dist/plugins/modsys"
             count = len([p for p in built.rglob("*") if p.is_file()])
             self.assertEqual(proc.stdout.splitlines()[0],
-                             f"built modsys 0.1.0.dev0: {count} files in {built}")
+                             f"built modsys {ENG}: {count} files in {built}")
 
 
 class ManifestTest(BuilderRepo):  # P6-AC-009
@@ -170,14 +171,14 @@ class ManifestTest(BuilderRepo):  # P6-AC-009
                     self.assertIsNone(ISO_DATE.search(text))
                     self.assertIsNone(COMMIT.search(text))
                 self.assertEqual(claude["name"], name)
-                self.assertEqual(claude["version"], "0.1.0.dev0")
+                self.assertEqual(claude["version"], ENG)
 
     def test_one_table(self):
         builder = load_tool("build_plugins")
         self.assertEqual({n: s["pack"] for n, s in builder.PLUGINS.items()},
                          {v: k for k, v in BUILTIN_PLUGINS.items()})  # the engine's pack map
         for name in PACKS:
-            rendered = builder.manifests(name, "0.1.0.dev0")
+            rendered = builder.manifests(name, ENG)
             for rel in MANIFESTS:
                 self.assertEqual(self.load(name, rel), rendered[rel])
         self.assertEqual(list((ENGINE / "tools").rglob("*.json")), [])
@@ -191,7 +192,7 @@ class ManifestTest(BuilderRepo):  # P6-AC-009
             versions = {json.loads((out / n / rel).read_text())["version"]
                         for n in PACKS for rel in MANIFESTS}
             self.assertEqual(versions, {"1.2.3"})
-            self.assertIn('__version__ = "0.1.0.dev0"',
+            self.assertIn(f'__version__ = "{ENG}"',
                           (out / "modsys/runtime/modsys/__init__.py").read_text())
 
     def test_the_readmes(self):

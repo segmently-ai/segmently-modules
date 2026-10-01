@@ -363,6 +363,31 @@ class OpenPrTest(FinishRepo):  # P5B-AC-025 (SI-20)
         self.assertEqual((protected_sha(self.root), git(self.root, "branch", "--list")), before)
         return err
 
+    def env_without_gh(self) -> dict:
+        """The step's environment with a PATH of its own: a temporary bin directory of symlinks
+        to the tools the step needs (git, sh) and no `gh` — wherever the machine keeps one."""
+        tools = self.base / "tools-without-gh"
+        tools.mkdir(exist_ok=True)
+        for name in ("git", "sh"):
+            if not (tools / name).exists():
+                (tools / name).symlink_to(shutil.which(name))
+        return {**IDENTITY, "PATH": str(tools)}
+
+    def test_the_gh_refusal_does_not_depend_on_where_gh_lives(self):  # P61-AC-003
+        # layout 1: no gh anywhere the step looks (a machine without it)
+        self.assertIn("gh is not installed (needed for --open-pr)",
+                      self.refused_pr(env=self.env_without_gh()))
+        # layout 2: a gh that exists, in a directory the step's PATH does not name (the hosted
+        # runner keeps one in /usr/bin, which the PATH trick of an older test could not hide)
+        elsewhere = self.base / "elsewhere"
+        gh_shim(elsewhere, self.log)
+        self.assertTrue(os.access(elsewhere / "gh", os.X_OK))
+        env = self.env_without_gh()
+        self.assertNotIn(str(elsewhere), env["PATH"])
+        self.assertIsNone(shutil.which("gh", path=env["PATH"]))
+        self.assertIn("gh is not installed (needed for --open-pr)", self.refused_pr(env=env))
+        self.assertEqual(self.calls(), [])  # the stand-in never ran
+
     def test_the_refusals(self):
         (self.root / "notes.txt").write_text("n\n")
         self.assertIn("working tree not clean (notes.txt)", self.refused_pr())
@@ -374,7 +399,7 @@ class OpenPrTest(FinishRepo):  # P5B-AC-025 (SI-20)
         self.assertIn("working tree not clean (README.md)", self.refused_pr())
         git(self.root, "checkout", "-q", "--", "README.md")
         self.assertIn("gh is not installed (needed for --open-pr)",
-                      self.refused_pr(env={**IDENTITY, "PATH": "/usr/bin:/bin"}))
+                      self.refused_pr(env=self.env_without_gh()))
         for flag in ("--base", "--branch"):
             self.assertIn("expected one argument", self.refused_pr(flag, "-x"))  # argparse
             self.assertIn("may not start with '-'", self.refused_pr(f"{flag}=-x"))

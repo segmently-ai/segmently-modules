@@ -18,12 +18,14 @@ from pathlib import Path
 from unittest import mock
 
 import modsys
-from tests.helpers import git
+from tests.helpers import engine_version, git, release_version
 from tests.plugin_helpers import (CLAUDE, ENGINE, NO_CLAUDE, claude_env, copy_engine, load_tool,
                                   run_tool)
 
 publish = load_tool("publish")
 builder = publish.build_plugins
+ENG = engine_version()  # the tree under test: never a literal
+REL = release_version(ENG)
 NAMES = ["modsys", "modsys-qa", "modsys-ui"]
 
 
@@ -36,19 +38,19 @@ def precedence(version: str) -> tuple:
 
 class VersionTest(unittest.TestCase):  # P6-AC-013 (SI-5, SI-6)
     def test_the_table(self):
-        self.assertEqual(publish.channel_version("stable", "0.1.0.dev0", "3fa9c1e2" + "0" * 56),
-                         "0.1.0")
-        self.assertEqual(publish.channel_version("dev", "0.1.0.dev0", "3fa9c1e2" + "0" * 56),
-                         "0.1.0-dev.h3fa9c1e2")
-        digits = publish.channel_version("dev", "0.1.0.dev0", "01234567" + "8" * 56)
-        self.assertEqual(digits, "0.1.0-dev.h01234567")
+        sha = "3fa9c1e2" + "0" * 56
+        self.assertEqual(publish.channel_version("stable", ENG, sha), REL)
+        self.assertEqual(publish.channel_version("dev", ENG, sha),
+                         f"{REL}-dev.h3fa9c1e2")
+        digits = publish.channel_version("dev", ENG, "01234567" + "8" * 56)
+        self.assertEqual(digits, f"{REL}-dev.h01234567")
         self.assertTrue(builder.semver_ok(digits))
-        self.assertFalse(builder.semver_ok("0.1.0-dev.01234567"))  # why the `h`
-        after = publish.channel_version("dev", "0.1.1.dev0", "ab" * 32)
-        self.assertEqual(after, "0.1.1-dev.habababab")
-        self.assertGreater(precedence(after), precedence("0.1.0"))
-        self.assertEqual(publish.channel_version("stable", "0.1.0", "0" * 64), "0.1.0")
-        for bad in ("0.1", "0.1.0rc1", "v0.1.0"):
+        self.assertFalse(builder.semver_ok(f"{REL}-dev.01234567"))  # why the `h`
+        after = publish.channel_version("dev", "5.2.9.dev0", "ab" * 32)
+        self.assertEqual(after, "5.2.9-dev.habababab")
+        self.assertGreater(precedence(after), precedence(REL))
+        self.assertEqual(publish.channel_version("stable", REL, "0" * 64), REL)
+        for bad in ("0.1", f"{REL}rc1", f"v{REL}"):
             with self.assertRaises(builder.BuildError):
                 publish.base_version(bad)
 
@@ -105,7 +107,7 @@ class ContentHashTest(unittest.TestCase):  # P6-AC-013 (the hash input)
     def test_a_dev_build_and_its_launcher(self):
         out = self.base / "dev"
         version = publish.build_channel(self.engine, out, "dev")
-        self.assertRegex(version, r"^0\.1\.0-dev\.h[0-9a-f]{8}$")
+        self.assertRegex(version, rf"^{re.escape(REL)}-dev\.h[0-9a-f]{{8}}$")
         self.assertEqual(publish.build_channel(self.engine, self.base / "dev2", "dev"), version)
         for name in NAMES:
             for rel in builder.MANIFESTS:
@@ -113,7 +115,7 @@ class ContentHashTest(unittest.TestCase):  # P6-AC-013 (the hash input)
         proc = subprocess.run([str(out / "modsys/bin/modsys"), "--version"],
                               capture_output=True, text=True,
                               env={**os.environ, "MODSYS_PYTHON": sys.executable})
-        self.assertEqual((proc.returncode, proc.stdout.strip()), (0, "modsys 0.1.0.dev0"))
+        self.assertEqual((proc.returncode, proc.stdout.strip()), (0, f"modsys {ENG}"))
 
 
 class MarketplaceTest(unittest.TestCase):  # P6-AC-012
@@ -287,7 +289,7 @@ class LayoutTest(unittest.TestCase):  # P6-AC-011 (the marketplace), P6-AC-012
     def test_every_entry_has_its_plugin(self):
         for channel, (root, stdout) in self.trees.items():
             version = re.search(r"version (\S+),", stdout).group(1)
-            self.assertEqual(version == "0.1.0", channel == "stable")
+            self.assertEqual(version == REL, channel == "stable")
             claude = json.loads((root / publish.CLAUDE_MARKETPLACE).read_text())
             for entry in claude["plugins"]:
                 manifest = root / entry["source"] / ".claude-plugin/plugin.json"

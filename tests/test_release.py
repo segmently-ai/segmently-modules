@@ -17,9 +17,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.helpers import git
+from tests.helpers import engine_version, git, next_dev, next_release, release_version
 from tests.plugin_helpers import ENGINE, copy_engine, default_signals, load_tool, run_tool
 
+ENG = engine_version()  # the engine copies under test carry this version
+REL = release_version(ENG)  # what the first stable run releases
+NXT = next_release(ENG)  # the release after it
+NXT_DEV = next_dev(ENG)  # the engine after the first stable run
 SLUG = "example-org/modsys-plugins"
 PLANT = """import os, subprocess, unittest
 from pathlib import Path
@@ -197,7 +201,7 @@ class RunTest(ReleaseRepo):  # P6-AC-014, 015, 017
         self.assertRegex(proc.stdout, r"step 3 tests: Ran 3 tests in [\d.]+s, OK \(skipped=1\); "
                                       r"the adoption eval passed")  # the skip stays visible
         version = re.search(r"done: modsys (\S+) \(dev\)", proc.stdout).group(1)
-        self.assertRegex(version, r"^0\.1\.0-dev\.h[0-9a-f]{8}$")
+        self.assertRegex(version, rf"^{re.escape(REL)}-dev\.h[0-9a-f]{{8}}$")
         self.assertEqual(self.state(self.engine), engine_before)  # dev: no commit, no tag
         self.assertFalse((self.engine / "tools/__pycache__").exists())
         self.assertEqual(self.log(self.pub, "dev"), [f"release modsys {version} (dev)"])
@@ -234,34 +238,34 @@ class RunTest(ReleaseRepo):  # P6-AC-014, 015, 017
             self.assertTrue(call["config"].startswith(str(self.tmpdir)), call)
         installs = [c["argv"][2] for c in calls if c["argv"][:2] == ["plugin", "install"]]
         self.assertEqual(installs, ["modsys-ui@modsys-dev", "modsys-qa@modsys-dev"])
-        self.assertIn("bin/modsys --version = modsys 0.1.0.dev0", proc.stdout)
+        self.assertIn(f"bin/modsys --version = modsys {ENG}", proc.stdout)
 
         proc = self.release("stable")
         self.assert_ok(proc)
         self.assertEqual(git(self.engine, "log", "--format=%s", "-3").splitlines(),
-                         ["start modsys 0.1.1.dev0", "release modsys 0.1.0", "engine"])
-        self.assertEqual(git(self.engine, "tag", "--points-at", "HEAD~1").split(), ["v0.1.0"])
-        self.assertIn('__version__ = "0.1.0"', git(self.engine, "show",
+                         [f"start modsys {NXT_DEV}", f"release modsys {REL}", "engine"])
+        self.assertEqual(git(self.engine, "tag", "--points-at", "HEAD~1").split(), [f"v{REL}"])
+        self.assertIn(f'__version__ = "{REL}"', git(self.engine, "show",
                                                    "HEAD~1:modsys/__init__.py"))
-        self.assertIn('version = "0.1.0"', git(self.engine, "show", "HEAD~1:pyproject.toml"))
-        self.assertIn('version = "0.1.1.dev0"', (self.engine / "pyproject.toml").read_text())
+        self.assertIn(f'version = "{REL}"', git(self.engine, "show", "HEAD~1:pyproject.toml"))
+        self.assertIn(f'version = "{NXT_DEV}"', (self.engine / "pyproject.toml").read_text())
         # ONE commit (P6-AC-015): a channel never starts on the other channel's release
-        self.assertEqual(self.log(self.pub, "stable"), ["release modsys 0.1.0 (stable)"])
+        self.assertEqual(self.log(self.pub, "stable"), [f"release modsys {REL} (stable)"])
         self.assertEqual(sorted(git(self.pub, "tag", "--points-at", "stable").split()),
-                         [t.format("0.1.0") for t in TAGS])
+                         [t.format(REL) for t in TAGS])
         self.assertEqual(self.log(self.pub, "dev"), [f"release modsys {version} (dev)"])
         self.assertEqual(git(self.pub, "symbolic-ref", "HEAD").strip(), "refs/heads/stable")
         self.assertEqual(json.loads((self.pub / ".claude-plugin/marketplace.json")
                                     .read_text())["name"], "modsys")
         log = (self.pub / "CHANGELOG.md").read_text()
-        self.assertIn("- 0.1.0 (stable): engine ", log)
+        self.assertIn(f"- {REL} (stable): engine ", log)
         self.assertNotIn("(dev)", log)  # the channel's own entries only
-        self.assertIn("bin/modsys --version = modsys 0.1.0", proc.stdout)
+        self.assertIn(f"bin/modsys --version = modsys {REL}", proc.stdout)
         self.assertIn(f"  git -C {shlex.quote(str(self.pub))} push --atomic origin "
                       "refs/heads/stable "
-                      "refs/tags/v0.1.0 refs/tags/modsys--v0.1.0 refs/tags/modsys-ui--v0.1.0 "
-                      f"refs/tags/modsys-qa--v0.1.0\n  git -C {self.engine} push --atomic "
-                      "origin refs/heads/main refs/tags/v0.1.0\n", proc.stdout)
+                      f"refs/tags/v{REL} refs/tags/modsys--v{REL} refs/tags/modsys-ui--v{REL} "
+                      f"refs/tags/modsys-qa--v{REL}\n  git -C {self.engine} push --atomic "
+                      f"origin refs/heads/main refs/tags/v{REL}\n", proc.stdout)
         self.assertEqual(list(self.pub.rglob("__pycache__")), [])
         self.assertNotIn("push", (self.base / "git.log").read_text().split())
         self.assertNotIn("example-org", git(self.engine, "log", "-p", "HEAD~2..HEAD"))  # D13
@@ -283,8 +287,8 @@ class RunTest(ReleaseRepo):  # P6-AC-014, 015, 017
         self.assert_ok(self.release("stable"))
         dev, stable = self.log(self.pub, "dev"), self.log(self.pub, "stable")
         self.assertEqual(dev[1:], ["the owner's content"])
-        self.assertEqual(stable, ["release modsys 0.1.0 (stable)", "the owner's content"])
-        self.assertRegex(dev[0], r"^release modsys 0\.1\.0-dev\.h[0-9a-f]{8} \(dev\)$")
+        self.assertEqual(stable, [f"release modsys {REL} (stable)", "the owner's content"])
+        self.assertRegex(dev[0], rf"^release modsys {re.escape(REL)}-dev\.h[0-9a-f]{{8}} \(dev\)$")
         for branch in ("dev", "stable"):
             self.assertEqual(git(self.pub, "show", f"{branch}:plugins/other-tool/plugin.json"),
                              '{"name": "other-tool"}\n')
@@ -296,17 +300,17 @@ class RunTest(ReleaseRepo):  # P6-AC-014, 015, 017
         self.assert_ok(self.release("stable"))
         self.assertEqual({k: git(r, "for-each-ref") for k, r in remotes.items()}, before)
         self.assertNotIn(" push", " " + (self.base / "git.log").read_text())
-        git(self.engine, "tag", "-d", "v0.1.0")  # a second stable run to push: 0.1.1
+        git(self.engine, "tag", "-d", f"v{REL}")  # a second stable run to push: the next release
         proc = self.release("stable", "--push")
         self.assert_ok(proc)
         self.assertEqual(sorted(self.refs(remotes["publish"])),
-                         ["refs/heads/stable", "refs/tags/modsys--v0.1.1",
-                          "refs/tags/modsys-qa--v0.1.1", "refs/tags/modsys-ui--v0.1.1",
-                          "refs/tags/v0.1.1"])
+                         ["refs/heads/stable", f"refs/tags/modsys--v{NXT}",
+                          f"refs/tags/modsys-qa--v{NXT}", f"refs/tags/modsys-ui--v{NXT}",
+                          f"refs/tags/v{NXT}"])
         self.assertEqual(sorted(self.refs(remotes["engine"])),
-                         ["refs/heads/main", "refs/tags/v0.1.1"])
-        self.assertIn("push: publish repo stable, v0.1.1, modsys--v0.1.1, modsys-ui--v0.1.1, "
-                      "modsys-qa--v0.1.1; engine main, v0.1.1\n", proc.stdout)
+                         ["refs/heads/main", f"refs/tags/v{NXT}"])
+        self.assertIn(f"push: publish repo stable, v{NXT}, modsys--v{NXT}, modsys-ui--v{NXT}, "
+                      f"modsys-qa--v{NXT}; engine main, v{NXT}\n", proc.stdout)
         pushes = [l for l in (self.base / "git.log").read_text().splitlines() if " push " in
                   f" {l} "]
         self.assertEqual(len(pushes), 2, pushes)
@@ -389,19 +393,19 @@ class CloneTest(ReleaseRepo):  # final review I-3: a fresh clone of the publish 
         self.assertIn("nothing to release", proc.stdout)
         self.assertEqual(self.state(clone), before)
         self.assertEqual(git(clone, "config", "--get-regexp", "^branch\\.").count("dev"), 0)
-        self.assert_ok(self.release("stable"))  # 0.1.0, from the first clone
+        self.assert_ok(self.release("stable"))  # the release, from the first clone
         git(self.pub, "push", "-q", "origin", "stable", "--tags")
         git(clone, "fetch", "-q", "--tags", "origin")
-        proc = self.release("stable", pub=clone)  # 0.1.1, on top of what is published
+        proc = self.release("stable", pub=clone)  # the next release, on top of what is published
         self.assert_ok(proc)
-        self.assertEqual(self.log(clone, "stable"), ["release modsys 0.1.1 (stable)",
-                                                     "release modsys 0.1.0 (stable)", "root"])
+        self.assertEqual(self.log(clone, "stable"), [f"release modsys {NXT} (stable)",
+                                                     f"release modsys {REL} (stable)", "root"])
         self.assertEqual(git(clone, "rev-parse", "stable~1"),
                          git(clone, "rev-parse", "origin/stable"))
         self.assertEqual(git(clone, "config", "branch.stable.merge").strip(),
                          "refs/heads/stable")  # it tracks origin's
         git(clone, "push", "-q", "--atomic", "origin", "refs/heads/stable",
-            *(f"refs/tags/{t.format('0.1.1')}" for t in TAGS))  # a fast-forward: accepted
+            *(f"refs/tags/{t.format(NXT)}" for t in TAGS))  # a fast-forward: accepted
         git(self.pub, "fetch", "-q", "origin")  # the first clone is now behind origin/stable
         before = self.both()
         proc = self.release("stable")
@@ -422,15 +426,15 @@ class PushTest(ReleaseRepo):  # final review I-4, M-9: the push is never put bac
         self.assertIn("— nothing is put back: the release is committed and tagged locally; "
                       "pushed: nothing; left to push by hand:\n"
                       f"  git -C {shlex.quote(str(self.pub))} push --atomic origin "
-                      "refs/heads/stable refs/tags/v0.1.0 ", proc.stderr)
+                      f"refs/heads/stable refs/tags/v{REL} ", proc.stderr)
         self.assertIn(f"\n  git -C {self.engine} push --atomic origin refs/heads/main "
-                      "refs/tags/v0.1.0\n", proc.stderr)
+                      f"refs/tags/v{REL}\n", proc.stderr)
         self.assertNotIn("as they were", proc.stderr)
         self.assertEqual(git(self.engine, "log", "--format=%s", "-3").splitlines(),
-                         ["start modsys 0.1.1.dev0", "release modsys 0.1.0", "engine"])
-        self.assertEqual(git(self.engine, "tag", "-l").split(), ["v0.1.0"])
+                         [f"start modsys {NXT_DEV}", f"release modsys {REL}", "engine"])
+        self.assertEqual(git(self.engine, "tag", "-l").split(), [f"v{REL}"])
         self.assertEqual(sorted(git(self.pub, "tag", "--points-at", "stable").split()),
-                         [t.format("0.1.0") for t in TAGS])
+                         [t.format(REL) for t in TAGS])
         self.assertEqual(list(self.tmpdir.iterdir()), [])
 
     def test_ctrl_c_during_the_engine_push_resets_nothing(self):
@@ -442,15 +446,15 @@ class PushTest(ReleaseRepo):  # final review I-4, M-9: the push is never put bac
         self.assertIn("release.py: interrupted during the push — nothing is put back", proc.stderr)
         self.assertIn("pushed: publish repo; left to push by hand:\n"
                       f"  git -C {self.engine} push --atomic origin refs/heads/main "
-                      "refs/tags/v0.1.0\n", proc.stderr)
+                      f"refs/tags/v{REL}\n", proc.stderr)
         self.assertNotIn(f"git -C {shlex.quote(str(self.pub))} push", proc.stderr)
         self.assertEqual(sorted(self.refs(remotes["publish"])),
-                         ["refs/heads/stable"] + [f"refs/tags/{t.format('0.1.0')}" for t in TAGS])
+                         ["refs/heads/stable"] + [f"refs/tags/{t.format(REL)}" for t in TAGS])
         self.assertEqual(self.refs(remotes["engine"]), ["refs/heads/main"])
         self.assertEqual(git(self.engine, "log", "--format=%s", "-3").splitlines(),
-                         ["start modsys 0.1.1.dev0", "release modsys 0.1.0", "engine"])
-        self.assertEqual(git(self.engine, "tag", "-l").split(), ["v0.1.0"])
-        self.assertEqual(self.log(self.pub, "stable"), ["release modsys 0.1.0 (stable)"])
+                         [f"start modsys {NXT_DEV}", f"release modsys {REL}", "engine"])
+        self.assertEqual(git(self.engine, "tag", "-l").split(), [f"v{REL}"])
+        self.assertEqual(self.log(self.pub, "stable"), [f"release modsys {REL} (stable)"])
         self.assertEqual(git(self.pub, "rev-parse", "stable"),
                          git(remotes["publish"], "rev-parse", "stable"))
 
@@ -561,15 +565,15 @@ class NoopTest(ReleaseRepo):  # P6-AC-029
         after = self.log(self.pub, "dev")
         self.assertEqual(after[1:], first)
         self.assertNotEqual(after[0], first[0])
-        self.assertRegex(after[0], r"^release modsys 0\.1\.0-dev\.h[0-9a-f]{8} \(dev\)$")
+        self.assertRegex(after[0], rf"^release modsys {re.escape(REL)}-dev\.h[0-9a-f]{{8}} \(dev\)$")
 
     def test_stable_again_is_refused(self):
         self.assert_ok(self.release("stable"))
         subprocess.run(["git", "-C", str(self.engine), "reset", "-q", "--hard", "HEAD~1"],
-                       check=True)  # back at the 0.1.0 release commit: v0.1.0 exists
+                       check=True)  # back at the release commit: its tag exists
         proc = self.release("stable")
         self.assertEqual(proc.returncode, 2)
-        self.assertIn("v0.1.0 already exists", proc.stderr)
+        self.assertIn(f"v{REL} already exists", proc.stderr)
 
 
 class RefusalTest(ReleaseRepo):  # P6-AC-030 (SI-1, SI-16, SI-17)
@@ -626,11 +630,11 @@ class RefusalTest(ReleaseRepo):  # P6-AC-030 (SI-1, SI-16, SI-17)
         (self.pub / "scratch.txt").write_text("x\n")
         self.assertIn("the publish repo is dirty: scratch.txt", self.refused())
         (self.pub / "scratch.txt").unlink()
-        git(self.engine, "tag", "v0.1.0")
-        self.assertIn("v0.1.0 already exists in the engine", self.refused())
-        git(self.engine, "tag", "-d", "v0.1.0")
+        git(self.engine, "tag", f"v{REL}")
+        self.assertIn(f"v{REL} already exists in the engine", self.refused())
+        git(self.engine, "tag", "-d", f"v{REL}")
         self.commit(self.pub, "x.txt", "x\n", "x")
-        for tag in ("v0.1.0", "modsys-ui--v0.1.0"):
+        for tag in (f"v{REL}", f"modsys-ui--v{REL}"):
             git(self.pub, "tag", tag)
             self.assertIn(f"{tag} already exists in the publish repo", self.refused())
             git(self.pub, "branch", tag)  # a branch of the same name hides nothing
@@ -657,14 +661,14 @@ class RefusalTest(ReleaseRepo):  # P6-AC-030 (SI-1, SI-16, SI-17)
         self.assertEqual(sorted(p.name for p in outside.rglob("*")), ["THEIRS.txt", "modsys"])
         git(self.pub, "rm", "-q", "--", ".agents/plugins")
         git(self.pub, "commit", "-q", "-m", "no file")
-        for rel, old, new in (("modsys/__init__.py", '__version__ = "0.1.0.dev0"',
-                               '__version__ = "0.1.0"'),
-                              ("pyproject.toml", 'version = "0.1.0.dev0"', 'version = "0.1.0"')):
+        for rel, old, new in (("modsys/__init__.py", f'__version__ = "{ENG}"',
+                               f'__version__ = "{REL}"'),
+                              ("pyproject.toml", f'version = "{ENG}"', f'version = "{REL}"')):
             path = self.engine / rel
             path.write_text(path.read_text().replace(old, new))
-        git(self.engine, "commit", "-q", "-am", "0.1.0 by hand")
+        git(self.engine, "commit", "-q", "-am", f"{REL} by hand")
         err = self.refused()
-        self.assertIn("the engine's __version__ is 0.1.0, without .devN — a stable release "
+        self.assertIn(f"the engine's __version__ is {REL}, without .devN — a stable release "
                       "makes the release commit itself", err)
         self.assertFalse((self.base / "claude.log").exists())  # before the suite, the build
 
@@ -948,10 +952,10 @@ class SectionsTest(unittest.TestCase):  # P6-AC-016: only our sections change
                          f"Intro.\n\n{begin}\nbody\n{end}\n")
         self.assertEqual(release.replace_section(f"a\n{begin}\nold\n{end}\nz\n", begin, end,
                                                  "new\n"), f"a\n{begin}\nnew\n{end}\nz\n")
-        log = release.changelog("# Changes\n\n- theirs\n", "- 0.1.0 (stable): engine abc")
+        log = release.changelog("# Changes\n\n- theirs\n", f"- {REL} (stable): engine abc")
         self.assertTrue(log.startswith("# Changes\n\n- theirs\n\n"))
-        log = release.changelog(log, "- 0.1.1 (stable): engine def")
-        self.assertIn("## modsys\n\n- 0.1.1 (stable): engine def\n- 0.1.0 (stable): engine "
+        log = release.changelog(log, f"- {NXT} (stable): engine def")
+        self.assertIn(f"## modsys\n\n- {NXT} (stable): engine def\n- {REL} (stable): engine "
                       "abc\n", log)
         self.assertEqual(log.count(release.LOG_BEGIN), 1)
 
@@ -963,11 +967,11 @@ class SectionsTest(unittest.TestCase):  # P6-AC-016: only our sections change
         self.assertEqual(release.replace_section(f"a\r\n{begin}\r\nold\r\n{end}\r\nz\r\n",
                                                  begin, end, "new\n"),
                          f"a\r\n{begin}\r\nnew\r\n{end}\r\nz\r\n")
-        log = release.changelog("# Changes\r\n\r\n- theirs\r\n", "- 0.1.0 (dev): engine abc")
-        log = release.changelog(log, "- 0.1.1 (dev): engine def")
+        log = release.changelog("# Changes\r\n\r\n- theirs\r\n", f"- {REL} (dev): engine abc")
+        log = release.changelog(log, f"- {NXT} (dev): engine def")
         self.assertEqual(log, "# Changes\r\n\r\n- theirs\r\n\r\n"
-                              f"{release.LOG_BEGIN}\r\n## modsys\r\n\r\n- 0.1.1 (dev): engine "
-                              f"def\r\n- 0.1.0 (dev): engine abc\r\n{release.LOG_END}\r\n")
+                              f"{release.LOG_BEGIN}\r\n## modsys\r\n\r\n- {NXT} (dev): engine "
+                              f"def\r\n- {REL} (dev): engine abc\r\n{release.LOG_END}\r\n")
 
     def test_damaged_markers_fail_naming_the_file(self):
         release = load_tool("release")
@@ -981,7 +985,7 @@ class SectionsTest(unittest.TestCase):  # P6-AC-016: only our sections change
                         if where == "README.md":
                             release.replace_section(text, begin, end, "new\n")
                         else:
-                            release.changelog(text, "- 0.1.0 (dev): engine abc")
+                            release.changelog(text, f"- {REL} (dev): engine abc")
                     self.assertIn(f"{where}: the markers of the modsys section are damaged",
                                   str(caught.exception))
 
