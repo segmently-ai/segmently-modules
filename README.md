@@ -17,6 +17,10 @@ Status: pre-release, private. Python ≥ 3.11, stdlib only; git for `coverage`,
 
 Pick the route your agent uses — every one gives the same `modsys` command line.
 
+**Python.** modsys needs Python ≥ 3.11. Stock macOS ships 3.9 at `/usr/bin/python3`, which is too
+old: `uvx` (or `uv tool install`) fetches a suitable Python by itself, or `brew install python`
+and use that one.
+
 **Claude Code** — the plugin carries the skills and the command line:
 
 ```bash
@@ -75,6 +79,21 @@ pipx install git+ssh://git@github.com/<owner>/<repo>.git      # needs a Python 3
 ```
 
 Add `@v<version>` to the URL to pin a release tag.
+
+## The shortest start
+
+```bash
+modsys setup                       # init, packs sync and the agents-md block in one command (--dry-run first)
+modsys next                        # the daily loop: what the repository needs now, with the command for each
+modsys roles add designer --all    # a new role: its doc for every existing module (--dry-run first)
+```
+
+`modsys setup` picks the agents from the skill directories it finds (else `claude` and `codex`)
+and writes `CLAUDE.md` for Claude and `AGENTS.md` for every other agent. Gemini CLI reads
+`GEMINI.md`, so run `modsys setup --target GEMINI.md` for it. `modsys next` is read-only: one
+ranked list of what to fix (lint errors, stale skill copies, a role without docs, …), each item
+with the modsys command that fixes it. `modsys roles list` shows, per role, which modules have its
+doc and which do not.
 
 ## Greenfield in 5 minutes
 

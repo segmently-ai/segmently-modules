@@ -65,6 +65,15 @@ python3 tools/publish.py --channel dev --out /tmp/publish   # a publish tree to 
 lays out `plugins/` with both marketplace files — `.claude-plugin/marketplace.json` and
 `.agents/plugins/marketplace.json` (Codex) — without touching any repository.
 
+## Release notes
+
+Before a stable release write its notes in `CHANGELOG.md`, as lines under the `## [Unreleased]`
+heading (Keep a Changelog style). A stable release is refused without them. The release commit
+dates the section: `## [Unreleased]` becomes `## [X.Y.Z] - DATE` below a new, empty
+`## [Unreleased]`; set `MODSYS_RELEASE_DATE=YYYY-MM-DD` for a fixed date, else the local date is
+used. The notes also go into the publish repository's changelog entry. A dev release publishes
+the pending `[Unreleased]` lines, or `no notes yet` when there are none.
+
 ## Release
 
 ```bash
@@ -150,8 +159,8 @@ to run the `claude plugin eval` suite by hand on a machine that allows it.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push (branches and tags — so on every commit of a pull
-request from a branch of the repository), on Python 3.11 and 3.14, within 45 minutes: the unit
+`.github/workflows/ci.yml` runs on a push to `main`, on version tags (`v*`) and on pull requests
+(a pull request's branch is not run twice), on Python 3.11 and 3.14, within 45 minutes: the unit
 suite, the adoption eval, two plugin builds compared byte for byte, the launcher test under
 `dash`, and — with Claude Code installed as it comes, without credentials — `claude plugin
 validate --strict` on the three plugins and the dev marketplace plus a throw-away install

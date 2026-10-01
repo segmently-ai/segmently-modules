@@ -122,6 +122,20 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    the hook messages, the `ci` result, and the files no module owns. Ask the user to review
    and commit — never commit yourself.
 
+## A new role
+
+When the team (or a newer modsys) adds a role, the existing modules lack its doc. Add it to all
+of them, one step at a time:
+
+1. `modsys roles add ROLE --all --dry-run` — show the plan to the user: which docs would be
+   created or registered, and which registered docs are missing on disk.
+2. `modsys roles add ROLE --all --json` — writes the docs; one that already exists is never
+   overwritten. Add `--recreate` only for a registered doc whose file is gone.
+3. Fill each new doc with what that role needs for that module, from the module's code and
+   docs — one module at a time, never inventing components.
+4. `modsys lint --json` — fix what the new docs caused.
+5. `modsys next --json` — report what is left.
+
 ## Gates
 
 Autonomous by default: it decides and applies. It stops and asks only when:

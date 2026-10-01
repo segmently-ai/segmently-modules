@@ -283,6 +283,15 @@ managed block `modsys agents-md` keeps in agent instruction files (`${modules_di
 `${title}`, `${description}`, `${status}`, `${keywords}`, `${parent}`, `${role}`,
 `${role_description}`, `${article}` (`a` or `an`, for the role name that follows it).
 
+**A role added after modules exist.** `create` only scaffolds docs for new modules. Once a role
+is declared (here, in a pack, or by a newer engine), give the EXISTING modules its doc with
+`modsys roles add ROLE --all` — run it with `--dry-run` first; it renders the doc as `create`
+would, registers it, never overwrites a file that is already there, and writes nothing when
+nothing is missing. `--recreate` writes the doc of a registered role whose file is gone.
+`modsys roles list` shows, per role, the modules that have its doc and those that do not;
+`modsys next` names a standard role with missing docs (for instance after an upgrade) together
+with the command. Fill each new doc with what that role needs for that module.
+
 `modsys templates list` prints every template with the layer that wins (`override`,
 `role-template:<pack>`, `pack:<pack>`, `engine`, or `engine-fallback` for a role rendered from
 `roles/_role.md`) and its file. `modsys templates override roles/qa.md` copies the winning

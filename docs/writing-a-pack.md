@@ -64,6 +64,14 @@ child's `…/submodules/<child>/roles/<role>.md`). Placeholders: `${title}`, `${
 `modsys templates list` shows which file wins for each role; the team can still override any
 template with `modsys templates override roles/<role>.md`.
 
+**Existing modules.** A pack that declares a role only affects modules created afterwards.
+For modules that already exist, run `modsys roles add ROLE --all` (`--dry-run` first): it
+renders this template for each module and registers the doc, never overwrites a file that is
+already there, and `--recreate` rewrites the doc of a registered role whose file is gone.
+`modsys roles list` shows which modules have the role's doc and which do not, and `modsys next`
+names a standard role without docs, with the command to run, after an upgrade. Then fill each
+new doc with what the role needs for that module.
+
 ## Walkthrough
 
 Scaffold a pack with one role and one skill that reads it:
