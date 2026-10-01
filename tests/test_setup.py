@@ -313,6 +313,50 @@ class OrderTest(unittest.TestCase):  # P61-AC-018 (D5, SI-P61-13)
         self.assertIn("--target GEMINI.md", " ".join(out.split()))
 
 
+class BlockTargetsTest(unittest.TestCase):  # final review M-2: the files that hold a block
+    """Without --target, setup refreshes the instruction files that already hold a modsys
+    block (the files `next` checks); D5's default applies only when none does."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = empty_repo(Path(self._tmp.name).resolve())
+        self.R = ("--root", str(self.root))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_a_plain_setup_refreshes_the_gemini_block(self):
+        first = setup_json(self.root, "--agent", "gemini", "--target", "GEMINI.md")
+        self.assertEqual((first["agents"], first["targets"]), (["gemini"], ["GEMINI.md"]))
+        with open(self.root / ".modsys/config.toml", "a", encoding="utf-8") as fh:
+            fh.write("\n[roles.po]\nenabled = false\n")  # the block's render changes
+        stale = (self.root / "GEMINI.md").read_text(encoding="utf-8")
+        self.assertNotEqual(stale, block(self.root))
+        before = snap(self.root)
+        dry = setup_json(self.root, "--dry-run")
+        self.assertEqual(dry["targets"], ["GEMINI.md"])
+        self.assertEqual(detail(dry, "agents-md")["targets"],
+                         [{"path": "GEMINI.md", "status": "updated"}])
+        self.assertEqual(snap(self.root), before)
+        data = setup_json(self.root)
+        self.assertEqual((data["agents"], data["targets"]), (["codex"], ["GEMINI.md"]))
+        self.assertEqual(statuses(data), ["exists", "unchanged", "updated"])
+        self.assertEqual((self.root / "GEMINI.md").read_text(encoding="utf-8"), block(self.root))
+        for absent in ("AGENTS.md", "CLAUDE.md"):
+            self.assertFalse((self.root / absent).exists(), absent)
+        code, out, err = run("setup", *self.R)
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("agents-md   unchanged    GEMINI.md", out.splitlines())
+        self.assertIn("targets     GEMINI.md", out.splitlines())
+
+    def test_every_file_that_holds_a_block_in_next_order(self):
+        for rel in (".github/copilot-instructions.md", "CLAUDE.md"):
+            must("agents-md", "--target", rel, *self.R)
+        write(self.root / "AGENTS.md", "# Agents\n\nNo modsys block here.\n")
+        data = setup_json(self.root, "--agent", "codex", "--dry-run")
+        self.assertEqual(data["targets"], ["CLAUDE.md", ".github/copilot-instructions.md"])
+
+
 class TeamFilesTest(unittest.TestCase):  # P61-AC-030
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

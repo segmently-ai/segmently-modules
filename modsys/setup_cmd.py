@@ -6,9 +6,11 @@ Three existing steps run in-process, in order — each writes exactly what its o
   packs sync  `modsys packs sync` for the agents: `--agent`, else `[packs] agents`, else the
               agents whose skill directories hold copies an earlier sync made (a marker in
               `.agents/skills` means codex), else claude and codex
-  agents-md   `modsys agents-md` for the targets: `--target`, else CLAUDE.md when claude is
-              chosen and AGENTS.md when any other agent is (Gemini CLI reads GEMINI.md:
-              `--target GEMINI.md`)
+  agents-md   `modsys agents-md` for the targets: `--target`, else the instruction files at
+              the root that already hold a modsys block (CLAUDE.md, AGENTS.md, GEMINI.md,
+              .github/copilot-instructions.md — the files `next` checks), else CLAUDE.md when
+              claude is chosen and AGENTS.md when any other agent is (Gemini CLI reads
+              GEMINI.md: `--target GEMINI.md`)
 
 Each step reports one status — `created` (a new file or copy), `updated` (only existing ones
 changed: init appended `.gitignore` lines), `unchanged`, `exists` (init: nothing was missing),
@@ -32,6 +34,7 @@ from types import SimpleNamespace
 from modsys.agents_md_cmd import _target, agents_md
 from modsys.config import builtin_delivery
 from modsys.init_cmd import init_root, plan_init, starter
+from modsys.next_cmd import block_files
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.packs_cmd import _hint, sync as packs_sync
 from modsys.skill_sync import STATUSES, managed_agents
@@ -54,9 +57,12 @@ def register(sub, common) -> None:
                                    "and agents-md for the instruction files. Agents: --agent, "
                                    "else [packs] agents, else the agents whose skill "
                                    "directories already hold copies packs sync made, else "
-                                   "claude and codex. Targets: --target, else CLAUDE.md when "
-                                   "claude is chosen and AGENTS.md when any other agent is; "
-                                   "Gemini CLI reads GEMINI.md: add --target GEMINI.md. A "
+                                   "claude and codex. Targets: --target, else the instruction "
+                                   "files that already hold a modsys block (CLAUDE.md, "
+                                   "AGENTS.md, GEMINI.md, .github/copilot-instructions.md), "
+                                   "else CLAUDE.md when claude is chosen and AGENTS.md when "
+                                   "any other agent is; Gemini CLI reads GEMINI.md: add "
+                                   "--target GEMINI.md. A "
                                    "second run writes nothing. A refused step stops setup "
                                    "(exit 2, naming the step); a skill copy in conflict lets "
                                    "the later steps run and setup exits 1.")
@@ -67,8 +73,9 @@ def register(sub, common) -> None:
                         "and codex)")
     p.add_argument("--target", action="append", dest="targets", metavar="FILE",
                    help="a root-relative instruction file for the modsys block (repeatable; "
-                        "default: CLAUDE.md for claude, AGENTS.md for the other agents; for "
-                        "Gemini CLI: --target GEMINI.md)")
+                        "default: the instruction files that already hold one, else CLAUDE.md "
+                        "for claude and AGENTS.md for the other agents; for Gemini CLI: "
+                        "--target GEMINI.md)")
     p.add_argument("--dry-run", action="store_true",
                    help="report what each step would do, write nothing")
     p.set_defaults(func=run)
@@ -125,7 +132,13 @@ def choose_agents(ws, flags: list[str] | None) -> list[str]:
                               or DEFAULT_AGENTS))
 
 
-def default_targets(agents: list[str]) -> list[str]:
+def default_targets(root: Path, agents: list[str]) -> list[str]:
+    """The instruction files at `root` that already hold a modsys block (`next`'s set and
+    order, `block_files`); when none does, CLAUDE.md for claude and AGENTS.md for any other
+    agent (D5)."""
+    held = list(block_files(root))
+    if held:
+        return held
     return (["CLAUDE.md"] if "claude" in agents else []) + \
         (["AGENTS.md"] if any(a != "claude" for a in agents) else [])
 
@@ -198,7 +211,7 @@ def setup(root: Path, config_dir: Path, agents: list[str] | None, targets: list[
     try:
         with _workspace(root, config_dir, pending) as ws:
             chosen = choose_agents(ws, agents)
-            targets = targets or default_targets(chosen)
+            targets = targets or default_targets(root, chosen)
             synced = packs_sync(ws, chosen, check=False, dry_run=dry_run)
             steps.append({"step": step, "status": sync_status(synced), "detail": synced})
             step = "agents-md"

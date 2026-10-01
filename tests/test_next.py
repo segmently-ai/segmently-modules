@@ -318,6 +318,79 @@ class GitIndexTest(unittest.TestCase):  # P61-AC-013 (the git index; review fix 
                         self.assertEqual(list(scratch.iterdir()), [])
 
 
+class UncommittedDriftTest(unittest.TestCase):  # final review I-1 (P61-AC-015's command)
+    """`sync-instructions --from-diff REF..HEAD` sees commits only: drift that includes an
+    uncommitted or untracked file names the drifted modules instead (`--module`, one per
+    module, in registry order) — a command that reports them."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = root = copy_fixture(Path(self._tmp.name).resolve())
+        write(root / ".modsys/config.toml", '[[code_map]]\nid = "src"\npattern = '
+                                            '"src/{module}/**"\n')
+        for module in ("checkout", "payments"):
+            write(root / f"src/{module}/api.py", "API = []\n")
+        mutate_registry(root, lambda d: d.update(modules={  # registry order is not sorted order
+            name: d["modules"][name] for name in ("payments", "checkout", "catalog")}))
+        init_git(root)
+        git(root, "checkout", "-q", "-b", "work")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def drift(self) -> list[tuple]:
+        return [i for i in rows(nxt(self.root, "--base", "main")) if i[0] == "drift"]
+
+    def reported(self, command: str) -> list[str]:
+        """Run a `sync-instructions` command `next` printed; the modules it reports."""
+        code, env, err = run_json(*shlex.split(command)[1:], "--root", str(self.root))
+        self.assertEqual((code, err), (0, ""))
+        return [m["module"] for m in env["data"]["modules"]]
+
+    def test_an_uncommitted_edit(self):  # the review's probe: an edited, uncommitted file
+        append(self.root / "src/catalog/service.py", "# changed\n")
+        self.assertEqual(self.drift(), [
+            ("drift", "drift since main: code changed without a doc update: catalog",
+             "modsys sync-instructions --module catalog")])
+        self.assertEqual(self.reported("modsys sync-instructions --module catalog"),
+                         ["catalog"])
+        self.assertEqual(self.reported("modsys sync-instructions --from-diff main..HEAD"), [])
+
+    def test_committed_untracked_and_edited_modules_in_registry_order(self):
+        append(self.root / "src/catalog/service.py", "# committed\n")
+        git(self.root, "commit", "-q", "-am", "catalog")
+        write(self.root / "src/checkout/cart.py", "CART = []\n")  # untracked
+        append(self.root / "src/payments/api.py", "# edited\n")  # tracked, not committed
+        command = "modsys sync-instructions --module payments --module checkout --module catalog"
+        self.assertEqual(self.drift(), [
+            ("drift", "drift since main: code changed without a doc update: catalog, checkout, "
+                      "payments", command)])
+        self.assertEqual(self.reported(command), ["payments", "checkout", "catalog"])
+
+    def test_a_snapshot_outside_the_modules_dir_names_no_module(self):
+        write(self.root / "docs/setup.legacy.md", "# Old setup\n")
+        git(self.root, "add", "docs/setup.legacy.md")
+        git(self.root, "commit", "-q", "-m", "snapshot")
+        git(self.root, "checkout", "-q", "-b", "later")
+        append(self.root / "docs/setup.legacy.md", "Edited.\n")  # not committed
+        drift = [i for i in rows(nxt(self.root, "--base", "work")) if i[0] == "drift"]
+        self.assertEqual(drift, [("drift", "drift since work: a frozen snapshot changed: *",
+                                  "modsys lint --changed --base work")])
+        code, env, err = run_json("lint", "--changed", "--base", "work", "--root",
+                                  str(self.root))
+        self.assertEqual([(f["code"], f["path"]) for f in env["data"]["findings"]],
+                         [("MS051", "docs/setup.legacy.md")])
+
+    def test_committed_drift_keeps_the_range(self):  # P61-AC-015 as it was
+        append(self.root / "src/catalog/service.py", "# committed\n")
+        git(self.root, "commit", "-q", "-am", "catalog")
+        write(self.root / "notes.txt", "maps to no module\n")  # untracked, but no drift
+        command = "modsys sync-instructions --from-diff main..HEAD"
+        self.assertEqual(self.drift(), [
+            ("drift", "drift since main: code changed without a doc update: catalog", command)])
+        self.assertEqual(self.reported(command), ["catalog"])
+
+
 class NothingToDoTest(unittest.TestCase):  # P61-AC-012
     def test_a_clean_bookshop_after_setup_by_hand(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -635,6 +708,15 @@ class ContractTest(unittest.TestCase):  # P61-AC-026, P61-AC-037 (the `next` par
         code, out, err = run("next", "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
         self.assertTrue(err.startswith("modsys: error: "), err)
+
+    def test_a_root_that_is_not_a_directory(self):  # final review M-1: as setup and init
+        for root in (self.root / "nowhere", self.root / "modules/registry.json"):
+            for extra in ((), ("--json",)):
+                with self.subTest(root=root.name, extra=extra):
+                    self.assertEqual(run("next", *extra, "--root", str(root)),
+                                     (2, "", f"modsys: error: --root {root} is not a "
+                                             f"directory\n"))
+        self.assertFalse((self.root / "nowhere").exists())
 
     def test_an_internal_failure_and_ctrl_c(self):
         with mock.patch.dict(os.environ):

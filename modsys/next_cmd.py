@@ -19,7 +19,9 @@ The kinds, in rank order (D4):
   proposals     the pending proposal files
   lint-warning  the other lint warnings, counted, with their codes (MS063 never twice, SI-P61-6)
   unmapped      the files no module maps — only with a `[[code_map]]` rule, inside git
-  drift         with --base: MS050 / MS051 since REF (`sync-instructions --from-diff REF..HEAD`)
+  drift         with --base: MS050 / MS051 since REF (`sync-instructions --from-diff REF..HEAD`;
+                drift that includes an uncommitted or untracked file: `sync-instructions
+                --module M` per drifted module, in registry order)
 A kind that cannot run is named in `skipped` (JSON only) with the reason. No config and no
 registry: one item, `modsys setup` (SI-P61-8). Exit 0 with or without items."""
 import contextlib
@@ -27,20 +29,22 @@ import os
 import re
 import shutil
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from shlex import quote
 
 from modsys import __version__
 from modsys.agents_md_cmd import _BEGIN, END, _bare, _lines, agents_md
-from modsys.changes import commit_ref, git, repo_files, work_tree_error
+from modsys.changes import changed_files, commit_ref, git, map_files, repo_files, work_tree_error
 from modsys.config import enabled_roles
 from modsys.coverage_cmd import coverage_report
+from modsys.init_cmd import init_root
 from modsys.lint import drift_report, lint_registry
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.packs_cmd import sync as packs_sync
 from modsys.proposals import pending
 from modsys.registry import as_list
-from modsys.roles_cmd import role_rows
+from modsys.roles_cmd import all_targets, role_rows
 from modsys.skill_sync import managed_agents
 from modsys.workspace import Workspace, find_root
 
@@ -78,10 +82,11 @@ def register(sub, common) -> None:
 
 
 def _root(args) -> Path:
-    """`--root`, else the root `find_root` finds, else the current directory: a directory with
+    """`--root` (resolved; refused unless it is an existing directory, as `setup` and `init`
+    refuse it), else the root `find_root` finds, else the current directory: a directory with
     no root marker and no git above it is a place where modsys is not set up yet."""
-    if args.root:
-        return args.root
+    if args.root is not None:
+        return init_root(args.root)
     try:
         return find_root(Path.cwd())
     except UsageError:
@@ -130,21 +135,32 @@ def _holds_block(path: Path) -> bool:
     return any(_BEGIN.fullmatch(_bare(line)) or _bare(line) == END for line in _lines(text))
 
 
-def stale_blocks(ws, skipped: list[str]) -> list[tuple]:
-    """One item per instruction file at the root that holds a modsys block differing from its
-    render (`agents-md --check`); a file without a block is none of `next`'s business, one that
-    cannot be checked (malformed markers, not UTF-8) is named in `skipped`. A file that is
-    another one's symlink counts once."""
-    out, seen = [], set()
+def block_files(root: Path, skipped: list[str] | None = None) -> Iterator[str]:
+    """The instruction files at `root` (INSTRUCTION_FILES, in that order) that hold a modsys
+    block — a begin or an end marker, malformed ones included; a file that is another one's
+    symlink counts once. One that cannot be read is left out (named in `skipped` when given,
+    as the iteration reaches it). `next` checks these; `setup` refreshes them when no
+    --target is given."""
+    seen = set()
     for rel in INSTRUCTION_FILES:
-        path = ws.root / rel
+        path = root / rel
         try:
             if not path.is_file() or os.path.realpath(path) in seen or not _holds_block(path):
                 continue
         except OSError as e:
-            skipped.append(f"agents-md: cannot read {rel}: {e.strerror or e}")
+            if skipped is not None:
+                skipped.append(f"agents-md: cannot read {rel}: {e.strerror or e}")
             continue
         seen.add(os.path.realpath(path))
+        yield rel
+
+
+def stale_blocks(ws, skipped: list[str]) -> list[tuple]:
+    """One item per instruction file at the root that holds a modsys block (`block_files`)
+    differing from its render (`agents-md --check`); a file without a block is none of `next`'s
+    business, one that cannot be checked (malformed markers, not UTF-8) is named in `skipped`."""
+    out = []
+    for rel in block_files(ws.root, skipped):
         try:
             status = agents_md(ws, [rel], check=True, dry_run=False)["targets"][0]["status"]
         except UsageError as e:
@@ -236,13 +252,18 @@ def index_copy(root: Path):
 def drift(ws, base: str | None, no_git: str | None) -> list[tuple]:
     """`ci`'s drift since `base` (the working tree and new files against it): the targets
     whose code changed without a doc update (MS050) and frozen snapshots changed (MS051) —
-    computed against a copy of the git index (`index_copy`)."""
+    computed against a copy of the git index (`index_copy`). The command: committed drift
+    only → `sync-instructions --from-diff BASE..HEAD`; drift that includes an uncommitted or
+    untracked file (which a range never sees) → `sync-instructions --module M` per drifted
+    module (`drift_command`)."""
     if base is None:
         raise Skip("no --base")
     if no_git:
         raise Skip(no_git)
     with index_copy(ws.root) as env:
-        findings, _ = drift_report(ws, base, [], env=env)
+        findings, changed = drift_report(ws, base, [], env=env)
+        dirty = (set(changed_files(ws.root, base="HEAD", env=env)) & set(changed["files"])
+                 if findings else set())  # not in HEAD: edited, staged, deleted or untracked
     parts = []
     for code, what in (("MS050", "code changed without a doc update"),
                        ("MS051", "a frozen snapshot changed")):
@@ -252,7 +273,24 @@ def drift(ws, base: str | None, no_git: str | None) -> list[tuple]:
     if not parts:
         return []
     return [("drift", f"drift since {base}: {'; '.join(parts)}",
-             f"modsys sync-instructions --from-diff {quote(f'{base}..HEAD')}")]
+             drift_command(ws, base, findings, dirty))]
+
+
+def drift_command(ws, base: str, findings: list, dirty: set[str]) -> str:
+    """The command for the drift `findings`: `--from-diff BASE..HEAD` when none of their files
+    is `dirty` (a code file of an MS050 target, an MS051 snapshot); else `--module` per drifted
+    target in registry order (a parent before its children) — or, when the only drift is a
+    snapshot outside the modules dir (module `*`), `lint --changed --base BASE`."""
+    touched = set(map_files(ws, sorted(dirty))["modules"]) if dirty else set()
+    if not any(f.module in touched if f.code == "MS050" else f.path in dirty
+               for f in findings):
+        return f"modsys sync-instructions --from-diff {quote(f'{base}..HEAD')}"
+    order = {t: n for n, t in enumerate(all_targets(ws, ws.registry.modules))}
+    names = sorted({f.module for f in findings if f.module != "*"},
+                   key=lambda m: (order.get(m, len(order)), m))
+    if not names:
+        return f"modsys lint --changed --base {quote(base)}"
+    return "modsys sync-instructions " + " ".join(f"--module {quote(m)}" for m in names)
 
 
 def plan(ws, base: str | None) -> dict:
