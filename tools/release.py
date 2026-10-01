@@ -4,12 +4,19 @@
         --publish-repo DIR --channel dev|stable --publish-slug OWNER/REPO [--push]
 
 Steps, in this order (each printed with its result):
-  1 leak guard   the private guard `MODSYS_GUARD` names (run as `<python> <guard> --target
-                 DIR` from the caller's working directory) exits 0 with a `… CLEAN` line on
-                 this engine (files and history), and the organisation of --publish-slug
-                 appears nowhere in it (files, commit and tag messages, patch text — the guard
-                 allows the engine's own slug phrase, this scan allows nothing); the guard is
-                 never copied or vendored
+  1 leak guard   first the release notes, before the guard runs: the lines under the engine's
+                 CHANGELOG.md `## [Unreleased]` heading (Keep a Changelog) up to the next `## `
+                 heading, without blank lines and HTML comments. `stable` refuses when the file
+                 is missing or git does not track it, has no such heading, or holds no note
+                 there — no line starting with `- ` or `* ` (blank lines, comments and `### `
+                 sub-headings alone are empty) — and when MODSYS_RELEASE_DATE is set but not a
+                 date; `dev` publishes "no notes yet" then. Two such headings are a refusal on
+                 either channel (naming their lines). Then the private guard `MODSYS_GUARD`
+                 names (run as `<python> <guard> --target DIR` from the caller's working
+                 directory) exits 0 with a `… CLEAN` line on this engine (files and history),
+                 and the organisation of --publish-slug appears nowhere in it (files, commit
+                 and tag messages, patch text — the guard allows the engine's own slug phrase,
+                 this scan allows nothing); the guard is never copied or vendored
   2 clean trees  this engine and the publish repository have no change git would see; the
                  publish repository's `plugins`, `.claude-plugin`, `.agents` and
                  `.agents/plugins` are directories (or absent), never symlinks; its channel
@@ -18,19 +25,24 @@ Steps, in this order (each printed with its result):
                  publish repository
   3 tests        the unit suite and the adoption eval (E-A) of this engine
   4 build        `stable`: first the release commit here (`__version__` and pyproject.toml
-                 X.Y.Z.devN → X.Y.Z); then tools/build_plugins.py with the channel's version
-                 (tools/publish.py) into a temp directory
+                 X.Y.Z.devN → X.Y.Z; CHANGELOG.md's `## [Unreleased]` becomes `## [X.Y.Z] -
+                 DATE` below a new empty `## [Unreleased]`, the notes under it, the file's line
+                 endings kept — DATE is MODSYS_RELEASE_DATE, else the local date); then
+                 tools/build_plugins.py with the channel's version (tools/publish.py) into a
+                 temp directory
   5 validate     the guard and the organisation scan over the build; our checks of the laid-out
                  publish tree; `claude plugin validate --strict` of each plugin and of the
                  marketplace (skipped when `claude` is not on PATH)
   6 publish repo the channel's branch gets exactly `plugins/modsys`, `plugins/modsys-ui`,
                  `plugins/modsys-qa` replaced, both marketplace files merged by plugin name
                  (entries it does not own are kept), and its own sections of README.md (the
-                 install lines with --publish-slug) and CHANGELOG.md; when git sees no change
-                 in them it is "nothing to release" (exit 0, nothing committed). A missing
-                 branch is created from `origin/<channel>` when the clone has it, else from
-                 the first commit behind HEAD that is not a release commit of this tool (an
-                 orphan branch when there is none)
+                 install lines with --publish-slug) and CHANGELOG.md (the newest entry first:
+                 `- <version> (<channel>): engine <sha>`, then each line of the notes indented
+                 by two spaces, or `  no notes yet`); when git sees no change in the plugins,
+                 the marketplace files and the README it is "nothing to release" (exit 0,
+                 nothing committed). A missing branch is created from `origin/<channel>` when
+                 the clone has it, else from the first commit behind HEAD that is not a release
+                 commit of this tool (an orphan branch when there is none)
   7 commit       `release modsys <version> (<channel>)` in the publish repository — the commit
                  must hold the build, path by path, mode and content; `stable` tags
                  `v<version>` and `<plugin>--v<version>` there and `v<version>` here
@@ -38,20 +50,23 @@ Steps, in this order (each printed with its result):
                  dependency modsys comes with it) and modsys-qa, list, details, the installed
                  `bin/modsys --version` and `lint` on a copy of the bookshop fixture — no model
                  call (skipped when `claude` is not on PATH; then --push is refused)
-  then, for `stable`, the commit that starts the next version here (X.Y.(Z+1).dev0), and only
-  with --push: `git push --atomic origin` of the channel branch and its tags, then of this
-  engine's branch and `v<version>`; without it the two commands are printed.
+  then, for `stable`, the commit that starts the next version here (X.Y.(Z+1).dev0; it leaves
+  CHANGELOG.md alone), and only with --push: `git push --atomic origin` of the channel branch
+  and its tags, then of this engine's branch and `v<version>`; without it the two commands are
+  printed. `dev` writes nothing in this engine.
 All or nothing up to the push: a failed step or Ctrl-C (SIGTERM and SIGHUP too) puts back what
-the run wrote — the branches and tags it made or moved, HEAD, the index, the files it writes —
-and removes every temp directory; a branch, a tag or an untracked file that appeared beside the
-run stays, and a repository that changed between step 2 and the run's first write to it is a
-refusal that writes nothing there. The put-back is checked: "as they were" is printed only
-when it is true. A failed or interrupted push is never put back: the release stands locally
-and the commands left to run are printed. Exit 0 done (or nothing to release) · 1 a step
-failed · 2 a refusal (stderr names it) · 130 interrupted. Test seam:
-MODSYS_RELEASE_INTERRUPT=6 raises Ctrl-C in the middle of step 6, =7 in step 7 between the
-commit and the tags."""
+the run wrote — the branches and tags it made or moved, HEAD, the index, the files it writes
+(the engine's CHANGELOG.md among them) — and removes every temp directory; a branch, a tag or
+an untracked file that appeared beside the run stays, and a repository that changed between
+step 2 and the run's first write to it is a refusal that writes nothing there. The put-back is
+checked: "as they were" is printed only when it is true. A failed or interrupted push is never
+put back: the release stands locally and the commands left to run are printed. Exit 0 done (or
+nothing to release) · 1 a step failed · 2 a refusal (stderr names it) · 130 interrupted. Test
+seams: MODSYS_RELEASE_INTERRUPT=6 raises Ctrl-C in the middle of step 6, =7 in step 7 between
+the commit and the tags; MODSYS_RELEASE_DATE=YYYY-MM-DD is the date step 4 gives the notes (a
+run across midnight is not flaky)."""
 import argparse
+import datetime
 import json
 import os
 import re
@@ -77,7 +92,12 @@ OWNED = [f"plugins/{name}" for name in build_plugins.PLUGINS]
 MARKETPLACE_FILES = [publish.CLAUDE_MARKETPLACE, publish.CODEX_MARKETPLACE]
 WRITTEN = [*OWNED, *MARKETPLACE_FILES, "README.md", "CHANGELOG.md"]  # all step 6 writes
 PARENTS = ["plugins", ".claude-plugin", ".agents", ".agents/plugins"]  # never a symlink
-VERSION_FILES = ["modsys/__init__.py", "pyproject.toml"]  # all the run writes in the engine
+VERSION_FILES = ["modsys/__init__.py", "pyproject.toml"]  # both version commits write these
+CHANGES = "CHANGELOG.md"  # the engine's release notes (Keep a Changelog), dated by step 4
+ENGINE_FILES = [*VERSION_FILES, CHANGES]  # all the run writes in the engine
+UNRELEASED = "## [Unreleased]"  # the heading of the notes of the next release
+COMMENT = re.compile(r"<!--.*?(?:-->|\Z)", re.S)  # an HTML comment (an open one: to the end)
+DATE = "MODSYS_RELEASE_DATE"  # the test seam of the release commit's date (YYYY-MM-DD)
 RELEASE_SUBJECT = re.compile(r"^release modsys \S+ \((?:dev|stable)\)$")  # step 7's commits
 GUARD = "MODSYS_GUARD"  # the environment variable naming the private leak guard
 CLEAN = re.compile(r"^\S+: CLEAN$", re.M)  # its verdict line (its name is never spelled here)
@@ -277,8 +297,8 @@ def readme_section(slug: str, channel: str, version: str) -> str:
 
 
 def changelog(text: str, entry: str, where: str = "CHANGELOG.md") -> str:
-    """CHANGELOG.md with `entry` added at the top of the modsys section (the file's line
-    endings kept)."""
+    """CHANGELOG.md with `entry` (one line or more) added at the top of the modsys section (the
+    file's line endings kept)."""
     nl = newline_of(text)
     if markers(text, LOG_BEGIN, LOG_END, where):
         head, rest = text.split(LOG_BEGIN, 1)
@@ -288,9 +308,109 @@ def changelog(text: str, entry: str, where: str = "CHANGELOG.md") -> str:
         if at == len(lines) and lines and lines[-1].strip():
             lines.append("")  # a section without an entry yet: a blank line after its heading
             at += 1
-        lines.insert(at, entry)  # the newest first
+        lines[at:at] = entry.split("\n")  # the newest first
         return head + LOG_BEGIN + nl + nl.join(lines) + nl + LOG_END + tail
     return replace_section(text, LOG_BEGIN, LOG_END, f"## modsys\n\n{entry}\n", where)
+
+
+def log_entry(version: str, channel: str, sha: str, notes: list[str]) -> str:
+    """The publish repository's CHANGELOG entry of a release: `- <version> (<channel>): engine
+    <sha>`, then each line of the notes indented by two spaces — `  no notes yet` without any
+    (a dev release before the first note)."""
+    return "\n".join([f"- {version} ({channel}): engine {sha}",
+                      *(f"  {line}" for line in notes or ["no notes yet"])])
+
+
+def unreleased(text: str) -> tuple[int | None, list[str]]:
+    """The `## [Unreleased]` section of the engine's CHANGELOG.md: the index of its heading line
+    (None: no such heading) and its lines up to the next `## ` heading (a `### ` sub-heading
+    does not end it), without HTML comments, blank lines and trailing white space. Two such
+    headings or more are a refusal naming their lines: which notes are meant would be a guess."""
+    lines = text.split("\n")
+    heads = [n for n, line in enumerate(lines) if line.rstrip() == UNRELEASED]
+    if len(heads) > 1:
+        numbers = [str(n + 1) for n in heads]
+        raise Refused(f"{CHANGES} has {len(heads)} `{UNRELEASED}` headings (lines "
+                      f"{', '.join(numbers[:-1])} and {numbers[-1]}) — keep one: the notes of "
+                      f"a release are the lines under it")
+    if not heads:
+        return None, []
+    end = next((n for n in range(heads[0] + 1, len(lines)) if lines[n].startswith("## ")),
+               len(lines))
+    body = COMMENT.sub("", "\n".join(lines[heads[0] + 1:end]))
+    return heads[0], [line.rstrip() for line in body.split("\n") if line.strip()]
+
+
+def pending_notes(text: str | None, channel: str) -> list[str]:
+    """The notes a release publishes: the `## [Unreleased]` lines of the engine's CHANGELOG.md
+    (`text`; None: there is no such file). Without a note — no line starting with `- ` or `* `
+    there (SI-P61-10) — a `stable` release is refused and a `dev` one has none (`no notes
+    yet`)."""
+    if text is None:
+        if channel == "stable":
+            raise Refused(f"{CHANGES} is missing in the engine — a stable release publishes the "
+                          f"notes under its `{UNRELEASED}` heading: add the file (Keep a "
+                          f"Changelog) with the notes of this release")
+        return []
+    at, notes = unreleased(text)
+    if any(line.startswith(("- ", "* ")) for line in notes):
+        return notes
+    if channel != "stable":
+        return []
+    if at is None:
+        raise Refused(f"{CHANGES} has no `{UNRELEASED}` heading — a stable release publishes "
+                      f"the notes under it: add one above the released versions, with the "
+                      f"notes of this release")
+    raise Refused(f"{CHANGES}: `{UNRELEASED}` holds no note (no line starting with `- ` or "
+                  f"`* ` before the next `## ` heading) — write the notes of this release there "
+                  f"first")
+
+
+def dated(text: str, version: str, date: str) -> str:
+    """The release commit's CHANGELOG.md: the `## [Unreleased]` heading becomes `## [<version>]
+    - <date>` below a new empty `## [Unreleased]` and one blank line — the notes stay under the
+    version; every other byte is kept, the heading line's own ending too (CRLF stays CRLF)."""
+    at = unreleased(text)[0]
+    if at is None:
+        pending_notes(text, "stable")  # the refusal that names it
+    lines = text.split("\n")
+    cr = "\r" if lines[at].endswith("\r") else ""
+    lines[at] = f"{UNRELEASED}{cr}\n{cr}\n## [{version}] - {date}{cr}"
+    return "\n".join(lines)
+
+
+def read_changes(root: Path) -> str | None:
+    """The engine's CHANGELOG.md as it is (None when there is none); one that is not a regular
+    UTF-8 file is a refusal naming it."""
+    if not os.path.lexists(root / CHANGES):
+        return None
+    try:
+        return read_text(root, CHANGES, "engine")
+    except Failed as e:
+        raise Refused(str(e)) from None
+
+
+def date_notes(root: Path, version: str, date: str) -> list[str]:
+    """Date the notes of `root`'s CHANGELOG.md in place for the release commit (`dated`); the
+    notes it dated. A file without notes is the refusal of step 1."""
+    text = read_changes(root)
+    notes = pending_notes(text, "stable")
+    write_text(root, CHANGES, dated(text, version, date))
+    return notes
+
+
+def release_date() -> str:
+    """The date the release commit gives the notes: MODSYS_RELEASE_DATE (YYYY-MM-DD, a real
+    date — anything else is a refusal), else the local date."""
+    value = os.environ.get(DATE)
+    if not value:
+        return datetime.date.today().isoformat()
+    try:
+        if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+            return datetime.date.fromisoformat(value).isoformat()
+    except ValueError:
+        pass
+    raise Refused(f"{DATE}={value!r}: not a date YYYY-MM-DD")
 
 
 def read_text(root: Path, rel: str, where: str = "publish repo") -> str:
@@ -345,6 +465,7 @@ class Release:
         self.claude = shutil.which("claude")
         self.temps: list[Path] = []
         self.version = None
+        self.notes: list[str] = []  # the release notes the publish entry carries
         self.snaps: dict[str, dict] = {}
         self.touched: set[str] = set()  # the repositories written to: only these are put back
         # the refs the run makes or moves, named BEFORE each write: only these are put back
@@ -370,7 +491,22 @@ class Release:
 
     # --- the steps --------------------------------------------------------------------------
 
+    def pending(self) -> list[str]:
+        """Step 1's first check, before any work: the notes this release publishes (see
+        `pending_notes`); `stable` also needs CHANGELOG.md tracked — its release commit dates
+        it — and a MODSYS_RELEASE_DATE that is a date, when set."""
+        text = read_changes(ENGINE)
+        if self.channel == "stable" and text is not None and not self.engine.out(
+                "ls-files", "--", CHANGES).strip():
+            raise Refused(f"{CHANGES} is not tracked in the engine — commit it: the release "
+                          f"commit dates its `{UNRELEASED}` heading")
+        notes = pending_notes(text, self.channel)
+        if self.channel == "stable":
+            release_date()
+        return notes
+
     def step1(self) -> str:
+        self.notes = self.pending()  # a stable release without notes: refused before the guard
         guard = os.environ.get(GUARD)
         if not guard:
             raise Refused(f"{GUARD} is not set — name the private leak guard (the script the "
@@ -386,7 +522,10 @@ class Release:
         if hits:
             raise Refused(f"the organisation of --publish-slug appears in the engine: "
                           f"{listed(hits)} — no repository slug before the public release")
-        return "CLEAN (files and history); the organisation appears nowhere"
+        count = len(self.notes)
+        return (f"CLEAN (files and history); the organisation appears nowhere; {CHANGES} "
+                f"[Unreleased]: " + (f"{count} line{'s' * (count != 1)}" if count else
+                                     "no notes yet"))
 
     def step2(self) -> str:
         for repo in (self.engine, self.pub):
@@ -441,16 +580,21 @@ class Release:
         return f"{ran}, {verdict}; the adoption eval passed"
 
     def step4(self) -> str:
+        notes = ""
         if self.channel == "stable":
             self.first_write(self.engine)
-            self.bump(publish.base_version(build_plugins.engine_version(ENGINE)),
-                      "release modsys {}")
+            version = publish.base_version(build_plugins.engine_version(ENGINE))
+            date = release_date()
+            self.notes = date_notes(ENGINE, version, date)  # what the release commit holds
+            self.bump(version, "release modsys {}", CHANGES)
+            notes = f"; {CHANGES} [Unreleased] dated [{version}] - {date}"
         self.build = self.temp("modsys-release-build-")
         self.version = publish.build_channel(ENGINE, self.build, self.channel)
-        return f"modsys {self.version} ({', '.join(build_plugins.PLUGINS)})"
+        return f"modsys {self.version} ({', '.join(build_plugins.PLUGINS)}){notes}"
 
-    def bump(self, version: str, message: str) -> None:
-        """Set `__version__` and pyproject.toml's version, and commit them here."""
+    def bump(self, version: str, message: str, *also: str) -> None:
+        """Set `__version__` and pyproject.toml's version, and commit them here — with `also`,
+        the files the caller wrote for this commit (the release commit's CHANGELOG.md)."""
         self.own[self.engine.label].add(self.engine.branch())
         for rel, pattern, line in (
                 ("modsys/__init__.py", r'^__version__ = "[^"]*"$', f'__version__ = "{version}"'),
@@ -460,8 +604,9 @@ class Release:
             if n != 1:
                 raise Failed(f"{rel}: no version line to set")
             write_text(ENGINE, rel, text)
-        self.engine.git("add", "--", *VERSION_FILES)
-        self.engine.git("commit", "-q", "-m", message.format(version), "--", *VERSION_FILES)
+        self.engine.git("add", "--", *VERSION_FILES, *also)
+        self.engine.git("commit", "-q", "-m", message.format(version), "--", *VERSION_FILES,
+                        *also)
 
     def step5(self) -> str:
         run_guard(self.guard, self.build, f"the build directory {self.build}")
@@ -576,9 +721,8 @@ class Release:
             raise NothingToRelease(f"the {self.channel} branch already holds modsys "
                                    f"{self.version} — nothing to release")  # git sees no change
         engine_head = self.engine.out("rev-parse", "--short", "HEAD").strip()
-        write_text(root, "CHANGELOG.md", changelog(log_old, f"- {self.version} "
-                                                            f"({self.channel}): engine "
-                                                            f"{engine_head}"))
+        write_text(root, "CHANGELOG.md", changelog(log_old, log_entry(
+            self.version, self.channel, engine_head, self.notes)))
         pub.git("add", "-f", "--", "CHANGELOG.md")
         return (f"branch {self.channel}: {', '.join(OWNED)} replaced, both marketplace files "
                 f"({self.market}), the README and CHANGELOG sections")
@@ -841,8 +985,8 @@ class Release:
                 repo.git("config", "--remove-section", f"branch.{self.channel}", check=False)
             paths = WRITTEN
         else:
-            git("checkout", "-q", "HEAD", "--", *VERSION_FILES)
-            paths = VERSION_FILES
+            git("checkout", "-q", "HEAD", "--", *ENGINE_FILES)
+            paths = ENGINE_FILES
         now = refs()
         for ref in sorted(self.own[repo.label]):
             was = snap["refs"].get(ref)

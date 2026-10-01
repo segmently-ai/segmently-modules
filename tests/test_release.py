@@ -2,9 +2,12 @@
 repository, push only with --push, the publish repository's foreign content kept, the smoke
 install through a `claude` stand-in (tests/claude_shim.py — never a model), no repository slug
 outside the publish README, the refusals and all-or-nothing — the put-back restores what the
-run wrote and nothing else. Each test releases a throw-away git copy of this engine (its unit
-suite = three small tests, its E-A a stub: the heavy steps are the rehearsal's) with a stub
-leak guard."""
+run wrote and nothing else; the release notes (P6.1 D6): the engine's CHANGELOG.md, a stable
+release refused without notes under `## [Unreleased]`, the release commit dating them, the
+publish entry carrying them. Each test releases a throw-away git copy of this engine (its unit
+suite = three small tests, its E-A a stub, its CHANGELOG.md planted: the heavy steps are the
+rehearsal's) with a stub leak guard."""
+import datetime
 import json
 import os
 import re
@@ -16,6 +19,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tests.helpers import engine_version, git, next_dev, next_release, release_version
 from tests.plugin_helpers import ENGINE, copy_engine, default_signals, load_tool, run_tool
@@ -25,6 +29,11 @@ REL = release_version(ENG)  # what the first stable run releases
 NXT = next_release(ENG)  # the release after it
 NXT_DEV = next_dev(ENG)  # the engine after the first stable run
 SLUG = "example-org/modsys-plugins"
+DATE = "2026-10-15"  # MODSYS_RELEASE_DATE of every run (SI-P61-9): never the clock
+CHANGELOG = ("# Changelog\n\nAll notable changes to this copy are documented in this file.\n\n"
+             "## [Unreleased]\n\n- First planted note.\n- Second planted note.\n\n"
+             "## [0.0.1] - 2026-01-01\n\n- The first planted release.\n")  # the copies' notes
+LOG_BEGIN, LOG_END = "<!-- modsys:changelog:begin -->", "<!-- modsys:changelog:end -->"
 PLANT = """import os, subprocess, unittest
 from pathlib import Path
 
@@ -44,7 +53,7 @@ EXTRA = {"tests/__init__.py": "",
          "tests/test_plant.py": PLANT,
          "evals/adoption/run_eval.py": "import sys\n\nprint('adoption eval: stub ok', "
                                        "file=sys.stderr)\n",
-         "README.md": "# modsys (a test copy)\n"}
+         "README.md": "# modsys (a test copy)\n", "CHANGELOG.md": CHANGELOG}
 GUARD = """import os, signal, sys, time
 target = sys.argv[sys.argv.index("--target") + 1]
 mode = os.environ.get("FAKE_GUARD_MODE")
@@ -108,7 +117,7 @@ class ReleaseRepo(unittest.TestCase):
         self.env = {**IDENTITY, **CREDENTIALS, "PATH": f"{self.bin}:/usr/bin:/bin",
                     "MODSYS_GUARD": str(self.base / "guard.py"),
                     "FAKE_CLAUDE_LOG": str(self.base / "claude.log"), "TMPDIR": str(self.tmpdir),
-                    "MODSYS_PYTHON": sys.executable,
+                    "MODSYS_PYTHON": sys.executable, "MODSYS_RELEASE_DATE": DATE,
                     # as under a git hook: the tools drop git's location variables
                     "GIT_INDEX_FILE": str(self.base / "another-index")}
 
@@ -171,6 +180,15 @@ class ReleaseRepo(unittest.TestCase):
         self.commit(self.engine, SKILL, skill.read_text() + "\nOne more line.\n",
                     "a skill changed")
 
+    def notes(self, *lines: str) -> None:
+        """`lines` under the engine copy's `## [Unreleased]`, committed — what the next stable
+        release needs once the last one has dated the notes (D6)."""
+        text = (self.engine / "CHANGELOG.md").read_text()
+        head = "## [Unreleased]\n\n"
+        self.commit(self.engine, "CHANGELOG.md",
+                    text.replace(head, head + "".join(f"{l}\n" for l in lines) + "\n", 1),
+                    "notes")
+
     def remotes(self) -> dict[str, Path]:
         """A local bare `origin` for the engine copy and the publish repository."""
         made = {}
@@ -184,6 +202,22 @@ class ReleaseRepo(unittest.TestCase):
 
     def log(self, repo: Path, ref: str) -> list[str]:
         return git(repo, "log", "--format=%s", ref).splitlines()
+
+    def entries(self, branch: str) -> list[tuple]:
+        """The modsys entries of the publish repository's CHANGELOG.md on `branch`, newest
+        first: (version, channel, the engine commit its short sha names, its indented lines)."""
+        text = git(self.pub, "show", f"{branch}:CHANGELOG.md")
+        section = text.split(LOG_BEGIN + "\n", 1)[1].split(LOG_END, 1)[0]
+        found = []
+        for line in section.split("\n"):
+            head = re.fullmatch(r"- (\S+) \((dev|stable)\): engine ([0-9a-f]{7,})", line)
+            if head:
+                found.append((head[1], head[2], git(self.engine, "rev-parse", head[3]), []))
+            elif line.startswith("  "):
+                found[-1][3].append(line[2:])
+            else:
+                self.assertIn(line, ("## modsys", ""), section)
+        return found
 
     def refs(self, repo: Path) -> list[str]:
         return git(repo, "for-each-ref", "--format=%(refname)").split()
@@ -228,7 +262,9 @@ class RunTest(ReleaseRepo):  # P6-AC-014, 015, 017
         self.assertEqual((claude["name"], codex["name"]), ("modsys-dev", "modsys-dev"))
         self.assertIn(f"`claude plugin marketplace add {SLUG}#stable`",
                       (self.pub / "README.md").read_text())
-        self.assertIn(f"- {version} (dev): engine ", (self.pub / "CHANGELOG.md").read_text())
+        self.assertEqual(self.entries("dev"), [(version, "dev", git(
+            self.engine, "rev-parse", "HEAD"), ["- First planted note.",
+                                                "- Second planted note."])])
         calls = self.calls()
         self.assertIn(["--version"], [c["argv"] for c in calls])
         for call in calls:  # only the allowed calls, each with a fresh throw-away config and
@@ -260,6 +296,24 @@ class RunTest(ReleaseRepo):  # P6-AC-014, 015, 017
         log = (self.pub / "CHANGELOG.md").read_text()
         self.assertIn(f"- {REL} (stable): engine ", log)
         self.assertNotIn("(dev)", log)  # the channel's own entries only
+        # P61-AC-021: the release commit dates the notes, the start commit leaves them, the
+        # publish entry carries them (the engine sha = the release commit)
+        self.assertEqual(git(self.engine, "show", "HEAD~1:CHANGELOG.md"), CHANGELOG.replace(
+            "## [Unreleased]\n\n", f"## [Unreleased]\n\n## [{REL}] - {DATE}\n\n", 1))
+        self.assertEqual(git(self.engine, "show", "--name-only", "--format=", "HEAD~1").split(),
+                         ["CHANGELOG.md", "modsys/__init__.py", "pyproject.toml"])
+        self.assertEqual(git(self.engine, "show", "--name-only", "--format=", "HEAD").split(),
+                         ["modsys/__init__.py", "pyproject.toml"])
+        self.assertEqual((self.engine / "CHANGELOG.md").read_text(),
+                         git(self.engine, "show", "HEAD~1:CHANGELOG.md"))
+        self.assertEqual(self.entries("stable"), [(REL, "stable", git(
+            self.engine, "rev-parse", "HEAD~1"), ["- First planted note.",
+                                                  "- Second planted note."])])
+        self.assertTrue(log.startswith(f"{LOG_BEGIN}\n## modsys\n\n- {REL} (stable): engine "))
+        self.assertTrue(log.endswith("\n  - First planted note.\n  - Second planted note.\n"
+                                     f"{LOG_END}\n"), log)
+        self.assertIn(f"step 4 build: modsys {REL} (modsys, modsys-ui, modsys-qa); CHANGELOG.md "
+                      f"[Unreleased] dated [{REL}] - {DATE}\n", proc.stdout)
         self.assertIn(f"bin/modsys --version = modsys {REL}", proc.stdout)
         self.assertIn(f"  git -C {shlex.quote(str(self.pub))} push --atomic origin "
                       "refs/heads/stable "
@@ -301,6 +355,7 @@ class RunTest(ReleaseRepo):  # P6-AC-014, 015, 017
         self.assertEqual({k: git(r, "for-each-ref") for k, r in remotes.items()}, before)
         self.assertNotIn(" push", " " + (self.base / "git.log").read_text())
         git(self.engine, "tag", "-d", f"v{REL}")  # a second stable run to push: the next release
+        self.notes("- The next release.")  # the first one dated the notes (D6)
         proc = self.release("stable", "--push")
         self.assert_ok(proc)
         self.assertEqual(sorted(self.refs(remotes["publish"])),
@@ -396,6 +451,7 @@ class CloneTest(ReleaseRepo):  # final review I-3: a fresh clone of the publish 
         self.assert_ok(self.release("stable"))  # the release, from the first clone
         git(self.pub, "push", "-q", "origin", "stable", "--tags")
         git(clone, "fetch", "-q", "--tags", "origin")
+        self.notes("- The next release.")  # the first one dated the notes (D6)
         proc = self.release("stable", pub=clone)  # the next release, on top of what is published
         self.assert_ok(proc)
         self.assertEqual(self.log(clone, "stable"), [f"release modsys {NXT} (stable)",
@@ -407,6 +463,7 @@ class CloneTest(ReleaseRepo):  # final review I-3: a fresh clone of the publish 
         git(clone, "push", "-q", "--atomic", "origin", "refs/heads/stable",
             *(f"refs/tags/{t.format(NXT)}" for t in TAGS))  # a fast-forward: accepted
         git(self.pub, "fetch", "-q", "origin")  # the first clone is now behind origin/stable
+        self.notes("- One more release.")  # step 1 passes: step 2 is what refuses
         before = self.both()
         proc = self.release("stable")
         self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
@@ -571,6 +628,7 @@ class NoopTest(ReleaseRepo):  # P6-AC-029
         self.assert_ok(self.release("stable"))
         subprocess.run(["git", "-C", str(self.engine), "reset", "-q", "--hard", "HEAD~1"],
                        check=True)  # back at the release commit: its tag exists
+        self.notes("- Again.")  # notes: step 1 passes, the tag is what refuses
         proc = self.release("stable")
         self.assertEqual(proc.returncode, 2)
         self.assertIn(f"v{REL} already exists", proc.stderr)
@@ -733,13 +791,16 @@ class RefusalTest(ReleaseRepo):  # P6-AC-030 (SI-1, SI-16, SI-17)
 class AllOrNothingTest(ReleaseRepo):  # P6-AC-031 (SI-16)
     def failed(self, channel: str, step: str, env: dict | None = None, code: int = 1) -> str:
         before = self.both()
-        proc = self.release(channel, env=env)
+        notes = (self.engine / "CHANGELOG.md").read_bytes()
+        proc = self.last = self.release(channel, env=env)
         self.assertEqual(proc.returncode, code, proc.stdout + proc.stderr)
         self.assertIn(step, proc.stderr)
         self.assertTrue(proc.stderr.startswith("release.py: "), proc.stderr)  # no traceback
         self.assertTrue(proc.stderr.rstrip().endswith("both repositories are as they were"),
                         proc.stderr)
         self.assertEqual(self.both(), before)
+        # P61-AC-036: a stable run past step 4 had dated the notes — the put-back restores them
+        self.assertEqual((self.engine / "CHANGELOG.md").read_bytes(), notes)
         self.assertEqual(list(self.tmpdir.iterdir()), [])
         return proc.stderr
 
@@ -764,7 +825,9 @@ class AllOrNothingTest(ReleaseRepo):  # P6-AC-031 (SI-16)
         self.failed("stable", "step 9 next version failed", env={"FAIL_COMMIT": "start modsys"})
         for seam in ("6", "7"):  # in the middle of step 6; after the commit, before the tags
             self.failed("stable", "interrupted", env={"MODSYS_RELEASE_INTERRUPT": seam},
-                        code=130)
+                        code=130)  # P61-AC-036: the notes it dated in step 4 are put back
+            self.assertIn(f"CHANGELOG.md [Unreleased] dated [{REL}] - {DATE}\n",
+                          self.last.stdout)
         (self.engine / "tests/test_broken.py").write_text(
             "import unittest\n\n\nclass BrokenTest(unittest.TestCase):\n"
             "    def test_broken(self):\n        self.fail('planted')\n")
@@ -988,6 +1051,240 @@ class SectionsTest(unittest.TestCase):  # P6-AC-016: only our sections change
                             release.changelog(text, f"- {REL} (dev): engine abc")
                     self.assertIn(f"{where}: the markers of the modsys section are damaged",
                                   str(caught.exception))
+
+
+NO_NOTE = ("CHANGELOG.md: `## [Unreleased]` holds no note (no line starting with `- ` or `* ` "
+           "before the next `## ` heading) — write the notes of this release there first")
+NO_HEADING = ("CHANGELOG.md has no `## [Unreleased]` heading — a stable release publishes the "
+              "notes under it: add one above the released versions, with the notes of this "
+              "release")
+NO_FILE = ("CHANGELOG.md is missing in the engine — a stable release publishes the notes under "
+           "its `## [Unreleased]` heading: add the file (Keep a Changelog) with the notes of "
+           "this release")
+UNTRACKED = ("CHANGELOG.md is not tracked in the engine — commit it: the release commit dates "
+             "its `## [Unreleased]` heading")
+
+
+def two_headings(count: int, lines: str) -> str:
+    return (f"CHANGELOG.md has {count} `## [Unreleased]` headings (lines {lines}) — keep one: "
+            f"the notes of a release are the lines under it")
+
+
+class NotesTest(unittest.TestCase):  # P61-AC-021, 022, 031, 036 (D6, SI-P61-9/10): pure parts
+    def setUp(self):
+        self.r = load_tool("release")
+
+    def refused(self, text: str | None, channel: str = "stable") -> str:
+        with self.assertRaises(self.r.Refused) as caught:
+            self.r.pending_notes(text, channel)
+        return str(caught.exception)
+
+    def test_the_unreleased_section(self):
+        text = ("# Changelog\n\n## [Unreleased]\n\n### Added\n\n- One.\n  more of one\n"
+                "<!-- a comment\n- not a note\n-->\n* Two. <!-- why -->\n\n"
+                "## [0.0.1] - 2026-01-01\n\n- Old.\n")
+        notes = ["### Added", "- One.", "  more of one", "* Two."]  # no blank line, no comment
+        self.assertEqual(self.r.unreleased(text), (2, notes))
+        for channel in ("stable", "dev"):
+            self.assertEqual(self.r.pending_notes(text, channel), notes)
+        self.assertEqual(self.r.unreleased("## [Unreleased]\r\n- a\r\n### Sub\r\n- b"),
+                         (0, ["- a", "### Sub", "- b"]))  # `### ` does not end it; the file does
+        self.assertEqual(self.r.unreleased("# Changelog\n\n## [0.0.1] - 2026-01-01\n\n- a\n"),
+                         (None, []))
+
+    def test_empty_is_no_item_line(self):  # SI-P61-10
+        for body in ("", "\n\n\n", "\n<!-- the notes of the next release -->\n\n",
+                     "\n<!--\n- a template line\n-->\n\n", "\n### Added\n\n### Fixed\n\n",
+                     "\n### Added\n<!-- none yet -->\n\n"):
+            text = f"# Changelog\n\n## [Unreleased]\n{body}## [0.0.1] - 2026-01-01\n\n- Old.\n"
+            with self.subTest(body=body):
+                self.assertEqual(self.refused(text), NO_NOTE)
+                self.assertEqual(self.r.pending_notes(text, "dev"), [])  # dev: no notes yet
+        for item in ("- One.", "* One."):
+            text = f"## [Unreleased]\n\n{item}\n\n## [0.0.1] - 2026-01-01\n"
+            self.assertEqual(self.r.pending_notes(text, "stable"), [item])
+
+    def test_no_heading_two_headings_no_file(self):  # P61-AC-031
+        self.assertEqual(self.refused("# Changelog\n\n## [0.0.1] - 2026-01-01\n\n- a\n"),
+                         NO_HEADING)
+        self.assertEqual(self.r.pending_notes("# Changelog\n", "dev"), [])
+        two = "# Changelog\n\n## [Unreleased]\n\n- a\n\n## [Unreleased]\r\n\n- b\n"
+        three = "## [Unreleased]\n- a\n## [Unreleased]\n- b\n## [Unreleased]\n"
+        for channel in ("stable", "dev"):  # ambiguous on either channel: never a guess
+            self.assertEqual(self.refused(two, channel), two_headings(2, "3 and 7"))
+            self.assertEqual(self.refused(three, channel), two_headings(3, "1, 3 and 5"))
+        self.assertEqual(self.refused(None), NO_FILE)
+        self.assertEqual(self.r.pending_notes(None, "dev"), [])
+        for message in (NO_NOTE, NO_HEADING, NO_FILE, UNTRACKED, two_headings(2, "3 and 7")):
+            self.assertIn("CHANGELOG.md", message)  # P61-AC-036: both named
+            self.assertIn("[Unreleased]", message)
+
+    def test_the_release_commit_dates_the_section(self):  # P61-AC-021, AC-031 (CRLF)
+        text = ("# Changelog\n\nIntro.\n\n## [Unreleased]\n\n- One.\n- Two.\n\n"
+                "## [0.0.1] - 2026-01-01\n\n- Old.\n")
+        want = text.replace("## [Unreleased]\n\n", f"## [Unreleased]\n\n## [{REL}] - {DATE}\n\n")
+        self.assertEqual(self.r.dated(text, REL, DATE), want)
+        self.assertEqual(self.r.dated(text.replace("\n", "\r\n"), REL, DATE),
+                         want.replace("\n", "\r\n"))
+        with tempfile.TemporaryDirectory() as tmp:  # the release's own read and write, as bytes
+            root = Path(tmp)
+            (root / "CHANGELOG.md").write_bytes(text.replace("\n", "\r\n").encode())
+            self.assertEqual(self.r.date_notes(root, REL, DATE), ["- One.", "- Two."])
+            self.assertEqual((root / "CHANGELOG.md").read_bytes(),
+                             want.replace("\n", "\r\n").encode())
+
+    def test_the_publish_entry(self):  # P61-AC-021, AC-022
+        r, dev = self.r, f"{REL}-dev.h0123abcd"
+        self.assertEqual(r.log_entry(REL, "stable", "abc1234", ["- One.", "- Two."]),
+                         f"- {REL} (stable): engine abc1234\n  - One.\n  - Two.")
+        self.assertEqual(r.log_entry(dev, "dev", "abc1234", ["- One."]),
+                         f"- {dev} (dev): engine abc1234\n  - One.")
+        self.assertEqual(r.log_entry(dev, "dev", "abc1234", []),
+                         f"- {dev} (dev): engine abc1234\n  no notes yet")
+        log = r.changelog("# Changes\r\n\r\n- theirs\r\n",
+                          r.log_entry(REL, "stable", "abc", ["- One.", "### Fixed", "- Two."]))
+        log = r.changelog(log, r.log_entry(NXT, "stable", "def", ["- Three."]))
+        self.assertEqual(log, "# Changes\r\n\r\n- theirs\r\n\r\n"  # the newest first, CRLF kept
+                              f"{LOG_BEGIN}\r\n## modsys\r\n\r\n- {NXT} (stable): engine def\r\n"
+                              f"  - Three.\r\n- {REL} (stable): engine abc\r\n  - One.\r\n"
+                              f"  ### Fixed\r\n  - Two.\r\n{LOG_END}\r\n")
+
+    def test_the_date(self):  # SI-P61-9
+        r = self.r
+        with mock.patch.dict(os.environ, {"MODSYS_RELEASE_DATE": DATE}):
+            self.assertEqual(r.release_date(), DATE)
+        for bad in ("2026-02-30", "2026-13-01", "20261015", "2026-1-5", "2026-10-15T00:00",
+                    "tomorrow"):
+            with self.subTest(value=bad), mock.patch.dict(os.environ,
+                                                          {"MODSYS_RELEASE_DATE": bad}):
+                with self.assertRaises(r.Refused) as caught:
+                    r.release_date()
+                self.assertEqual(str(caught.exception),
+                                 f"MODSYS_RELEASE_DATE={bad!r}: not a date YYYY-MM-DD")
+        for unset in ({"MODSYS_RELEASE_DATE": ""}, {}):
+            with mock.patch.dict(os.environ, unset):
+                if not unset:
+                    os.environ.pop("MODSYS_RELEASE_DATE", None)
+                before = datetime.date.today().isoformat()
+                got = r.release_date()
+                after = datetime.date.today().isoformat()
+            self.assertIn(got, (before, after))  # the local date (across midnight: either)
+
+
+class NotesRunTest(ReleaseRepo):  # P61-AC-022, 031, 036: the notes through whole runs
+    def test_a_dev_release_writes_the_pending_notes(self):  # P61-AC-022, AC-031 (no file)
+        one = CHANGELOG.replace("- Second planted note.\n", "")
+        self.commit(self.engine, "CHANGELOG.md", one, "one note")
+        want = []
+        for case in ("one line", "empty", "no file"):
+            if case != "one line":
+                self.change_a_skill()  # a new build: the same one is nothing to release
+            if case == "empty":
+                self.commit(self.engine, "CHANGELOG.md",
+                            one.replace("- First planted note.\n", ""), "no note")
+            if case == "no file":
+                git(self.engine, "rm", "-q", "--", "CHANGELOG.md")
+                git(self.engine, "commit", "-q", "-m", "no changelog")
+            path = self.engine / "CHANGELOG.md"
+            notes = path.read_bytes() if path.exists() else None
+            engine = self.state(self.engine)
+            proc = self.release("dev")
+            self.assert_ok(proc)
+            self.assertEqual(self.state(self.engine), engine)  # dev changes nothing here
+            self.assertEqual(path.read_bytes() if path.exists() else None, notes)
+            self.assertIn("; CHANGELOG.md [Unreleased]: " + (
+                "1 line\n" if case == "one line" else "no notes yet\n"), proc.stdout)
+            version = re.search(r"done: modsys (\S+) \(dev\)", proc.stdout).group(1)
+            want.insert(0, (version, "dev", git(self.engine, "rev-parse", "HEAD"),
+                            ["- First planted note."] if case == "one line"
+                            else ["no notes yet"]))
+        self.assertEqual(self.entries("dev"), want)
+
+    def index(self) -> list:
+        return [(repo / ".git/index").read_bytes() if (repo / ".git/index").exists() else None
+                for repo in (self.engine, self.pub)]
+
+    def refused_at_step_1(self, message: str, env: dict | None = None) -> None:
+        before, index = self.both(), self.index()
+        proc = self.release("stable", env={"FAKE_GUARD_ERROR": "1", **(env or {})})
+        self.assertEqual((proc.returncode, proc.stderr), (2, f"release.py: error: {message}\n"))
+        self.assertEqual(proc.stdout, "release modsys: channel stable (marketplace modsys), "
+                                      f"publish repo {self.pub}\n")  # no step finished
+        self.assertEqual((self.both(), self.index()), (before, index))
+        self.assertEqual(list(self.tmpdir.iterdir()), [])
+        self.assertFalse((self.base / "claude.log").exists())  # no build, no validate
+
+    def test_stable_without_notes_is_refused_before_any_work(self):  # P61-AC-036, AC-031
+        # FAKE_GUARD_ERROR: had the guard run (or the suite after it), stderr would say so
+        self.refused_at_step_1("MODSYS_RELEASE_DATE='2026-02-30': not a date YYYY-MM-DD",
+                               env={"MODSYS_RELEASE_DATE": "2026-02-30"})
+        head = "# Changelog\n\nAll notable changes to this copy are documented in this file.\n\n"
+        old = "## [0.0.1] - 2026-01-01\n\n- The first planted release.\n"
+        for case, text, message in (
+                ("blank lines and a comment",
+                 head + "## [Unreleased]\n\n\n<!-- the notes of the next release -->\n\n" + old,
+                 NO_NOTE),
+                ("two headings", head + "## [Unreleased]\n\n- a\n\n## [Unreleased]\n\n- b\n\n"
+                 + old, two_headings(2, "5 and 9")),
+                ("no heading", head + old, NO_HEADING),
+                ("no file", None, NO_FILE)):
+            with self.subTest(case=case):
+                if text is None:
+                    git(self.engine, "rm", "-q", "--", "CHANGELOG.md")
+                    git(self.engine, "commit", "-q", "-m", case)
+                else:
+                    self.commit(self.engine, "CHANGELOG.md", text, case)
+                self.refused_at_step_1(message)
+        (self.engine / "CHANGELOG.md").write_text(CHANGELOG)  # notes, but git ignores the file
+        (self.engine / ".git/info/exclude").write_text("CHANGELOG.md\n")
+        self.refused_at_step_1(UNTRACKED)
+
+    def test_a_crlf_changelog_stays_crlf(self):  # P61-AC-031
+        crlf = CHANGELOG.replace("\n", "\r\n")
+        (self.engine / "CHANGELOG.md").write_bytes(crlf.encode())
+        git(self.engine, "commit", "-q", "-am", "CRLF")
+        self.assert_ok(self.release("stable"))
+        dated = crlf.replace("## [Unreleased]\r\n\r\n",
+                             f"## [Unreleased]\r\n\r\n## [{REL}] - {DATE}\r\n\r\n", 1).encode()
+        blob = subprocess.run(  # bytes: the helper's text mode would turn CRLF into LF
+            ["git", "-C", str(self.engine), "show", "HEAD~1:CHANGELOG.md"], capture_output=True,
+            check=True, env={k: v for k, v in os.environ.items()
+                             if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")}).stdout
+        self.assertEqual((blob, (self.engine / "CHANGELOG.md").read_bytes()), (dated, dated))
+        self.assertNotIn(b"\r", (self.pub / "CHANGELOG.md").read_bytes())  # the publish file's
+        self.assertEqual(self.entries("stable")[0][3],  # own line endings, no CR in a note
+                         ["- First planted note.", "- Second planted note."])
+
+
+class ChangelogFileTest(unittest.TestCase):  # P61-AC-020: the engine's own CHANGELOG.md
+    HEADER = ("# Changelog\n\nAll notable changes to this project will be documented in this "
+              "file.\n\nThe format is based on [Keep a Changelog]"
+              "(https://keepachangelog.com/en/1.1.0/),\nand this project adheres to [Semantic "
+              "Versioning](https://semver.org/spec/v2.0.0.html).\n\n")
+    BACKFILL = "## [0.1.0] - 2026-10-01"  # the first release (D6): always the last section
+
+    def setUp(self):
+        self.text = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    def test_keep_a_changelog_down_to_the_first_release(self):
+        self.assertTrue(self.text.startswith(self.HEADER + "## [Unreleased]\n"),
+                        self.text[:400])
+        heads = [line for line in self.text.split("\n") if line.startswith("## ")]
+        self.assertEqual((heads[0], heads[-1]), ("## [Unreleased]", self.BACKFILL))
+        for head in heads[1:]:  # every release after it, dated by its release commit
+            self.assertRegex(head, r"^## \[\d+\.\d+\.\d+\] - \d{4}-\d{2}-\d{2}$")
+        first = self.text.split(self.BACKFILL + "\n", 1)[1].split("\n")
+        self.assertTrue(any(line.startswith("- ") for line in first), first)
+        self.assertEqual(load_tool("release").unreleased(self.text)[0],
+                         self.HEADER.count("\n"))  # the one the release reads
+        self.assertNotIn("\r", self.text)
+
+    def test_no_host_organisation_slug_or_machine_path(self):  # D13
+        self.assertEqual(sorted(set(re.findall(r"https?://[^\s)]+", self.text))),
+                         ["https://keepachangelog.com/en/1.1.0/",
+                          "https://semver.org/spec/v2.0.0.html"])
+        for bad in (*MACHINE_PATHS, "github.com", "example-org", "<owner>"):
+            self.assertNotIn(bad, self.text)
 
 
 if __name__ == "__main__":
