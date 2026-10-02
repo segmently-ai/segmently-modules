@@ -117,7 +117,8 @@ class ShippedMachineryTest(ShippedPacks):  # P4B-AC-008
         text = (self.root / "AGENTS.md").read_text()
         for sid, pack in SKILLS.items():
             meta = read_front_matter(self.engine / pack / "skills" / sid / "SKILL.md")
-            self.assertIn(f"- `{sid}` — {' '.join(meta['description'].split())}", text)
+            first = ' '.join(meta['description'].split()).split('. ')[0].rstrip('.')
+            self.assertIn(f"- `{sid}` — {first}.", text)
         rows = {r["template"]: r for r in self.ok("templates", "list")}
         for template, pack in (("roles/designer.md", "ui"), ("roles/qa_acceptance.md", "qa")):
             self.assertEqual((rows[template]["source"], rows[template]["path"]),

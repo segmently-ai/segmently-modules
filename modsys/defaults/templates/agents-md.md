@@ -14,5 +14,5 @@ This repository keeps a module registry (`${registry}`) with docs per module und
   instead; `modsys sync --apply-proposals` applies them.
 - The gate: `modsys ci --base <base>` (lint, drift since the base, coverage).
 
-Skills from packs (`modsys packs sync` copies them into the agents' skill directories):
+Skills from packs (${skills_delivery}):
 ${skills}

@@ -10,7 +10,7 @@ import string
 from pathlib import Path
 
 from modsys import __version__
-from modsys.config import enabled_roles
+from modsys.config import builtin_delivery, enabled_roles
 from modsys.create import resolve_template
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.skill_sync import skill_sources
@@ -20,6 +20,8 @@ from modsys.workspace import Workspace
 
 BEGIN, END = "<!-- modsys:begin v1 -->", "<!-- modsys:end -->"
 _BEGIN = re.compile(r"<!-- modsys:begin v\d+ -->")
+SKILLS_DELIVERY = {"repo": "`modsys packs sync` copies them into the agents' skill directories",
+                   "plugin": "the modsys plugins provide these skills"}
 NO_SKILLS = "- none yet (add one: modsys packs new ID --skill NAME)"
 
 
@@ -42,12 +44,15 @@ def register(sub, common) -> None:
 
 
 def skill_lines(ws) -> str:
-    """One line per pack skill — `` - `<skill>` — <description> `` — from the source `packs
-    sync` uses (an ejected copy first)."""
+    """One line per pack skill — `` - `<skill>` — <first sentence of the description> `` —
+    from the source `packs sync` uses (an ejected copy first)."""
     lines = []
     for sid, src in skill_sources(ws).items():
         meta = read_front_matter(src.dir / "SKILL.md") or {}
-        description = " ".join((meta.get("description") or "").split())
+        full = " ".join((meta.get("description") or "").split())
+        description = full.split(". ")[0]
+        if description != full:  # a sentence cut off its text keeps its full stop
+            description += "."
         lines.append(f"- `{sid}` — {description}" if description else f"- `{sid}`")
     return "\n".join(lines) or NO_SKILLS
 
@@ -57,6 +62,7 @@ def render_block(ws) -> list[str]:
     values = {"modules_dir": ws.config["paths"]["modules_dir"],
               "registry": ws.config["paths"]["registry"],
               "roles": ", ".join(enabled_roles(ws.config)), "skills": skill_lines(ws),
+              "skills_delivery": SKILLS_DELIVERY[builtin_delivery(ws.config)],
               "version": __version__}
     body = string.Template(resolve_template(ws, "agents-md.md")).safe_substitute(values)
     return [BEGIN, *body.replace("\r\n", "\n").rstrip("\n").split("\n"), END]

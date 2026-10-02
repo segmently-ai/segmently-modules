@@ -64,8 +64,8 @@ twice and cannot tell which to trigger:
   when `[packs] agents` leaves that directory out). `modsys eject` of a built-in skill is refused
   (ejecting means owning a copy: that needs `"repo"`), and a skill ejected earlier is a `packs
   sync` conflict until the copy is deleted or the delivery goes back to `"repo"`. The built-in
-  packs' roles and templates, `agents-md` and every repository pack's skills are the same
-  under both.
+  packs' roles and templates and every repository pack's skills are the same under both;
+  the `agents-md` block words the skill list's lead-in by delivery.
 
 The engine cannot see which plugins an agent has installed: installing the plugin in a
 repository that keeps `"repo"` delivery gives the agent each built-in skill twice — set

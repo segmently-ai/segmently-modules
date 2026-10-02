@@ -244,3 +244,51 @@ class AgentsMdContractTest(BlockRepo):  # P4A-AC-023
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SkillListTest(BlockRepo):  # P81-AC-038, P81-AC-039
+    def enable(self, delivery=None):
+        text = '[packs]\nbuiltin = ["core", "ui", "qa"]\n'
+        if delivery:
+            text += f'builtin_delivery = "{delivery}"\n'
+        (self.root / ".modsys/config.toml").write_text(text, encoding="utf-8")
+
+    def test_plugin_delivery_names_the_plugins(self):  # P81-AC-038
+        self.enable("plugin")
+        text = self.block()
+        self.assertIn("(the modsys plugins provide these skills):", text)
+        self.assertNotIn("packs sync", text)
+        self.assertNotIn("copies them", text)
+
+    def test_repo_delivery_keeps_the_old_wording(self):  # P81-AC-038
+        for delivery in (None, "repo"):
+            with self.subTest(delivery=delivery):
+                self.enable(delivery)
+                self.assertIn("Skills from packs (`modsys packs sync` copies them into the "
+                              "agents' skill directories):\n", self.block())
+
+    def test_one_short_line_per_skill(self):  # P81-AC-039
+        from modsys.config import builtin_packs_root
+        from modsys.skills import read_front_matter
+        self.enable("plugin")
+        lines = [ln for ln in self.block().split("\n") if ln.startswith("- `")]
+        skills = sorted(p.parent.name for p in builtin_packs_root().glob("*/skills/*/SKILL.md"))
+        self.assertGreaterEqual(len(skills), 9)
+        self.assertEqual([ln.split("`")[1] for ln in lines], skills)
+        for ln in lines:
+            sid = ln.split("`")[1]
+            path = next(builtin_packs_root().glob(f"*/skills/{sid}/SKILL.md"))
+            full = " ".join(read_front_matter(path)["description"].split())
+            first = full.split(". ")[0].rstrip(".")
+            self.assertEqual(ln, f"- `{sid}` — {first}.")
+            self.assertLessEqual(len(ln), len(f"- `{sid}` — {full}"))
+        self.assertLess(len(self.block()), 3200)
+
+    def test_check_is_stable(self):  # P81-AC-039
+        self.enable("plugin")
+        self.agents_md()
+        self.assertEqual(self.block(), self.block())
+        self.assertEqual(self.agents_md("--check")["targets"][0]["status"], "unchanged")
+        self.claude.write_text(self.claude.read_text().replace("Roles in", "Our roles in"))
+        code, _env, err = run_json("agents-md", "--target", "CLAUDE.md", "--check", *self.R)
+        self.assertEqual((code, err), (1, ""))

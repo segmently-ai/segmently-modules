@@ -132,6 +132,9 @@ class OneDeliveryTest(DeliveryRepo):  # P6-AC-002
         self.assertEqual(self.lint_codes(), sorted(  # row 3, before the sync: 24 infos
             (f"{top}/{s}", "info") for top in (".agents/skills", ".claude/skills")
             for s in BUILTIN))
+        # P81-AC-038: the block's wording follows the delivery, so the repo block is stale now
+        self.assertEqual(run("agents-md", "--target", "CLAUDE.md", "--check", *self.R)[0], 1)
+        self.assertEqual(run("agents-md", "--target", "CLAUDE.md", *self.R)[0], 0)
         self.assertEqual(run("agents-md", "--target", "CLAUDE.md", "--check", *self.R)[0], 0)
         data = self.sync(*AGENTS)  # row 3
         self.assertEqual(self.rows(data), [
@@ -168,8 +171,8 @@ class OneDeliveryTest(DeliveryRepo):  # P6-AC-002
         self.assertFalse((self.root / ".modsys/overrides").exists())
         run("agents-md", "--target", "CLAUDE.md", *self.R)
         plugin_block = (self.root / "CLAUDE.md").read_bytes()
-        self.config()
-        self.assertEqual(run("agents-md", "--target", "CLAUDE.md", "--check", *self.R)[0], 0)
+        self.config()  # P81-AC-038: back to repo, the plugin wording is stale; --check writes nothing
+        self.assertEqual(run("agents-md", "--target", "CLAUDE.md", "--check", *self.R)[0], 1)
         self.assertEqual((self.root / "CLAUDE.md").read_bytes(), plugin_block)
         self.assertEqual(self.lint_codes(), [])
 
