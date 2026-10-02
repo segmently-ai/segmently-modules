@@ -1,5 +1,5 @@
-"""P8.1 task 3a: `modsys catalog` (S2), `[match] mode` and `--match` (S1) without an embedder,
-the no-embedder refusal and note (S4), the config shape of `[match]` / `[match.semantic]`."""
+"""P8.1 tasks 3a/3b: `modsys catalog` (S2), `[match] mode` and `--match` (S1), the no-agent
+refusal and note (S4), the config shape of `[match]` (an invalid mode)."""
 import contextlib
 import hashlib
 import json
@@ -10,11 +10,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.helpers import SPLIT_FIXTURE, copy_fixture, run, run_json
+from tests.agent_helpers import AgentRepo
+from tests.helpers import run, run_json
 
-NO_EMBEDDER = ("semantic matching needs an embedder ([match.semantic] in .modsys/config.toml); "
-               "in an agent, the skills choose modules from `modsys catalog`")
-NOTE = "semantic part skipped: no embedder configured"
+NO_EMBEDDER = ("semantic matching needs your agent: set [agent] command in "
+               ".modsys/config.user.toml or MODSYS_AGENT_COMMAND; in Claude Code / Codex the "
+               "skills do it with modsys choose")
+NOTE = "semantic part skipped: no agent command configured"
 TASK = "partial refund for a returned book"
 MODES = ("lexical", "semantic", "hybrid")
 
@@ -28,28 +30,18 @@ def tree_hash(root: Path) -> str:
     return h.hexdigest()
 
 
-class Repo(unittest.TestCase):
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.tmp = Path(self._tmp.name)
-        self.root = copy_fixture(self.tmp, SPLIT_FIXTURE)
-        self.R = ("--root", str(self.root))
-        self.marker = self.tmp / "embedder-called"
-        script = self.tmp / "embed.py"
-        script.write_text(f"import pathlib\npathlib.Path({str(self.marker)!r}).write_text('x')\n",
-                          encoding="utf-8")
-        self.command = f'["{Path(sys.executable).as_posix()}", "{script.as_posix()}"]'
+class Repo(AgentRepo, unittest.TestCase):
+    """The split fixture; `embedder()` names a fake agent command (its marker = a logged call)
+    that would answer with a pick if it ever ran."""
 
-    def tearDown(self):
-        self._tmp.cleanup()
-
-    def config(self, text: str) -> None:
-        (self.root / ".modsys").mkdir(exist_ok=True)
-        (self.root / ".modsys" / "config.toml").write_text(text, encoding="utf-8")
+    @property
+    def marker(self):
+        return self.calls_log
 
     def embedder(self, mode: str | None = None) -> None:
-        head = f'mode = "{mode}"\n' if mode else ""
-        self.config(f"[match]\n{head}\n[match.semantic]\ncommand = {self.command}\n")
+        self.agent(answer={"picks": [], "none": True})
+        if mode:
+            self.config(f'[match]\nmode = "{mode}"\n')
 
 
 class CatalogTest(Repo):
@@ -75,6 +67,8 @@ class CatalogTest(Repo):
         self.assertEqual((code, err, env["schema"]), (0, "", "modsys.catalog/1"))
         data = env["data"]
         self.assertEqual(data["match"], {"mode": "lexical", "semantic": False})
+        self.assertEqual(data["search"], {"claude_model": "sonnet", "codex_model": "gpt-5.6-luna",
+                                          "effort": "standard"})  # S9
         cards = {c["name"]: c for c in data["modules"]}
         self.assertEqual(list(cards), ["catalog", "orders", "orders/checkout", "orders/refunds",
                                        "orders/invoices", "payments"])
@@ -92,9 +86,9 @@ class CatalogTest(Repo):
         self.embedder("hybrid")
         _, env, _ = run_json("catalog", *self.R)
         self.assertEqual(env["data"]["match"], {"mode": "hybrid", "semantic": True})
-        self.config('[match]\nmode = "semantic"\n')
+        (self.root / ".modsys" / "config.user.toml").unlink()
         _, env, _ = run_json("catalog", *self.R)  # catalog itself never refuses
-        self.assertEqual(env["data"]["match"], {"mode": "semantic", "semantic": False})
+        self.assertEqual(env["data"]["match"], {"mode": "hybrid", "semantic": False})
 
     def test_read_only_with_an_embedder_configured(self):  # P81-AC-021
         self.embedder("hybrid")
@@ -263,33 +257,6 @@ class ConfigShapeTest(Repo):
     def test_invalid_mode(self):  # P81-AC-026
         self.refused('[match]\nmode = "fuzzy"\n', "[match] mode", "fuzzy")
         self.refused('[match]\nmode = 3\n', "[match] mode")
-
-    def test_command_and_endpoint_together(self):  # P81-AC-026
-        self.refused('[match.semantic]\ncommand = ["x"]\nendpoint = "http://h/v1"\n'
-                     'model = "m"\napi_key_env = "K"\n', "[match.semantic]", "command", "endpoint")
-
-    def test_neither_command_nor_endpoint(self):  # P81-AC-026
-        self.refused('[match.semantic]\nmodel = "m"\n', "[match.semantic]", "command", "endpoint")
-
-    def test_endpoint_needs_model_and_api_key_env(self):  # P81-AC-026
-        self.refused('[match.semantic]\nendpoint = "http://h/v1"\napi_key_env = "K"\n', "model")
-        self.refused('[match.semantic]\nendpoint = "http://h/v1"\nmodel = "m"\n', "api_key_env")
-
-    def test_min_similarity_range(self):  # P81-AC-026
-        self.refused('[match.semantic]\ncommand = ["x"]\nmin_similarity = 2\n', "min_similarity")
-        self.refused('[match.semantic]\ncommand = ["x"]\nmin_similarity = "a"\n',
-                     "min_similarity")
-
-    def test_semantic_must_be_a_table(self):  # P81-AC-026
-        self.refused('[match]\nsemantic = 5\n', "[match.semantic]")
-
-    def test_valid_shapes_load(self):
-        for text in ('[match.semantic]\ncommand = ["x", "--y"]\n',
-                     '[match.semantic]\ncommand = "x --y"\nmin_similarity = 0.4\n',
-                     '[match.semantic]\nendpoint = "http://h/v1"\nmodel = "m"\n'
-                     'api_key_env = "K"\nmin_similarity = 1\n'):
-            self.config(text)
-            self.assertEqual(run("lint", "--fail-on", "never", *self.R)[0], 0, text)
 
     def test_catalog_is_a_documented_verb(self):  # headless contract on the new path
         code, out, err = run("catalog", *self.R, "--root", str(self.root / "nope"))

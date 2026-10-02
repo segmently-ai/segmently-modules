@@ -82,7 +82,7 @@ Keyword routing used by `match`, `context` and `discover`.
 | `negative_weight` | `-5` | score per matched `negative_keywords` phrase |
 | `min_score` | `3` | rows below this are dropped |
 | `top` | `8` | at most this many rows (`--top` overrides) |
-| `mode` | `"lexical"` | `"lexical"`, `"semantic"` or `"hybrid"` (`--match` overrides); `semantic` and `hybrid` use the optional `[match.semantic]` embedder table — `command` or `endpoint` (with `model`, `api_key_env`), `min_similarity`; `semantic` without it is refused, `hybrid` without it runs lexically with a note |
+| `mode` | `"lexical"` | `"lexical"`, `"semantic"` or `"hybrid"` (`--match` overrides); `semantic` and `hybrid` ask the user's own agent command (`[agent]`, below): `semantic` without one is refused (exit 2), `hybrid` without one runs lexically with a note; any other value is exit 2 naming the key |
 
 Matching is exact-token: a keyword or `negative_keywords` phrase must occur as a whole word (or
 whole phrase) in the task text — case-insensitive, with no stemming and no plural/singular
@@ -105,6 +105,21 @@ letters with a word of the task (`reminder` ~ `reminders`, `schedule` ~ `schedul
 exactly only), or exact hits whose score a negative keyword pulled below `min_score`. The text
 ends with `re-run with the module's own keyword in the task text, or read it directly: modsys
 show <module>`; `modsys show <module>` prints the module's keywords on its `keys` line.
+
+## `[agent]` and `[search]`
+
+The engine holds no model, no API key and no network code. `semantic` / `hybrid` matching and
+`modsys choose --run` run a command the user configured, with the work order of `modsys choose`
+on its stdin (also as the files `MODSYS_WORK_ORDER` and `MODSYS_SCHEMA`), and read its answer
+from stdout.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `[agent] command` | unset | the argv list of the agent command; items may use `{claude_model}`, `{codex_model}`, `{effort}` and `{reasoning}` (`quick` → `low`, `standard` → `medium`, `deep` → `high`), `{{` / `}}` are literal braces; run without a shell. Read ONLY from `.modsys/config.user.toml` or the `MODSYS_AGENT_COMMAND` environment variable (a JSON array; it beats the file) — a repository config or a pack that sets `[agent]` is refused (exit 2 naming the file) |
+| `[agent] timeout_s` | `300` | an integer from 1 to 3600; user config only; applies to the environment command too |
+| `[search] claude_model` | `"sonnet"` | the model the Claude Code skill's subagent uses; a string without whitespace, at most 100 characters |
+| `[search] codex_model` | `"gpt-5.6-luna"` | the model `codex exec -m` uses; same rule |
+| `[search] effort` | `"standard"` | `quick` (choose from the cards only), `standard` (also open the INDEX of up to 3 candidates), `deep` (also read the candidates' docs and the code). Team or user config; the user's wins per key; any other value is exit 2 |
 
 ## `[lint]`
 

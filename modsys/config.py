@@ -51,10 +51,8 @@ LAYER_SCHEMA = {
 }
 CI_FAIL_ON = ("error", "never", "warning")
 MATCH_MODES = ("lexical", "semantic", "hybrid")  # [match] mode / --match (P8.1 S1)
-# [match.semantic]: the optional embedder. Known keys only (3b gives them behaviour); `command`
-# is an argv list or one string, `endpoint` needs `model` and `api_key_env`.
-SEMANTIC_SCHEMA = {"endpoint": "str", "model": "str", "api_key_env": "str",
-                   "min_similarity": "number"}
+EFFORTS = ("quick", "standard", "deep")  # [search] effort (P8.1 S9)
+SEARCH_DEFAULTS = {"claude_model": "sonnet", "codex_model": "gpt-5.6-luna", "effort": "standard"}
 ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str",
                "applies_when": "str", "template": "str"}
 
@@ -65,29 +63,26 @@ def _require_table(value, section: str, source) -> dict:
     return value
 
 
-def validate_semantic(table, source) -> None:
-    """The SHAPE of one `[match.semantic]` table (a layer's, or the merged config's): exactly
-    one of `command` / `endpoint`; an endpoint names its `model` and `api_key_env`;
-    `min_similarity` is a number from 0 to 1."""
-    table = _require_table(table, "match.semantic", source)
-    _check_table(table, SEMANTIC_SCHEMA, "match.semantic", source)
-    command = table.get("command")
-    if command is not None and not (isinstance(command, str) and command.strip() or
-                                    isinstance(command, list) and command and
-                                    all(isinstance(i, str) for i in command)):
-        raise UsageError(f"{source}: [match.semantic] command: expected a command string or a "
-                         f"non-empty list of strings, got {command!r}")
-    if (command is None) == ("endpoint" not in table):
-        raise UsageError(f"{source}: [match.semantic] command / endpoint: set exactly one of "
-                         f"them ({'both are set' if command is not None else 'neither is set'})")
-    if "endpoint" in table:
-        for key in ("model", "api_key_env"):
-            if not table.get(key):
-                raise UsageError(f"{source}: [match.semantic] {key}: an endpoint needs {key}")
-    sim = table.get("min_similarity")
-    if sim is not None and not 0 <= sim <= 1:
-        raise UsageError(f"{source}: [match.semantic] min_similarity: expected a number from 0 "
-                         f"to 1, got {sim!r}")
+def search_settings(config: dict) -> dict:
+    """`[search]` of the merged config (the user config wins per key), defaults filled in."""
+    table = config.get("search") or {}
+    return {key: table.get(key, default) for key, default in SEARCH_DEFAULTS.items()}
+
+
+def _validate_search(table, source) -> None:
+    table = _require_table(table, "search", source)
+    for key in ("claude_model", "codex_model"):
+        if key not in table:
+            continue
+        v = table[key]
+        if not isinstance(v, str) or not v or len(v) > 100 or \
+                any(c.isspace() or not c.isprintable() for c in v):
+            raise UsageError(f"{source}: [search] {key}: expected a non-empty string of at most "
+                             f"100 characters without whitespace or control characters, "
+                             f"got {v!r}")
+    if "effort" in table and table["effort"] not in EFFORTS:
+        raise UsageError(f"{source}: [search] effort: expected one of {', '.join(EFFORTS)}, "
+                         f"got {table['effort']!r}")
 
 
 def _check_table(table: dict, schema: dict, section: str, source) -> None:
@@ -99,9 +94,16 @@ def _check_table(table: dict, schema: dict, section: str, source) -> None:
                                  f"got {table[key]!r}")
 
 
-def validate_layer(layer: dict, source) -> None:
+def validate_layer(layer: dict, source, user: bool = False) -> None:
     """Type-check the known keys of one config layer (a pack, config.toml or
-    config.user.toml) before it is merged; `source` names the file in errors."""
+    config.user.toml) before it is merged; `source` names the file in errors. `[agent]` is the
+    user's alone (`user=True`): a committed layer that sets it is refused, so a commit can
+    never make the engine run a command."""
+    if "agent" in layer:
+        from modsys.agent import validate_agent_table  # agent reads this module
+        validate_agent_table(layer["agent"], source, user)
+    if "search" in layer:
+        _validate_search(layer["search"], source)
     init = layer.get("init")
     if isinstance(init, dict) and "max_parallel" in init and \
             not (_is_int(init["max_parallel"]) and init["max_parallel"] >= 1):
@@ -159,8 +161,6 @@ def validate_layer(layer: dict, source) -> None:
     if mode is not None and mode not in MATCH_MODES:
         raise UsageError(f"{source}: [match] mode: expected one of {', '.join(MATCH_MODES)}, "
                          f"got {mode!r}")
-    if "semantic" in layer.get("match", {}):
-        validate_semantic(layer["match"]["semantic"], source)
     commits = layer.get("init", {}).get("co_change_commits")
     if commits is not None and commits < 0:
         raise UsageError(f"{source}: [init] co_change_commits: expected an integer >= 0, got "
@@ -315,7 +315,7 @@ def load_config(config_dir: Path, root: Path | None = None, extra: dict | None =
         path = config_dir / name
         if path.exists():
             layer = read_toml(path)
-            validate_layer(layer, path)
+            validate_layer(layer, path, user=name == "config.user.toml")
             layers.append(layer)
         if name == "config.toml" and extra is not None:
             validate_layer(extra, extra_source)

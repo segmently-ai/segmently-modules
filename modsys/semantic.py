@@ -1,14 +1,20 @@
 """Search modes of `match`, `context` and `discover --task` (P8.1 S1): `lexical` (keyword routing,
-the default), `semantic` (an embedder's ranking) and `hybrid` (both). This module resolves the
-mode (the `--match` flag wins over `[match] mode`, which wins over `lexical`), refuses or
-degrades when no embedder is configured (S4), and holds the one seam an embedder plugs into —
-`semantic_rows`. A lexical run never reaches this module's seam and changes no byte."""
-from modsys.config import MATCH_MODES, validate_semantic
+the default), `semantic` (the user's agent chooses by meaning) and `hybrid` (both, fused). This
+module resolves the mode (the `--match` flag wins over `[match] mode`, which wins over
+`lexical`), refuses or degrades when no agent command is configured (S4), asks the agent
+(`modsys.agent`) with the work order of `modsys choose`, and fuses the rankings (reciprocal rank
+fusion, k = 60). A lexical run never reaches the agent and changes no byte. The engine holds no
+model and no network code: the agent is a command the user configured."""
+from modsys import agent
+from modsys.config import MATCH_MODES
 from modsys.output import UsageError
 
-NO_EMBEDDER = ("semantic matching needs an embedder ([match.semantic] in .modsys/config.toml); "
-               "in an agent, the skills choose modules from `modsys catalog`")
-NO_EMBEDDER_NOTE = "semantic part skipped: no embedder configured"
+NO_AGENT = ("semantic matching needs your agent: set [agent] command in "
+            ".modsys/config.user.toml or MODSYS_AGENT_COMMAND; in Claude Code / Codex the "
+            "skills do it with modsys choose")
+NO_AGENT_NOTE = "semantic part skipped: no agent command configured"
+RRF_K = 60
+MAX_PICKS = 5  # picks asked from the agent per match run
 
 
 def add_match_flag(parser) -> None:
@@ -22,13 +28,9 @@ def configured_mode(config: dict) -> str:
     return (config.get("match") or {}).get("mode", "lexical")
 
 
-def semantic_config(config: dict) -> dict | None:
-    """The `[match.semantic]` table of the merged config, or None without an embedder."""
-    table = (config.get("match") or {}).get("semantic")
-    if table is None:
-        return None
-    validate_semantic(table, "merged config")  # a merge of two valid layers can break the shape
-    return table
+def agent_configured(config: dict) -> bool:
+    """An agent command is in force (the environment variable or `config.user.toml`)."""
+    return agent.settings(config) is not None
 
 
 def effective_mode(flag: str | None, config: dict) -> str:
@@ -36,18 +38,67 @@ def effective_mode(flag: str | None, config: dict) -> str:
 
 
 def resolve(ws, flag: str | None) -> tuple[str, list[str]]:
-    """(mode, notes) for one run. `semantic` without an embedder is refused (exit 2); `hybrid`
-    without one runs lexically and says so in `notes`."""
+    """(mode, notes) for one run. `semantic` without an agent command is refused (exit 2);
+    `hybrid` without one runs lexically and says so in `notes`."""
     mode = effective_mode(flag, ws.config)
-    if mode == "lexical" or semantic_config(ws.config) is not None:
+    if mode == "lexical" or agent_configured(ws.config):
         return mode, []
     if mode == "semantic":
-        raise UsageError(NO_EMBEDDER)
-    return mode, [NO_EMBEDDER_NOTE]
+        raise UsageError(NO_AGENT)
+    return mode, [NO_AGENT_NOTE]
 
 
-def semantic_rows(ws, text: str, top: int) -> list[dict]:
-    """The embedder's ranking of the task text: rows `{module, similarity}`, best first. The
-    seam of the embedder support (P8.1 task 3b replaces this function); it is reached only
-    with `[match.semantic]` configured and the effective mode `semantic` or `hybrid`."""
-    raise NotImplementedError("embedder support is not built yet")
+def ask(ws, text: str, max_picks: int = MAX_PICKS) -> tuple[list[dict], list[str]]:
+    """Ask the agent once: the validated picks `{module, confidence, reason?}` (confidence
+    descending) and the notes of the validation. A failing agent is a usage error."""
+    from modsys import workorder
+    order = workorder.build(ws, text, max_picks)
+    picks, _, notes = agent.run(
+        ws.config, order, order["answer_schema"],
+        lambda answer: workorder.validate_answer(answer, order, max_picks))
+    return picks, notes
+
+
+def semantic_rows(picks: list[dict]) -> list[dict]:
+    return [{"module": p["module"], "confidence": p["confidence"], "sources": ["semantic"],
+             **({"reason": p["reason"]} if "reason" in p else {})} for p in picks]
+
+
+def fuse(lexical: list[dict], picks: list[dict]) -> list[dict]:
+    """Reciprocal rank fusion of the lexical rows and the agent's picks (both best first): a
+    row's score is the sum of 1/(60 + rank) over the lists it is in (rank from 1); ties break
+    by lexical rank, then module name. Each row says where it came from (`sources`) and keeps
+    the agent's `confidence` and `reason` where the agent listed it."""
+    rows: dict[str, dict] = {}
+    for rank, r in enumerate(lexical, 1):
+        rows[r["module"]] = {**r, "sources": ["keyword"], "rrf": 1 / (RRF_K + rank),
+                             "_lex": rank}
+    for rank, p in enumerate(picks, 1):
+        row = rows.setdefault(p["module"], {"module": p["module"], "sources": [], "rrf": 0.0,
+                                            "_lex": len(lexical) + 1})
+        row["sources"].append("semantic")
+        row["rrf"] += 1 / (RRF_K + rank)
+        row["confidence"] = p["confidence"]
+        if "reason" in p:
+            row["reason"] = p["reason"]
+    out = sorted(rows.values(), key=lambda r: (-round(r["rrf"], 12), r["_lex"], r["module"]))
+    for r in out:
+        del r["_lex"]
+        r["rrf"] = round(r["rrf"], 6)
+    return out
+
+
+def ranked(ws, text: str, mode: str, notes: list[str], top: int,
+           min_score: int) -> tuple[list[dict], list[str]]:
+    """The rows of a `semantic` / `hybrid` run (`mode`, `notes` from `resolve`) and its notes.
+    Hybrid without an agent command: the plain lexical rows. Otherwise the agent is asked
+    exactly once; `top` applies after fusion."""
+    from modsys.match import match_modules
+    cfg = ws.config["match"]
+    if notes:  # hybrid, no agent command
+        return match_modules(ws.registry.modules, text, cfg, top, min_score), notes
+    picks, pick_notes = ask(ws, text)
+    if mode == "semantic":
+        return semantic_rows(picks)[:top], pick_notes
+    lexical = match_modules(ws.registry.modules, text, cfg, 10 ** 9, min_score)
+    return fuse(lexical, picks)[:top], pick_notes

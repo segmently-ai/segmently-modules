@@ -21,6 +21,9 @@ os.environ.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1",
                   GIT_CEILING_DIRECTORIES=os.path.realpath(tempfile.gettempdir()))
 
 
+os.environ.pop("MODSYS_AGENT_COMMAND", None)  # a developer's own agent never reaches a test
+
+
 def run(*argv):
     out, err = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):

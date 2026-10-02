@@ -2,7 +2,7 @@ import re
 
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.registry import as_dict, as_list
-from modsys.semantic import add_match_flag, resolve
+from modsys.semantic import add_match_flag, ranked, resolve
 from modsys.workspace import Workspace
 
 
@@ -160,23 +160,34 @@ def run(args) -> int:
     cfg = ws.config["match"]
     top = cfg["top"] if args.top is None else args.top
     min_score = cfg["min_score"] if args.min_score is None else args.min_score
-    rows = match_modules(ws.registry.modules, args.text, cfg, top, min_score)
-    near = [] if rows or args.json else near_misses(ws.registry.modules, args.text, cfg, top,
-                                                    min_score)
     if mode == "lexical":
+        rows = match_modules(ws.registry.modules, args.text, cfg, top, min_score)
+        near = [] if rows or args.json else near_misses(ws.registry.modules, args.text, cfg, top,
+                                                        min_score)
         emit("match", rows, args.json, lambda r: _render(r, near))  # --json: the plain list
-    else:  # hybrid without an embedder: the lexical rows and a note
-        emit("match", {"mode": mode, "rows": rows, "notes": notes}, args.json,
-             lambda d: (_render(d["rows"], near), [print(n) for n in d["notes"]]))
+        return EXIT_OK
+    rows, notes = ranked(ws, args.text, mode, notes, top, min_score)
+    near = [] if rows or args.json or mode == "semantic" else \
+        near_misses(ws.registry.modules, args.text, cfg, top, min_score)
+    emit("match", {"mode": mode, "rows": rows, "notes": notes}, args.json,
+         lambda d: (_render(d["rows"], near, mode), [print(n) for n in d["notes"]]))
     return EXIT_OK
 
 
-def _render(rows, near) -> None:
+def _render(rows, near, mode: str = "lexical") -> None:
+    if not rows and mode == "semantic":
+        print("no matches (the agent chose no module; try rephrasing the task)")
+        return
     if not rows:
         print("no keyword matches (try rephrasing with domain terms, or use: list)")
         for line in near_lines(near):
             print(line)
         return
     for r in rows:
+        if "sources" in r:  # an agent-backed row: its confidence, keywords or reason, sources
+            label = r["score"] if "score" in r else f"{r['confidence']:.2f}"
+            detail = ", ".join(r.get("keywords") or []) or r.get("reason", "")
+            print(f"{label:>4}  {r['module']:<42} {detail}  [{', '.join(r['sources'])}]")
+            continue
         neg = f"  NEGATIVE:{','.join(r['negative'])}" if r["negative"] else ""
         print(f"{r['score']:>4}  {r['module']:<42} {', '.join(r['keywords'])}{neg}")

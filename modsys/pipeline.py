@@ -13,7 +13,7 @@ from modsys.match import match_modules, near_lines, near_misses
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.registry import as_dict
 from modsys.query import show_target
-from modsys.semantic import add_match_flag, resolve
+from modsys.semantic import add_match_flag, ranked, resolve
 from modsys.workspace import Workspace
 
 _PATHLIKE = re.compile(r"(?<![\w/.-])((?:\.{0,2}/)?[\w.-]+(?:/[\w.-]+)+)")
@@ -40,9 +40,17 @@ def _rows(ws, text: str, top: int | None) -> list[dict]:
                          cfg["min_score"])
 
 
-def build_context(ws, text: str, role: str | None, all_roles: bool, top: int | None) -> dict:
+def _mode_rows(ws, text: str, mode: str, notes: list[str], top: int | None):
+    """(rows, notes) of a `semantic` / `hybrid` run: the agent is asked once (P8.1 S3)."""
+    cfg = ws.config["match"]
+    return ranked(ws, text, mode, notes, cfg["top"] if top is None else top, cfg["min_score"])
+
+
+def build_context(ws, text: str, role: str | None, all_roles: bool, top: int | None,
+                  rows: list[dict] | None = None) -> dict:
+    """`rows`: the rows of a non-lexical mode (None = keyword routing)."""
     modules, read, seen = [], [], set()
-    for row in _rows(ws, text, top):
+    for row in (_rows(ws, text, top) if rows is None else rows):
         _, shown = show_target(ws, row["module"], role, all_roles)
         modules.append({**row, "read": shown["read"], "code": shown["code"],
                         "code_globs": shown["code_globs"]})
@@ -52,7 +60,7 @@ def build_context(ws, text: str, role: str | None, all_roles: bool, top: int | N
                 read.append({"module": row["module"], **r})
     cfg = ws.config["match"]
     near = near_misses(ws.registry.modules, text, cfg, cfg["top"] if top is None else top,
-                       cfg["min_score"])
+                       cfg["min_score"]) if rows is None else []
     return {"task": text, "role": role, "all_roles": all_roles, "modules": modules, "read": read,
             "near_misses": near}
 
@@ -93,9 +101,10 @@ def split_children(ws, module: str) -> list[dict]:
 
 
 def build_discover(ws, text: str | None, files: list[str], top: int | None,
-                   missing: list[str] = ()) -> dict:
+                   missing: list[str] = (), rows: list[dict] | None = None) -> dict:
     """`text` None = no task: the change alone decides (no keyword scoring, `score` null).
-    `missing` = the listed changed files that are not on disk."""
+    `missing` = the listed changed files that are not on disk. `rows`: the rows of a
+    non-lexical mode (None = keyword routing)."""
     by_module: dict[str, dict] = {}
 
     def slot(module: str) -> dict:
@@ -104,10 +113,14 @@ def build_discover(ws, text: str | None, files: list[str], top: int | None,
                                              "keywords": [], "sources": [],
                                              "touched_files": []})
 
-    for row in _rows(ws, text, top) if text is not None else []:
+    task_rows = (_rows(ws, text, top) if rows is None else rows) if text is not None else []
+    for row in task_rows:
         s = slot(row["module"])
-        s.update(score=row["score"], keywords=row["keywords"])
-        s["sources"].append("keyword")
+        s.update(score=row.get("score"), keywords=row.get("keywords", []))
+        for src in row.get("sources", ["keyword"]):
+            s["sources"].append(src)
+        if "confidence" in row:
+            s["confidence"] = row["confidence"]
     mentioned = _mentioned_paths(ws, text) if text is not None else []
     touched = map_files(ws, files)
     in_text = map_files(ws, mentioned)
@@ -123,7 +136,9 @@ def build_discover(ws, text: str | None, files: list[str], top: int | None,
             targets_of[f].append(module)
     roles = [r for r in UPDATE_ROLES if r in enabled_roles(ws.config)]
     out = []
-    for module in sorted(by_module, key=lambda m: (-(by_module[m]["score"] or 0), m)):
+    rank = {r["module"]: i for i, r in enumerate(task_rows)} if rows is not None else None
+    for module in sorted(by_module, key=(lambda m: (-(by_module[m]["score"] or 0), m)) if
+                         rank is None else (lambda m: (rank.get(m, len(rank)), m))):
         s = by_module[module]
         s["usage"] = "modify" if s["touched_files"] else "reference"
         docs = []
@@ -183,9 +198,13 @@ def run_context(args) -> int:
     if args.role and args.role not in roles:
         raise UsageError(f"unknown role '{args.role}' (roles: {', '.join(roles)})")
     mode, notes = resolve(ws, args.match)
-    data = build_context(ws, task_text(args), args.role, args.all_roles, args.top)
-    if mode != "lexical":  # a lexical run adds nothing: byte-identical to before P8.1
-        data = {**data, "mode": mode, "notes": notes}
+    text = task_text(args)
+    if mode == "lexical":  # a lexical run adds nothing: byte-identical to before P8.1
+        data = build_context(ws, text, args.role, args.all_roles, args.top)
+    else:
+        rows, notes = _mode_rows(ws, text, mode, notes, args.top)
+        data = {**build_context(ws, text, args.role, args.all_roles, args.top, rows),
+                "mode": mode, "notes": notes}
     emit("context", data, args.json, _render_context)
     return EXIT_OK
 
@@ -201,8 +220,12 @@ def run_discover(args) -> int:
     mode, notes = resolve(ws, args.match) if has_task else ("lexical", [])
     files = changed_files(ws.root, diff_range=args.from_diff, files=args.files) \
         if (args.from_diff or args.files) else []
-    data = build_discover(ws, task_text(args) if has_task else None, files, args.top,
-                          missing_files(ws.root, files) if args.files else [])
+    text = task_text(args) if has_task else None
+    rows = None
+    if mode != "lexical" and has_task:
+        rows, notes = _mode_rows(ws, text, mode, notes, args.top)
+    data = build_discover(ws, text, files, args.top,
+                          missing_files(ws.root, files) if args.files else [], rows)
     if mode != "lexical":
         data = {**data, "mode": mode, "notes": notes}
     # --from-diff REF (no range) compares the working tree with REF: the text says so
@@ -217,8 +240,9 @@ def _render_context(d) -> None:
         for line in near_lines(d["near_misses"]):
             print(line)
     for m in d["modules"]:  # why each module matched: its keywords found in the task
-        print(f"{m['module']:<28} {'matched':<30} {', '.join(m['keywords'])} "
-              f"(score {m['score']})")
+        why = f"(score {m['score']})" if "score" in m else f"(confidence {m['confidence']:.2f})"
+        detail = ', '.join(m.get('keywords', [])) or m.get('reason', '')
+        print(f"{m['module']:<28} {'matched':<30} {detail} {why}")
     for r in d["read"]:
         mark = "" if r["exists"] else "  (MISSING ON DISK)"
         print(f"{r['module']:<28} {r['label']:<30} {r['path']}{mark}")
@@ -233,7 +257,8 @@ def _render_discover(d, ref: str | None = None) -> None:
     """`ref`: the single ref of `--from-diff REF` — its `diff` source is labelled `diff
     (working tree vs REF)`."""
     for m in d["modules"]:
-        score = f"score {m['score']:<3} " if m["score"] is not None else ""
+        score = f"score {m['score']:<3} " if m["score"] is not None else \
+            (f"confidence {m['confidence']:.2f} " if "confidence" in m else "")
         sources = [f"diff (working tree vs {ref})" if s == "diff" and ref else s
                    for s in m["sources"]]
         print(f"{m['usage']:<9} {m['module']:<30} {score}via {', '.join(sources)}")

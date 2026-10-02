@@ -1,10 +1,11 @@
 """`modsys catalog [--json]`: one card per module and per child — name, status, description,
 keywords (a child also names its parent) — the input an agent reads to choose modules by
-meaning (P8.1 S2). Read-only: no lock, no write, never calls the embedder. JSON carries
-`match: {mode, semantic}` so a skill knows the configured mode and whether an embedder exists."""
+meaning (P8.1 S2). Read-only: no lock, no write, never runs the agent. JSON carries `match: {mode,
+semantic}` (`semantic` = an `[agent] command` is configured) and the `search` settings."""
 from modsys.output import EXIT_OK, emit
 from modsys.registry import as_dict
-from modsys.semantic import configured_mode, semantic_config
+from modsys.config import search_settings
+from modsys.semantic import agent_configured, configured_mode
 from modsys.workspace import Workspace
 
 
@@ -46,7 +47,8 @@ def register(sub, common) -> None:
 def run(args) -> int:
     ws = Workspace.from_args(args)
     data = {"match": {"mode": configured_mode(ws.config),
-                      "semantic": semantic_config(ws.config) is not None},
+                      "semantic": agent_configured(ws.config)},
+            "search": search_settings(ws.config),
             "modules": cards(ws.registry.modules)}
     emit("catalog", data, args.json, _render)
     return EXIT_OK
