@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The user's own agent command, read only from the environment (`MODSYS_AGENT_COMMAND`,
   `MODSYS_AGENT_TIMEOUT`) — an `[agent]` table in a config file is refused. The engine holds no
   model, no API key and no network code. `[search]` sets the models and the depth the skills use.
+- The agent command's argv items may use `{claude_model}`, `{codex_model}`, `{effort}` and
+  `{reasoning}` (`quick` low, `standard` medium, `deep` high), filled in without a shell (`{{` /
+  `}}` are literal braces). `--match semantic` without a command is refused (exit 2); `hybrid`
+  without one runs lexically with a note; a failing agent (exit, timeout, bad answer) is exit 2.
 - `module-scout`, `module-discover`, `module-research` and `module-sync` choose modules by meaning
   through `modsys choose` (hybrid by default); `module-discover` goes from the candidates to the
   code; `module-sync` picks the child and adds a keyword only for a new public name.

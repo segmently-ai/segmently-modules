@@ -136,7 +136,8 @@ whether an agent command exists) and `search` (the models and the depth), then:
 
 - **By meaning** (`semantic` or `hybrid`): `modsys choose --task "<the text, verbatim, in any
   language>" --json` prints the work order; the skill hands it to YOUR agent — in Claude Code a
-  subagent on `search.claude_model`, in Codex `codex exec -m <search.codex_model>` with the
+  subagent on `search.claude_model`, in Codex `codex exec -m <search.codex_model>` (add `--skip-git-repo-check` outside a git
+  repository) with the
   reasoning level of the depth (`quick` low, `standard` medium, `deep` high) — or answers it in
   its own session; the answer goes to `modsys choose --apply - --json`, which prints the picks with
   the docs to read. The depth sets how much the agent reads: `quick` the cards only, `standard`
@@ -152,10 +153,10 @@ whether an agent command exists) and `search` (the models and the depth), then:
 "search deep" for the depth, "use opus" for the model. Set the models and the depth once in the
 team or personal config (`[search] claude_model`, `codex_model`, `effort`; `[match] mode =
 "semantic"` makes meaning-only the default; see
-[configuration.md](configuration.md#the-agent-command-and-search)). The skills never pass
-`--match`; they call `modsys choose` themselves, so they need no agent command in the
-environment (`match.semantic` only says whether `--match semantic` / `hybrid` would work for a
-plain `modsys` call). The engine holds no model, key or network code and ships no model: the
+[configuration.md](configuration.md#the-agent-command-and-search)). The skills pass
+`--match lexical` for the keyword half and `--match semantic|hybrid` only when `match.semantic`
+is true; the by-meaning half goes through `modsys choose` and needs no agent command in the
+environment. The engine holds no model, key or network code and ships no model: the
 agent that chooses is the one you already run, under your own credentials.
 
 Also in these skills: `module-discover` goes from the candidates to the code

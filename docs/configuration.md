@@ -86,7 +86,7 @@ Module routing used by `match`, `context` and `discover --task`: keyword routing
 
 `lexical` (the default) is the keyword routing described below and changes nothing in any output.
 `semantic` takes the rows from the user's own agent alone; `hybrid` fuses the keyword rows and the
-agent's picks by reciprocal rank fusion (k = 60) and every row carries `sources` (`keyword`,
+agent's picks by reciprocal rank fusion (k = 60) and every fused row carries `sources` (`keyword`,
 `semantic`) and, when the agent listed it, its `confidence`. The wording of the refusals and
 notes and the JSON shapes: [cli-contract.md](cli-contract.md#semantic-module-choice---match).
 There is no `[match.semantic]` table and no endpoint key: the engine has no network code.
@@ -121,7 +121,7 @@ on its stdin (also as the files `MODSYS_WORK_ORDER` and `MODSYS_SCHEMA`), and re
 from stdout.
 
 Why an environment variable and not a config file: a command in a file the repository commits
-(a team config, or a pack someone installs) would let a commit make the engine run a program on
+(a team config, or a pack someone installs) would let a commit make the engine run an agent command on
 every contributor's machine. So the command is read ONLY from the process environment of the
 user who runs modsys; an `[agent]` table in any config file is refused (exit 2 naming the file),
 whatever file it is in. Put the variable in your shell profile, or set it in the CI job's own
@@ -130,9 +130,9 @@ installs and suggests no model.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `MODSYS_AGENT_COMMAND` | unset | the argv list of the agent command, a JSON array of strings, read ONLY from this environment variable; items may use `{claude_model}`, `{codex_model}`, `{effort}` and `{reasoning}` (`quick` → `low`, `standard` → `medium`, `deep` → `high`), `{{` / `}}` are literal braces; run without a shell. An `[agent]` table in any config file (team, personal or a pack) is refused (exit 2 naming the file): a repository could commit it. Inside an agent run (`MODSYS_WORK_ORDER` set) the command is unavailable: `semantic` and `choose --run` are refused, `hybrid` runs lexically with a note |
+| `MODSYS_AGENT_COMMAND` | unset | the argv list of the agent command, a JSON array of strings, read ONLY from this environment variable (`catalog` reports `match.semantic` true only for a valid one outside an agent run; a malformed value, like a bad `MODSYS_AGENT_TIMEOUT`, is exit 2 in `catalog` too); items may use `{claude_model}`, `{codex_model}`, `{effort}` and `{reasoning}` (`quick` → `low`, `standard` → `medium`, `deep` → `high`), `{{` / `}}` are literal braces; run without a shell. An `[agent]` table in any config file (team, personal or a pack) is refused (exit 2 naming the file): a repository could commit it. Inside an agent run (`MODSYS_WORK_ORDER` set) the command is unavailable: `semantic` and `choose --run` are refused, `hybrid` runs lexically with a note |
 | `MODSYS_AGENT_TIMEOUT` | `300` | seconds, an integer from 1 to 3600; anything else is exit 2 naming the variable |
-| `[search] claude_model` | `"sonnet"` | the model the Claude Code skill's subagent uses; 1–100 characters of letters, digits and `. _ : / @ + -`, not starting with a dash (the value becomes an item of your agent command) |
+| `[search] claude_model` | `"sonnet"` | the model the Claude Code skill's subagent uses; 1–100 characters of letters, digits and `. _ : / @ + -`, starting with a letter or digit (the value becomes an item of your agent command) |
 | `[search] codex_model` | `"gpt-5.6-luna"` | the model `codex exec -m` uses; same rule |
 | `[search] effort` | `"standard"` | `quick` (choose from the cards only), `standard` (also open the INDEX of up to 3 candidates), `deep` (also read the candidates' docs and the code). Team or user config; the user's wins per key; any other value is exit 2 |
 

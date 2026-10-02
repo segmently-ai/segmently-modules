@@ -490,11 +490,12 @@ and meaning together; say "only lexical" to switch it off). The models and the d
 
 For a script or CI, point modsys at your own agent command and use `--match semantic|hybrid`
 (or `[match] mode`) or `modsys choose --task … --run`. The command is read ONLY from your
-environment — a repository can never make modsys run a program — as a JSON array run without a
+environment — a repository cannot make modsys run an agent command — as a JSON array run without a
 shell (`{claude_model}`, `{codex_model}`, `{effort}` and `{reasoning}` are filled in from
 `[search]`); the work order arrives on stdin and as the file `$MODSYS_WORK_ORDER`, the answer's
 JSON Schema is the file `$MODSYS_SCHEMA`. Two examples (check the flags against your agent's
-`--help`; they are examples, not a recommendation):
+`--help`; they are examples, not a recommendation; `codex exec` outside a git repository also
+needs `--skip-git-repo-check`):
 
 ```bash
 # Claude Code: the answer is the `structured_output` of the JSON envelope
