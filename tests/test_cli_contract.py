@@ -66,6 +66,7 @@ GOLDEN = [
     (("roles", "list"), {"roles"}),  # P6.1 W3
     (("roles", "add", "designer", "checkout", "--dry-run"), {"role", "dry_run", "results"}),
     (("next", "--base", "HEAD"), {"version", "items", "skipped"}),  # P6.1 W4
+    (("catalog",), {"match", "modules"}),  # P8.1 task 3a
     (("setup", "--dry-run"), {"dry_run", "agents", "targets", "steps"}),  # P6.1 W5
 ]
 

@@ -37,8 +37,8 @@ LAYER_SCHEMA = {
                  "stub_pattern": "str", "updated_at_path": "str"},
     "budgets": {k: "int" for k in ("module_doc_split_signal", "module_doc_hard_stop",
                                    "role_doc_max", "keywords_soft", "keyword_shared_warn")},
-    "match": {k: "int" for k in ("keyword_weight", "combination_weight", "negative_weight",
-                                 "min_score", "top")},
+    "match": {**{k: "int" for k in ("keyword_weight", "combination_weight", "negative_weight",
+                                    "min_score", "top")}, "mode": "str"},
     "lint": {"fail_on": "str", "component_table_heading": "str", "drift_severity": "str",
              "overlap_severity": "str"},
     "create": {"min_keywords": "int", "description_min": "int", "description_max": "int",
@@ -50,6 +50,11 @@ LAYER_SCHEMA = {
              "routing_min_hit_rate": "number"},
 }
 CI_FAIL_ON = ("error", "never", "warning")
+MATCH_MODES = ("lexical", "semantic", "hybrid")  # [match] mode / --match (P8.1 S1)
+# [match.semantic]: the optional embedder. Known keys only (3b gives them behaviour); `command`
+# is an argv list or one string, `endpoint` needs `model` and `api_key_env`.
+SEMANTIC_SCHEMA = {"endpoint": "str", "model": "str", "api_key_env": "str",
+                   "min_similarity": "number"}
 ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str",
                "applies_when": "str", "template": "str"}
 
@@ -58,6 +63,31 @@ def _require_table(value, section: str, source) -> dict:
     if not isinstance(value, dict):
         raise UsageError(f"{source}: [{section}] must be a table, got {value!r}")
     return value
+
+
+def validate_semantic(table, source) -> None:
+    """The SHAPE of one `[match.semantic]` table (a layer's, or the merged config's): exactly
+    one of `command` / `endpoint`; an endpoint names its `model` and `api_key_env`;
+    `min_similarity` is a number from 0 to 1."""
+    table = _require_table(table, "match.semantic", source)
+    _check_table(table, SEMANTIC_SCHEMA, "match.semantic", source)
+    command = table.get("command")
+    if command is not None and not (isinstance(command, str) and command.strip() or
+                                    isinstance(command, list) and command and
+                                    all(isinstance(i, str) for i in command)):
+        raise UsageError(f"{source}: [match.semantic] command: expected a command string or a "
+                         f"non-empty list of strings, got {command!r}")
+    if (command is None) == ("endpoint" not in table):
+        raise UsageError(f"{source}: [match.semantic] command / endpoint: set exactly one of "
+                         f"them ({'both are set' if command is not None else 'neither is set'})")
+    if "endpoint" in table:
+        for key in ("model", "api_key_env"):
+            if not table.get(key):
+                raise UsageError(f"{source}: [match.semantic] {key}: an endpoint needs {key}")
+    sim = table.get("min_similarity")
+    if sim is not None and not 0 <= sim <= 1:
+        raise UsageError(f"{source}: [match.semantic] min_similarity: expected a number from 0 "
+                         f"to 1, got {sim!r}")
 
 
 def _check_table(table: dict, schema: dict, section: str, source) -> None:
@@ -125,6 +155,12 @@ def validate_layer(layer: dict, source) -> None:
     top = layer.get("match", {}).get("top")
     if top is not None and top < 0:
         raise UsageError(f"{source}: [match] top: expected an integer >= 0, got {top!r}")
+    mode = layer.get("match", {}).get("mode")
+    if mode is not None and mode not in MATCH_MODES:
+        raise UsageError(f"{source}: [match] mode: expected one of {', '.join(MATCH_MODES)}, "
+                         f"got {mode!r}")
+    if "semantic" in layer.get("match", {}):
+        validate_semantic(layer["match"]["semantic"], source)
     commits = layer.get("init", {}).get("co_change_commits")
     if commits is not None and commits < 0:
         raise UsageError(f"{source}: [init] co_change_commits: expected an integer >= 0, got "

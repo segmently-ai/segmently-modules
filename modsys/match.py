@@ -2,6 +2,7 @@ import re
 
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.registry import as_dict, as_list
+from modsys.semantic import add_match_flag, resolve
 from modsys.workspace import Workspace
 
 
@@ -147,6 +148,7 @@ def register(sub, common) -> None:
     p.add_argument("text")
     p.add_argument("--top", type=int)
     p.add_argument("--min-score", type=int)
+    add_match_flag(p)
     p.set_defaults(func=run)
 
 
@@ -154,13 +156,18 @@ def run(args) -> int:
     if args.top is not None and args.top < 0:
         raise UsageError("--top must be >= 0")
     ws = Workspace.from_args(args)
+    mode, notes = resolve(ws, args.match)
     cfg = ws.config["match"]
     top = cfg["top"] if args.top is None else args.top
     min_score = cfg["min_score"] if args.min_score is None else args.min_score
     rows = match_modules(ws.registry.modules, args.text, cfg, top, min_score)
     near = [] if rows or args.json else near_misses(ws.registry.modules, args.text, cfg, top,
                                                     min_score)
-    emit("match", rows, args.json, lambda r: _render(r, near))  # --json: the plain list
+    if mode == "lexical":
+        emit("match", rows, args.json, lambda r: _render(r, near))  # --json: the plain list
+    else:  # hybrid without an embedder: the lexical rows and a note
+        emit("match", {"mode": mode, "rows": rows, "notes": notes}, args.json,
+             lambda d: (_render(d["rows"], near), [print(n) for n in d["notes"]]))
     return EXIT_OK
 
 

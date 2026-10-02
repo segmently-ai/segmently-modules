@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from modsys import __version__
-from modsys import (adopt_cmd, agents_md_cmd, ci_cmd, code_map_cmd, coverage_cmd, create_cmd,
+from modsys import (adopt_cmd, agents_md_cmd, catalog_cmd, ci_cmd, code_map_cmd, coverage_cmd, create_cmd,
                     eject_cmd, eval_cmd, hooks_cmd, index_cmd, init_cmd, lint, match,
                     migrate_cmd, next_cmd, packs_cmd, pipeline, proposals_cmd, query,
                     registry_cmd, roles_cmd, schema_cmd, setup_cmd, sync_cmd,
@@ -15,7 +15,7 @@ COMMANDS: list = [init_cmd, schema_cmd, match, query, lint, registry_cmd, index_
                   proposals_cmd, hooks_cmd, sync_cmd, create_cmd, migrate_cmd, pipeline,
                   coverage_cmd, code_map_cmd, ci_cmd, templates_cmd, packs_cmd,
                   eject_cmd, agents_md_cmd, sync_instructions_cmd, adopt_cmd, eval_cmd,
-                  roles_cmd, next_cmd, setup_cmd]
+                  roles_cmd, next_cmd, setup_cmd, catalog_cmd]
 
 
 def common_parser() -> argparse.ArgumentParser:

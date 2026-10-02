@@ -82,6 +82,7 @@ Keyword routing used by `match`, `context` and `discover`.
 | `negative_weight` | `-5` | score per matched `negative_keywords` phrase |
 | `min_score` | `3` | rows below this are dropped |
 | `top` | `8` | at most this many rows (`--top` overrides) |
+| `mode` | `"lexical"` | `"lexical"`, `"semantic"` or `"hybrid"` (`--match` overrides); `semantic` and `hybrid` use the optional `[match.semantic]` embedder table — `command` or `endpoint` (with `model`, `api_key_env`), `min_similarity`; `semantic` without it is refused, `hybrid` without it runs lexically with a note |
 
 Matching is exact-token: a keyword or `negative_keywords` phrase must occur as a whole word (or
 whole phrase) in the task text — case-insensitive, with no stemming and no plural/singular

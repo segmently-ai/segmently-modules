@@ -1,0 +1,59 @@
+"""`modsys catalog [--json]`: one card per module and per child — name, status, description,
+keywords (a child also names its parent) — the input an agent reads to choose modules by
+meaning (P8.1 S2). Read-only: no lock, no write, never calls the embedder. JSON carries
+`match: {mode, semantic}` so a skill knows the configured mode and whether an embedder exists."""
+from modsys.output import EXIT_OK, emit
+from modsys.registry import as_dict
+from modsys.semantic import configured_mode, semantic_config
+from modsys.workspace import Workspace
+
+
+def _keywords(entry: dict) -> list[str]:
+    kw = entry.get("keywords")
+    return [k for k in kw if isinstance(k, str)] if isinstance(kw, list) else []
+
+
+def _text(value) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def cards(modules: dict) -> list[dict]:
+    """Registry order, each child right after its parent. A child's description and status are
+    its own, falling back to the parent's (as `show` does)."""
+    out = []
+    for name, entry in modules.items():
+        if not isinstance(entry, dict):
+            continue
+        out.append({"name": name, "status": _text(entry.get("status")),
+                    "description": _text(entry.get("description")),
+                    "keywords": _keywords(entry)})
+        for child, sub in as_dict(entry.get("submodules")).items():
+            sub = as_dict(sub)
+            out.append({"name": f"{name}/{child}",
+                        "status": _text(sub.get("status")) or _text(entry.get("status")),
+                        "description": _text(sub.get("description")) or
+                        _text(entry.get("description")),
+                        "keywords": _keywords(sub), "parent": name})
+    return out
+
+
+def register(sub, common) -> None:
+    p = sub.add_parser("catalog", parents=[common],
+                       help="one card per module and child, for choosing modules by meaning")
+    p.set_defaults(func=run)
+
+
+def run(args) -> int:
+    ws = Workspace.from_args(args)
+    data = {"match": {"mode": configured_mode(ws.config),
+                      "semantic": semantic_config(ws.config) is not None},
+            "modules": cards(ws.registry.modules)}
+    emit("catalog", data, args.json, _render)
+    return EXIT_OK
+
+
+def _render(data) -> None:
+    for c in data["modules"]:
+        parent = f"  (child of {c['parent']})" if "parent" in c else ""
+        print(f"{c['name']}  {c['status']}  {c['description']}{parent}  "
+              f"[{', '.join(c['keywords'])}]")

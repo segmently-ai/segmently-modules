@@ -13,6 +13,7 @@ from modsys.match import match_modules, near_lines, near_misses
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.registry import as_dict
 from modsys.query import show_target
+from modsys.semantic import add_match_flag, resolve
 from modsys.workspace import Workspace
 
 _PATHLIKE = re.compile(r"(?<![\w/.-])((?:\.{0,2}/)?[\w.-]+(?:/[\w.-]+)+)")
@@ -152,6 +153,7 @@ def register(sub, common) -> None:
     c.add_argument("--role")
     c.add_argument("--all-roles", action="store_true")
     c.add_argument("--top", type=int)
+    add_match_flag(c)
     c.set_defaults(func=run_context)
     d = sub.add_parser("discover", parents=[common],
                        help="modules a change touches (modify/reference) and their docs",
@@ -163,6 +165,7 @@ def register(sub, common) -> None:
     src.add_argument("--from-diff", metavar="A..B")
     src.add_argument("--files", nargs="+", action="extend", metavar="PATH")
     d.add_argument("--top", type=int)
+    add_match_flag(d)
     d.set_defaults(func=run_discover)
 
 
@@ -179,7 +182,10 @@ def run_context(args) -> int:
     roles = enabled_roles(ws.config)
     if args.role and args.role not in roles:
         raise UsageError(f"unknown role '{args.role}' (roles: {', '.join(roles)})")
+    mode, notes = resolve(ws, args.match)
     data = build_context(ws, task_text(args), args.role, args.all_roles, args.top)
+    if mode != "lexical":  # a lexical run adds nothing: byte-identical to before P8.1
+        data = {**data, "mode": mode, "notes": notes}
     emit("context", data, args.json, _render_context)
     return EXIT_OK
 
@@ -192,10 +198,13 @@ def run_discover(args) -> int:
         raise UsageError("give the task (--task TEXT or --task-file FILE), the change "
                          "(--from-diff A..B or --files PATH …), or both")
     ws = Workspace.from_args(args)
+    mode, notes = resolve(ws, args.match) if has_task else ("lexical", [])
     files = changed_files(ws.root, diff_range=args.from_diff, files=args.files) \
         if (args.from_diff or args.files) else []
     data = build_discover(ws, task_text(args) if has_task else None, files, args.top,
                           missing_files(ws.root, files) if args.files else [])
+    if mode != "lexical":
+        data = {**data, "mode": mode, "notes": notes}
     # --from-diff REF (no range) compares the working tree with REF: the text says so
     ref = args.from_diff if args.from_diff and ".." not in args.from_diff else None
     emit("discover", data, args.json, functools.partial(_render_discover, ref=ref))
@@ -216,6 +225,8 @@ def _render_context(d) -> None:
     for m in d["modules"]:
         for c in m["code"] + m["code_globs"]:
             print(f"{m['module']:<28} {'code':<30} {c}")
+    for n in d.get("notes", []):
+        print(n)
 
 
 def _render_discover(d, ref: str | None = None) -> None:
@@ -236,3 +247,5 @@ def _render_discover(d, ref: str | None = None) -> None:
         print(f"outside   {f}")
     for f in d["missing_files"]:
         print(f"not on disk: {f} (typo? a deleted file still maps)")
+    for n in d.get("notes", []):
+        print(n)
