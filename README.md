@@ -486,16 +486,21 @@ modsys choose --apply answer.json --json    # check the agent's answer; prints t
 The skills (`module-scout`, `module-discover`, `module-research`, `module-sync`) do this for you:
 they run `modsys choose`, your Claude Code or Codex answers it, and hybrid is the default (keyword
 and meaning together; say "only lexical" to switch it off). The models and the depth are
-`[search]` settings (`claude_model`, `codex_model`, `effort` = `quick` | `standard` | `deep`).
+`[search]` settings (`claude_model`, a Claude Code subagent model alias such as `sonnet`, `opus`
+or `haiku`; `codex_model`; `effort` = `quick` | `standard` | `deep`).
 
 For a script or CI, point modsys at your own agent command and use `--match semantic|hybrid`
-(or `[match] mode`) or `modsys choose --task … --run`. The command is read ONLY from your
-environment — a repository cannot make modsys run an agent command — as a JSON array run without a
+(or `[match] mode`) or `modsys choose --task … --run` (`--task-file FILE|-` reads the task from a
+file or stdin). The command is read ONLY from your environment, as a JSON array run without a
 shell (`{claude_model}`, `{codex_model}`, `{effort}` and `{reasoning}` are filled in from
-`[search]`); the work order arrives on stdin and as the file `$MODSYS_WORK_ORDER`, the answer's
-JSON Schema is the file `$MODSYS_SCHEMA`. Two examples (check the flags against your agent's
-`--help`; they are examples, not a recommendation; `codex exec` outside a git repository also
-needs `--skip-git-repo-check`):
+`[search]`); the work order arrives on stdin (compact JSON) and as the file `$MODSYS_WORK_ORDER`,
+the answer's JSON Schema is the file `$MODSYS_SCHEMA`. A repository cannot choose or change the
+command, but its `[match] mode` decides whether `match`, `context` and `discover --task` call it,
+on card text the repository wrote: if you work in repositories you do not trust, set the variable
+per CI job or per shell session, not in your shell profile, and keep the command's own
+permissions read-only. Two examples (check the flags against your agent's `--help`; they are
+examples, not a recommendation; `codex exec` outside a git repository also needs
+`--skip-git-repo-check`):
 
 ```bash
 # Claude Code: the answer is the `structured_output` of the JSON envelope

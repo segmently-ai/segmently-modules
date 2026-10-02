@@ -134,30 +134,39 @@ Four skills (`module-scout`, `module-discover`, `module-research`, `module-sync`
 module-choice step. The skill runs `modsys catalog --json`, reads `match` (the configured mode and
 whether an agent command exists) and `search` (the models and the depth), then:
 
-- **By meaning** (`semantic` or `hybrid`): `modsys choose --task "<the text, verbatim, in any
-  language>" --json` prints the work order; the skill hands it to YOUR agent — in Claude Code a
-  subagent on `search.claude_model`, in Codex `codex exec -m <search.codex_model>` (add `--skip-git-repo-check` outside a git
-  repository) with the
-  reasoning level of the depth (`quick` low, `standard` medium, `deep` high) — or answers it in
-  its own session; the answer goes to `modsys choose --apply - --json`, which prints the picks with
-  the docs to read. The depth sets how much the agent reads: `quick` the cards only, `standard`
-  also the INDEX of up to 3 candidates, `deep` also the candidates' docs and code.
+- **By meaning** (`semantic` or `hybrid`): `modsys choose --task-file <the text, verbatim, in any
+  language, in a file> --json` prints the work order; the skill hands the whole order (never a
+  preview of it) to YOUR agent — in Claude Code a subagent on `search.claude_model`, in Codex
+  `codex exec -m <search.codex_model>` (add `--skip-git-repo-check` outside a git repository) with
+  the reasoning level of the depth (`quick` low, `standard` medium, `deep` high) — or answers it
+  in its own session; the answer goes to `modsys choose --apply - --json`, which prints the picks
+  with the docs to read (`--apply` takes the answer itself or the agent's JSON envelope, as
+  `--run` does). The depth sets how much the agent reads: `quick` the cards only, `standard` also
+  the INDEX of up to 3 candidates, `deep` also the candidates' docs and code.
 - **By keyword** (`lexical`, `hybrid`): the keyword half — short English queries (the registry's
-  keywords are English whole words) through `discover` or `context`. In `hybrid` the skill merges
-  both lists; a module found both ways ranks first.
+  keywords are English whole words) in a file, through `discover --task-file` or
+  `context --task-file`. In `hybrid` the skill merges both lists; a module found both ways ranks
+  first.
+
+Every task text reaches modsys through a file (`--task-file`), never as a quoted argument: an
+apostrophe, a `$name` or a backtick in it arrives as written.
 
 **Hybrid is the default**: the mode is what you say ("only lexical", "only by meaning"), else
 `match.mode` when it is `semantic` or `hybrid`, else `hybrid` — the engine's own default
 `[match] mode = "lexical"` does not switch the skills to keywords only (the mode a plain
 `modsys match` uses and the mode of the skills are separate: a skill always has your agent). Say
 "search deep" for the depth, "use opus" for the model. Set the models and the depth once in the
-team or personal config (`[search] claude_model`, `codex_model`, `effort`; `[match] mode =
-"semantic"` makes meaning-only the default; see
-[configuration.md](configuration.md#the-agent-command-and-search)). The skills pass
-`--match lexical` for the keyword half and `--match semantic|hybrid` only when `match.semantic`
-is true; the by-meaning half goes through `modsys choose` and needs no agent command in the
-environment. The engine holds no model, key or network code and ships no model: the
-agent that chooses is the one you already run, under your own credentials.
+team or personal config (`[search] claude_model`, `codex_model`, `effort`; `claude_model` is a
+Claude Code subagent model alias — `sonnet`, `opus` or `haiku` — as a subagent takes no full
+model id; see [configuration.md](configuration.md#the-agent-command-and-search)).
+`[match] mode = "semantic"` makes meaning-only the skills' default, and it applies to every
+`match`, `context` and `discover --task` run in the repository: a plain CLI call without
+`MODSYS_AGENT_COMMAND` then refuses (exit 2). It never stops a skill: every keyword call of the
+shipped skills (`module-create` and `qa-acceptance` too) and of the `agents-md` block passes
+`--match lexical`, `--match semantic|hybrid` comes only when `match.semantic` is true, and the
+by-meaning half goes through `modsys choose`, which needs no agent command in the environment.
+The engine holds no model, key or network code and ships no model: the agent that chooses is the
+one you already run, under your own credentials.
 
 Also in these skills: `module-discover` goes from the candidates to the code
 (`code-map files`, then `discover --files … --task-file …`) and reads the `children` list of a
