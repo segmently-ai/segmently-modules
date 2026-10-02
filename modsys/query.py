@@ -215,6 +215,10 @@ def _render_related(d) -> None:
     if "stub" in d:
         print(f"'{d['module']}' is a POINTER STUB. Stub says:\n{d['stub']}")
         return
+    if "/" in d["module"]:  # a child: name it, and say whose edges these are
+        print(f"module: {d['module']}")
+        if d.get("inherited_from"):
+            print(f"edges inherited from {d['inherited_from']}")
     print(f"forward edges — {len(d['edges']) or 'NONE'}:")
     for e in d["edges"]:
         print(f"  {str(e.get('relation')):<18} {str(e.get('module')):<38} {e.get('description')}")

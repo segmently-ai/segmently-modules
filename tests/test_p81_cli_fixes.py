@@ -5,7 +5,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.helpers import SPLIT_FIXTURE, copy_fixture, git, init_git, make_repo, \
+import os
+from unittest import mock
+
+from tests.helpers import FIXTURE, SPLIT_FIXTURE, copy_fixture, git, init_git, make_repo, \
     mutate_registry, run, run_json
 
 REFUNDS = "Returned books: refund requests, partial refunds and restocking."
@@ -44,13 +47,43 @@ class ChildDescriptionTest(SplitRepo):
         _, env, _ = run_json("show", "orders/refunds", *self.R)
         self.assertEqual(env["data"]["description"], ORDERS)
 
-    def test_context_rows_carry_the_matched_module_description(self):  # P81-AC-002
+    def test_context_rows_are_unchanged_for_a_matched_child(self):  # P81-AC-002 / AC-023
+        """`context` stays byte-identical to the base: no description key on any row."""
         _, env, _ = run_json("context", "--task", "partial refund for a returned book", *self.R)
-        rows = {m["module"]: m for m in env["data"]["modules"]}
-        self.assertEqual(rows["orders/refunds"]["description"], REFUNDS)
-        _, env, _ = run_json("context", "--task", "change the OrderService", *self.R)
-        rows = {m["module"]: m for m in env["data"]["modules"]}
-        self.assertEqual(rows["orders"]["description"], ORDERS)
+        for m in env["data"]["modules"]:
+            self.assertNotIn("description", m)
+        self.assertIn("orders/refunds", [m["module"] for m in env["data"]["modules"]])
+        self.assertEqual(run_json("show", "orders", *self.R)[1]["data"]["description"], ORDERS)
+
+    def test_context_json_matches_the_base_document(self):  # P81-AC-023
+        code, env, err = run_json("context", "--task", "book refund", "--root", str(FIXTURE))
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(env["data"], CONTEXT_BASE)
+
+
+CONTEXT_BASE = {
+    "task": "book refund", "role": None, "all_roles": False,
+    "modules": [
+        {"module": "catalog", "score": 3, "keywords": ["book"], "negative": [],
+         "read": [{"label": "universal", "path": "modules/catalog/MODULE.md", "exists": True}],
+         "code": ["src/catalog/service.py"], "code_globs": []},
+        {"module": "payments", "score": 3, "keywords": ["refund"], "negative": [],
+         "read": [{"label": "universal (parent INDEX)", "path": "modules/payments/MODULE.md",
+                   "exists": True}], "code": [], "code_globs": []},
+        {"module": "payments/refunds", "score": 3, "keywords": ["refund"], "negative": [],
+         "read": [{"label": "universal (parent INDEX)", "path": "modules/payments/MODULE.md",
+                   "exists": True},
+                  {"label": "child universal (refunds)",
+                   "path": "modules/payments/submodules/refunds/MODULE.md", "exists": True}],
+         "code": [], "code_globs": []}],
+    "read": [
+        {"module": "catalog", "label": "universal", "path": "modules/catalog/MODULE.md",
+         "exists": True},
+        {"module": "payments", "label": "universal (parent INDEX)",
+         "path": "modules/payments/MODULE.md", "exists": True},
+        {"module": "payments/refunds", "label": "child universal (refunds)",
+         "path": "modules/payments/submodules/refunds/MODULE.md", "exists": True}],
+    "near_misses": []}
 
 
 class FilesRepeatTest(SplitRepo):
@@ -104,6 +137,23 @@ class RelatedChildTest(SplitRepo):
         self.assertNotIn("inherited_from", data)
         self.assertEqual([e["module"] for e in data["edges"]], ["catalog"])
 
+    def test_text_names_the_child_and_the_inheritance(self):
+        _, out, _ = run("related", "orders/checkout", *self.R)
+        self.assertEqual(out.splitlines()[:3], ["module: orders/checkout",
+                                                "edges inherited from orders",
+                                                "forward edges — 1:"])
+        mutate_registry(self.root, lambda d: d["modules"]["orders"]["submodules"]["refunds"]
+                        .update(related_modules=[{"module": "catalog", "relation": "complements",
+                                                  "description": "Restocked titles"}]))
+        _, out, _ = run("related", "orders/refunds", *self.R)
+        self.assertEqual(out.splitlines()[:2], ["module: orders/refunds", "forward edges — 1:"])
+        self.assertNotIn("inherited", out)
+
+    def test_top_level_text_is_the_base_text(self):
+        _, out, _ = run("related", "orders", *self.R)
+        self.assertTrue(out.startswith("forward edges — 1:\n"))
+        self.assertNotIn("module:", out)
+
     def test_parent_output_is_unchanged(self):
         _, env, _ = run_json("related", "orders", *self.R)
         self.assertEqual(sorted(env["data"]), ["edges", "module", "reverse"])
@@ -135,6 +185,10 @@ class InitHintTest(unittest.TestCase):
 
 class IgnoredTargetNoteTest(unittest.TestCase):
     def setUp(self):
+        env = mock.patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": os.devnull,
+                                           "GIT_CONFIG_NOSYSTEM": "1"})
+        env.start()
+        self.addCleanup(env.stop)
         self._tmp = tempfile.TemporaryDirectory()
         self.root = copy_fixture(self._tmp.name)
         self.R = ("--root", str(self.root))
