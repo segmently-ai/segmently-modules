@@ -14,7 +14,7 @@ from modsys.config import builtin_delivery, enabled_roles
 from modsys.create import resolve_template
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.skill_sync import skill_sources
-from modsys.skills import read_front_matter
+from modsys.skills import pack_skills, read_front_matter
 from modsys.store import atomic_write
 from modsys.workspace import Workspace
 
@@ -43,27 +43,41 @@ def register(sub, common) -> None:
     p.set_defaults(func=run)
 
 
-def skill_lines(ws) -> str:
-    """One line per pack skill — `` - `<skill>` — <first sentence of the description> `` —
-    from the source `packs sync` uses (an ejected copy first)."""
-    lines = []
+def _skill_line(sid, src) -> str:
+    meta = read_front_matter(src.dir / "SKILL.md") or {}
+    full = " ".join((meta.get("description") or "").split())
+    description = full.split(". ")[0]
+    if description != full:  # a sentence cut off its text keeps its full stop
+        description += "."
+    return f"- `{sid}` — {description}" if description else f"- `{sid}`"
+
+
+def skill_groups(ws) -> list[tuple[str, str]]:
+    """[(delivery key, lines)] — one line per pack skill, `` - `<skill>` — <first sentence of
+    the description> ``, from the source `packs sync` uses (an ejected copy first). Under
+    `builtin_delivery = "plugin"` the skills of an enabled built-in pack (not ejected, not
+    shadowed by a repository pack) are the `plugin` group, listed first; every other skill is
+    the `repo` group (`packs sync` still copies it). An empty group is left out."""
+    plugin = builtin_delivery(ws.config) == "plugin"
+    builtin = ({sid for sid, s in pack_skills(ws.config_dir).items() if s.builtin}
+               if plugin else set())
+    groups = {"plugin": [], "repo": []}
     for sid, src in skill_sources(ws).items():
-        meta = read_front_matter(src.dir / "SKILL.md") or {}
-        full = " ".join((meta.get("description") or "").split())
-        description = full.split(". ")[0]
-        if description != full:  # a sentence cut off its text keeps its full stop
-            description += "."
-        lines.append(f"- `{sid}` — {description}" if description else f"- `{sid}`")
-    return "\n".join(lines) or NO_SKILLS
+        key = "plugin" if sid in builtin and src.kind == "pack" else "repo"
+        groups[key].append(_skill_line(sid, src))
+    return [(k, "\n".join(v)) for k, v in groups.items() if v] or [("repo", NO_SKILLS)]
 
 
 def render_block(ws) -> list[str]:
     """The block's lines, markers included, without line ends."""
+    groups = skill_groups(ws)
+    skills = groups[0][1]
+    for key, lines in groups[1:]:
+        skills += f"\nSkills from packs ({SKILLS_DELIVERY[key]}):\n{lines}"
     values = {"modules_dir": ws.config["paths"]["modules_dir"],
               "registry": ws.config["paths"]["registry"],
-              "roles": ", ".join(enabled_roles(ws.config)), "skills": skill_lines(ws),
-              "skills_delivery": SKILLS_DELIVERY[builtin_delivery(ws.config)],
-              "version": __version__}
+              "roles": ", ".join(enabled_roles(ws.config)), "skills": skills,
+              "skills_delivery": SKILLS_DELIVERY[groups[0][0]], "version": __version__}
     body = string.Template(resolve_template(ws, "agents-md.md")).safe_substitute(values)
     return [BEGIN, *body.replace("\r\n", "\n").rstrip("\n").split("\n"), END]
 

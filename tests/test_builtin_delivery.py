@@ -370,5 +370,47 @@ class DeliveryContractTest(DeliveryRepo):  # P6-AC-033 (the D2 rows)
                 self.assertNotIn("Traceback", err)
 
 
+class AgentsMdGroupsTest(DeliveryRepo):  # P81 fix round 1: lead-in per skill group
+    PLUGIN = "(the modsys plugins provide these skills):"
+    SYNC = "(`modsys packs sync` copies them into the agents' skill directories):"
+
+    def block(self):
+        run("agents-md", "--target", "CLAUDE.md", *self.R)
+        return (self.root / "CLAUDE.md").read_text()
+
+    def test_plugin_delivery_splits_builtin_and_repository_skills(self):
+        self.config('"plugin"')
+        text = self.block()
+        head_plugin = f"Skills from packs {self.PLUGIN}\n"
+        head_sync = f"Skills from packs {self.SYNC}\n"
+        self.assertEqual((text.count(head_plugin), text.count(head_sync)), (1, 1))
+        plugin_part, sync_part = text.split(head_sync)
+        plugin_part = plugin_part.split(head_plugin)[1]
+        for sid in BUILTIN:
+            self.assertIn(f"- `{sid}` — ", plugin_part)
+            self.assertNotIn(f"- `{sid}` — ", sync_part)
+        self.assertIn("- `api-review` — ", sync_part)
+        self.assertNotIn("- `api-review` — ", plugin_part)
+
+    def test_an_empty_group_has_no_heading(self):
+        self.config('"plugin"', builtin=())
+        text = self.block()
+        self.assertIn(f"Skills from packs {self.SYNC}\n- `api-review` — ", text)
+        self.assertNotIn("plugins provide", text)
+        shutil.rmtree(self.root / ".modsys/packs/team")  # no repository skill left
+        self.config('"plugin"')
+        text = self.block()
+        self.assertEqual(text.count("Skills from packs"), 1)
+        self.assertIn(f"Skills from packs {self.PLUGIN}\n", text)
+
+    def test_repo_delivery_is_one_group_with_the_old_wording(self):
+        self.config()
+        text = self.block()
+        self.assertEqual(text.count("Skills from packs"), 1)
+        self.assertIn(f"Skills from packs {self.SYNC}\n", text)
+        for sid in BUILTIN + ["api-review"]:
+            self.assertIn(f"- `{sid}` — ", text)
+
+
 if __name__ == "__main__":
     unittest.main()

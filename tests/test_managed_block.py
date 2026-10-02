@@ -242,10 +242,6 @@ class AgentsMdContractTest(BlockRepo):  # P4A-AC-023
                                             "run modsys agents-md with the same --target flags"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class SkillListTest(BlockRepo):  # P81-AC-038, P81-AC-039
     def enable(self, delivery=None):
         text = '[packs]\nbuiltin = ["core", "ui", "qa"]\n'
@@ -292,3 +288,7 @@ class SkillListTest(BlockRepo):  # P81-AC-038, P81-AC-039
         self.claude.write_text(self.claude.read_text().replace("Roles in", "Our roles in"))
         code, _env, err = run_json("agents-md", "--target", "CLAUDE.md", "--check", *self.R)
         self.assertEqual((code, err), (1, ""))
+
+
+if __name__ == "__main__":
+    unittest.main()
