@@ -12,20 +12,26 @@ from modsys.config import search_settings
 from modsys.output import UsageError
 
 DEFAULT_MAX_PICKS = 5
+# Shaped for strict structured outputs (`codex exec --output-schema` sends it in strict mode):
+# every object closed and listing every property as required, only keywords strict mode takes
+# (no `$schema`, no `minimum` / `maximum`). `validate_answer` stays lenient: `none`, `reason`
+# and `catalog_digest` may be missing, extra keys are ignored, and it checks 0..1 itself.
 ANSWER_SCHEMA = {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": "modsys choose answer",
     "type": "object",
     "properties": {
         "picks": {"type": "array", "items": {
             "type": "object",
             "properties": {"module": {"type": "string"},
-                           "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                           "confidence": {"type": "number", "description": "from 0 to 1"},
                            "reason": {"type": "string"}},
-            "required": ["module", "confidence"]}},
+            "required": ["module", "confidence", "reason"],
+            "additionalProperties": False}},
         "none": {"type": "boolean"},
-        "catalog_digest": {"type": "string"}},
-    "required": ["picks"],
+        "catalog_digest": {"type": ["string", "null"],
+                           "description": "the work order's catalog_digest, or null"}},
+    "required": ["picks", "none", "catalog_digest"],
+    "additionalProperties": False,
 }
 DEPTH = {  # fixed English texts: the work order must not vary from run to run
     "quick": "Choose from the cards only; do not open any file.",

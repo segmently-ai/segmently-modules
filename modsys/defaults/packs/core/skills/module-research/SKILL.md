@@ -7,8 +7,8 @@ description: Answers one question about one or more modules in depth, from their
 
 ## When to use
 
-- A question about a module needs proof from the code (what the docs claim, what the code does,
-  where they part ways): a doc that may be out of date, or a risky change.
+- A question about a module needs proof from the code: is its doc still true, what does it do
+  before a risky change.
 
 ## When not to use
 
@@ -31,26 +31,25 @@ Pin the question in one sentence.
 1. No module named? Choose the candidates.
 
    Run `modsys catalog --json`; read `match` and `search`. The text: the user's topic or question.
-   The mode: the user's words ("only lexical", "only by meaning"), else `match.mode` unless
-   `lexical`, else `hybrid`; the user may also set the depth ("search deep") or the model ("use
-   opus").
+   The mode: the user's words ("only lexical"), else `match.mode` unless `lexical`, else `hybrid`;
+   the user may also set the depth ("search deep") or the model ("use opus").
 
    - By meaning (`semantic`, `hybrid`):
-     `modsys choose --task "<the text, verbatim, any language>" --json` prints a work order. Answer
+     `modsys choose --task '<the text, verbatim, any language>' --json` prints a work order. Answer
      it in Claude Code by a subagent (`model: <search.claude_model>`), in Codex by
      `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --output-schema <schema file> -`
      (the order on stdin, `answer_schema` in the file; `low`, `medium`, `high` for `quick`,
-     `standard`, `deep`), else answer it in this session, at the depth its rules set: `quick` the
-     cards only, `standard` also the INDEX or the main doc's head of up to 3 candidates, `deep`
-     also their docs and code. Pipe the answer to `modsys choose --apply - --json`: `picks` with
-     their `read` docs.
+     `standard`, `deep`), else answer it in this session, at the depth its rules set (or the
+     user's): `quick` the cards only, `standard` also the INDEX or the main doc's head of up to 3
+     candidates, `deep` also their docs and code. Pipe the answer to
+     `modsys choose --apply - --json`: `picks` with their `read` docs.
    - By keyword (`lexical`, `hybrid`):
-     `modsys context --task "<the domain terms and code identifiers, in English>" --json`: its
-     `modules`; none but `near_misses`: list them and ask which module is meant.
+     `modsys context --task "<the domain terms and code identifiers, in English>" --match lexical --json`:
+     its `modules`; none but `near_misses`: list them and ask which module is meant.
    - `hybrid`: merge the lists; a module found both ways ranks first. Pass `--match semantic` or
-     `--match hybrid` only when `match.semantic` is true: else modsys has no agent to ask.
+     `--match hybrid` only when `match.semantic` is true.
 
-   Never widen the list on your own.
+   Keep the top 3; never widen the list on your own.
 
 2. Load every doc of each module: `modsys show <module> --all-roles --json`. A split module
    (`submodules`): read the parent index, then the children the question touches —

@@ -12,14 +12,14 @@ import unittest
 from unittest import mock
 
 from modsys.config import builtin_packs_root
-from tests.helpers import SPLIT_FIXTURE, copy_fixture, run
+from tests.helpers import SPLIT_FIXTURE, copy_fixture, init_git, run, run_json
 from tests.test_builtin_skills import argv, commands, section, uses
 
 SKILLS = ("module-discover", "module-sync", "module-scout", "module-research")
 MODE = "The mode:"  # the shared text starts here …
 KEYWORD = "- By keyword (`lexical`, `hybrid`):"  # … the skill's own keyword half sits here …
 HYBRID = "- `hybrid`: merge the lists"  # … and the shared merge follows
-HYBRID_END = "else modsys has no agent to ask."
+HYBRID_END = "only when `match.semantic` is true."
 
 
 def text(skill: str) -> str:
@@ -57,7 +57,8 @@ class SharedStepTest(unittest.TestCase):  # P81-AC-074, SI-P81-10
         '"only lexical"', '"search deep"', '"use opus"',  # the user's words win
         "else `hybrid`",  # the skills' default mode
         "- By meaning (`semantic`, `hybrid`):", KEYWORD, HYBRID,
-        '`modsys choose --task "<the text, verbatim, any language>" --json`',
+        "`modsys choose --task '<the text, verbatim, any language>' --json`",  # review M-1:
+        # single quotes: a task's backticks or `$` reach modsys as written
         "a subagent (`model: <search.claude_model>`)",
         "`codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> "
         "--output-schema <schema file> -`",
@@ -66,6 +67,7 @@ class SharedStepTest(unittest.TestCase):  # P81-AC-074, SI-P81-10
         "`quick` the cards only",
         "`standard` also the INDEX or the main doc's head of up to 3 candidates",
         "`deep` also their docs and code",
+        "at the depth its rules set (or the user's)",  # review M-2
         "`modsys choose --apply - --json`",
         "Pass `--match semantic` or `--match hybrid` only when `match.semantic` is true",
     ]
@@ -101,10 +103,19 @@ class SharedStepTest(unittest.TestCase):  # P81-AC-074, SI-P81-10
                 for verb in (("catalog",), ("choose", "--task"), ("choose", "--apply")):
                     self.assertTrue(uses(cmds, verb), verb)
 
-    def test_no_command_passes_match(self):  # the CLI refuses it without the user's agent
+    def test_keyword_commands_are_lexical(self):  # review I-1: `[match] mode` never leaks in
         for skill in SKILLS:
             with self.subTest(skill=skill):
-                self.assertEqual([c for c in commands(text(skill)) if "--match" in argv(c)], [])
+                body = flat(text(skill))
+                self.assertNotIn("has no agent to ask", body)
+                keyword = [argv(c) for c in commands(text(skill))
+                           if argv(c)[:1] in (["discover"], ["context"])]
+                self.assertTrue(keyword)
+                for a in keyword:
+                    self.assertIn("--match", a, a)
+                for a in (argv(c) for c in commands(text(skill))):
+                    if "--match" in a:  # never semantic or hybrid: the skill is the agent
+                        self.assertEqual(a[a.index("--match") + 1], "lexical", a)
 
     def test_the_keys_it_names_are_printed(self):  # the text and the engine agree
         with tempfile.TemporaryDirectory() as tmp:
@@ -130,24 +141,52 @@ class SharedStepTest(unittest.TestCase):  # P81-AC-074, SI-P81-10
             self.assertTrue(pick["read"])
 
 
+class OtherKeysTest(unittest.TestCase):  # review M-9: the keys the steps read, next to the text
+    def test_children_submodules_near_misses_and_code_map_via(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = copy_fixture(tmp, SPLIT_FIXTURE)
+            init_git(root)
+            R = ("--root", str(root))
+            found = run_json("discover", "--files", "src/orders/service.py", "--match",
+                             "lexical", *R)[1]["data"]
+            row = {m["module"]: m for m in found["modules"]}["orders"]
+            self.assertEqual(row["usage"], "modify")
+            self.assertEqual(sorted(row["children"][1]), ["description", "doc", "module"])
+            shown = run_json("show", "orders", *R)[1]["data"]
+            self.assertIn("refunds", shown["submodules"])
+            near = run_json("context", "--task", "refundz", "--match", "lexical", *R)[1]["data"]
+            self.assertEqual((near["modules"], near["near_misses"][0]["module"]),
+                             ([], "orders/refunds"))
+            child = run_json("code-map", "files", "orders/refunds", *R)[1]["data"]["files"]
+            self.assertEqual({tuple(f["via"]) for f in child}, {("docs",)})  # no code: parent's
+            parent = run_json("code-map", "files", "orders", *R)[1]["data"]["files"]
+            self.assertIn("src/orders/service.py",
+                          [f["path"] for f in parent if f["via"] != ["docs"]])
+
+
 class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b)
     ORDER = [
         "modsys catalog --json",
         "1–3 short English queries",  # F6a: the registry's language, domain terms, identifiers
+        "(step 4 uses it too)",  # review M-4
         "the domain terms and code identifiers",
         '"only lexical"',
         "else `hybrid`",
         "- By meaning (`semantic`, `hybrid`):",
         "`modsys choose --apply - --json`",
-        "- By keyword (`lexical`, `hybrid`): `modsys discover --task-file <file> --json`",
+        "- By keyword (`lexical`, `hybrid`): "
+        "`modsys discover --task-file <file> --match lexical --json`",
         HYBRID,
         "Verify each candidate",
         "the child the task is in",
         "modsys code-map files <candidate> --json",  # F6b: from the candidates to the code
-        "inside these files first",
-        "only when they give nothing",
-        "modsys discover --files <found files> --task-file <file> --json",
-        "on a split parent `children` (name the one the change is in)",
+        "its code is the files whose `via` is not `docs`",  # review I-2: a doc is not code
+        "(a child without code: its parent's)",
+        "Grep the terms of `<file>` inside that code first",
+        "only when it gives nothing",
+        "modsys discover --files <found files> --task-file <file> --match lexical --json",
+        "on a split parent `children` (name the one the change is in and add its `doc` to the "
+        "docs to update)",  # review M-3
         "every `modify` row with its code at file:line",
     ]
 
@@ -163,7 +202,7 @@ class SyncTest(unittest.TestCase):  # P81-AC-042 (F10, F13, F15)
         "`children` on a split parent: pick the child the change is in",  # F10
         "modsys catalog --json",  # F13: the docs that describe the change, in the mode
         "The text: a summary of the change with its identifiers",
-        "joins the modules to update",
+        "joins the modules to update, with the docs the search listed",  # review M-6
         "modsys registry append <module> keywords",
         "only for a new public name a future task would search by",  # F15
         "never a keyword per task",
@@ -180,7 +219,7 @@ class SyncTest(unittest.TestCase):  # P81-AC-042 (F10, F13, F15)
 
 
 class ScoutAndResearchTest(unittest.TestCase):  # P81-AC-043
-    START, END = "No module named? Choose the candidates.", "Never widen the list on your own."
+    START, END = "No module named? Choose the candidates.", "never widen the list on your own."
 
     def test_the_same_search_for_a_topic_without_modules(self):
         parts = {s: between(text(s), self.START, self.END)
@@ -189,6 +228,11 @@ class ScoutAndResearchTest(unittest.TestCase):  # P81-AC-043
         self.assertEqual(parts["module-scout"], parts["module-research"])
         self.assertIn("else `hybrid`", parts["module-scout"])
         self.assertIn(f'{KEYWORD} `modsys context --task "<', parts["module-scout"])
+        self.assertIn("Keep the top 3;", parts["module-scout"])  # review M-7
+
+    def test_scout_keeps_the_retry_rule(self):  # review M-8
+        exits = section(text("module-scout"), "## Exit codes")
+        self.assertIn("do not retry the same command", flat(exits))
 
     def test_it_is_part_of_the_steps(self):
         for skill in ("module-scout", "module-research"):

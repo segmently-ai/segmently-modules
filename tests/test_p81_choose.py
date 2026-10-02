@@ -74,10 +74,34 @@ class WorkOrderTest(Base):
         self.assertEqual(props["none"], {"type": "boolean"})
         item = props["picks"]["items"]["properties"]
         self.assertEqual((item["module"]["type"], item["reason"]["type"]), ("string", "string"))
-        self.assertEqual(item["confidence"], {"type": "number", "minimum": 0, "maximum": 1})
+        self.assertEqual(item["confidence"]["type"], "number")
         self.assertEqual(data["max_picks"], 5)
         self.assertEqual(data["search"], {"claude_model": "sonnet", "codex_model": "gpt-5.6-luna",
                                           "effort": "standard"})
+
+    def test_the_answer_schema_suits_strict_structured_outputs(self):  # task 5 fix round 1
+        """`codex exec --output-schema` sends the schema in strict mode: every object closed
+        and listing every property as required, only the keywords strict mode takes."""
+        schema = self.order()["answer_schema"]
+        keywords = {"type", "properties", "required", "additionalProperties", "items",
+                    "description", "title"}
+
+        def walk(node, path):
+            self.assertEqual(sorted(set(node) - keywords), [], path)
+            if node["type"] == "object":
+                self.assertIs(node["additionalProperties"], False, path)
+                self.assertEqual(sorted(node["required"]), sorted(node["properties"]), path)
+                for key, sub in node["properties"].items():
+                    walk(sub, f"{path}.{key}")
+            if node["type"] == "array":
+                walk(node["items"], f"{path}[]")
+        walk(schema, "answer_schema")
+        props = schema["properties"]
+        item = props["picks"]["items"]["properties"]
+        self.assertEqual((item["module"]["type"], item["confidence"]["type"],
+                          item["reason"]["type"]), ("string", "number", "string"))
+        self.assertEqual(props["none"]["type"], "boolean")
+        self.assertEqual(props["catalog_digest"]["type"], ["string", "null"])
 
     def test_a_child_without_a_description_shows_the_parents(self):  # P81-AC-052 / SI-P81-8
         reg = self.root / "modules" / "registry.json"
@@ -239,6 +263,17 @@ class ApplyTest(Base):
         data = json.loads(self.apply(answer, "--json", "--top", "1")[1])["data"]
         self.assertEqual([p["module"] for p in data["picks"]], ["catalog"])
         self.assertEqual(len(data["notes"]), 1)
+
+    def test_a_strict_answer_and_a_lenient_one(self):  # SI-P81-19 with the strict schema
+        strict = {"picks": [{"module": "payments", "confidence": 0.5, "reason": "r"}],
+                  "none": False, "catalog_digest": None}
+        lenient = {"picks": [{"module": "payments", "confidence": 0.5, "extra": 1}], "x": 1}
+        for answer in (strict, lenient):
+            code, out, err = self.apply(answer, "--json")
+            self.assertEqual((code, err), (0, ""), answer)
+            data = json.loads(out)["data"]
+            self.assertEqual(([p["module"] for p in data["picks"]], data["notes"]),
+                             (["payments"], []))
 
     def test_digest_echo(self):  # P81-AC-057
         digest = self.order()["catalog_digest"]

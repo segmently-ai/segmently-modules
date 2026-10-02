@@ -29,9 +29,9 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
 1. Pin the change. `<base>` is the commit the work branched off: `git merge-base <target> HEAD`,
    `<target>` being the branch it will merge into (ask when unclear). Never the target branch
-   itself: its later commits would drag in modules the work never touched. Committed work is
-   `<base>..HEAD`; uncommitted work is the files `git diff --name-only <base>` prints plus the new
-   ones `git ls-files --others --exclude-standard` prints, all to `--files` (never a directory).
+   itself (its later commits would drag in untouched modules). Committed work is `<base>..HEAD`;
+   uncommitted work is the files `git diff --name-only <base>` prints plus the new ones
+   `git ls-files --others --exclude-standard` prints, all to `--files` (never a directory).
 
 2. Ask modsys what to update.
 
@@ -47,28 +47,29 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    (no module owns them: `module-create` or a routing rule).
 
 3. Find the modules whose docs describe what changed (the code map misses one that only documents
-   it, e.g. a table of names).
+   it).
 
    Run `modsys catalog --json`; read `match` and `search`. The text: a summary of the change with
-   its identifiers, as the code spells them. The mode: the user's words ("only lexical", "only by
-   meaning"), else `match.mode` unless `lexical`, else `hybrid`; the user may also set the depth
-   ("search deep") or the model ("use opus").
+   its identifiers, as the code spells them. The mode: the user's words ("only lexical"), else
+   `match.mode` unless `lexical`, else `hybrid`; the user may also set the depth ("search deep") or
+   the model ("use opus").
 
    - By meaning (`semantic`, `hybrid`):
-     `modsys choose --task "<the text, verbatim, any language>" --json` prints a work order. Answer
+     `modsys choose --task '<the text, verbatim, any language>' --json` prints a work order. Answer
      it in Claude Code by a subagent (`model: <search.claude_model>`), in Codex by
      `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --output-schema <schema file> -`
      (the order on stdin, `answer_schema` in the file; `low`, `medium`, `high` for `quick`,
-     `standard`, `deep`), else answer it in this session, at the depth its rules set: `quick` the
-     cards only, `standard` also the INDEX or the main doc's head of up to 3 candidates, `deep`
-     also their docs and code. Pipe the answer to `modsys choose --apply - --json`: `picks` with
-     their `read` docs.
+     `standard`, `deep`), else answer it in this session, at the depth its rules set (or the
+     user's): `quick` the cards only, `standard` also the INDEX or the main doc's head of up to 3
+     candidates, `deep` also their docs and code. Pipe the answer to
+     `modsys choose --apply - --json`: `picks` with their `read` docs.
    - By keyword (`lexical`, `hybrid`):
-     `modsys discover --task "<the changed identifiers and domain terms, in English>" --json`.
+     `modsys discover --task "<the changed identifiers and domain terms, in English>" --match lexical --json`.
    - `hybrid`: merge the lists; a module found both ways ranks first. Pass `--match semantic` or
-     `--match hybrid` only when `match.semantic` is true: else modsys has no agent to ask.
+     `--match hybrid` only when `match.semantic` is true.
 
-   Each candidate whose docs describe the changed behaviour joins the modules to update.
+   Each candidate whose docs describe the changed behaviour joins the modules to update, with the
+   docs the search listed.
 
 4. Per module to update, read the change (`git diff <base>..HEAD -- <its files>`; uncommitted:
    `git diff <base> -- <its files>` and each new file in full) and its `docs_to_update` (a child's

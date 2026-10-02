@@ -7,8 +7,8 @@ description: Quick, read-only context on the modules a task is about, while the 
 
 ## When to use
 
-- A change is being discussed, or the user names modules (`parent/child`, a module doc's path) and
-  wants their context before deciding anything: a short brief, no plan, no edits.
+- A change is being discussed, or the user names modules (`parent/child` or a doc path) and wants
+  their context first: a short brief, no plan, no edits.
 
 ## When not to use
 
@@ -29,26 +29,25 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 1. No module named? Choose the candidates.
 
    Run `modsys catalog --json`; read `match` and `search`. The text: the user's topic or question.
-   The mode: the user's words ("only lexical", "only by meaning"), else `match.mode` unless
-   `lexical`, else `hybrid`; the user may also set the depth ("search deep") or the model ("use
-   opus").
+   The mode: the user's words ("only lexical"), else `match.mode` unless `lexical`, else `hybrid`;
+   the user may also set the depth ("search deep") or the model ("use opus").
 
    - By meaning (`semantic`, `hybrid`):
-     `modsys choose --task "<the text, verbatim, any language>" --json` prints a work order. Answer
+     `modsys choose --task '<the text, verbatim, any language>' --json` prints a work order. Answer
      it in Claude Code by a subagent (`model: <search.claude_model>`), in Codex by
      `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --output-schema <schema file> -`
      (the order on stdin, `answer_schema` in the file; `low`, `medium`, `high` for `quick`,
-     `standard`, `deep`), else answer it in this session, at the depth its rules set: `quick` the
-     cards only, `standard` also the INDEX or the main doc's head of up to 3 candidates, `deep`
-     also their docs and code. Pipe the answer to `modsys choose --apply - --json`: `picks` with
-     their `read` docs.
+     `standard`, `deep`), else answer it in this session, at the depth its rules set (or the
+     user's): `quick` the cards only, `standard` also the INDEX or the main doc's head of up to 3
+     candidates, `deep` also their docs and code. Pipe the answer to
+     `modsys choose --apply - --json`: `picks` with their `read` docs.
    - By keyword (`lexical`, `hybrid`):
-     `modsys context --task "<the domain terms and code identifiers, in English>" --json`: its
-     `modules`; none but `near_misses`: list them and ask which module is meant.
+     `modsys context --task "<the domain terms and code identifiers, in English>" --match lexical --json`:
+     its `modules`; none but `near_misses`: list them and ask which module is meant.
    - `hybrid`: merge the lists; a module found both ways ranks first. Pass `--match semantic` or
-     `--match hybrid` only when `match.semantic` is true: else modsys has no agent to ask.
+     `--match hybrid` only when `match.semantic` is true.
 
-   Never widen the list on your own.
+   Keep the top 3; never widen the list on your own.
 
 2. For each module, named or chosen: `modsys show <module> --json`.
 
@@ -80,4 +79,5 @@ the near misses leave the choice open.
 ## Exit codes
 
 `0` ok · `1` from `show` or `related` = a pointer stub · `2` = a usage or config error (no
-registry: "run modsys init"): read stderr, fix the command or report it.
+registry: "run modsys init"): read stderr, fix the command or report it; do not retry the same
+command.

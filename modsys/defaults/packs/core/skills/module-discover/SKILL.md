@@ -25,43 +25,44 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
 ## Steps
 
-A change without a task (a branch, changed files) starts at step 4.
+A change without a task starts at step 4.
 
 1. Choose the candidate modules.
 
    Run `modsys catalog --json`; read `match` and `search`. The text: the task as given. For the
-   keyword half write 1–3 short English queries to a temporary `<file>`: the domain terms and code
-   identifiers the task implies (the registry's keywords are English and match whole words). The
-   mode: the user's words ("only lexical", "only by meaning"), else `match.mode` unless `lexical`,
-   else `hybrid`; the user may also set the depth ("search deep") or the model ("use opus").
+   keyword half write 1–3 short English queries to a temporary `<file>` (step 4 uses it too): the
+   domain terms and code identifiers the task implies (the registry's keywords are English and
+   match whole words). The mode: the user's words ("only lexical"), else `match.mode` unless
+   `lexical`, else `hybrid`; the user may also set the depth ("search deep") or the model ("use
+   opus").
 
    - By meaning (`semantic`, `hybrid`):
-     `modsys choose --task "<the text, verbatim, any language>" --json` prints a work order. Answer
+     `modsys choose --task '<the text, verbatim, any language>' --json` prints a work order. Answer
      it in Claude Code by a subagent (`model: <search.claude_model>`), in Codex by
      `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --output-schema <schema file> -`
      (the order on stdin, `answer_schema` in the file; `low`, `medium`, `high` for `quick`,
-     `standard`, `deep`), else answer it in this session, at the depth its rules set: `quick` the
-     cards only, `standard` also the INDEX or the main doc's head of up to 3 candidates, `deep`
-     also their docs and code. Pipe the answer to `modsys choose --apply - --json`: `picks` with
-     their `read` docs.
-   - By keyword (`lexical`, `hybrid`): `modsys discover --task-file <file> --json`.
+     `standard`, `deep`), else answer it in this session, at the depth its rules set (or the
+     user's): `quick` the cards only, `standard` also the INDEX or the main doc's head of up to 3
+     candidates, `deep` also their docs and code. Pipe the answer to
+     `modsys choose --apply - --json`: `picks` with their `read` docs.
+   - By keyword (`lexical`, `hybrid`): `modsys discover --task-file <file> --match lexical --json`.
    - `hybrid`: merge the lists; a module found both ways ranks first. Pass `--match semantic` or
-     `--match hybrid` only when `match.semantic` is true: else modsys has no agent to ask.
+     `--match hybrid` only when `match.semantic` is true.
 
 2. Verify each candidate by its description and the head of its main doc (a split module: its
-   INDEX). Keep those the task is about and, in a split module, the child the task is in (a pick
-   may be one; `modsys show <module> --json` lists them as `submodules`); drop the rest and say
+   INDEX). Keep those the task is about and, in a split module, the child the task is in
+   (`modsys show <module> --json` lists `submodules`; a pick may be one); drop the rest and say
    why.
 
-3. Go to the code: `modsys code-map files <candidate> --json` lists each kept module's files (a
-   child with none: its parent's). Grep the task's identifiers and domain terms inside these files
-   first, the rest of the repository only when they give nothing. Note each hit as file:line.
+3. Go to the code: `modsys code-map files <candidate> --json`; its code is the files whose `via` is
+   not `docs` (a child without code: its parent's). Grep the terms of `<file>` inside that code
+   first, the rest of the repository only when it gives nothing. Note each code hit as file:line.
 
 4. Get the touch-set.
 
    ```bash
-   modsys discover --files <found files> --task-file <file> --json
-   modsys discover --from-diff <base>..HEAD --task-file <file> --json
+   modsys discover --files <found files> --task-file <file> --match lexical --json
+   modsys discover --from-diff <base>..HEAD --task-file <file> --match lexical --json
    ```
 
    Changed files go to `--files`, a branch to the second form; without a task, drop `--task-file`.
@@ -70,11 +71,11 @@ A change without a task (a branch, changed files) starts at step 4.
 
 5. Read the result. Per module, best first: `usage` (`modify`: its files change; `reference`: only
    its keywords matched), `sources`, `touched_files`, `docs_to_read`, `docs_to_update`, on a split
-   parent `children` (name the one the change is in); then `files_outside_modules` (no module owns
-   them) and `missing_files` (not on disk).
+   parent `children` (name the one the change is in and add its `doc` to the docs to update); then
+   `files_outside_modules` (no module owns them) and `missing_files` (not on disk).
 
-6. Read the `docs_to_read` of the `modify` modules: the rules the task must respect. Keep a
-   `reference` module only when its main doc helps (a component to reuse, a rule); drop the others
+6. Read the `modify` modules' `docs_to_read` for the rules the task must respect; keep a
+   `reference` module only when its main doc helps (a component to reuse, a rule), drop the rest
    and say why.
 
 7. Report the touch-set, every `modify` row with its code at file:line:
