@@ -13,7 +13,7 @@ from modsys.match import match_modules, near_lines, near_misses
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.registry import as_dict
 from modsys.query import show_target
-from modsys.semantic import add_match_flag, ranked, resolve, skipped
+from modsys.semantic import NO_CARDS_NOTE, add_match_flag, ranked, resolve, skipped
 from modsys.workspace import Workspace
 
 _PATHLIKE = re.compile(r"(?<![\w/.-])((?:\.{0,2}/)?[\w.-]+(?:/[\w.-]+)+)")
@@ -238,7 +238,10 @@ def run_discover(args) -> int:
 
 
 def _render_context(d) -> None:
-    if not d["modules"]:
+    if not d["modules"] and d.get("mode") == "semantic":  # only the agent chose (P8.1)
+        if NO_CARDS_NOTE not in d["notes"]:
+            print("no module matched (the agent chose no module; try rephrasing the task)")
+    elif not d["modules"]:
         print("no module matched (try domain terms, or: modsys list)")
         for line in near_lines(d["near_misses"]):
             print(line)

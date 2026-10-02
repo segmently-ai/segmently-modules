@@ -2,7 +2,7 @@ import re
 
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.registry import as_dict, as_list
-from modsys.semantic import add_match_flag, ranked, resolve
+from modsys.semantic import NO_CARDS_NOTE, add_match_flag, ranked, resolve
 from modsys.workspace import Workspace
 
 
@@ -170,13 +170,14 @@ def run(args) -> int:
     near = [] if rows or args.json or mode == "semantic" else \
         near_misses(ws.registry.modules, args.text, cfg, top, min_score)
     emit("match", {"mode": mode, "rows": rows, "notes": notes}, args.json,
-         lambda d: (_render(d["rows"], near, mode), [print(n) for n in d["notes"]]))
+         lambda d: (_render(d["rows"], near, mode, d["notes"]), [print(n) for n in d["notes"]]))
     return EXIT_OK
 
 
-def _render(rows, near, mode: str = "lexical") -> None:
+def _render(rows, near, mode: str = "lexical", notes=()) -> None:
     if not rows and mode == "semantic":
-        print("no matches (the agent chose no module; try rephrasing the task)")
+        if NO_CARDS_NOTE not in notes:  # with no module the agent was not asked: the note says so
+            print("no matches (the agent chose no module; try rephrasing the task)")
         return
     if not rows:
         print("no keyword matches (try rephrasing with domain terms, or use: list)")

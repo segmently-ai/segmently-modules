@@ -12,6 +12,7 @@ from modsys.output import UsageError
 NO_AGENT = ("semantic matching needs your agent: set MODSYS_AGENT_COMMAND (a JSON array); "
             "in Claude Code / Codex the skills do it with modsys choose")
 NO_AGENT_NOTE = "semantic part skipped: no agent command configured"
+NO_CARDS_NOTE = "the registry has no modules: the agent was not asked"
 SKIPPED = (NO_AGENT_NOTE, agent.NESTED_NOTE)  # the notes of a hybrid run without its agent part
 RRF_K = 60
 MIN_PICKS = 5  # picks asked from the agent per match run: at least this, else `top`
@@ -29,7 +30,7 @@ def configured_mode(config: dict) -> str:
 
 
 def agent_configured(config: dict) -> bool:
-    """An agent command is in force (the environment variable or `config.user.toml`)."""
+    """An agent command is in force: a valid `MODSYS_AGENT_COMMAND`, outside an agent run."""
     return agent.settings(config) is not None
 
 
@@ -101,13 +102,17 @@ def ranked(ws, text: str, mode: str, notes: list[str], top: int,
            min_score: int) -> tuple[list[dict], list[str]]:
     """The rows of a `semantic` / `hybrid` run (`mode`, `notes` from `resolve`) and its notes.
     Hybrid without an agent command: the plain lexical rows. Otherwise the agent is asked
-    exactly once; `top` applies after fusion."""
+    exactly once — never for `top` 0 or a registry without modules; `top` applies after
+    fusion."""
+    from modsys.catalog_cmd import cards
     from modsys.match import match_modules
     cfg = ws.config["match"]
     if skipped(notes):  # hybrid, no agent part
         return match_modules(ws.registry.modules, text, cfg, top, min_score), notes
     if top == 0:  # nothing to show: do not spend an agent call
         return [], notes
+    if not cards(ws.registry.modules):  # nothing to choose from: no agent call either
+        return [], notes + [NO_CARDS_NOTE]
     picks, pick_notes = ask(ws, text, max(top, MIN_PICKS))
     if mode == "semantic":
         return semantic_rows(picks)[:top], pick_notes

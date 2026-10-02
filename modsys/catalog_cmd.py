@@ -1,7 +1,7 @@
 """`modsys catalog [--json]`: one card per module and per child — name, status, description,
 keywords (a child also names its parent) — the input an agent reads to choose modules by
 meaning (P8.1 S2). Read-only: no lock, no write, never runs the agent. JSON carries `match: {mode,
-semantic}` (`semantic` = an `[agent] command` is configured) and the `search` settings."""
+semantic}` (`semantic` = a valid `MODSYS_AGENT_COMMAND` is set) and the `search` settings."""
 from modsys.output import EXIT_OK, emit
 from modsys.registry import as_dict
 from modsys.config import search_settings
@@ -55,6 +55,8 @@ def run(args) -> int:
 
 
 def _render(data) -> None:
+    if not data["modules"]:
+        print("no modules in the registry")
     for c in data["modules"]:
         parent = f"  (child of {c['parent']})" if "parent" in c else ""
         print(f"{c['name']}  {c['status']}  {c['description']}{parent}  "

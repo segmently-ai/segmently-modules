@@ -4,9 +4,11 @@ order on stdin and answers deterministically. argv[1] is a JSON file of its beha
 written `started`), `stderr` (text), `log` (a JSON file it writes: its argv, its stdin, the
 files `MODSYS_WORK_ORDER` / `MODSYS_SCHEMA` name and their content, its environment),
 `started` (a marker file), `grandchild` (a file to write the pid of a `sleep` child into),
-`nested` (an argv to run as a child and record: rc, stdout, stderr), `flood` (bytes to print), `helper` (seconds a session-leading helper holds stdout)."""
+`nested` (an argv to run as a child and record: rc, stdout, stderr), `flood` (bytes to print), `helper` (seconds a session-leading helper holds stdout), `ignore_term`
+(true: SIGTERM is ignored, only SIGKILL stops it)."""
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -15,6 +17,8 @@ from pathlib import Path
 
 def main() -> int:
     cfg = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    if cfg.get("ignore_term"):
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
     stdin = sys.stdin.read()
     record = {"argv": sys.argv[2:], "stdin": stdin, "env": dict(os.environ), "cwd": os.getcwd()}
     for key, name in (("MODSYS_WORK_ORDER", "work_order_file"), ("MODSYS_SCHEMA", "schema_file")):

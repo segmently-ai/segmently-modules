@@ -51,28 +51,26 @@ def _scan(item: str, source: str):
             yield "text", token[0]
         elif m.group(1):
             if m.group(1) not in PLACEHOLDERS:
-                raise UsageError(f"{source}: [agent] command: item {item!r}: unknown placeholder "
+                raise UsageError(f"{source}: item {item!r}: unknown placeholder "
                                  f"{{{m.group(1)}}} (placeholders: "
                                  f"{', '.join('{' + p + '}' for p in PLACEHOLDERS)})")
             yield "name", m.group(1)
         else:
-            raise UsageError(f"{source}: [agent] command: item {item!r}: unmatched brace "
+            raise UsageError(f"{source}: item {item!r}: unmatched brace "
                              f"{token!r} (write {token * 2} for a literal one)")
     if pos < len(item):
         yield "text", item[pos:]
 
 
 def validate_command(command, source: str) -> list[str]:
-    """The argv of an `[agent] command` value: a non-empty list of strings whose braces are
+    """The argv of a `MODSYS_AGENT_COMMAND` value: a non-empty list of strings whose braces are
     placeholders or escapes, argv[0] without a placeholder."""
     if not (isinstance(command, list) and command and all(isinstance(i, str) for i in command)):
-        raise UsageError(f"{source}: [agent] command: expected a non-empty list of strings, "
-                         f"got {command!r}")
+        raise UsageError(f"{source}: expected a non-empty list of strings, got {command!r}")
     for n, item in enumerate(command):
         parts = list(_scan(item, source))
         if n == 0 and any(kind == "name" for kind, _ in parts):
-            raise UsageError(f"{source}: [agent] command: argv[0] {item!r} must not contain a "
-                             f"placeholder")
+            raise UsageError(f"{source}: argv[0] {item!r} must not contain a placeholder")
     return command
 
 
@@ -99,10 +97,13 @@ def nested() -> bool:
 
 
 def timeout_s() -> int:
+    """`MODSYS_AGENT_TIMEOUT`: 1 to 3600 seconds, at most four digits (a longer value is refused
+    before it is read as a number), default 300."""
     raw = os.environ.get(ENV_TIMEOUT, "").strip()
     if not raw:
         return DEFAULT_TIMEOUT_S
-    if not (raw.isascii() and raw.isdigit() and 1 <= int(raw) <= MAX_TIMEOUT_S):
+    if not (len(raw) <= len(str(MAX_TIMEOUT_S)) and raw.isascii() and raw.isdigit()
+            and 1 <= int(raw) <= MAX_TIMEOUT_S):
         raise UsageError(f"{ENV_TIMEOUT}: expected an integer from 1 to {MAX_TIMEOUT_S}, "
                          f"got {raw[:40]!r}")
     return int(raw)
@@ -135,42 +136,47 @@ def settings(config: dict) -> dict | None:
 _FENCE = re.compile(r"\A```(?:json)?[ \t]*\n(.*?)\n?```\Z", re.S)
 
 
-def _json(text: str, name: str, what: str):
+def _json(text: str, who: str, what: str):
     try:
         return json.loads(text)
     except ValueError:
-        raise UsageError(f"agent {name}: {what} is not JSON: {text[:120]!r}") from None
+        raise UsageError(f"{who}: {what} is not JSON: {text[:120]!r}") from None
 
 
 def parse_output(stdout: str, name: str):
-    """The answer object inside an agent's stdout: the answer itself, or a `claude -p
-    --output-format json` envelope's `structured_output` / `result`. The first matching step
-    decides; no free-text scraping."""
+    """The answer object inside an agent's stdout (`unwrap`); refusals name the agent."""
     text = stdout.strip()
     if not text:
         raise UsageError(f"agent {name} printed nothing")
-    doc = _json(text, name, "its output")
+    return unwrap(_json(text, f"agent {name}", "its output"), f"agent {name}", "its output")
+
+
+def unwrap(doc, who: str, what: str):
+    """The answer object in `doc`, a parsed JSON value: the answer itself, or a `claude -p
+    --output-format json` envelope's `structured_output` / `result` (a string `result` may sit
+    in one ```json fence). The first matching step decides; no free-text scraping (SI-P81-12).
+    `choose --run` and `choose --apply` share it; `who` and `what` word the refusals ("agent
+    NAME", "its output")."""
     if not isinstance(doc, dict):
-        raise UsageError(f"agent {name}: its output is not a JSON object")
+        raise UsageError(f"{who}: {what} is not a JSON object")
     if "picks" in doc or "none" in doc:
         return doc
     if doc.get("is_error") is True:
         detail = doc.get("result") if isinstance(doc.get("result"), str) else ""
-        raise UsageError(f"agent {name} reported an error" + (f": {detail[:200]}" if detail
-                                                              else ""))
+        raise UsageError(f"{who} reported an error" + (f": {detail[:200]}" if detail else ""))
     if isinstance(doc.get("structured_output"), dict):
         return doc["structured_output"]
     result = doc.get("result")
     if isinstance(result, str):
         body = result.strip()
         m = _FENCE.match(body)
-        inner = _json(m.group(1) if m else body, name, "its `result`")
+        inner = _json(m.group(1) if m else body, who, "its `result`")
         if not isinstance(inner, dict):
-            raise UsageError(f"agent {name}: its `result` is not a JSON object")
+            raise UsageError(f"{who}: its `result` is not a JSON object")
         return inner
     if isinstance(result, dict):
         return result
-    raise UsageError(f"agent {name}: no answer in its output (expected `picks`/`none`, "
+    raise UsageError(f"{who}: no answer in {what} (expected `picks`/`none`, "
                      f"`structured_output` or `result`)")
 
 
@@ -233,7 +239,9 @@ def _drain(stream, keep: int, limit: int | None, box: dict, key: str, proc) -> N
 
 
 def _write_files(tmp: Path, work_order: dict, schema: dict) -> tuple[Path, Path, str]:
-    order_text = json.dumps(work_order, indent=2, ensure_ascii=False)
+    """The work order (compact JSON: the agent reads it, a person reads `choose --json`) and the
+    answer schema, as files in `tmp`."""
+    order_text = json.dumps(work_order, ensure_ascii=False, separators=(",", ":"))
     order_file, schema_file = tmp / "work-order.json", tmp / "answer-schema.json"
     for path, text in ((order_file, order_text), (schema_file, json.dumps(schema, indent=2))):
         try:
@@ -249,7 +257,8 @@ def run(config: dict, work_order: dict, schema: dict, check=lambda answer: answe
     `check` is reported naming the agent). The work order goes to the child's stdin and, with the
     answer schema, to two files in a private temp directory (`MODSYS_WORK_ORDER`,
     `MODSYS_SCHEMA`) removed afterwards, whatever happens. The child runs in `cwd`, in its own
-    process group; Ctrl-C, SIGTERM and SIGHUP stop it and its group; its output is capped."""
+    process group; Ctrl-C, SIGTERM and SIGHUP stop it and its group (a repeated one cannot cut
+    that short: the cleanup runs with the three ignored); its output is capped."""
     from modsys.config import search_settings
     cfg = settings(config)
     search = search_settings(config)
@@ -304,33 +313,60 @@ def run(config: dict, work_order: dict, schema: dict, check=lambda answer: answe
         except UsageError as e:
             raise UsageError(f"agent {name}: {e}") from None
     finally:
-        if proc is not None:
-            _kill_group(proc)
-            _close(proc, readers)
-        _restore_signals(before)
-        shutil.rmtree(tmp, ignore_errors=True)
+        _ignore_signals(before)  # from here a repeated Ctrl-C / SIGTERM cannot stop the cleanup
+        try:
+            if proc is not None:
+                _kill_now(proc)  # the TERM grace was given above: whatever is left is killed
+                _close(proc, readers)
+            shutil.rmtree(tmp, ignore_errors=True)
+        finally:
+            _restore_signals(before)
 
 
-def _as_interrupt(signum, frame) -> None:
-    raise KeyboardInterrupt  # SIGTERM, SIGHUP: the same road as Ctrl-C (exit 130)
+def _kill_now(proc: subprocess.Popen) -> None:
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+    try:
+        proc.wait(timeout=KILL_GRACE_S)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def _set_signals() -> dict:
-    before = {}
-    for sig in (signal.SIGTERM, getattr(signal, "SIGHUP", None)):
+    """Ctrl-C, SIGTERM and SIGHUP raise KeyboardInterrupt (exit 130) — once: a repeat while the
+    run stops is a no-op. A signal already ignored (`nohup`) stays ignored; main thread only.
+    The handlers in force before, to restore."""
+    before, fired = {}, []
+
+    def interrupt(signum, frame) -> None:
+        if not fired:
+            fired.append(signum)
+            raise KeyboardInterrupt  # SIGTERM, SIGHUP: the same road as Ctrl-C
+
+    for sig in (signal.SIGINT, signal.SIGTERM, getattr(signal, "SIGHUP", None)):
         if sig is None:
             continue
         try:
-            if signal.getsignal(sig) is signal.SIG_IGN:  # `nohup` keeps a signal ignored
-                continue
-            before[sig] = signal.signal(sig, _as_interrupt)
+            if signal.getsignal(sig) in (signal.SIG_IGN, None):  # `nohup` keeps it ignored;
+                continue  # None: a handler set outside Python, which could not be restored
+            before[sig] = signal.signal(sig, interrupt)
         except ValueError:  # not the main thread
             pass
     return before
 
 
+def _ignore_signals(before: dict) -> None:
+    for sig in before:
+        try:
+            signal.signal(sig, signal.SIG_IGN)
+        except ValueError:
+            pass
+
+
 def _restore_signals(before: dict) -> None:
-    for sig, handler in before.items():
+    for sig, handler in reversed(before.items()):  # SIGINT last: nothing is left ignored
         try:
             signal.signal(sig, handler)
         except ValueError:
