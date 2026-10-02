@@ -9,9 +9,8 @@ from modsys import agent
 from modsys.config import MATCH_MODES
 from modsys.output import UsageError
 
-NO_AGENT = ("semantic matching needs your agent: set [agent] command in "
-            ".modsys/config.user.toml or MODSYS_AGENT_COMMAND; in Claude Code / Codex the "
-            "skills do it with modsys choose")
+NO_AGENT = ("semantic matching needs your agent: set MODSYS_AGENT_COMMAND (a JSON array); "
+            "in Claude Code / Codex the skills do it with modsys choose")
 NO_AGENT_NOTE = "semantic part skipped: no agent command configured"
 SKIPPED = (NO_AGENT_NOTE, agent.NESTED_NOTE)  # the notes of a hybrid run without its agent part
 RRF_K = 60

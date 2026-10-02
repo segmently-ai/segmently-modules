@@ -4,6 +4,7 @@ of picks (M6), skipped hybrid context (M8)."""
 import json
 import os
 import sys
+import time
 import unittest
 from unittest import mock
 
@@ -13,8 +14,6 @@ from tests.agent_helpers import AgentRepo, picks
 from tests.helpers import git, run, run_json
 from tests.test_p81_agent import ENGINE, MATCH_TASK, TASK, rows_of
 
-TRACKED = (".modsys/config.user.toml is tracked by git — [agent] is read only from an "
-           "untracked personal config or MODSYS_AGENT_COMMAND")
 
 
 class Base(AgentRepo, unittest.TestCase):
@@ -23,56 +22,10 @@ class Base(AgentRepo, unittest.TestCase):
         git(self.root, "commit", "-q", "-m", "oops")
 
 
-class TrackedConfigTest(Base):  # C1
-    def test_a_committed_personal_config_is_refused_everywhere(self):
-        self.config('[match]\nmode = "hybrid"\n')
-        self.agent(answer=picks(("payments", 0.9)))
-        self.commit_user_config()
-        for argv in (("match", MATCH_TASK), ("match", MATCH_TASK, "--match", "hybrid"),
-                     ("context", "--task", MATCH_TASK), ("discover", "--task", MATCH_TASK),
-                     ("choose", "--task", TASK, "--run"), ("catalog",), ("lint",)):
-            with self.subTest(argv=argv):
-                code, out, err = run(*argv, *self.R)
-                self.assertEqual((code, out), (2, ""))
-                self.assertEqual(err, f"modsys: error: {TRACKED}\n")
-        self.assertEqual(self.calls(), [])  # the command never ran
-
-    def test_a_tracked_symlink_counts(self):
-        target = self.tmp / "elsewhere.toml"
-        self.agent(answer=picks())
-        (self.root / ".modsys" / "config.user.toml").rename(target)
-        (self.root / ".modsys" / "config.user.toml").symlink_to(target)
-        self.commit_user_config()
-        code, out, err = run("catalog", *self.R)
-        self.assertEqual((code, out), (2, ""))
-        self.assertIn("tracked by git", err)
-
-    def test_an_untracked_personal_config_is_accepted(self):
-        self.agent(answer=picks(("payments", 0.9)))
-        self.assertEqual(run("choose", "--task", TASK, "--run", *self.R)[0], 0)
-        _, env, _ = run_json("catalog", *self.R)
-        self.assertTrue(env["data"]["match"]["semantic"])
-
-    def test_a_personal_config_without_an_agent_may_be_committed(self):
+class PersonalConfigTest(Base):
+    def test_a_personal_config_without_an_agent_is_fine(self):
         self.config('[search]\neffort = "quick"\n', "config.user.toml")
-        self.commit_user_config()
         self.assertEqual(run("catalog", *self.R)[0], 0)
-
-    def test_outside_git_only_the_environment_counts(self):
-        import shutil
-        shutil.rmtree(self.root / ".git")
-        self.agent(answer=picks(("payments", 0.9)))
-        code, out, err = run("catalog", *self.R)
-        self.assertEqual((code, out), (2, ""))
-        self.assertIn(".modsys/config.user.toml", err)
-        self.assertIn("MODSYS_AGENT_COMMAND", err)
-        self.assertIn("git work tree", err)
-        (self.root / ".modsys" / "config.user.toml").unlink()
-        with mock.patch.dict(os.environ, {"MODSYS_AGENT_COMMAND":
-                                          json.dumps(self.behaviour(answer=picks(("payments", 1))))}):
-            self.assertEqual(run("choose", "--task", TASK, "--run", *self.R)[0], 0)
-            _, env, _ = run_json("catalog", *self.R)
-            self.assertTrue(env["data"]["match"]["semantic"])
 
     def test_init_ignores_the_personal_config(self):
         repo = self.tmp / "fresh"
@@ -189,13 +142,32 @@ class AgentLimitsTest(Base):
             time.sleep(0.05)
         self.fail("the agent's background child outlived the call")
 
-    def test_tie_by_name_and_more_verbs_without_a_connection(self):  # M12
+    def test_more_verbs_without_a_connection(self):  # M12
         import socket
         self.agent(answer=picks(("payments", 0.9)))
         with mock.patch.object(socket.socket, "connect", side_effect=AssertionError("net")):
             for argv in (("show", "orders"), ("lint",), ("roles", "list"), ("next",),
                          ("context", "--task", MATCH_TASK, "--match", "hybrid")):
                 self.assertIn(run(*argv, *self.R)[0], (0, 1), argv)
+
+
+class HelperHoldingStdoutTest(Base):  # N2
+    def test_a_valid_answer_survives_a_helper_that_holds_stdout(self):
+        self.agent(answer=picks(("payments", 0.9)), helper=30, timeout_s=3)
+        t0 = time.monotonic()
+        code, out, err = run("choose", "--task", TASK, "--run", *self.R, "--json")
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(json.loads(out)["data"]["picks"][0]["module"], "payments")
+        self.assertLess(time.monotonic() - t0, 3 + 2 * agent_mod.KILL_GRACE_S + 2)
+
+    def test_no_answer_fails_within_the_deadline(self):
+        self.agent(helper=30, timeout_s=3)
+        t0 = time.monotonic()
+        code, out, err = run("choose", "--task", TASK, "--run", *self.R)
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("agent", err)
+        self.assertNotIn("ResourceWarning", err)
+        self.assertLess(time.monotonic() - t0, 3 + 2 * agent_mod.KILL_GRACE_S + 2)
 
 
 if __name__ == "__main__":

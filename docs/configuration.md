@@ -106,7 +106,7 @@ exactly only), or exact hits whose score a negative keyword pulled below `min_sc
 ends with `re-run with the module's own keyword in the task text, or read it directly: modsys
 show <module>`; `modsys show <module>` prints the module's keywords on its `keys` line.
 
-## `[agent]` and `[search]`
+## The agent command and `[search]`
 
 The engine holds no model, no API key and no network code. `semantic` / `hybrid` matching and
 `modsys choose --run` run a command the user configured, with the work order of `modsys choose`
@@ -115,8 +115,8 @@ from stdout.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `[agent] command` | unset | the argv list of the agent command; items may use `{claude_model}`, `{codex_model}`, `{effort}` and `{reasoning}` (`quick` → `low`, `standard` → `medium`, `deep` → `high`), `{{` / `}}` are literal braces; run without a shell. Read ONLY from the `MODSYS_AGENT_COMMAND` environment variable (a JSON array; it beats the file) or from a `.modsys/config.user.toml` that git does NOT track (`modsys init` git-ignores it); a repository config, a pack, a tracked personal config, or a personal config outside a git work tree that sets `[agent]` is refused (exit 2 naming the file). Inside an agent run (`MODSYS_WORK_ORDER` set) the command is unavailable: `semantic` and `choose --run` are refused, `hybrid` runs lexically with a note |
-| `[agent] timeout_s` | `300` | an integer from 1 to 3600; user config only; applies to the environment command too |
+| `MODSYS_AGENT_COMMAND` | unset | the argv list of the agent command, a JSON array of strings, read ONLY from this environment variable; items may use `{claude_model}`, `{codex_model}`, `{effort}` and `{reasoning}` (`quick` → `low`, `standard` → `medium`, `deep` → `high`), `{{` / `}}` are literal braces; run without a shell. An `[agent]` table in any config file (team, personal or a pack) is refused (exit 2 naming the file): a repository could commit it. Inside an agent run (`MODSYS_WORK_ORDER` set) the command is unavailable: `semantic` and `choose --run` are refused, `hybrid` runs lexically with a note |
+| `MODSYS_AGENT_TIMEOUT` | `300` | seconds, an integer from 1 to 3600; anything else is exit 2 naming the variable |
 | `[search] claude_model` | `"sonnet"` | the model the Claude Code skill's subagent uses; 1–100 characters of letters, digits and `. _ : / @ + -`, not starting with a dash (the value becomes an item of your agent command) |
 | `[search] codex_model` | `"gpt-5.6-luna"` | the model `codex exec -m` uses; same rule |
 | `[search] effort` | `"standard"` | `quick` (choose from the cards only), `standard` (also open the INDEX of up to 3 candidates), `deep` (also read the candidates' docs and the code). Team or user config; the user's wins per key; any other value is exit 2 |

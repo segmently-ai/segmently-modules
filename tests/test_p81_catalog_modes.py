@@ -13,9 +13,8 @@ from pathlib import Path
 from tests.agent_helpers import AgentRepo
 from tests.helpers import run, run_json
 
-NO_EMBEDDER = ("semantic matching needs your agent: set [agent] command in "
-               ".modsys/config.user.toml or MODSYS_AGENT_COMMAND; in Claude Code / Codex the "
-               "skills do it with modsys choose")
+NO_EMBEDDER = ("semantic matching needs your agent: set MODSYS_AGENT_COMMAND (a JSON array); "
+               "in Claude Code / Codex the skills do it with modsys choose")
 NOTE = "semantic part skipped: no agent command configured"
 TASK = "partial refund for a returned book"
 MODES = ("lexical", "semantic", "hybrid")
@@ -86,7 +85,7 @@ class CatalogTest(Repo):
         self.embedder("hybrid")
         _, env, _ = run_json("catalog", *self.R)
         self.assertEqual(env["data"]["match"], {"mode": "hybrid", "semantic": True})
-        (self.root / ".modsys" / "config.user.toml").unlink()
+        self.no_agent()
         _, env, _ = run_json("catalog", *self.R)  # catalog itself never refuses
         self.assertEqual(env["data"]["match"], {"mode": "hybrid", "semantic": False})
 

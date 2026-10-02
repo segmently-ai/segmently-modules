@@ -1,10 +1,10 @@
-"""The user's own agent command (P8.1 S3, layer 3): `[agent] command` runs a program the USER
+"""The user's own agent command (P8.1 S3, layer 3): the agent command runs a program the USER
 chose — never a model of the engine's — with the work order on stdin and reads its answer from
-stdout. The command comes only from the `MODSYS_AGENT_COMMAND` environment variable (a JSON
-array) or from a `.modsys/config.user.toml` that git does not track (outside a git work tree
-only the variable counts); a committed config, a tracked personal config or a pack that sets
-`[agent]` is refused, so a commit cannot make the engine run an agent command. The engine holds no model, no key
-and no network code: whatever the command does, it does with the user's own credentials."""
+stdout. It is read ONLY from the environment: `MODSYS_AGENT_COMMAND` (a JSON array of strings)
+and `MODSYS_AGENT_TIMEOUT` (seconds, 1 to 3600, default 300). An `[agent]` table in any config
+file — team, personal or pack — is refused, so no committed file can make the engine run an
+agent command, whatever the file system or git say about its name. The engine holds no model, no
+key and no network code: whatever the command does, it does with the user's own credentials."""
 import json
 import os
 import re
@@ -18,6 +18,7 @@ from pathlib import Path
 from modsys.output import UsageError
 
 ENV_COMMAND = "MODSYS_AGENT_COMMAND"
+ENV_TIMEOUT = "MODSYS_AGENT_TIMEOUT"
 DEFAULT_TIMEOUT_S = 300
 MAX_TIMEOUT_S = 3600
 REASONING = {"quick": "low", "standard": "medium", "deep": "high"}
@@ -84,22 +85,11 @@ def substitute(command: list[str], values: dict) -> list[str]:
     return out
 
 
-def validate_agent_table(table, source, user: bool) -> None:
-    """The `[agent]` table of one config layer. Refused outside the user config."""
-    if not isinstance(table, dict):
-        raise UsageError(f"{source}: [agent] must be a table, got {table!r}")
-    if not user:
-        key = next((k for k in ("command", "timeout_s") if k in table), "command")
-        raise UsageError(f"{source}: [agent] {key}: not allowed here — the agent command is "
-                         f"yours alone: set it in .modsys/config.user.toml or in "
-                         f"{ENV_COMMAND} (a repository's config cannot run a command)")
-    if "command" in table:
-        validate_command(table["command"], source)
-    if "timeout_s" in table:
-        t = table["timeout_s"]
-        if not (_is_int(t) and 1 <= t <= MAX_TIMEOUT_S):
-            raise UsageError(f"{source}: [agent] timeout_s: expected an integer from 1 to "
-                             f"{MAX_TIMEOUT_S}, got {t!r}")
+def validate_agent_table(table, source) -> None:
+    """An `[agent]` table in a config layer: always refused (the command is read from the
+    environment only)."""
+    raise UsageError(f"{source}: [agent] is not read from files (a repository could commit it) "
+                     f"— set {ENV_COMMAND} instead")
 
 
 def nested() -> bool:
@@ -108,53 +98,36 @@ def nested() -> bool:
     return bool(os.environ.get("MODSYS_WORK_ORDER"))
 
 
-def require_untracked(path: Path, root) -> None:
-    """The personal config `path` may set `[agent]` only when git does NOT track it (a tracked
-    file is a committed one: anyone who clones would run its command) and it lies in a git work
-    tree (outside one the engine cannot tell). A tracked symlink counts as tracked."""
-    from modsys.changes import git_env
-    from modsys.config import shown
-    here = shown(path, root)
-    run_git = lambda *a: subprocess.run(["git", "-C", str(path.parent), *a], env=git_env(),  # noqa: E731
-                                        capture_output=True, text=True)
-    try:
-        inside = run_git("rev-parse", "--is-inside-work-tree")
-        tracked = run_git("ls-files", "--error-unmatch", "--", path.name)
-    except OSError:  # git is not installed
-        inside = None
-    if inside is None or inside.returncode != 0 or inside.stdout.strip() != "true":
-        raise UsageError(f"{here}: [agent] is read only from MODSYS_AGENT_COMMAND outside a git "
-                         f"work tree (the engine cannot tell whether this file is committed)")
-    if tracked.returncode == 0:
-        raise UsageError(f"{here} is tracked by git — [agent] is read only from an untracked "
-                         f"personal config or {ENV_COMMAND}")
+def timeout_s() -> int:
+    raw = os.environ.get(ENV_TIMEOUT, "").strip()
+    if not raw:
+        return DEFAULT_TIMEOUT_S
+    if not (raw.isascii() and raw.isdigit() and 1 <= int(raw) <= MAX_TIMEOUT_S):
+        raise UsageError(f"{ENV_TIMEOUT}: expected an integer from 1 to {MAX_TIMEOUT_S}, "
+                         f"got {raw[:40]!r}")
+    return int(raw)
 
 
 def settings(config: dict) -> dict | None:
-    """`{command, timeout_s, source}` of the agent command in force, or None when there is
-    none: the environment variable beats `config.user.toml`; an empty variable is unset; an
-    invalid one is refused (never a silent fallback to the user config)."""
+    """`{command, timeout_s}` of the agent command in force, or None when there is none or this
+    is a nested call. Only the environment counts; an empty variable is unset; an invalid one is
+    refused."""
+    limit = timeout_s()
     if nested():
         return None
-    table = config.get("agent") or {}
-    timeout_s = table.get("timeout_s", DEFAULT_TIMEOUT_S)
     raw = os.environ.get(ENV_COMMAND, "")
-    if raw.strip():
-        try:
-            command = json.loads(raw)
-        except ValueError:
-            raise UsageError(f"{ENV_COMMAND}: expected a JSON array of strings, got "
-                             f"{raw[:80]!r}") from None
-        if not (isinstance(command, list) and command and
-                all(isinstance(i, str) for i in command)):
-            raise UsageError(f"{ENV_COMMAND}: expected a non-empty JSON array of strings, "
-                             f"got {raw[:80]!r}")
-        return {"command": validate_command(command, ENV_COMMAND), "timeout_s": timeout_s,
-                "source": ENV_COMMAND}
-    if "command" in table:
-        return {"command": table["command"], "timeout_s": timeout_s,
-                "source": ".modsys/config.user.toml"}
-    return None
+    if not raw.strip():
+        return None
+    try:
+        command = json.loads(raw)
+    except ValueError:
+        raise UsageError(f"{ENV_COMMAND}: expected a JSON array of strings, got "
+                         f"{raw[:80]!r}") from None
+    if not (isinstance(command, list) and command and all(isinstance(i, str) for i in command)):
+        raise UsageError(f"{ENV_COMMAND}: expected a non-empty JSON array of strings, "
+                         f"got {raw[:80]!r}")
+    return {"command": validate_command(command, ENV_COMMAND), "timeout_s": limit,
+            "source": ENV_COMMAND}
 
 
 # ---- the answer of the agent (SI-P81-12) -------------------------------------------------
@@ -220,20 +193,34 @@ def _kill_group(proc: subprocess.Popen) -> None:
         pass
 
 
-def _close(proc: subprocess.Popen) -> None:
-    for f in (proc.stdin, proc.stdout, proc.stderr):
+_LEAKED: list = []  # streams whose reader is still blocked: kept alive, released at exit
+
+
+def _close(proc: subprocess.Popen, readers: list) -> None:
+    """Close the child's pipes — but never one a reader thread is still blocked on (a helper in
+    another session may hold the write end open): that stream is parked until exit."""
+    for stream, reader in ((proc.stdin, None), (proc.stdout, readers[0] if readers else None),
+                           (proc.stderr, readers[1] if len(readers) > 1 else None)):
+        if stream is None:
+            continue
+        if reader is not None and reader.is_alive():
+            _LEAKED.append(stream)
+            continue
         try:
-            f and f.close()
+            stream.close()
         except OSError:
             pass
 
 
 def _drain(stream, keep: int, limit: int | None, box: dict, key: str, proc) -> None:
-    """Read `stream` to its end on a thread: keep the first `keep` bytes; past `limit` bytes
-    stop the agent (its group) and flag it."""
+    """Read the unbuffered `stream` (chunks land as they are written) until its end: keep the
+    first `keep` bytes; past `limit` bytes stop the agent (its group) and flag it."""
     total = 0
     try:
-        for chunk in iter(lambda: stream.read(65536), b""):
+        while True:
+            chunk = stream.read(65536)
+            if not chunk:
+                return
             total += len(chunk)
             if len(box[key]) < keep:
                 box[key] += chunk[:keep - len(box[key])]
@@ -272,10 +259,11 @@ def run(config: dict, work_order: dict, schema: dict, check=lambda answer: answe
     try:
         tmp = Path(tempfile.mkdtemp(prefix="modsys-agent-"))
     except OSError as e:
-        raise UsageError(f"cannot write a temp directory: {e.strerror or e}") from None
-    before = _set_signals()
-    proc = None
+        raise UsageError(f"cannot write {tempfile.gettempdir()}: {e.strerror or e}") from None
+    before: dict = {}
+    proc, readers = None, []
     try:
+        before = _set_signals()
         order_file, schema_file, _ = _write_files(tmp, work_order, schema)
         env = {**os.environ, "MODSYS_WORK_ORDER": str(order_file),
                "MODSYS_SCHEMA": str(schema_file)}
@@ -283,11 +271,11 @@ def run(config: dict, work_order: dict, schema: dict, check=lambda answer: answe
         with open(order_file, "rb") as stdin:
             try:
                 proc = subprocess.Popen(argv, stdin=stdin, stdout=subprocess.PIPE,
-                                        stderr=subprocess.PIPE, env=env, cwd=cwd,
+                                        stderr=subprocess.PIPE, env=env, cwd=cwd, bufsize=0,
                                         start_new_session=True)
             except OSError as e:
                 raise UsageError(f"agent {name}: cannot run it ({e.strerror or e}) — "
-                                 f"check [agent] command in {cfg['source']}") from None
+                                 f"check {ENV_COMMAND}") from None
         readers = [threading.Thread(target=_drain, daemon=True,
                                     args=(proc.stdout, MAX_STDOUT, MAX_STDOUT, box, "out", proc)),
                    threading.Thread(target=_drain, daemon=True,
@@ -301,12 +289,12 @@ def run(config: dict, work_order: dict, schema: dict, check=lambda answer: answe
             raise UsageError(f"agent timed out after {timeout_s} s ({name})") from None
         finally:
             _kill_group(proc)  # never a child (or a background grandchild) left behind
-            for t in readers:
+            for t in readers:  # a helper in another session may keep a pipe open: bounded wait
                 t.join(KILL_GRACE_S)
         if box["over"]:
             raise UsageError(f"agent {name} printed more than {MAX_STDOUT} bytes")
-        stdout = box["out"].decode("utf-8", "replace")
-        stderr = box["err"].decode("utf-8", "replace")
+        stdout = bytes(box["out"]).decode("utf-8", "replace")
+        stderr = bytes(box["err"]).decode("utf-8", "replace")
         if proc.returncode != 0:
             tail = f": {stderr.strip()[:STDERR_CHARS]}" if stderr.strip() else ""
             raise UsageError(f"agent {name} exited {proc.returncode}{tail}")
@@ -318,7 +306,7 @@ def run(config: dict, work_order: dict, schema: dict, check=lambda answer: answe
     finally:
         if proc is not None:
             _kill_group(proc)
-            _close(proc)
+            _close(proc, readers)
         _restore_signals(before)
         shutil.rmtree(tmp, ignore_errors=True)
 

@@ -95,14 +95,13 @@ def _check_table(table: dict, schema: dict, section: str, source) -> None:
                                  f"got {table[key]!r}")
 
 
-def validate_layer(layer: dict, source, user: bool = False) -> None:
+def validate_layer(layer: dict, source) -> None:
     """Type-check the known keys of one config layer (a pack, config.toml or
-    config.user.toml) before it is merged; `source` names the file in errors. `[agent]` is the
-    user's alone (`user=True`): a committed layer that sets it is refused, so a commit can
-    never make the engine run a command."""
+    config.user.toml) before it is merged; `source` names the file in errors. `[agent]` is
+    refused in every layer: the agent command comes from the environment only."""
     if "agent" in layer:
         from modsys.agent import validate_agent_table  # agent reads this module
-        validate_agent_table(layer["agent"], source, user)
+        validate_agent_table(layer["agent"], source)
     if "search" in layer:
         _validate_search(layer["search"], source)
     init = layer.get("init")
@@ -316,10 +315,7 @@ def load_config(config_dir: Path, root: Path | None = None, extra: dict | None =
         path = config_dir / name
         if path.exists():
             layer = read_toml(path)
-            if name == "config.user.toml" and "agent" in layer:
-                from modsys.agent import require_untracked  # agent reads this module
-                require_untracked(path, root)
-            validate_layer(layer, path, user=name == "config.user.toml")
+            validate_layer(layer, path)
             layers.append(layer)
         if name == "config.toml" and extra is not None:
             validate_layer(extra, extra_source)

@@ -4,7 +4,7 @@ order on stdin and answers deterministically. argv[1] is a JSON file of its beha
 written `started`), `stderr` (text), `log` (a JSON file it writes: its argv, its stdin, the
 files `MODSYS_WORK_ORDER` / `MODSYS_SCHEMA` name and their content, its environment),
 `started` (a marker file), `grandchild` (a file to write the pid of a `sleep` child into),
-`nested` (an argv to run as a child and record: rc, stdout, stderr), `flood` (bytes to print)."""
+`nested` (an argv to run as a child and record: rc, stdout, stderr), `flood` (bytes to print), `helper` (seconds a session-leading helper holds stdout)."""
 import json
 import os
 import subprocess
@@ -37,6 +37,9 @@ def main() -> int:
     if cfg.get("grandchild"):
         child = subprocess.Popen(["sleep", "60"])
         Path(cfg["grandchild"]).write_text(str(child.pid), encoding="utf-8")
+    if cfg.get("helper"):  # a helper in its own session that keeps stdout (and stderr) open
+        subprocess.Popen([sys.executable, "-c", f"import time; time.sleep({cfg['helper']})"],
+                         start_new_session=True, stdin=subprocess.DEVNULL)
     if cfg.get("started"):
         Path(cfg["started"]).write_text(str(os.getpid()), encoding="utf-8")
     if cfg.get("sleep"):

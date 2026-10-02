@@ -66,13 +66,19 @@ class AgentRepo:
         return [sys.executable, str(FAKE), str(path)]
 
     def agent(self, extra_argv=(), timeout_s=None, search: str = "", **cfg) -> list[str]:
-        """Configure the fake agent as `[agent] command` in config.user.toml."""
+        """Configure the fake agent: `MODSYS_AGENT_COMMAND` (and `MODSYS_AGENT_TIMEOUT`) in the
+        environment, which the AgentRepo setUp restores; `search` goes to config.user.toml."""
         argv = self.behaviour(**cfg) + list(extra_argv)
-        text = f"[agent]\ncommand = {json.dumps(argv)}\n"
+        os.environ["MODSYS_AGENT_COMMAND"] = json.dumps(argv)
         if timeout_s is not None:
-            text += f"timeout_s = {timeout_s}\n"
-        self.config(text + search, "config.user.toml")
+            os.environ["MODSYS_AGENT_TIMEOUT"] = str(timeout_s)
+        if search:
+            self.config(search, "config.user.toml")
         return argv
+
+    def no_agent(self) -> None:
+        os.environ.pop("MODSYS_AGENT_COMMAND", None)
+        os.environ.pop("MODSYS_AGENT_TIMEOUT", None)
 
     def calls(self) -> list[dict]:
         return json.loads(self.calls_log.read_text(encoding="utf-8")) \

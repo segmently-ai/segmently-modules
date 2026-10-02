@@ -46,55 +46,60 @@ class Base(AgentRepo, unittest.TestCase):
 class TrustBoundaryTest(Base):
     GOOD = picks(("payments", 0.9))
 
-    def test_committed_config_is_refused(self):  # P81-AC-058
-        argv = self.behaviour(answer=self.GOOD)
-        self.config(f"[agent]\ncommand = {json.dumps(argv)}\n")
-        for argv_ in (("choose", "--task", "t", "--run"), ("catalog",), ("lint",)):
-            code, out, err = run(*argv_, *self.R)
-            self.assertEqual((code, out), (2, ""), argv_)
-            self.assertIn("config.toml", err)
-            self.assertIn("[agent] command", err)
+    def refused_everywhere(self, needle):
+        for argv in (("choose", "--task", "t", "--run"), ("catalog",), ("lint",),
+                     ("match", MATCH_TASK)):
+            code, out, err = run(*argv, *self.R)
+            self.assertEqual((code, out), (2, ""), argv)
+            self.assertIn(needle, err)
+            self.assertIn("[agent] is not read from files", err)
+            self.assertIn("MODSYS_AGENT_COMMAND", err)
             self.assertNotIn("Traceback", err)
         self.assertEqual(self.calls(), [])
 
-    def test_committed_timeout_is_refused(self):  # P81-AC-058
-        self.config("[agent]\ntimeout_s = 10\n")
-        code, out, err = run("catalog", *self.R)
-        self.assertEqual((code, out), (2, ""))
-        self.assertIn("timeout_s", err)
+    def test_an_agent_table_in_any_file_is_refused(self):  # P81-AC-058
+        argv = self.behaviour(answer=self.GOOD)
+        for name in ("config.toml", "config.user.toml"):
+            for body in (f"[agent]\ncommand = {json.dumps(argv)}\n", "[agent]\ntimeout_s = 10\n"):
+                self.config(body, name)
+                self.refused_everywhere(name)
+            (self.root / ".modsys" / name).unlink()
 
-    def test_pack_setting_is_refused(self):  # P81-AC-058
+    def test_a_pack_setting_is_refused(self):  # P81-AC-058
         pack = self.root / ".modsys" / "packs" / "evil"
         pack.mkdir(parents=True)
         (pack / "pack.toml").write_text('id = "evil"\nversion = "0.1.0"\n\n[agent]\n'
                                         f'command = {json.dumps(self.behaviour())}\n',
                                         encoding="utf-8")
-        code, out, err = run("choose", "--task", "t", "--run", *self.R)
-        self.assertEqual((code, out), (2, ""))
-        self.assertIn("pack.toml", err)
-        self.assertIn("[agent] command", err)
-        self.assertEqual(self.calls(), [])
+        self.refused_everywhere("pack.toml")
 
-    def test_user_config_and_env_run(self):  # P81-AC-058
+    def test_a_committed_odd_cased_personal_config_never_runs(self):  # review C1
+        marker = self.tmp / "ran"
+        evil = self.tmp / "evil.py"
+        evil.write_text(f"import pathlib\npathlib.Path({str(marker)!r}).write_text('x')\n",
+                        encoding="utf-8")
+        (self.root / ".modsys").mkdir(exist_ok=True)
+        (self.root / ".modsys" / "Config.User.Toml").write_text(
+            f'[agent]\ncommand = ["{sys.executable}", "{evil}"]\n', encoding="utf-8")
+        self.config('[match]\nmode = "hybrid"\n')
+        for argv in (("match", MATCH_TASK), ("context", "--task", MATCH_TASK),
+                     ("discover", "--task", MATCH_TASK), ("choose", "--task", "t", "--run"),
+                     ("catalog",)):
+            code, out, err = run(*argv, *self.R)
+            self.assertFalse(marker.exists(), argv)
+        self.assertFalse(marker.exists())
+        _, env, _ = run_json("catalog", *self.R)
+        if env:  # a case-sensitive file system never reads the file
+            self.assertFalse(env["data"]["match"]["semantic"])
+
+    def test_the_environment_command_runs(self):  # P81-AC-058
         self.agent(answer=self.GOOD)
         self.assertEqual(self.choose()[0], 0)
         self.assertEqual(len(self.calls()), 1)
-        (self.root / ".modsys" / "config.user.toml").unlink()
-        with mock.patch.dict(os.environ, {"MODSYS_AGENT_COMMAND":
-                                          json.dumps(self.behaviour(answer=self.GOOD))}):
-            self.assertEqual(self.choose()[0], 0)
-        self.assertEqual(len(self.calls()), 2)
+        _, env, _ = run_json("catalog", *self.R)
+        self.assertTrue(env["data"]["match"]["semantic"])
 
-    def test_env_beats_the_user_config(self):  # P81-AC-058 / SI-P81-16
-        self.agent(answer=picks(("payments", 0.9)))
-        env_argv = self.behaviour(answer=picks(("catalog", 0.8)))
-        with mock.patch.dict(os.environ, {"MODSYS_AGENT_COMMAND": json.dumps(env_argv)}):
-            code, out, _ = self.choose("--json")
-        self.assertEqual(code, 0)
-        self.assertEqual(json.loads(out)["data"]["picks"][0]["module"], "catalog")
-
-    def test_invalid_env_has_no_fallback(self):  # P81-AC-058
-        self.agent(answer=self.GOOD)
+    def test_invalid_env_is_refused(self):  # P81-AC-058
         for bad in ("nope", '"a string"', '["ok", 3]', "[]", '{"a": 1}'):
             with self.subTest(bad=bad), mock.patch.dict(os.environ,
                                                         {"MODSYS_AGENT_COMMAND": bad}):
@@ -102,17 +107,19 @@ class TrustBoundaryTest(Base):
                     code, out, err = run(*argv, *self.R)
                     self.assertEqual((code, out), (2, ""))
                     self.assertIn("MODSYS_AGENT_COMMAND", err)
-        self.assertEqual(self.calls(), [])
         with mock.patch.dict(os.environ, {"MODSYS_AGENT_COMMAND": "  "}):  # empty = unset
-            self.assertEqual(self.choose()[0], 0)
+            self.assertEqual(run("catalog", *self.R)[0], 0)
 
-    def test_env_timeout_comes_from_the_user_config(self):  # SI-P81-15
-        self.config("[agent]\ntimeout_s = 0\n", "config.user.toml")
-        with mock.patch.dict(os.environ, {"MODSYS_AGENT_COMMAND":
-                                          json.dumps(self.behaviour(answer=self.GOOD))}):
-            code, _, err = self.choose()
-        self.assertEqual(code, 2)
-        self.assertIn("[agent] timeout_s", err)
+    def test_timeout_variable_boundaries(self):  # P81-AC-062 / SI-P81-15
+        for ok in ("1", "300", "3600"):
+            self.agent(answer=picks(), timeout_s=ok)
+            self.assertEqual(run("catalog", *self.R)[0], 0, ok)
+        for bad in ("0", "3601", "-1", "1.5", "abc", "5s", "٣"):
+            self.agent(answer=picks(), timeout_s=bad)
+            for argv in (("catalog",), ("choose", "--task", "t", "--run")):
+                code, out, err = run(*argv, *self.R)
+                self.assertEqual((code, out), (2, ""), bad)
+                self.assertIn("MODSYS_AGENT_TIMEOUT", err)
 
 
 class RunningTest(Base):
@@ -156,17 +163,17 @@ class RunningTest(Base):
         for item, needle in (("{foo}", "{foo}"), ("a{", "unmatched"), ("}x", "unmatched"),
                              ("{ effort}", "unmatched"), ("{claude_model", "unmatched")):
             self.agent([item], answer=picks())
-            for argv in (("lint",), ("catalog",), ("choose", "--task", "t", "--run")):
+            for argv in (("catalog",), ("choose", "--task", "t", "--run")):
                 code, out, err = run(*argv, *self.R)
                 self.assertEqual((code, out), (2, ""), (item, argv))
                 self.assertIn(needle, err)
                 self.assertIn(repr(item), err)
-        self.config(f'[agent]\ncommand = ["{{effort}}", "x"]\n', "config.user.toml")
+        os.environ["MODSYS_AGENT_COMMAND"] = '["{effort}", "x"]'
         code, _, err = run("catalog", *self.R)
         self.assertEqual(code, 2)
         self.assertIn("argv[0]", err)
         for bad in ("[]", '[1]', '"string"'):
-            self.config(f"[agent]\ncommand = {bad}\n", "config.user.toml")
+            os.environ["MODSYS_AGENT_COMMAND"] = bad
             self.assertEqual(run("catalog", *self.R)[0], 2, bad)
 
     def test_answer_parsing_order(self):  # P81-AC-061
@@ -197,18 +204,6 @@ class RunningTest(Base):
                     self.assertEqual(code, 0)
                     self.assertEqual(json.loads(out)["data"]["picks"][0]["module"], expected)
 
-    def test_timeout_values(self):  # P81-AC-062
-        for ok in (1, 300, 3600):
-            self.agent(answer=picks(), timeout_s=ok)
-            self.assertEqual(run("catalog", *self.R)[0], 0, ok)
-        for bad in ("0", "3601", "-1", "1.5", '"5"', "true"):
-            self.agent(answer=picks())
-            self.config(f"[agent]\ncommand = {json.dumps(self.behaviour())}\n"
-                        f"timeout_s = {bad}\n", "config.user.toml")
-            code, out, err = run("catalog", *self.R)
-            self.assertEqual((code, out), (2, ""), bad)
-            self.assertIn("[agent] timeout_s", err)
-
     def test_expiry_kills_the_child(self):  # P81-AC-062
         started = self.tmp / "started"
         self.agent(sleep=30, started=str(started), answer=json.dumps(picks()), timeout_s=1)
@@ -233,7 +228,7 @@ class RunningTest(Base):
         code, out, err = self.choose()
         self.assertEqual((code, out), (2, ""))
         self.assertIn("printed nothing", err)
-        self.config('[agent]\ncommand = ["/nonexistent/agent-x", "--y"]\n', "config.user.toml")
+        os.environ["MODSYS_AGENT_COMMAND"] = '["/nonexistent/agent-x", "--y"]'
         code, out, err = self.choose()
         self.assertEqual((code, out), (2, ""))
         self.assertIn("/nonexistent/agent-x", err)
@@ -442,7 +437,7 @@ class ModesThroughTheAgentTest(Base):
 
     def test_no_command_wording_holds(self):  # P81-AC-068
         self.agent(answer=picks())
-        (self.root / ".modsys" / "config.user.toml").unlink()
+        self.no_agent()
         code, out, err = run("match", MATCH_TASK, "--match", "semantic", *self.R)
         self.assertEqual((code, out, err), (2, "", f"modsys: error: {NO_AGENT}\n"))
         self.assertEqual(self.calls(), [])
