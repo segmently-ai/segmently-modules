@@ -62,8 +62,8 @@ class PacksNewTest(PacksRepo):  # P4A-AC-009
         meta = front_matter(text)
         self.assertEqual(meta["name"], "api-review")
         self.assertTrue(0 < len(meta["description"]) <= 1024)
-        self.assertIn('modsys context --task "<the task in one sentence>" --role reviewer --json',
-                      text)
+        self.assertIn("modsys context --task-file <the task in one sentence, in a file> --role "
+                      "reviewer --match lexical --json", text)  # P8.1 fix wave: a file, lexical
         self.assertIn("modsys show <module> --role reviewer", text)
         self.assertIsNone(source_problem(self.root / ".modsys/packs/team/skills/api-review",
                                          "api-review", self.root / ".modsys/packs/team"))
@@ -143,7 +143,8 @@ class PacksNewTest(PacksRepo):  # P4A-AC-009
         self.ok("packs", "new", "team2", "--skill", "notes")
         self.assertEqual(self.pack_toml("team2")["skills"]["notes"]["reads_roles"], [])
         text = self.skill_md("team2", "notes")
-        self.assertIn('modsys context --task "<the task in one sentence>" --json', text)
+        self.assertIn("modsys context --task-file <the task in one sentence, in a file> "
+                      "--match lexical --json", text)
         self.assertIn("modsys show <module>`", text)
         self.assertNotIn("--role", text)
 

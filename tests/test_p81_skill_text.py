@@ -15,6 +15,7 @@ import unittest
 from unittest import mock
 
 from modsys.config import builtin_packs_root
+from modsys.packs_cmd import scaffold_files
 from tests.helpers import SPLIT_FIXTURE, copy_fixture, init_git, run, run_json
 from tests.test_builtin_skills import argv, commands, section, uses
 
@@ -154,14 +155,19 @@ class SharedStepTest(unittest.TestCase):  # P81-AC-074, SI-P81-10
 
 class EveryShippedTextIsLexicalTest(unittest.TestCase):  # final review I-1 (and 5 D-4)
     """A `match`, a `context` or a `discover` given a task, anywhere the engine ships text an
-    agent follows (every pack's skills and references, the templates, the scaffold), passes
-    `--match lexical`: under a committed `[match] mode = "semantic"` none of them exits 2 for
-    want of an agent command, and none starts the user's agent for a keyword check."""
+    agent follows (every pack's skills and references, the templates, the skill `packs new`
+    scaffolds), passes `--match lexical`: under a committed `[match] mode = "semantic"` none of
+    them exits 2 for want of an agent command, and none starts the user's agent for a keyword
+    check. And none takes its task as a quoted `--task` argument (M-6): always `--task-file`."""
 
     def shipped(self) -> dict[str, str]:
         root = builtin_packs_root().parent
-        return {p.relative_to(root).as_posix(): p.read_bytes().decode("utf-8")
-                for p in sorted(root.rglob("*.md"))}
+        out = {p.relative_to(root).as_posix(): p.read_bytes().decode("utf-8")
+               for p in sorted(root.rglob("*.md"))}
+        for roles in (["reviewer", "auditor"], []):  # what `packs new` writes, with roles or none
+            for path, body in scaffold_files("team", roles, ["api-review"], None, None).items():
+                out[f"packs new ({len(roles)} roles): {path}"] = body
+        return out
 
     def test_every_keyword_command_is_lexical(self):
         found = set()
@@ -175,8 +181,16 @@ class EveryShippedTextIsLexicalTest(unittest.TestCase):  # final review I-1 (and
                         self.assertEqual(a[a.index("--match") + 1], "lexical")
         for name in ("templates/agents-md.md", "packs/core/skills/module-create/SKILL.md",
                      "packs/qa/skills/qa-acceptance/SKILL.md",
-                     "packs/core/skills/module-discover/SKILL.md"):
-            self.assertIn(name, found)  # the scan reaches what the review named
+                     "packs/core/skills/module-discover/SKILL.md",
+                     "packs new (2 roles): skills/api-review/SKILL.md",
+                     "packs new (0 roles): skills/api-review/SKILL.md"):
+            self.assertIn(name, found)  # the scan reaches what the reviews named
+
+    def test_no_task_is_a_quoted_argument(self):  # final review M-6
+        for name, body in self.shipped().items():
+            for a in (argv(c) for c in commands(body)):
+                with self.subTest(file=name, argv=a):
+                    self.assertNotIn("--task", a)
 
     def test_the_scan_sees_a_missing_flag(self):
         for body in ('`modsys context --task "<t>" --role <r>`',

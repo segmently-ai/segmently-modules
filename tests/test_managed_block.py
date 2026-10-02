@@ -191,7 +191,7 @@ class BlockContentTest(BlockRepo):  # P4A-AC-021
         body = self.body()
         text = "\n".join(body)
         self.assertLessEqual(len(body), 25)
-        self.assertIn('modsys context --task "<the task>" --role <role>', text)
+        self.assertIn("modsys context --task-file <file> --role <role> --match lexical", text)
         self.assertIn("Roles in this repository: developer, qa, po, architect, designer, "
                       "reviewer.", text)
         self.assertIn("- `api-review` — Reviews API changes against the reviewer docs.", body)

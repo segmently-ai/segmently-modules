@@ -152,13 +152,16 @@ def scaffold_files(pack_id: str, roles: list[str], skills: list[str], descriptio
         description_toml=_toml_string(description or PACK_DESCRIPTION), tables=tables)}
     for role in roles:  # `${article}` is resolved now; the other placeholders by `create`
         files[f"roles/{role}.md"] = _scaffold("role.md").replace("${article}", article(role))
-    task = '"<the task in one sentence>"'
+    # the task goes through a file (a quoted argument would expand `$` and backticks) and the
+    # keyword routing is pinned: a team's `[match] mode` never makes the step refuse (P8.1)
+    task = "--task-file <the task in one sentence, in a file>"
     if roles:
-        context = "\n".join(f"   `modsys context --task {task} --role {r} --json`" for r in roles)
+        context = "\n".join(f"   `modsys context {task} --role {r} --match lexical --json`"
+                             for r in roles)
         show = "\n".join(f"   `modsys show <module> --role {r}`" for r in roles)
         docs = f"{_and(roles)} docs"
     else:
-        context, show, docs = f"   `modsys context --task {task} --json`", \
+        context, show, docs = f"   `modsys context {task} --match lexical --json`", \
             "   `modsys show <module>`", "docs"
     for skill in skills:
         what = (f"Works through a task with the {docs} of the modules it touches. Rewrite this "

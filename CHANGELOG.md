@@ -54,9 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `agents-md`: the skill list is one line per skill (the description's first sentence); under
   `builtin_delivery = "plugin"` the enabled built-in skills get the plugins lead-in and a
   repository pack's skills keep the `packs sync` one.
-- The `agents-md` block, `module-create` and `qa-acceptance` run their keyword commands with
-  `--match lexical`, like the four skills that choose modules: a committed
-  `[match] mode = "semantic"` no longer makes them exit 2, nor starts the user's agent.
+- The `agents-md` block, `module-create`, `qa-acceptance` and a skill `packs new` scaffolds run
+  their keyword commands with `--match lexical`, like the four skills that choose modules: a
+  committed `[match] mode = "semantic"` no longer makes them exit 2, nor starts the user's agent.
+  The block and the scaffolded skill pass the task through `--task-file`.
 - `choose --apply` reads an agent's JSON envelope (`structured_output`, `result`, a fenced
   `result`) as `choose --run` does.
 - A registry without modules no longer costs an agent call (`--match semantic|hybrid`,
@@ -65,9 +66,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The agent command reads the work order as compact JSON (stdin and `MODSYS_WORK_ORDER`).
 - A repeated Ctrl-C or SIGTERM during an agent call still kills an agent that ignores SIGTERM
   and removes the temp files (exit 130).
-- `MODSYS_AGENT_TIMEOUT` longer than four characters is refused (exit 2) instead of an internal
-  error; the agent command's errors and `choose --help` name `MODSYS_AGENT_COMMAND`, not a
-  config table.
+- `MODSYS_AGENT_TIMEOUT` is an integer from 1 to 3600 written with at most 4 digits: a longer
+  value is refused (exit 2) instead of an internal error; the agent command's errors and
+  `choose --help` name `MODSYS_AGENT_COMMAND`, not a config table.
 - The docs: a repository cannot choose the agent command, but its `[match] mode` decides whether
   `match`, `context` and `discover --task` run it (set the variable per CI job or shell session
   for repositories you do not trust); `[search] claude_model` is a Claude Code subagent alias.
