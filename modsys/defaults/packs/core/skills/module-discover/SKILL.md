@@ -5,99 +5,93 @@ description: Maps a confirmed task, or a change on a branch, to the modules it t
 
 # module-discover
 
-Turn a confirmed task, or a change, into its touch-set: which modules it modifies or only
-references, which docs to read first and which to update afterwards, and which code files
-belong to the modules it modifies.
-
 ## When to use
 
-- The task is agreed and you are about to plan or implement it.
-- A branch or a list of changed files needs its modules (review, CI, a pipeline step).
-- The user asks "which modules / docs / files does this touch?".
+- A task is agreed, or a branch or a list of changed files needs its modules, docs and code files.
 
 ## When not to use
 
-- The task is still being discussed and you only need background: use `module-scout`.
-- One question needs a deep answer with evidence from the code: use `module-research`.
-- The change is done and the docs must be updated: use `module-sync`.
+- The task is still being discussed: use `module-scout`.
+- One question needs a deep answer with code evidence: use `module-research`.
+- The change is done and the docs must catch up: use `module-sync`.
 
 ## Scope
 
-Read-only: it runs modsys read verbs, reads docs and searches code. The only file it may write
-is the JSON result, and only at a path the user names. It never edits the repository's docs or
-code and never commits.
+Read-only: modsys read verbs, docs, code search. It writes only temporary files outside the
+repository and, at a path the user names, the JSON result; it never edits docs or code and never
+commits.
 
 If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
 
 ## Steps
 
-1. Pick the input.
+A change without a task (a branch, changed files) starts at step 4.
 
-   - A task: put its full text in a temporary file outside the repository (or give it on
-     stdin with `--task-file -`), then
+1. Choose the candidate modules.
 
-     ```bash
-     modsys discover --task-file <file> --json
-     ```
+   Run `modsys catalog --json`; read `match` and `search`. The text: the task as given. For the
+   keyword half write 1–3 short English queries to a temporary `<file>`: the domain terms and code
+   identifiers the task implies (the registry's keywords are English and match whole words). The
+   mode: the user's words ("only lexical", "only by meaning"), else `match.mode` unless `lexical`,
+   else `hybrid`; the user may also set the depth ("search deep") or the model ("use opus").
 
-   - A change: the commit range, or the changed files. `<base>` is where the branch left
-     its target: `git merge-base <target> HEAD` prints it. The target branch's own name is
-     no base — anything merged into it since the branch started would be listed as touched
-     (`<target>...HEAD`, with three dots, is accepted as the same range).
+   - By meaning (`semantic`, `hybrid`):
+     `modsys choose --task "<the text, verbatim, any language>" --json` prints a work order. Answer
+     it in Claude Code by a subagent (`model: <search.claude_model>`), in Codex by
+     `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --output-schema <schema file> -`
+     (the order on stdin, `answer_schema` in the file; `low`, `medium`, `high` for `quick`,
+     `standard`, `deep`), else answer it in this session, at the depth its rules set: `quick` the
+     cards only, `standard` also the INDEX or the main doc's head of up to 3 candidates, `deep`
+     also their docs and code. Pipe the answer to `modsys choose --apply - --json`: `picks` with
+     their `read` docs.
+   - By keyword (`lexical`, `hybrid`): `modsys discover --task-file <file> --json`.
+   - `hybrid`: merge the lists; a module found both ways ranks first. Pass `--match semantic` or
+     `--match hybrid` only when `match.semantic` is true: else modsys has no agent to ask.
 
-     ```bash
-     modsys discover --from-diff <base>..HEAD --json
-     modsys discover --files <path> <path> --json
-     ```
+2. Verify each candidate by its description and the head of its main doc (a split module: its
+   INDEX). Keep those the task is about and, in a split module, the child the task is in (a pick
+   may be one; `modsys show <module> --json` lists them as `submodules`); drop the rest and say
+   why.
 
-   - Both, when a task comes with a branch:
+3. Go to the code: `modsys code-map files <candidate> --json` lists each kept module's files (a
+   child with none: its parent's). Grep the task's identifiers and domain terms inside these files
+   first, the rest of the repository only when they give nothing. Note each hit as file:line.
 
-     ```bash
-     modsys discover --task-file <file> --from-diff <base>..HEAD --json
-     ```
-
-   Exit 2: read stderr — an unknown ref, a directory given as a file, a missing registry — fix
-   the input and run it again once.
-
-2. Read the result. Per module (best first): `usage` — `modify` (the change touches its files)
-   or `reference` (only its keywords matched the task) —, `sources` (why it is listed:
-   `keyword`, `diff`, `path`), `touched_files`, `docs_to_read`, `docs_to_update`. Then
-   `files_outside_modules` (changed files no module owns) and `missing_files` (listed files
-   that are not on disk: a typo, or a deletion).
-
-3. For every `modify` module, list its code.
+4. Get the touch-set.
 
    ```bash
-   modsys code-map files <module> --json
+   modsys discover --files <found files> --task-file <file> --json
+   modsys discover --from-diff <base>..HEAD --task-file <file> --json
    ```
 
-   `files[]` are the files routed to the module and `via` the rule that routes each one.
-   Search only there for the symbols the task names, and note each hit as file:line.
+   Changed files go to `--files`, a branch to the second form; without a task, drop `--task-file`.
+   `<base>` is where the branch left its target: `git merge-base <target> HEAD` prints it — never
+   the target's own name, whose later commits would count as touched.
 
-4. For every `reference` module, read its `docs_to_read` — usually just the main doc — and keep
-   it only when it really helps the task (an existing component to reuse, a rule to respect).
-   Drop the others and say why, so nobody checks them again.
+5. Read the result. Per module, best first: `usage` (`modify`: its files change; `reference`: only
+   its keywords matched), `sources`, `touched_files`, `docs_to_read`, `docs_to_update`, on a split
+   parent `children` (name the one the change is in); then `files_outside_modules` (no module owns
+   them) and `missing_files` (not on disk).
 
-5. Read the `docs_to_read` of the `modify` modules; note the rules the task must respect.
+6. Read the `docs_to_read` of the `modify` modules: the rules the task must respect. Keep a
+   `reference` module only when its main doc helps (a component to reuse, a rule); drop the others
+   and say why.
 
-6. Report the touch-set:
+7. Report the touch-set, every `modify` row with its code at file:line:
 
    | module | usage | why | docs to read | docs to update | code (file:line) |
    |---|---|---|---|---|---|
 
-   then the files outside every module (each needs a module or a routing rule — suggest
-   `module-create`, or a `[[code_map]]` rule the team adds), the missing files, and the
-   modules you dropped with the reason.
-
-7. JSON on request: when the user names a path, write the `data` object of the `discover`
-   result there as it came (add nothing the engine did not return), and say where it is.
+   then the files outside every module (each needs `module-create` or a `[[code_map]]` rule), the
+   missing files and the dropped modules. JSON on request: write the `discover` result's `data` as
+   it came to the path the user names.
 
 ## Gates
 
-No gates — read-only: it reports and stops. It asks only for a missing input (no task text,
-no range) or before writing the JSON file when the user has not named its path.
+No gates — read-only: it reports and stops. It asks only for a missing input or the path of a JSON
+file.
 
 ## Exit codes
 
-`0` ok · `2` = a usage or config error: read stderr, fix the input or report the message; do
-not retry the same command.
+`0` ok · `2` = a usage or config error: read stderr, fix the input or report it; never retry the
+same command.

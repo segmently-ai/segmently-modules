@@ -5,103 +5,79 @@ description: Quick, read-only context on the modules a task is about, while the 
 
 # module-scout
 
-Give the conversation the module context it needs before anything is decided: what each module
-is for, the rules its docs state, and its neighbours. A short brief — no plan, no edits.
-
 ## When to use
 
-- The user names one or more modules (a module, `parent/child`, or a path to a module doc) and
-  wants to understand them before deciding anything.
-- A change is being discussed and you need to know what the modules involved say about it.
-- You are about to answer a question about a module whose docs you have not read yet.
+- A change is being discussed, or the user names modules (`parent/child`, a module doc's path) and
+  wants their context before deciding anything: a short brief, no plan, no edits.
 
 ## When not to use
 
-- The task is confirmed and you need the touch-set — modules, docs to update, code files: use
-  `module-discover`.
-- One question needs a deep answer from the docs AND the code, with file:line evidence: use
-  `module-research`.
-- Work is finished and the module docs must catch up: use `module-sync`.
+- The task is confirmed and you need its touch-set: use `module-discover`.
+- One question needs a deep answer from the docs and the code: use `module-research`.
+- Work is finished and the docs must catch up: use `module-sync`.
 
 ## Scope
 
-Read-only: it runs modsys read verbs and reads files. It never edits a file, never runs a
-writer verb and never commits. Everything it knows about the registry, the module layout and
-the roles comes from `modsys` — never from a path it assumes.
+Read-only: modsys read verbs and reading files; it writes only temporary files outside the
+repository, never edits a file, never runs a writer verb, never commits. The registry, layout and
+roles come from `modsys`, never from an assumed path.
 
 If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
 
 ## Steps
 
-1. Make sure modsys answers here.
+1. No module named? Choose the candidates.
 
-   ```bash
-   modsys list --json
-   ```
+   Run `modsys catalog --json`; read `match` and `search`. The text: the user's topic or question.
+   The mode: the user's words ("only lexical", "only by meaning"), else `match.mode` unless
+   `lexical`, else `hybrid`; the user may also set the depth ("search deep") or the model ("use
+   opus").
 
-   Exit 2 means no registry or no config: tell the user what stderr says (usually "run modsys
-   init") and stop.
+   - By meaning (`semantic`, `hybrid`):
+     `modsys choose --task "<the text, verbatim, any language>" --json` prints a work order. Answer
+     it in Claude Code by a subagent (`model: <search.claude_model>`), in Codex by
+     `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --output-schema <schema file> -`
+     (the order on stdin, `answer_schema` in the file; `low`, `medium`, `high` for `quick`,
+     `standard`, `deep`), else answer it in this session, at the depth its rules set: `quick` the
+     cards only, `standard` also the INDEX or the main doc's head of up to 3 candidates, `deep`
+     also their docs and code. Pipe the answer to `modsys choose --apply - --json`: `picks` with
+     their `read` docs.
+   - By keyword (`lexical`, `hybrid`):
+     `modsys context --task "<the domain terms and code identifiers, in English>" --json`: its
+     `modules`; none but `near_misses`: list them and ask which module is meant.
+   - `hybrid`: merge the lists; a module found both ways ranks first. Pass `--match semantic` or
+     `--match hybrid` only when `match.semantic` is true: else modsys has no agent to ask.
 
-2. For every module the user names, get its read set.
+   Never widen the list on your own.
 
-   ```bash
-   modsys show <module> --json
-   ```
+2. For each module, named or chosen: `modsys show <module> --json`.
 
-   - `read[]` is the list of docs to open, in order; `exists: false` means the registry points
-     at a doc that is missing — say so in the brief.
-   - A split module (the result has `submodules`, and its first doc is labelled the parent
-     INDEX): read the index, then only the children the topic touches —
-     `modsys show <module>/<child> --json` — never all of them.
-   - A pointer stub (exit 1, the result has `stub`): the module was retired or merged; report
-     what the stub says instead of guessing.
-   - The talk is clearly about one audience (testing, design, product): add that role —
-     `modsys show <module> --role <role> --json`. The configured roles are the `roles/<role>.md`
-     rows of `modsys templates list --json`; never guess a role name.
+   - `read[]`: the docs to open, in order; `exists: false` = a missing doc: say so.
+   - A split module (`submodules`; its first doc is the parent INDEX): read the index, then only
+     the children the topic touches (`modsys show <module>/<child> --json`) — never all of them.
+   - A pointer stub (exit 1, `stub`): retired or merged; report the stub, never guess.
+   - Talk about one audience (testing, design, product): add
+     `modsys show <module> --role <role> --json`; the roles are the `roles/<role>.md` rows of
+     `modsys templates list --json` — never guess one.
 
-3. Find the neighbours.
+3. Its neighbours: `modsys related <module> --json` (`edges` out of it, `reverse` into it). Read a
+   forward edge's main doc only when its relation says this module needs the other (e.g.
+   `depends-on`); name the rest with their relation, unread.
 
-   ```bash
-   modsys related <module> --json
-   ```
+4. Read the docs for what the topic needs: purpose, components, rules ("never", "always", "must"),
+   pitfalls. No code — that is `module-research`.
 
-   `edges` are what this module points at, `reverse` what points at it. Read the main doc of
-   a forward edge only when its relation says this module needs the other one (for example
-   `depends-on`); name the rest — reverse edges included — with their relation, without reading
-   them.
-
-4. No module named? Rank them from the topic instead.
-
-   ```bash
-   modsys context --task "<the topic in one sentence>" --json
-   ```
-
-   Read the `read[]` docs of the top `modules`. When `modules` is empty but `near_misses` is
-   not, list the near misses (module and the words that almost matched) and ask which module is
-   meant. Never widen the list on your own.
-
-5. Read the docs from steps 2–4. Skim for what the topic needs: purpose, components, rules
-   (words like "never", "always", "must"), known pitfalls. Do not open code files — that is
-   `module-research`.
-
-6. Report the brief, per module:
-
-   - what it owns, in one or two lines;
-   - the rules and constraints that bear on the topic, quoted short, with the doc they come
-     from;
-   - its neighbours: which were read and why, which were only named;
-   - missing docs or stubs;
-   - the next step: `module-discover` once the task is confirmed, or `module-research` for a
-     question that needs the code.
-
-Keep the brief short enough to read in a minute. No plan, no file list for the change.
+5. Report the brief, per module: what it owns (a line or two); the rules bearing on the topic,
+   quoted short with their doc; the neighbours read and why, and those only named; missing docs or
+   stubs; next: `module-discover` once the task is confirmed, `module-research` for a question that
+   needs the code. Readable in a minute: no plan, no file list.
 
 ## Gates
 
-No gates — read-only: it never stops for a confirmation. It asks the user only when `context`
-finds no module and the near misses leave the choice open.
+No gates — read-only: it never stops for a confirmation. It asks only when no module is found and
+the near misses leave the choice open.
 
 ## Exit codes
 
-`0` ok · `1` from `show` or `related` = a pointer stub (step 2) · `2` = a usage or config
-error: read stderr, fix the command or report the message; do not retry the same command.
+`0` ok · `1` from `show` or `related` = a pointer stub · `2` = a usage or config error (no
+registry: "run modsys init"): read stderr, fix the command or report it.

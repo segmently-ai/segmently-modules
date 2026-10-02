@@ -5,97 +5,86 @@ description: Answers one question about one or more modules in depth, from their
 
 # module-research
 
-The deep, evidence-based answer to one question about a module: what the docs claim, what the
-code does, and where the two part ways. `module-scout` is the quick version without code.
-
 ## When to use
 
-- A question about a module needs proof from the code, not just its docs.
-- The user suspects a module doc is out of date and wants to know where.
-- Before a risky change: what exactly does the module do today, and who depends on it?
+- A question about a module needs proof from the code (what the docs claim, what the code does,
+  where they part ways): a doc that may be out of date, or a risky change.
 
 ## When not to use
 
-- You only need the gist of a module while a task is discussed: use `module-scout`.
-- You need the touch-set of a confirmed task: use `module-discover`.
-- The docs must be fixed, not just checked: report the gaps here, then use `module-sync` (after
-  a change) or `module-lint` (for findings).
+- The gist of a module while a task is discussed: use `module-scout`.
+- The touch-set of a confirmed task: use `module-discover`.
+- The docs must be fixed, not just checked: report the gaps here, then `module-sync` (after a
+  change) or `module-lint` (for findings).
 
 ## Scope
 
-Read-only: it runs modsys read verbs, reads docs and code, and searches the code. It never
-edits a file — gaps are reported, not fixed — and never commits.
+Read-only: modsys read verbs, docs, code; it writes only temporary files outside the repository,
+never edits a file — gaps are reported, not fixed — and never commits.
 
 If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
 
 ## Steps
 
-1. Pin the question in one sentence, and the module(s) it is about. Unsure which modules?
-   Ask `modsys context --task "<the question>" --json` and take the top rows.
+Pin the question in one sentence.
 
-2. Load every doc of the module.
+1. No module named? Choose the candidates.
 
-   ```bash
-   modsys show <module> --all-roles --json
-   ```
+   Run `modsys catalog --json`; read `match` and `search`. The text: the user's topic or question.
+   The mode: the user's words ("only lexical", "only by meaning"), else `match.mode` unless
+   `lexical`, else `hybrid`; the user may also set the depth ("search deep") or the model ("use
+   opus").
 
-   For a split module (`submodules` in the result), read the parent index and then the children
-   the question touches: `modsys show <module>/<child> --all-roles --json` (a child's result
-   also lists the parent's role docs as its baseline). Read the docs fully.
+   - By meaning (`semantic`, `hybrid`):
+     `modsys choose --task "<the text, verbatim, any language>" --json` prints a work order. Answer
+     it in Claude Code by a subagent (`model: <search.claude_model>`), in Codex by
+     `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --output-schema <schema file> -`
+     (the order on stdin, `answer_schema` in the file; `low`, `medium`, `high` for `quick`,
+     `standard`, `deep`), else answer it in this session, at the depth its rules set: `quick` the
+     cards only, `standard` also the INDEX or the main doc's head of up to 3 candidates, `deep`
+     also their docs and code. Pipe the answer to `modsys choose --apply - --json`: `picks` with
+     their `read` docs.
+   - By keyword (`lexical`, `hybrid`):
+     `modsys context --task "<the domain terms and code identifiers, in English>" --json`: its
+     `modules`; none but `near_misses`: list them and ask which module is meant.
+   - `hybrid`: merge the lists; a module found both ways ranks first. Pass `--match semantic` or
+     `--match hybrid` only when `match.semantic` is true: else modsys has no agent to ask.
 
-3. Load its links, both ways.
+   Never widen the list on your own.
 
-   ```bash
-   modsys related <module> --json
-   ```
+2. Load every doc of each module: `modsys show <module> --all-roles --json`. A split module
+   (`submodules`): read the parent index, then the children the question touches —
+   `modsys show <module>/<child> --all-roles --json` (the parent's role docs are the child's
+   baseline). Read the docs fully.
 
-   `edges` are the modules it relies on or complements; `reverse` are the ones that point at
-   it — the ones a change would affect. Read a linked module's main doc only when the question
-   crosses into it.
+3. Its links, both ways: `modsys related <module> --json`. `edges`: the modules it relies on;
+   `reverse`: those pointing at it, which a change would affect. Read a linked module's main doc
+   only when the question crosses into it.
 
-4. Find the code.
+4. Its code: `modsys code-map files <module> --json` (`via`: the routing rule; `show` adds `code`
+   and `code_globs`). Search it for the names the docs and the question use; read what answers it.
+   Nothing routed? Say so and search by the component names its main doc lists.
 
-   ```bash
-   modsys code-map files <module> --json
-   ```
+5. Its lint state: `modsys lint --json`. Keep the findings of the module and its children; findings
+   with module `*` only when they name it.
 
-   These are the files routed to the module (`via` says by which rule or doc). The `show`
-   result adds `code` (paths a field of the module points at) and `code_globs` (the routing
-   patterns). Search these files for the names the docs and the question use; read the parts
-   that answer the question. Nothing routed? Say so — the module may lack routing rules — and
-   search by the component names its main doc lists.
+6. Compare. For each doc statement that bears on the question — a component, a rule, a flow, a
+   limit — find the code that implements it. Record each disagreement as "the docs say X
+   (doc:line), the code does Y (file:line)", the doc statements the code does not show, and code
+   behaviour the docs never mention.
 
-5. Check the lint state of the module.
-
-   ```bash
-   modsys lint --json
-   ```
-
-   Keep the findings whose `module` is the module or one of its children; findings with module
-   `*` concern the config and matter only when they name this module.
-
-6. Compare. For every statement in the docs that bears on the question — a component, a rule, a
-   flow, a limit — find the code that implements it. Record each disagreement as "the docs say
-   X (doc:line), the code does Y (file:line)". Record doc statements you could not find in the
-   code, and code behaviour the docs never mention.
-
-7. Write the brief:
-
-   - the answer, first, in a few sentences;
-   - the evidence: file:line for every claim;
-   - the gaps table — doc claim · code reality · file:line · how sure you are;
-   - who is affected (the `reverse` links) when the answer is about a change;
-   - the lint findings that matter;
-   - next steps: `module-sync` to bring the docs in line after a change, `module-lint` for the
-     findings. Do not edit the docs here.
+7. Write the brief: the answer first, in a few sentences; file:line evidence for every claim; the
+   gaps table (doc claim · code reality · file:line · how sure); who is affected (`reverse`) when
+   it is about a change; the lint findings that matter; next: `module-sync` after a change,
+   `module-lint` for findings. Do not edit the docs here.
 
 ## Gates
 
-No gates — read-only: it reports and stops. It asks only when the question is too broad to
-answer with evidence (then it proposes a narrower one).
+No gates — read-only: it reports and stops. It asks only when the question is too broad to answer
+with evidence (then it proposes a narrower one).
 
 ## Exit codes
 
-`0` ok · `1` from `lint` = findings at or above the fail level (still a valid result: read
-them) · `1` from `show` = a pointer stub · `2` = a usage or config error: read stderr, fix the
-command or report the message.
+`0` ok · `1` from `lint` = findings at or above the fail level (a valid result: read them) · `1`
+from `show` = a pointer stub · `2` = a usage or config error: read stderr, fix the command or
+report it.
