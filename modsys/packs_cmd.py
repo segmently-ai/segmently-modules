@@ -15,9 +15,11 @@ import os
 import re
 import shutil
 import string
+import subprocess
 from importlib import resources
 from pathlib import Path
 
+from modsys.changes import git_env
 from modsys.code_map_cmd import _toml_string
 from modsys.config import (BUILTIN_PACKS, BUILTIN_PLUGINS, DEFAULT_PACK_PRIORITY,
                            builtin_delivery, core_defaults, discover_packs)
@@ -246,7 +248,21 @@ def sync_notes(ws, chosen: list[str], plugin: bool, rows: list[dict]) -> list[st
         notes.append("GitHub Copilot reads both .claude/skills and .agents/skills, so it sees "
                      "each skill twice — where Copilot works, sync only one of the two "
                      "directories (Copilot reads either)")
+    for d in sorted(dirs):
+        if _git_ignores(ws.root, f"{d}/x"):
+            notes.append(f"git ignores {d} — the synced skills are written there but will not "
+                         f"be committed; take it out of .gitignore to share them with the team")
     return notes
+
+
+def _git_ignores(root: Path, rel: str) -> bool:
+    """`rel` is ignored by git (false outside a repository, or when git cannot run)."""
+    try:
+        proc = subprocess.run(["git", "-C", str(root), "check-ignore", "-q", "--", rel],
+                              capture_output=True, env=git_env())
+    except OSError:
+        return False
+    return proc.returncode == 0
 
 
 def remove_scope(ws, agents: list[str] | None, check: bool) -> list[str]:

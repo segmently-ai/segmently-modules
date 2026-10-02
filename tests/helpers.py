@@ -10,6 +10,9 @@ from pathlib import Path
 from modsys.cli import main
 
 FIXTURE = Path(__file__).parent / "fixtures" / "bookshop"
+# a split parent `orders` (children checkout, refunds, invoices; only checkout has a role doc)
+# plus the unsplit `catalog` and `payments`
+SPLIT_FIXTURE = Path(__file__).parent / "fixtures" / "bookshop_split"
 
 # Every git call of the suite — the helpers' and the engine's own, which runs in-process —
 # ignores the developer's global and system git config (e.g. a core.excludesFile hiding *.py)
@@ -33,9 +36,9 @@ def run_json(*argv):
     return code, (json.loads(out) if out.strip() else None), err
 
 
-def copy_fixture(tmp: Path) -> Path:
+def copy_fixture(tmp: Path, fixture: Path = FIXTURE) -> Path:
     dst = Path(tmp) / "repo"
-    shutil.copytree(FIXTURE, dst)
+    shutil.copytree(fixture, dst)
     return dst
 
 

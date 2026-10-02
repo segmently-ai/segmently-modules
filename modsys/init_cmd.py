@@ -12,6 +12,7 @@ work item per confirmed module), `next` (claim one), `done MODULE` (check its st
 registry), `eval-tasks --executor CMD` (the routing tasks), `verify` (lint, invented components,
 routing), `finish [--open-pr]` (gate 7: the docs and the registry written) — one envelope
 `modsys.init/1` each."""
+import functools
 import subprocess
 import sys
 from pathlib import Path
@@ -351,8 +352,17 @@ def run(args) -> int:
         return run_action(args, root, config_dir)
     layout, files = starter(root, config_dir, args.layout, args.dry_run)
     data = {"root": str(root), "layout": layout, "files": files, "dry_run": args.dry_run}
-    emit("init", data, args.json, _render)
+    emit("init", data, args.json,
+         functools.partial(_render, populated=_populated(root, config_dir)))
     return EXIT_OK
+
+
+def _populated(root: Path, config_dir: Path) -> bool:
+    """The registry holds at least one module (an unreadable or missing one does not)."""
+    try:
+        return bool(Workspace.load(root, config_dir).registry.modules)
+    except Exception:  # the hint is advice: a registry that cannot be read never fails init
+        return False
 
 
 def workspace(flow) -> Workspace:
@@ -681,11 +691,14 @@ def _render_resume(d) -> None:
     print(f"next: {d['next']}")
 
 
-def _render(d) -> None:
+def _render(d, populated: bool = False) -> None:
     print(f"root: {d['root']}")
     for f in d["files"]:
         print(f"{_VERBS[f['status']][d['dry_run']]:<13} {f['path']}")
     print(f"layout: {d['layout']}")
+    if populated:
+        print("next: modsys next")
+        return
     print(f"next: modsys create NAME --description \"…\" --keywords \"a, b, c, d, e\" (5 or "
           f"more); then wire code with modsys code-map add ID --pattern 'src/{{module}}/**' "
           f"(rules land in {d['files'][0]['path']}) and check it with: modsys coverage")

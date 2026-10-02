@@ -42,8 +42,8 @@ def build_context(ws, text: str, role: str | None, all_roles: bool, top: int | N
     modules, read, seen = [], [], set()
     for row in _rows(ws, text, top):
         _, shown = show_target(ws, row["module"], role, all_roles)
-        modules.append({**row, "read": shown["read"], "code": shown["code"],
-                        "code_globs": shown["code_globs"]})
+        modules.append({**row, "description": shown["description"], "read": shown["read"],
+                        "code": shown["code"], "code_globs": shown["code_globs"]})
         for r in shown["read"]:
             if r["path"] not in seen:
                 seen.add(r["path"])
@@ -143,7 +143,7 @@ def register(sub, common) -> None:
     _task_args(d, required=False)
     src = d.add_mutually_exclusive_group()
     src.add_argument("--from-diff", metavar="A..B")
-    src.add_argument("--files", nargs="+", metavar="PATH")
+    src.add_argument("--files", nargs="+", action="extend", metavar="PATH")
     d.add_argument("--top", type=int)
     d.set_defaults(func=run_discover)
 

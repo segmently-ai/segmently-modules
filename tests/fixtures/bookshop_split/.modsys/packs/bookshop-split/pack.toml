@@ -1,0 +1,9 @@
+id = "bookshop-split"
+version = "0.1.0"
+priority = 50
+description = "Fixture pack: a code-pointer field for the split-module bookshop"
+
+[fields.file_paths]
+type = "string[]"
+kind = "code_pointer"
+description = "Key source files of the module"

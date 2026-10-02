@@ -65,9 +65,11 @@ def show_target(ws, target: str, role: str | None, all_roles: bool) -> tuple[int
         raise UsageError(f"'{child}' is not a submodule of '{parent}' "
                          f"(children: {', '.join(subs) or 'none'})")
     sub = _object(subs[child], f"{parent}/{child}") if child else {}
+    own = sub.get("description") if child else None  # a child shows its OWN description
+    description = own if isinstance(own, str) and own else entry.get("description")
     keywords = (sub if child else entry).get("keywords")  # the target's OWN list
     result = {"module": f"{parent}/{child}" if child else parent,
-              "status": entry.get("status"), "description": entry.get("description"),
+              "status": entry.get("status"), "description": description,
               "keywords": [k for k in keywords if isinstance(k, str)]
               if isinstance(keywords, list) else [],  # garbage values are lint's job
               "read": [], "code": [], "code_globs": []}
@@ -109,10 +111,14 @@ def show_target(ws, target: str, role: str | None, all_roles: bool) -> tuple[int
 
 def related_edges(ws, arg: str, relation: str | None) -> tuple[int, dict]:
     modules = ws.registry.modules
-    name = resolve_module_arg(arg, ws.config["paths"]["modules_dir"]).partition("/")[0]
+    target = resolve_module_arg(arg, ws.config["paths"]["modules_dir"])
+    name, _, child = target.partition("/")
     if name not in modules:
         return _stub_or_unknown(ws, name)
     entry = _object(modules[name], name)
+    sub = as_dict(entry.get("submodules")).get(child) if child else None
+    if not isinstance(sub, dict):
+        child, sub = "", {}  # a remainder that is no child: the parent answers, as before
     if relation and relation not in ws.config["registry"]["relations"]:
         raise UsageError(f"unknown relation '{relation}' "
                          f"(relations: {', '.join(ws.config['registry']['relations'])})")
@@ -121,7 +127,8 @@ def related_edges(ws, arg: str, relation: str | None) -> tuple[int, dict]:
         return [x for x in as_list(e.get("related_modules")) if isinstance(x, dict)
                 and (not relation or x.get("relation") == relation)]
 
-    fwd = edges(entry)
+    inherited = bool(child) and not as_list(sub.get("related_modules"))
+    fwd = edges(entry if inherited or not child else sub)
     rev = []
     for other, other_entry in modules.items():
         if other == name:
@@ -130,7 +137,10 @@ def related_edges(ws, arg: str, relation: str | None) -> tuple[int, dict]:
             target = e.get("module")
             if isinstance(target, str) and target.partition("/")[0] == name:
                 rev.append({"from": other, **e})
-    return EXIT_OK, {"module": name, "edges": fwd, "reverse": rev}
+    data = {"module": f"{name}/{child}" if child else name, "edges": fwd, "reverse": rev}
+    if inherited and fwd:  # the child declares none: these are the parent's edges
+        data["inherited_from"] = name
+    return EXIT_OK, data
 
 
 def list_modules(ws, status: str | None) -> tuple[int, list]:

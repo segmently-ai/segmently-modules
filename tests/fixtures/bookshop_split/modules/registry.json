@@ -1,0 +1,67 @@
+{
+  "version": "1.0.0",
+  "schema_version": "2.0",
+  "modules": {
+    "catalog": {
+      "name": "catalog",
+      "description": "Book catalog: titles, authors, formats. Use when changing how books are listed or found.",
+      "status": "active",
+      "keywords": ["catalog", "book", "author", "isbn", "BookRepository"],
+      "file_paths": ["src/catalog/service.py"],
+      "context_files": {
+        "universal": "modules/catalog/MODULE.md",
+        "roles": {"developer": "modules/catalog/roles/developer.md"}
+      }
+    },
+    "orders": {
+      "name": "orders",
+      "description": "Order lifecycle for the bookshop, split into checkout, refunds and invoices. Start here for anything about a placed order.",
+      "status": "active",
+      "keywords": ["order", "orders", "OrderService"],
+      "file_paths": ["src/orders/service.py"],
+      "context_files": {
+        "universal": "modules/orders/MODULE.md",
+        "roles": {"developer": "modules/orders/roles/developer.md"}
+      },
+      "related_modules": [
+        {"module": "payments", "relation": "depends-on", "description": "Orders are charged through the gateway"}
+      ],
+      "submodules": {
+        "checkout": {
+          "description": "Cart hand-off and order placement: totals, shipping choice and confirmation.",
+          "keywords": ["checkout", "cart", "shipping choice", "order confirmation"],
+          "context_files": {
+            "universal": "modules/orders/submodules/checkout/MODULE.md",
+            "roles": {"developer": "modules/orders/submodules/checkout/roles/developer.md"}
+          }
+        },
+        "refunds": {
+          "description": "Returned books: refund requests, partial refunds and restocking.",
+          "keywords": ["refund", "partial refund", "restocking", "return request"],
+          "context_files": {
+            "universal": "modules/orders/submodules/refunds/MODULE.md"
+          }
+        },
+        "invoices": {
+          "description": "Invoice numbering, PDF rendering and tax lines for placed orders.",
+          "keywords": ["invoice", "invoice number", "tax line", "invoice pdf"],
+          "context_files": {
+            "universal": "modules/orders/submodules/invoices/MODULE.md"
+          }
+        }
+      }
+    },
+    "payments": {
+      "name": "payments",
+      "description": "Payment capture through the gateway. Use for charging customers.",
+      "status": "active",
+      "keywords": ["payment", "charge", "PaymentGateway"],
+      "file_paths": ["src/payments/gateway.py"],
+      "context_files": {
+        "universal": "modules/payments/MODULE.md",
+        "roles": {"developer": "modules/payments/roles/developer.md"}
+      }
+    }
+  },
+  "metadata": {"created_at": "2026-01-01T00:00:00Z", "last_updated": "2026-01-01T00:00:00Z"}
+}

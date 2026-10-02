@@ -13,7 +13,7 @@ def register(sub, common) -> None:
                        help="map changed files to modules, run post_sync hooks, apply proposals")
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--from-diff", metavar="A..B", help="git range of the change")
-    src.add_argument("--files", nargs="+", metavar="PATH", help="changed files (no git needed)")
+    src.add_argument("--files", nargs="+", action="extend", metavar="PATH", help="changed files (no git needed)")
     p.add_argument("--apply-proposals", action="store_true",
                    help="apply pending proposals at the end (incl. ones queued by hooks): "
                         "every pending run unless --run-id / $MODSYS_RUN_ID is given")

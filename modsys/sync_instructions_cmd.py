@@ -30,7 +30,7 @@ def register(sub, common) -> None:
                                    "Writes nothing.")
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--from-diff", metavar="A..B", help="git range of the change")
-    src.add_argument("--files", nargs="+", metavar="PATH", help="changed files (no git needed)")
+    src.add_argument("--files", nargs="+", action="extend", metavar="PATH", help="changed files (no git needed)")
     src.add_argument("--module", action="append", dest="modules", metavar="M",
                      help="a module or module/child (repeatable): its docs and field hints")
     p.set_defaults(func=run)
