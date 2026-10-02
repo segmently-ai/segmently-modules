@@ -51,6 +51,7 @@ LAYER_SCHEMA = {
 }
 CI_FAIL_ON = ("error", "never", "warning")
 MATCH_MODES = ("lexical", "semantic", "hybrid")  # [match] mode / --match (P8.1 S1)
+_MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,99}")
 EFFORTS = ("quick", "standard", "deep")  # [search] effort (P8.1 S9)
 SEARCH_DEFAULTS = {"claude_model": "sonnet", "codex_model": "gpt-5.6-luna", "effort": "standard"}
 ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str",
@@ -75,10 +76,10 @@ def _validate_search(table, source) -> None:
         if key not in table:
             continue
         v = table[key]
-        if not isinstance(v, str) or not v or len(v) > 100 or \
-                any(c.isspace() or not c.isprintable() for c in v):
-            raise UsageError(f"{source}: [search] {key}: expected a non-empty string of at most "
-                             f"100 characters without whitespace or control characters, "
+        if not isinstance(v, str) or not _MODEL.fullmatch(v):
+            raise UsageError(f"{source}: [search] {key}: expected a model name — 1 to 100 "
+                             f"characters of letters, digits and . _ : / @ + -, not starting "
+                             f"with a dash (it becomes an item of your agent command), "
                              f"got {v!r}")
     if "effort" in table and table["effort"] not in EFFORTS:
         raise UsageError(f"{source}: [search] effort: expected one of {', '.join(EFFORTS)}, "
@@ -315,6 +316,9 @@ def load_config(config_dir: Path, root: Path | None = None, extra: dict | None =
         path = config_dir / name
         if path.exists():
             layer = read_toml(path)
+            if name == "config.user.toml" and "agent" in layer:
+                from modsys.agent import require_untracked  # agent reads this module
+                require_untracked(path, root)
             validate_layer(layer, path, user=name == "config.user.toml")
             layers.append(layer)
         if name == "config.toml" and extra is not None:

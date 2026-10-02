@@ -13,7 +13,7 @@ from modsys.match import match_modules, near_lines, near_misses
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.registry import as_dict
 from modsys.query import show_target
-from modsys.semantic import add_match_flag, ranked, resolve
+from modsys.semantic import add_match_flag, ranked, resolve, skipped
 from modsys.workspace import Workspace
 
 _PATHLIKE = re.compile(r"(?<![\w/.-])((?:\.{0,2}/)?[\w.-]+(?:/[\w.-]+)+)")
@@ -41,7 +41,10 @@ def _rows(ws, text: str, top: int | None) -> list[dict]:
 
 
 def _mode_rows(ws, text: str, mode: str, notes: list[str], top: int | None):
-    """(rows, notes) of a `semantic` / `hybrid` run: the agent is asked once (P8.1 S3)."""
+    """(rows, notes) of a `semantic` / `hybrid` run: the agent is asked once (P8.1 S3); rows None
+    when the agent part was skipped (the keyword run then stands as it is)."""
+    if skipped(notes):  # hybrid without its agent part: the plain lexical run, plus the note
+        return None, notes
     cfg = ws.config["match"]
     return ranked(ws, text, mode, notes, cfg["top"] if top is None else top, cfg["min_score"])
 

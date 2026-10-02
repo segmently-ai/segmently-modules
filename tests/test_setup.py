@@ -22,7 +22,8 @@ STEPS = ["init", "packs sync", "agents-md"]
 CORE_SKILLS = ["module-adopt", "module-create", "module-discover", "module-init", "module-lint",
                "module-research", "module-scout", "module-split", "module-sync"]
 EMPTY_REGISTRY = '{\n  "modules": {}\n}\n'
-IGNORE_LINES = ["modules/registry.json.lock", ".modsys/proposals/", ".modsys/init/"]
+IGNORE_LINES = ["modules/registry.json.lock", ".modsys/proposals/", ".modsys/init/",
+                ".modsys/config.user.toml"]
 COPILOT = ("  note: GitHub Copilot reads both .claude/skills and .agents/skills, so it sees each "
            "skill twice — where Copilot works, sync only one of the two directories (Copilot "
            "reads either)")

@@ -13,7 +13,8 @@ from modsys.workspace import Workspace
 from tests.helpers import git, run, run_json
 
 EMPTY_REGISTRY = '{\n  "modules": {}\n}\n'
-IGNORE_LINES = ["modules/registry.json.lock", ".modsys/proposals/", ".modsys/init/"]  # P5a D3
+IGNORE_LINES = ["modules/registry.json.lock", ".modsys/proposals/", ".modsys/init/",
+                ".modsys/config.user.toml"]  # P5a D3
 
 
 def snapshot(root: Path) -> dict:
@@ -64,7 +65,7 @@ class InitTest(unittest.TestCase):
         self.assertIn({"path": ".gitignore", "status": "updated"}, env["data"]["files"])
         self.assertEqual((self.root / ".gitignore").read_text(),
                          "node_modules/\n.modsys/proposals/\nmodules/registry.json.lock\n"
-                         ".modsys/init/\n")  # P5a D3: the init work directory
+                         ".modsys/init/\n.modsys/config.user.toml\n")  # P5a D3, P8.1 S3
         self.assertIn({"path": ".gitignore", "status": "exists"}, self.init()[1]["data"]["files"])
 
     def test_existing_registry_is_kept(self):
@@ -203,7 +204,7 @@ class InitIgnoreLineTest(InitTest):  # P5A-AC-024
                           (".gitignore", "updated")])
         self.assertEqual((self.root / ".gitignore").read_bytes(),
                          b"node_modules/\r\nmodules/registry.json.lock\r\n.modsys/proposals/\r\n"
-                         b".modsys/init/\r\n")
+                         b".modsys/init/\r\n.modsys/config.user.toml\r\n")
         before = snapshot(self.root)
         self.assertEqual({f["status"] for f in self.init()[1]["data"]["files"]}, {"exists"})
         self.assertEqual(snapshot(self.root), before)

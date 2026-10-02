@@ -1,8 +1,9 @@
 """The user's own agent command (P8.1 S3, layer 3): `[agent] command` runs a program the USER
 chose — never a model of the engine's — with the work order on stdin and reads its answer from
-stdout. The command comes only from `.modsys/config.user.toml` or the `MODSYS_AGENT_COMMAND`
-environment variable (a JSON array); a committed config or a pack that sets `[agent]` is
-refused, so a commit cannot make the engine run anything. The engine holds no model, no key
+stdout. The command comes only from the `MODSYS_AGENT_COMMAND` environment variable (a JSON
+array) or from a `.modsys/config.user.toml` that git does not track (outside a git work tree
+only the variable counts); a committed config, a tracked personal config or a pack that sets
+`[agent]` is refused, so a commit cannot make the engine run an agent command. The engine holds no model, no key
 and no network code: whatever the command does, it does with the user's own credentials."""
 import json
 import os
@@ -11,6 +12,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 
 from modsys.output import UsageError
@@ -21,6 +23,11 @@ MAX_TIMEOUT_S = 3600
 REASONING = {"quick": "low", "standard": "medium", "deep": "high"}
 PLACEHOLDERS = ("claude_model", "codex_model", "effort", "reasoning")
 STDERR_CHARS = 500
+MAX_STDOUT = 4 * 1024 * 1024  # an agent that prints more is stopped and refused
+KEEP_STDERR = 64 * 1024
+NESTED = ("already inside an agent run (MODSYS_WORK_ORDER is set): a nested agent call is "
+          "refused; use lexical matching or modsys choose --task")
+NESTED_NOTE = "semantic part skipped: nested agent call"
 TIMEOUT_UNIT = 1.0  # seconds per `timeout_s` unit — the seam the timeout tests shrink
 KILL_GRACE_S = 2.0
 _TOKEN = re.compile(r"\{\{|\}\}|\{(\w+)\}|[{}]")
@@ -95,10 +102,40 @@ def validate_agent_table(table, source, user: bool) -> None:
                              f"{MAX_TIMEOUT_S}, got {t!r}")
 
 
+def nested() -> bool:
+    """This process runs inside an agent run (the engine sets MODSYS_WORK_ORDER for its child):
+    an agent that runs modsys must not start the agent again."""
+    return bool(os.environ.get("MODSYS_WORK_ORDER"))
+
+
+def require_untracked(path: Path, root) -> None:
+    """The personal config `path` may set `[agent]` only when git does NOT track it (a tracked
+    file is a committed one: anyone who clones would run its command) and it lies in a git work
+    tree (outside one the engine cannot tell). A tracked symlink counts as tracked."""
+    from modsys.changes import git_env
+    from modsys.config import shown
+    here = shown(path, root)
+    run_git = lambda *a: subprocess.run(["git", "-C", str(path.parent), *a], env=git_env(),  # noqa: E731
+                                        capture_output=True, text=True)
+    try:
+        inside = run_git("rev-parse", "--is-inside-work-tree")
+        tracked = run_git("ls-files", "--error-unmatch", "--", path.name)
+    except OSError:  # git is not installed
+        inside = None
+    if inside is None or inside.returncode != 0 or inside.stdout.strip() != "true":
+        raise UsageError(f"{here}: [agent] is read only from MODSYS_AGENT_COMMAND outside a git "
+                         f"work tree (the engine cannot tell whether this file is committed)")
+    if tracked.returncode == 0:
+        raise UsageError(f"{here} is tracked by git — [agent] is read only from an untracked "
+                         f"personal config or {ENV_COMMAND}")
+
+
 def settings(config: dict) -> dict | None:
     """`{command, timeout_s, source}` of the agent command in force, or None when there is
     none: the environment variable beats `config.user.toml`; an empty variable is unset; an
     invalid one is refused (never a silent fallback to the user config)."""
+    if nested():
+        return None
     table = config.get("agent") or {}
     timeout_s = table.get("timeout_s", DEFAULT_TIMEOUT_S)
     raw = os.environ.get(ENV_COMMAND, "")
@@ -191,46 +228,85 @@ def _close(proc: subprocess.Popen) -> None:
             pass
 
 
-def run(config: dict, work_order: dict, schema: dict, check=lambda answer: answer):
+def _drain(stream, keep: int, limit: int | None, box: dict, key: str, proc) -> None:
+    """Read `stream` to its end on a thread: keep the first `keep` bytes; past `limit` bytes
+    stop the agent (its group) and flag it."""
+    total = 0
+    try:
+        for chunk in iter(lambda: stream.read(65536), b""):
+            total += len(chunk)
+            if len(box[key]) < keep:
+                box[key] += chunk[:keep - len(box[key])]
+            if limit is not None and total > limit:
+                box["over"] = True
+                _kill_group(proc)
+                return
+    except (OSError, ValueError):
+        pass
+
+
+def _write_files(tmp: Path, work_order: dict, schema: dict) -> tuple[Path, Path, str]:
+    order_text = json.dumps(work_order, indent=2, ensure_ascii=False)
+    order_file, schema_file = tmp / "work-order.json", tmp / "answer-schema.json"
+    for path, text in ((order_file, order_text), (schema_file, json.dumps(schema, indent=2))):
+        try:
+            path.write_text(text, encoding="utf-8")
+        except OSError as e:
+            raise UsageError(f"cannot write {path}: {e.strerror or e}") from None
+    return order_file, schema_file, order_text
+
+
+def run(config: dict, work_order: dict, schema: dict, check=lambda answer: answer, cwd=None):
     """Run the agent command on `work_order` (the dict of `modsys choose --json`) and return
     `check(answer)`, the answer object it printed validated by the caller (a usage error of
     `check` is reported naming the agent). The work order goes to the child's stdin and, with the
     answer schema, to two files in a private temp directory (`MODSYS_WORK_ORDER`,
-    `MODSYS_SCHEMA`) removed afterwards, whatever happens."""
+    `MODSYS_SCHEMA`) removed afterwards, whatever happens. The child runs in `cwd`, in its own
+    process group; Ctrl-C, SIGTERM and SIGHUP stop it and its group; its output is capped."""
     from modsys.config import search_settings
     cfg = settings(config)
     search = search_settings(config)
     values = {**search, "reasoning": REASONING[search["effort"]]}
     argv = substitute(cfg["command"], values)
     name, timeout_s = argv[0], cfg["timeout_s"]
-    order_text = json.dumps(work_order, indent=2, ensure_ascii=False)
-    tmp = Path(tempfile.mkdtemp(prefix="modsys-agent-"))
     try:
-        order_file, schema_file = tmp / "work-order.json", tmp / "answer-schema.json"
-        order_file.write_text(order_text, encoding="utf-8")
-        schema_file.write_text(json.dumps(schema, indent=2), encoding="utf-8")
+        tmp = Path(tempfile.mkdtemp(prefix="modsys-agent-"))
+    except OSError as e:
+        raise UsageError(f"cannot write a temp directory: {e.strerror or e}") from None
+    before = _set_signals()
+    proc = None
+    try:
+        order_file, schema_file, _ = _write_files(tmp, work_order, schema)
         env = {**os.environ, "MODSYS_WORK_ORDER": str(order_file),
                "MODSYS_SCHEMA": str(schema_file)}
+        box = {"out": b"", "err": b"", "over": False}
+        with open(order_file, "rb") as stdin:
+            try:
+                proc = subprocess.Popen(argv, stdin=stdin, stdout=subprocess.PIPE,
+                                        stderr=subprocess.PIPE, env=env, cwd=cwd,
+                                        start_new_session=True)
+            except OSError as e:
+                raise UsageError(f"agent {name}: cannot run it ({e.strerror or e}) — "
+                                 f"check [agent] command in {cfg['source']}") from None
+        readers = [threading.Thread(target=_drain, daemon=True,
+                                    args=(proc.stdout, MAX_STDOUT, MAX_STDOUT, box, "out", proc)),
+                   threading.Thread(target=_drain, daemon=True,
+                                    args=(proc.stderr, KEEP_STDERR, None, box, "err", proc))]
+        for t in readers:
+            t.start()
         try:
-            proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, env=env, text=True,
-                                    encoding="utf-8", errors="replace",
-                                    start_new_session=True)
-        except OSError as e:
-            raise UsageError(f"agent {name}: cannot run it ({e.strerror or e}) — "
-                             f"check [agent] command in {cfg['source']}") from None
-        try:
-            stdout, stderr = proc.communicate(order_text, timeout=timeout_s * TIMEOUT_UNIT)
+            proc.wait(timeout=timeout_s * TIMEOUT_UNIT)
         except subprocess.TimeoutExpired:
             _kill_group(proc)
             raise UsageError(f"agent timed out after {timeout_s} s ({name})") from None
-        except BaseException:  # Ctrl-C and anything else: no child left behind
-            _kill_group(proc)
-            raise
         finally:
-            if proc.poll() is None:
-                _kill_group(proc)
-            _close(proc)
+            _kill_group(proc)  # never a child (or a background grandchild) left behind
+            for t in readers:
+                t.join(KILL_GRACE_S)
+        if box["over"]:
+            raise UsageError(f"agent {name} printed more than {MAX_STDOUT} bytes")
+        stdout = box["out"].decode("utf-8", "replace")
+        stderr = box["err"].decode("utf-8", "replace")
         if proc.returncode != 0:
             tail = f": {stderr.strip()[:STDERR_CHARS]}" if stderr.strip() else ""
             raise UsageError(f"agent {name} exited {proc.returncode}{tail}")
@@ -240,4 +316,34 @@ def run(config: dict, work_order: dict, schema: dict, check=lambda answer: answe
         except UsageError as e:
             raise UsageError(f"agent {name}: {e}") from None
     finally:
+        if proc is not None:
+            _kill_group(proc)
+            _close(proc)
+        _restore_signals(before)
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _as_interrupt(signum, frame) -> None:
+    raise KeyboardInterrupt  # SIGTERM, SIGHUP: the same road as Ctrl-C (exit 130)
+
+
+def _set_signals() -> dict:
+    before = {}
+    for sig in (signal.SIGTERM, getattr(signal, "SIGHUP", None)):
+        if sig is None:
+            continue
+        try:
+            if signal.getsignal(sig) is signal.SIG_IGN:  # `nohup` keeps a signal ignored
+                continue
+            before[sig] = signal.signal(sig, _as_interrupt)
+        except ValueError:  # not the main thread
+            pass
+    return before
+
+
+def _restore_signals(before: dict) -> None:
+    for sig, handler in before.items():
+        try:
+            signal.signal(sig, handler)
+        except ValueError:
+            pass

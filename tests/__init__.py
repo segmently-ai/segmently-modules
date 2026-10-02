@@ -1,0 +1,23 @@
+"""The test package. Every test process starts with sentinel `claude` and `codex` executables
+first on PATH (P8.1 AC-072): a real agent CLI can never run from a test — a sentinel that is
+executed exits 97 and records the call in `SENTINEL_LOG`. `REAL_PATH` is the PATH before the
+sentinels; tests that look for the real Claude Code CLI (the packaging tests, which never run it
+as an agent command) resolve it with `shutil.which("claude", path=REAL_PATH)`."""
+import atexit
+import os
+import shutil
+import stat
+import tempfile
+from pathlib import Path
+
+REAL_PATH = os.environ.get("PATH", "")
+os.environ.pop("MODSYS_AGENT_COMMAND", None)  # a developer's own agent never reaches a test
+_SENTINELS = Path(tempfile.mkdtemp(prefix="modsys-sentinel-"))
+SENTINEL_LOG = _SENTINELS / "executed.log"
+for _name in ("claude", "codex"):
+    _exe = _SENTINELS / _name
+    _exe.write_text('#!/bin/sh\necho "sentinel: a real agent CLI was executed ($0)" >&2\n'
+                    f'echo "$0 $*" >> "{SENTINEL_LOG}"\nexit 97\n', encoding="utf-8")
+    _exe.chmod(_exe.stat().st_mode | stat.S_IXUSR)
+os.environ["PATH"] = f"{_SENTINELS}{os.pathsep}{REAL_PATH}"
+atexit.register(shutil.rmtree, _SENTINELS, ignore_errors=True)

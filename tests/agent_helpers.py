@@ -3,17 +3,17 @@ the user config that names it, and a PATH whose `claude` / `codex` are sentinels
 test when executed — no real agent CLI is ever reachable from these tests."""
 import json
 import os
-import stat
 import sys
 import tempfile
 from pathlib import Path
 from unittest import mock
 
-from tests.helpers import SPLIT_FIXTURE, copy_fixture
+from tests import SENTINEL_LOG
+from tests.helpers import SPLIT_FIXTURE, copy_fixture, git
 
 FAKE = Path(__file__).with_name("fake_agent.py")
-SENTINEL_BODY = '#!/bin/sh\necho "sentinel: a real agent CLI was executed ($0)" >&2\n' \
-                'echo "$0 $*" >> "$SENTINEL_LOG"\nexit 97\n'
+CLEAN_KEEP = ("PATH", "TMPDIR", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM",
+              "GIT_CEILING_DIRECTORIES")
 
 
 def picks(*items):
@@ -23,8 +23,10 @@ def picks(*items):
 
 
 class AgentRepo:
-    """Mixin for unittest.TestCase: a copy of the split fixture, sentinel claude/codex first on
-    PATH, no inherited agent environment."""
+    """Mixin for unittest.TestCase: a copy of the split fixture that is a git work tree (the
+    personal config stays untracked), the sentinel claude/codex first on PATH (tests/__init__),
+    and a CLEAN environment — no developer variable, no credential — for the code under test
+    and the fake agent it starts."""
 
     def setUp(self):
         super().setUp()
@@ -33,19 +35,15 @@ class AgentRepo:
         self.tmp = Path(self._tmp.name)
         self.root = copy_fixture(self.tmp, SPLIT_FIXTURE)
         self.R = ("--root", str(self.root))
-        self.bin = self.tmp / "sentinel-bin"
-        self.bin.mkdir()
-        self.sentinel_log = self.tmp / "sentinel.log"
-        for name in ("claude", "codex"):
-            exe = self.bin / name
-            exe.write_text(SENTINEL_BODY, encoding="utf-8")
-            exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
-        patcher = mock.patch.dict(os.environ, {"PATH": f"{self.bin}{os.pathsep}"
-                                               f"{os.environ.get('PATH', '')}",
-                                               "SENTINEL_LOG": str(self.sentinel_log)})
+        clean = {k: v for k, v in os.environ.items() if k in CLEAN_KEEP}
+        clean["HOME"] = str(self.tmp)
+        patcher = mock.patch.dict(os.environ, clean, clear=True)
         patcher.start()
         self.addCleanup(patcher.stop)
-        os.environ.pop("MODSYS_AGENT_COMMAND", None)
+        git(self.root, "init", "-q")
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-q", "-m", "fixture")
+        self.sentinel_log = SENTINEL_LOG
         self.calls_log = self.tmp / "calls.json"
         self.behaviour_n = 0
 

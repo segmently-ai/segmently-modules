@@ -808,7 +808,7 @@ class GitignoreStepTest(AdoptRepo):  # E-B: the adopter's .gitignore lines
         self.assertEqual({p for p in before.keys() | after.keys()
                           if before.get(p) != after.get(p)}, {".gitignore"})
         self.assertEqual((self.root / ".gitignore").read_text(), "node_modules/\n"
-                         "docs/modules/registry.json.lock\n.modsys/proposals/\n.modsys/init/\n")
+                         "docs/modules/registry.json.lock\n.modsys/proposals/\n.modsys/init/\n.modsys/config.user.toml\n")
         self.assertNotIn(self.STEP, self.adopt("--dry-run")["next_steps"])
 
     def test_the_step_names_a_missing_gitignore_too(self):

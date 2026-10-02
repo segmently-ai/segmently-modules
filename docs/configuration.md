@@ -115,9 +115,9 @@ from stdout.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `[agent] command` | unset | the argv list of the agent command; items may use `{claude_model}`, `{codex_model}`, `{effort}` and `{reasoning}` (`quick` → `low`, `standard` → `medium`, `deep` → `high`), `{{` / `}}` are literal braces; run without a shell. Read ONLY from `.modsys/config.user.toml` or the `MODSYS_AGENT_COMMAND` environment variable (a JSON array; it beats the file) — a repository config or a pack that sets `[agent]` is refused (exit 2 naming the file) |
+| `[agent] command` | unset | the argv list of the agent command; items may use `{claude_model}`, `{codex_model}`, `{effort}` and `{reasoning}` (`quick` → `low`, `standard` → `medium`, `deep` → `high`), `{{` / `}}` are literal braces; run without a shell. Read ONLY from the `MODSYS_AGENT_COMMAND` environment variable (a JSON array; it beats the file) or from a `.modsys/config.user.toml` that git does NOT track (`modsys init` git-ignores it); a repository config, a pack, a tracked personal config, or a personal config outside a git work tree that sets `[agent]` is refused (exit 2 naming the file). Inside an agent run (`MODSYS_WORK_ORDER` set) the command is unavailable: `semantic` and `choose --run` are refused, `hybrid` runs lexically with a note |
 | `[agent] timeout_s` | `300` | an integer from 1 to 3600; user config only; applies to the environment command too |
-| `[search] claude_model` | `"sonnet"` | the model the Claude Code skill's subagent uses; a string without whitespace, at most 100 characters |
+| `[search] claude_model` | `"sonnet"` | the model the Claude Code skill's subagent uses; 1–100 characters of letters, digits and `. _ : / @ + -`, not starting with a dash (the value becomes an item of your agent command) |
 | `[search] codex_model` | `"gpt-5.6-luna"` | the model `codex exec -m` uses; same rule |
 | `[search] effort` | `"standard"` | `quick` (choose from the cards only), `standard` (also open the INDEX of up to 3 candidates), `deep` (also read the candidates' docs and the code). Team or user config; the user's wins per key; any other value is exit 2 |
 

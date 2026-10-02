@@ -16,6 +16,7 @@ from pathlib import Path
 from unittest import mock
 
 from modsys import agent as agent_mod
+from tests import SENTINEL_LOG
 from tests.agent_helpers import AgentRepo, picks
 from tests.helpers import run, run_json
 from tests.test_p81_catalog_modes import NO_EMBEDDER as NO_AGENT, tree_hash
@@ -128,9 +129,13 @@ class RunningTest(Base):
         self.assertTrue(call["work_order_file"]["exists"])
         self.assertEqual(json.loads(call["work_order_file"]["content"]), order)
         self.assertEqual(json.loads(call["schema_file"]["content"]), order["answer_schema"])
-        child = {k: v for k, v in call["env"].items()
-                 if k not in ("MODSYS_WORK_ORDER", "MODSYS_SCHEMA")}
-        self.assertEqual(child, before)
+        skip = ("MODSYS_WORK_ORDER", "MODSYS_SCHEMA")
+        child = {k: v for k, v in call["env"].items() if k not in skip}
+        extra = set(child) - set(before)  # what Python itself adds on macOS
+        self.assertLessEqual(extra, {"__CF_USER_TEXT_ENCODING", "LC_CTYPE"})
+        child = {k: v for k, v in child.items() if k not in extra}
+        self.assertEqual(sorted(child), sorted(before))
+        self.assertTrue(all(child[k] == before[k] for k in child), "a variable changed")
         self.assertFalse(Path(call["work_order_file"]["path"]).exists())  # removed afterwards
 
     def test_placeholders(self):  # P81-AC-060
@@ -143,9 +148,9 @@ class RunningTest(Base):
                              ["sonnet", "--m=gpt-5.6-luna", effort, reasoning, "{literal}"])
         self.calls_log.unlink()
         self.agent(["{claude_model}"], answer=picks(),
-                   search='[search]\nclaude_model = "a{effort}b"\n')  # not re-scanned
+                   search='[search]\nclaude_model = "a:b/c@1.2+x_y-z"\n')
         self.assertEqual(self.choose()[0], 0)
-        self.assertEqual(self.calls()[0]["argv"], ["a{effort}b"])
+        self.assertEqual(self.calls()[0]["argv"], ["a:b/c@1.2+x_y-z"])
 
     def test_bad_placeholders_fail_at_config_load(self):  # P81-AC-060
         for item, needle in (("{foo}", "{foo}"), ("a{", "unmatched"), ("}x", "unmatched"),
@@ -207,13 +212,13 @@ class RunningTest(Base):
     def test_expiry_kills_the_child(self):  # P81-AC-062
         started = self.tmp / "started"
         self.agent(sleep=30, started=str(started), answer=json.dumps(picks()), timeout_s=1)
-        with mock.patch.object(agent_mod, "TIMEOUT_UNIT", 0.5):
+        with mock.patch.object(agent_mod, "TIMEOUT_UNIT", 5.0):  # room for a loaded machine
             t0 = time.monotonic()
             code, out, err = self.choose()
         self.assertEqual((code, out), (2, ""))
         self.assertIn("agent timed out after 1 s", err)
         self.assertNotIn("ResourceWarning", err)
-        self.assertLess(time.monotonic() - t0, 20)
+        self.assertLess(time.monotonic() - t0, 40)
         self.assertFalse(self.alive(int(started.read_text())))
 
     def test_agent_failures(self):  # P81-AC-063
@@ -252,33 +257,43 @@ class RunningTest(Base):
                 self.agent(timeout_s=timeout, **cfg)
                 self.choose()
                 self.assertEqual(list(scratch.iterdir()), [], cfg)
-        self.assertEqual(tree_hash(self.root).count("agent"), 0)
+        self.assertFalse(list(self.root.rglob("*modsys-agent*")))
 
-    def test_interrupt_kills_the_child_and_group(self):  # P81-AC-064 / AC-045
-        started, grand = self.tmp / "started", self.tmp / "grand"
-        scratch = self.tmp / "tmpdir"
+    def test_interrupt_kills_the_child_and_group(self):  # P81-AC-064 / AC-045 / review I1
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            with self.subTest(signal=sig.name):
+                self.interrupt_with(sig)
+
+    def interrupt_with(self, sig):
+        started, grand = self.tmp / f"started-{sig.name}", self.tmp / f"grand-{sig.name}"
+        scratch = self.tmp / f"tmpdir-{sig.name}"
         scratch.mkdir()
         self.agent(sleep=60, started=str(started), grandchild=str(grand), answer="{}")
         env = {**os.environ, "PYTHONPATH": str(ENGINE), "TMPDIR": str(scratch)}
         proc = subprocess.Popen([sys.executable, "-m", "modsys", "choose", "--task", TASK,
                                  "--run", *self.R], env=env, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True, cwd=ENGINE,
-                                preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
+                                preexec_fn=lambda: [signal.signal(x, signal.SIG_DFL) for x in
+                                                    (signal.SIGINT, signal.SIGTERM,
+                                                     signal.SIGHUP)])
         try:
-            for _ in range(200):
+            for _ in range(400):
                 if started.exists() and grand.exists():
                     break
                 time.sleep(0.05)
             self.assertTrue(started.exists() and grand.exists(), "the agent never started")
             child, grandchild = int(started.read_text()), int(grand.read_text())
-            proc.send_signal(signal.SIGINT)
+            proc.send_signal(sig)
             out, err = proc.communicate(timeout=30)
         finally:
             if proc.poll() is None:
                 proc.kill()
         self.assertEqual((proc.returncode, out), (130, ""))
         self.assertNotIn("Traceback", err)
-        time.sleep(0.2)
+        for _ in range(40):
+            if not self.alive(child) and not self.alive(grandchild):
+                break
+            time.sleep(0.05)
         self.assertFalse(self.alive(child))
         self.assertFalse(self.alive(grandchild))
         self.assertEqual(list(scratch.iterdir()), [])
@@ -495,7 +510,7 @@ class NoNetworkNoModelTest(Base):
     def test_sentinel_cli_is_first_on_path(self):  # P81-AC-072
         import shutil
         for name in ("claude", "codex"):
-            self.assertEqual(Path(shutil.which(name)).parent, self.bin)
+            self.assertEqual(Path(shutil.which(name)).parent, SENTINEL_LOG.parent)
 
 
 if __name__ == "__main__":

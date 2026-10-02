@@ -228,6 +228,8 @@ def ignore_lines(root: Path, config_dir: Path, config: dict) -> list[str]:
               config["paths"]["proposals_dir"].rstrip("/") + "/"]
     try:
         wanted.append((config_dir / "init").relative_to(root).as_posix() + "/")
+        # the personal config may hold the user's own agent command: never committed (P8.1 S3)
+        wanted.append((config_dir / "config.user.toml").relative_to(root).as_posix())
     except ValueError:
         pass
     return wanted

@@ -64,10 +64,10 @@ def run(args) -> int:
         if args.task is None or not args.task.strip():
             raise UsageError("--run needs --task TEXT")
         if not agent_configured(ws.config):
-            raise UsageError(NO_AGENT)
+            raise UsageError(agent.NESTED if agent.nested() else NO_AGENT)
     order = workorder.build(ws, args.task or "", max_picks)
     check = lambda answer: workorder.validate_answer(answer, order, max_picks)  # noqa: E731
-    picks, none, notes = agent.run(ws.config, order, order["answer_schema"], check) \
+    picks, none, notes = agent.run(ws.config, order, order["answer_schema"], check, cwd=ws.root) \
         if args.run else check(_read_answer(args.apply))
     data = {"picks": _with_read_sets(ws, picks), "none": none, "notes": notes,
             "max_picks": max_picks}

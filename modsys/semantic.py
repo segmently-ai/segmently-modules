@@ -13,8 +13,9 @@ NO_AGENT = ("semantic matching needs your agent: set [agent] command in "
             ".modsys/config.user.toml or MODSYS_AGENT_COMMAND; in Claude Code / Codex the "
             "skills do it with modsys choose")
 NO_AGENT_NOTE = "semantic part skipped: no agent command configured"
+SKIPPED = (NO_AGENT_NOTE, agent.NESTED_NOTE)  # the notes of a hybrid run without its agent part
 RRF_K = 60
-MAX_PICKS = 5  # picks asked from the agent per match run
+MIN_PICKS = 5  # picks asked from the agent per match run: at least this, else `top`
 
 
 def add_match_flag(parser) -> None:
@@ -43,19 +44,28 @@ def resolve(ws, flag: str | None) -> tuple[str, list[str]]:
     mode = effective_mode(flag, ws.config)
     if mode == "lexical" or agent_configured(ws.config):
         return mode, []
+    if agent.nested():
+        if mode == "semantic":
+            raise UsageError(agent.NESTED)
+        return mode, [agent.NESTED_NOTE]
     if mode == "semantic":
         raise UsageError(NO_AGENT)
     return mode, [NO_AGENT_NOTE]
 
 
-def ask(ws, text: str, max_picks: int = MAX_PICKS) -> tuple[list[dict], list[str]]:
+def skipped(notes: list[str]) -> bool:
+    """`resolve` skipped the agent part of a hybrid run."""
+    return any(n in SKIPPED for n in notes)
+
+
+def ask(ws, text: str, max_picks: int = MIN_PICKS) -> tuple[list[dict], list[str]]:
     """Ask the agent once: the validated picks `{module, confidence, reason?}` (confidence
     descending) and the notes of the validation. A failing agent is a usage error."""
     from modsys import workorder
     order = workorder.build(ws, text, max_picks)
     picks, _, notes = agent.run(
         ws.config, order, order["answer_schema"],
-        lambda answer: workorder.validate_answer(answer, order, max_picks))
+        lambda answer: workorder.validate_answer(answer, order, max_picks), cwd=ws.root)
     return picks, notes
 
 
@@ -95,9 +105,11 @@ def ranked(ws, text: str, mode: str, notes: list[str], top: int,
     exactly once; `top` applies after fusion."""
     from modsys.match import match_modules
     cfg = ws.config["match"]
-    if notes:  # hybrid, no agent command
+    if skipped(notes):  # hybrid, no agent part
         return match_modules(ws.registry.modules, text, cfg, top, min_score), notes
-    picks, pick_notes = ask(ws, text)
+    if top == 0:  # nothing to show: do not spend an agent call
+        return [], notes
+    picks, pick_notes = ask(ws, text, max(top, MIN_PICKS))
     if mode == "semantic":
         return semantic_rows(picks)[:top], pick_notes
     lexical = match_modules(ws.registry.modules, text, cfg, 10 ** 9, min_score)

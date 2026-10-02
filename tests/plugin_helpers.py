@@ -13,7 +13,8 @@ from pathlib import Path
 from tests.helpers import git
 
 ENGINE = Path(__file__).resolve().parents[1]
-CLAUDE = shutil.which("claude")
+from tests import REAL_PATH  # noqa: E402  (the PATH before the sentinel claude / codex)
+CLAUDE = shutil.which("claude", path=REAL_PATH)
 NO_CLAUDE = "claude not on PATH"  # the visible skip reason (P6-AC-011)
 SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
 
@@ -76,7 +77,7 @@ def claude_env(config_dir: Path) -> dict:
     env = {k: v for k, v in os.environ.items()
            if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
                         "CLAUDE_CODE_OAUTH_TOKEN")}
-    return {**env, "CLAUDE_CONFIG_DIR": str(config_dir)}
+    return {**env, "CLAUDE_CONFIG_DIR": str(config_dir), "PATH": REAL_PATH}
 
 
 def tree(root: Path) -> dict[str, tuple[int, bytes]]:
