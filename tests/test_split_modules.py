@@ -173,6 +173,19 @@ class Ms050ChildTest(SplitBase):
         self.assertIn(("MS050", "orders/refunds"), got)
         self.assertNotIn(("MS050", "orders"), got)
 
+    def test_a_child_target_is_cleared_by_its_own_doc_or_its_parents(self):  # P81-AC-017
+        mutate_registry(self.root, lambda d: d["modules"]["orders"]["submodules"]["refunds"]
+                        .update(file_paths=["src/orders/service.py"]))
+        git(self.root, "commit", "-qam", "refunds code")
+        self.append("src/orders/service.py")
+        self.assertIn(("MS050", "orders/refunds"), self.codes())  # the code alone: flagged
+        for doc in ("modules/orders/submodules/refunds/MODULE.md", "modules/orders/MODULE.md"):
+            with self.subTest(doc=doc):
+                self.append(doc)
+                self.assertNotIn(("MS050", "orders/refunds"), self.codes())
+                git(self.root, "checkout", "-q", doc)
+                self.assertIn(("MS050", "orders/refunds"), self.codes())
+
 
 if __name__ == "__main__":
     unittest.main()

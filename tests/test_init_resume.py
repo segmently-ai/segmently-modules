@@ -54,12 +54,13 @@ class KillAndResumeTest(unittest.TestCase):  # P5B-AC-010
         self.assertEqual(proc.returncode, -9, proc.stderr)
         return {m: e["status"] for m, e in state(self.root)["modules"].items()}
 
-    def events(self, event: str) -> list[str]:
-        return [json.loads(l)["module"] for l in self.log.read_text().splitlines()
+    def events(self, event: str, log: Path | None = None) -> list[str]:
+        return [json.loads(l)["module"] for l in (log or self.log).read_text().splitlines()
                 if json.loads(l)["event"] == event]
 
-    def finish(self, *argv: str) -> None:
-        got, _, err = text(self.root, *argv, "--executor", executor("--record", str(self.log)))
+    def finish(self, *argv: str, log: Path | None = None) -> None:
+        got, _, err = text(self.root, *argv, "--executor",
+                           executor("--record", str(log or self.log)))
         self.assertEqual((got, err), (0, ""))
         self.assertEqual({e["status"] for e in state(self.root)["modules"].values()}, {"done"})
         for module in SIX:
@@ -102,9 +103,12 @@ class KillAndResumeTest(unittest.TestCase):  # P5B-AC-010
         statuses = self.killed_run("--stop-group")
         done = {m for m, s in statuses.items() if s == "done"}
         self.assertTrue({m for m, s in statuses.items() if s == "running"})
-        before = self.events("start")
-        self.finish("init", "resume")
-        again = self.events("start")[len(before):]
+        # the resume records into a log of its own: a late write of an executor of the killed
+        # group (one forked while the group was being killed) cannot land among its starts,
+        # while a module the resume really started twice still shows twice
+        resumed = self.base / "resume.jsonl"
+        self.finish("init", "resume", log=resumed)
+        again = self.events("start", resumed)
         self.assertEqual(sorted(again), sorted(m for m, s in statuses.items() if s != "done"))
         self.assertFalse(done & set(again))
 

@@ -19,7 +19,7 @@ from modsys import agent as agent_mod
 from tests import SENTINEL_LOG
 from tests.agent_helpers import AgentRepo, picks
 from tests.helpers import run, run_json
-from tests.test_p81_catalog_modes import NO_EMBEDDER as NO_AGENT, tree_hash
+from tests.test_p81_catalog_modes import NO_AGENT, tree_hash
 
 ENGINE = Path(__file__).resolve().parents[1]
 TASK = "возврат платежа за заказ"

@@ -13,7 +13,7 @@ from pathlib import Path
 from tests.agent_helpers import AgentRepo
 from tests.helpers import run, run_json
 
-NO_EMBEDDER = ("semantic matching needs your agent: set MODSYS_AGENT_COMMAND (a JSON array); "
+NO_AGENT = ("semantic matching needs your agent: set MODSYS_AGENT_COMMAND (a JSON array); "
                "in Claude Code / Codex the skills do it with modsys choose")
 NOTE = "semantic part skipped: no agent command configured"
 TASK = "partial refund for a returned book"
@@ -30,14 +30,14 @@ def tree_hash(root: Path) -> str:
 
 
 class Repo(AgentRepo, unittest.TestCase):
-    """The split fixture; `embedder()` names a fake agent command (its marker = a logged call)
-    that would answer with a pick if it ever ran."""
+    """The split fixture; `with_agent()` sets a fake agent command (its marker = a logged call)
+    that would answer if it ever ran."""
 
     @property
     def marker(self):
         return self.calls_log
 
-    def embedder(self, mode: str | None = None) -> None:
+    def with_agent(self, mode: str | None = None) -> None:
         self.agent(answer={"picks": [], "none": True})
         if mode:
             self.config(f'[match]\nmode = "{mode}"\n')
@@ -81,16 +81,16 @@ class CatalogTest(Repo):
         self.assertEqual(cards["orders/refunds"]["description"],
                          "Returned books: refund requests, partial refunds and restocking.")
 
-    def test_json_reports_the_configured_mode_and_embedder(self):  # P81-AC-020
-        self.embedder("hybrid")
+    def test_json_reports_the_configured_mode_and_agent(self):  # P81-AC-020
+        self.with_agent("hybrid")
         _, env, _ = run_json("catalog", *self.R)
         self.assertEqual(env["data"]["match"], {"mode": "hybrid", "semantic": True})
         self.no_agent()
         _, env, _ = run_json("catalog", *self.R)  # catalog itself never refuses
         self.assertEqual(env["data"]["match"], {"mode": "hybrid", "semantic": False})
 
-    def test_read_only_with_an_embedder_configured(self):  # P81-AC-021
-        self.embedder("hybrid")
+    def test_read_only_with_an_agent_configured(self):  # P81-AC-021
+        self.with_agent("hybrid")
         before = tree_hash(self.root)
         for args in ((), ("--json",)):
             for _ in range(2):
@@ -102,7 +102,7 @@ class CatalogTest(Repo):
         self.assertFalse(list(self.root.rglob("*.lock")))
 
     def test_read_only_directory(self):  # P81-AC-021
-        self.embedder()
+        self.with_agent()
         before = tree_hash(self.root)
         dirs = [self.root, *[p for p in self.root.rglob("*") if p.is_dir()]]
         try:
@@ -140,7 +140,7 @@ class ModeResolutionTest(Repo):
                     code, out, err = run(*argv, "--json")
                     if effective == "semantic":
                         self.assertEqual((code, out, err),
-                                         (2, "", f"modsys: error: {NO_EMBEDDER}\n"))
+                                         (2, "", f"modsys: error: {NO_AGENT}\n"))
                         continue
                     self.assertEqual((code, err), (0, ""))
                     data = json.loads(out)["data"]
@@ -184,11 +184,11 @@ class LexicalIdenticalTest(Repo):
 
     def test_bytes_do_not_change(self):  # P81-AC-023
         base = self.snapshot()
-        self.embedder()
+        self.with_agent()
         self.assertEqual(self.snapshot(), base)
         self.config('[match]\nmode = "lexical"\n')
         self.assertEqual(self.snapshot(), base)
-        self.embedder("lexical")
+        self.with_agent("lexical")
         for argv in (("match", TASK), ("context", "--task", TASK), ("discover", "--task", TASK)):
             for json_flag in ((), ("--json",)):
                 self.assertEqual(run(*argv, "--match", "lexical", *self.R, *json_flag),
@@ -206,7 +206,7 @@ class LexicalIdenticalTest(Repo):
         self.assertNotIn('"sources"', out)
 
 
-class NoEmbedderTest(Repo):
+class NoAgentTest(Repo):
     def test_semantic_refuses(self):  # P81-AC-024
         for cfg_mode in (False, True):
             if cfg_mode:
@@ -219,7 +219,7 @@ class NoEmbedderTest(Repo):
                     with self.subTest(argv=argv, cfg=cfg_mode, json=json_flag):
                         code, out, err = run(*argv, *flag, *self.R, *json_flag)
                         self.assertEqual((code, out), (2, ""))
-                        self.assertEqual(err, f"modsys: error: {NO_EMBEDDER}\n")
+                        self.assertEqual(err, f"modsys: error: {NO_AGENT}\n")
                         self.assertEqual(tree_hash(self.root), before)
 
     def test_hybrid_degrades_to_the_lexical_rows_with_one_note(self):  # P81-AC-025
