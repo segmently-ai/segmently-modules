@@ -5,9 +5,9 @@ description: Writes the acceptance criteria of one task before any code is writt
 
 # qa-acceptance
 
-Say, before the code exists, exactly what "done" means for one task: measurable criteria that
+Say, before the code exists, what "done" means for one task: measurable criteria that
 prove every part of it works, that do not contradict each other, and that point at the
-modules' existing baselines instead of repeating them.
+modules' baselines instead of repeating them.
 
 ## When to use
 
@@ -33,7 +33,7 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 1. Find the modules. Put the task text in a temporary file outside the repository, then
 
    ```bash
-   modsys discover --task-file <file> --json
+   modsys discover --task-file <file> --match lexical --json
    ```
 
    Keep the `modify` modules and the `reference` modules whose docs really bear on the task.

@@ -51,12 +51,12 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
    Run `modsys catalog --json`; read `match` and `search`. The text: a summary of the change with
    its identifiers, as the code spells them. The mode: the user's words ("only lexical"), else
-   `match.mode` unless `lexical`, else `hybrid`; the user may also set the depth ("search deep") or
+   `match.mode` unless `lexical`, else `hybrid`; the user may set the depth ("search deep") or
    the model ("use opus").
 
    - By meaning (`semantic`, `hybrid`):
-     `modsys choose --task '<the text, verbatim, any language>' --json` prints a work order. Answer
-     it in Claude Code by a subagent (`model: <search.claude_model>`), in Codex by
+     `modsys choose --task-file <the text, verbatim, in a file> --json` prints a work order. Answer
+     it whole (never a preview) in Claude Code by a subagent (`model: <search.claude_model>`), in Codex by
      `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --output-schema <schema file> -`
      (the order on stdin, `answer_schema` in the file; `low`, `medium`, `high` for `quick`,
      `standard`, `deep`), else answer it in this session, at the depth its rules set (or the
@@ -64,11 +64,11 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
      candidates, `deep` also their docs and code. Pipe the answer to
      `modsys choose --apply - --json`: `picks` with their `read` docs.
    - By keyword (`lexical`, `hybrid`):
-     `modsys discover --task "<the changed identifiers and domain terms, in English>" --match lexical --json`.
+     `modsys discover --task-file <the changed identifiers and domain terms, in English, in a file> --match lexical --json`.
    - `hybrid`: merge the lists; a module found both ways ranks first. Pass `--match semantic` or
      `--match hybrid` only when `match.semantic` is true.
 
-   Each candidate whose docs describe the changed behaviour joins the modules to update, with the
+   Each candidate whose docs describe the change joins the modules to update, with the
    docs the search listed.
 
 4. Per module to update, read the change (`git diff <base>..HEAD -- <its files>`; uncommitted:
@@ -117,8 +117,7 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    be report-only. Fix what your updates caused and rerun; report what failed before you began.
 
 8. Report per module: the docs changed (a line each), the fields and edges, the hook messages, the
-   `ci` result, the files no module owns. Ask the user to review and commit — never commit
-   yourself.
+   `ci` result, the files no module owns. Ask the user to review and commit.
 
 ## A new role
 

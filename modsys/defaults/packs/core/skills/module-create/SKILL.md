@@ -35,10 +35,10 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
    ```bash
    modsys list --json
-   modsys match "<the new module's main words>" --json
+   modsys match "<the new module's main words>" --match lexical --json
    ```
 
-   A strong match means an existing module may already own this area: show it and ask before
+   A strong match means an existing module may own this area: show it and ask before
    going on.
 
 2. Gather the answers, one question at a time when the user has not given them:
@@ -82,7 +82,7 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    modsys code-map add <rule id> --glob "<glob>" --module <name> --json
    ```
 
-   Show the dry run first. A rule id that exists already is refused: pick another id.
+   Show the dry run first. An existing rule id is refused: pick another.
 
 7. Check it.
 

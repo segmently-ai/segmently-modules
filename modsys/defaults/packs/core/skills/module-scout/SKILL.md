@@ -8,7 +8,7 @@ description: Quick, read-only context on the modules a task is about, while the 
 ## When to use
 
 - A change is being discussed, or the user names modules (`parent/child` or a doc path) and wants
-  their context first: a short brief, no plan, no edits.
+  their context: a short brief, no plan, no edits.
 
 ## When not to use
 
@@ -18,7 +18,7 @@ description: Quick, read-only context on the modules a task is about, while the 
 
 ## Scope
 
-Read-only: modsys read verbs and reading files; it writes only temporary files outside the
+Read-only: modsys read verbs, reading files; it writes only temporary files outside the
 repository, never edits a file, never runs a writer verb, never commits. The registry, layout and
 roles come from `modsys`, never from an assumed path.
 
@@ -30,11 +30,11 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
    Run `modsys catalog --json`; read `match` and `search`. The text: the user's topic or question.
    The mode: the user's words ("only lexical"), else `match.mode` unless `lexical`, else `hybrid`;
-   the user may also set the depth ("search deep") or the model ("use opus").
+   the user may set the depth ("search deep") or the model ("use opus").
 
    - By meaning (`semantic`, `hybrid`):
-     `modsys choose --task '<the text, verbatim, any language>' --json` prints a work order. Answer
-     it in Claude Code by a subagent (`model: <search.claude_model>`), in Codex by
+     `modsys choose --task-file <the text, verbatim, in a file> --json` prints a work order. Answer
+     it whole (never a preview) in Claude Code by a subagent (`model: <search.claude_model>`), in Codex by
      `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --output-schema <schema file> -`
      (the order on stdin, `answer_schema` in the file; `low`, `medium`, `high` for `quick`,
      `standard`, `deep`), else answer it in this session, at the depth its rules set (or the
@@ -42,8 +42,8 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
      candidates, `deep` also their docs and code. Pipe the answer to
      `modsys choose --apply - --json`: `picks` with their `read` docs.
    - By keyword (`lexical`, `hybrid`):
-     `modsys context --task "<the domain terms and code identifiers, in English>" --match lexical --json`:
-     its `modules`; none but `near_misses`: list them and ask which module is meant.
+     `modsys context --task-file <the domain terms and code identifiers, in English, in a file> --match lexical --json`:
+     its `modules`; none but `near_misses`: list them, ask which is meant.
    - `hybrid`: merge the lists; a module found both ways ranks first. Pass `--match semantic` or
      `--match hybrid` only when `match.semantic` is true.
 
@@ -55,7 +55,7 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    - A split module (`submodules`; its first doc is the parent INDEX): read the index, then only
      the children the topic touches (`modsys show <module>/<child> --json`) — never all of them.
    - A pointer stub (exit 1, `stub`): retired or merged; report the stub, never guess.
-   - Talk about one audience (testing, design, product): add
+   - One audience (testing, design, product): add
      `modsys show <module> --role <role> --json`; the roles are the `roles/<role>.md` rows of
      `modsys templates list --json` — never guess one.
 
@@ -74,7 +74,7 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 ## Gates
 
 No gates — read-only: it never stops for a confirmation. It asks only when no module is found and
-the near misses leave the choice open.
+the near misses leave it open.
 
 ## Exit codes
 

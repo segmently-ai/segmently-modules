@@ -4,7 +4,10 @@ by the user's own agent, `modsys choose --apply`, the keyword half, the merge â€
 the same in module-discover, module-sync, module-scout and module-research; module-discover goes
 from the candidates to the code (F6a, F6b); module-sync picks the child, searches the docs that
 describe the change and adds a keyword only for a new public name (F10, F13, F15). Sizes and
-descriptions are pinned by `test_budgets` and `test_builtin_skills` (P81-AC-040)."""
+descriptions are pinned by `test_budgets` and `test_builtin_skills` (P81-AC-040). Every task text
+goes to modsys through a file (final review M-6), and every `match` / `context` / `discover`
+given a task in a shipped skill, reference or template runs `--match lexical` (final review
+I-1): a team's `[match] mode` never reaches them."""
 import io
 import json
 import tempfile
@@ -57,8 +60,9 @@ class SharedStepTest(unittest.TestCase):  # P81-AC-074, SI-P81-10
         '"only lexical"', '"search deep"', '"use opus"',  # the user's words win
         "else `hybrid`",  # the skills' default mode
         "- By meaning (`semantic`, `hybrid`):", KEYWORD, HYBRID,
-        "`modsys choose --task '<the text, verbatim, any language>' --json`",  # review M-1:
-        # single quotes: a task's backticks or `$` reach modsys as written
+        "`modsys choose --task-file <the text, verbatim, in a file> --json`",  # final review
+        # M-6: a file, so a task's apostrophes, backticks or `$` reach modsys as written
+        "Answer it whole (never a preview)",  # final review M-3: a long order is saved whole
         "a subagent (`model: <search.claude_model>`)",
         "`codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> "
         "--output-schema <schema file> -`",
@@ -100,7 +104,7 @@ class SharedStepTest(unittest.TestCase):  # P81-AC-074, SI-P81-10
         for skill in SKILLS:
             with self.subTest(skill=skill):
                 cmds = commands(section(text(skill), "## Steps"))
-                for verb in (("catalog",), ("choose", "--task"), ("choose", "--apply")):
+                for verb in (("catalog",), ("choose", "--task-file"), ("choose", "--apply")):
                     self.assertTrue(uses(cmds, verb), verb)
 
     def test_keyword_commands_are_lexical(self):  # review I-1: `[match] mode` never leaks in
@@ -116,6 +120,13 @@ class SharedStepTest(unittest.TestCase):  # P81-AC-074, SI-P81-10
                 for a in (argv(c) for c in commands(text(skill))):
                     if "--match" in a:  # never semantic or hybrid: the skill is the agent
                         self.assertEqual(a[a.index("--match") + 1], "lexical", a)
+
+    def test_every_task_text_goes_through_a_file(self):  # final review M-6, deferred 3
+        for skill in SKILLS:
+            with self.subTest(skill=skill):
+                for a in (argv(c) for c in commands(text(skill))):
+                    self.assertNotIn("--task", a, a)
+                self.assertTrue(any("--task-file" in argv(c) for c in commands(text(skill))))
 
     def test_the_keys_it_names_are_printed(self):  # the text and the engine agree
         with tempfile.TemporaryDirectory() as tmp:
@@ -139,6 +150,40 @@ class SharedStepTest(unittest.TestCase):  # P81-AC-074, SI-P81-10
             pick = json.loads(out)["data"]["picks"][0]
             self.assertEqual(pick["module"], "orders/refunds")
             self.assertTrue(pick["read"])
+
+
+class EveryShippedTextIsLexicalTest(unittest.TestCase):  # final review I-1 (and 5 D-4)
+    """A `match`, a `context` or a `discover` given a task, anywhere the engine ships text an
+    agent follows (every pack's skills and references, the templates, the scaffold), passes
+    `--match lexical`: under a committed `[match] mode = "semantic"` none of them exits 2 for
+    want of an agent command, and none starts the user's agent for a keyword check."""
+
+    def shipped(self) -> dict[str, str]:
+        root = builtin_packs_root().parent
+        return {p.relative_to(root).as_posix(): p.read_bytes().decode("utf-8")
+                for p in sorted(root.rglob("*.md"))}
+
+    def test_every_keyword_command_is_lexical(self):
+        found = set()
+        for name, body in self.shipped().items():
+            for a in (argv(c) for c in commands(body)):
+                if a[:1] in (["match"], ["context"]) or (
+                        a[:1] == ["discover"] and {"--task", "--task-file"} & set(a)):
+                    found.add(name)
+                    with self.subTest(file=name, argv=a):
+                        self.assertIn("--match", a)
+                        self.assertEqual(a[a.index("--match") + 1], "lexical")
+        for name in ("templates/agents-md.md", "packs/core/skills/module-create/SKILL.md",
+                     "packs/qa/skills/qa-acceptance/SKILL.md",
+                     "packs/core/skills/module-discover/SKILL.md"):
+            self.assertIn(name, found)  # the scan reaches what the review named
+
+    def test_the_scan_sees_a_missing_flag(self):
+        for body in ('`modsys context --task "<t>" --role <r>`',
+                     "```bash\nmodsys match x --json\n```",
+                     "`modsys discover --task-file <f> --match hybrid --json`"):
+            a = argv(commands(body)[0])
+            self.assertFalse("--match" in a and a[a.index("--match") + 1] == "lexical", body)
 
 
 class OtherKeysTest(unittest.TestCase):  # review M-9: the keys the steps read, next to the text
@@ -215,7 +260,7 @@ class SyncTest(unittest.TestCase):  # P81-AC-042 (F10, F13, F15)
 
     def test_the_keyword_half_is_discover(self):
         body = flat(text("module-sync"))
-        self.assertIn(f'{KEYWORD} `modsys discover --task "<', body)
+        self.assertIn(f'{KEYWORD} `modsys discover --task-file <', body)
 
 
 class ScoutAndResearchTest(unittest.TestCase):  # P81-AC-043
@@ -227,7 +272,7 @@ class ScoutAndResearchTest(unittest.TestCase):  # P81-AC-043
         self.assertTrue(all(parts.values()), parts)
         self.assertEqual(parts["module-scout"], parts["module-research"])
         self.assertIn("else `hybrid`", parts["module-scout"])
-        self.assertIn(f'{KEYWORD} `modsys context --task "<', parts["module-scout"])
+        self.assertIn(f'{KEYWORD} `modsys context --task-file <', parts["module-scout"])
         self.assertIn("Keep the top 3;", parts["module-scout"])  # review M-7
 
     def test_scout_keeps_the_retry_rule(self):  # review M-8

@@ -32,11 +32,11 @@ Pin the question in one sentence.
 
    Run `modsys catalog --json`; read `match` and `search`. The text: the user's topic or question.
    The mode: the user's words ("only lexical"), else `match.mode` unless `lexical`, else `hybrid`;
-   the user may also set the depth ("search deep") or the model ("use opus").
+   the user may set the depth ("search deep") or the model ("use opus").
 
    - By meaning (`semantic`, `hybrid`):
-     `modsys choose --task '<the text, verbatim, any language>' --json` prints a work order. Answer
-     it in Claude Code by a subagent (`model: <search.claude_model>`), in Codex by
+     `modsys choose --task-file <the text, verbatim, in a file> --json` prints a work order. Answer
+     it whole (never a preview) in Claude Code by a subagent (`model: <search.claude_model>`), in Codex by
      `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --output-schema <schema file> -`
      (the order on stdin, `answer_schema` in the file; `low`, `medium`, `high` for `quick`,
      `standard`, `deep`), else answer it in this session, at the depth its rules set (or the
@@ -44,8 +44,8 @@ Pin the question in one sentence.
      candidates, `deep` also their docs and code. Pipe the answer to
      `modsys choose --apply - --json`: `picks` with their `read` docs.
    - By keyword (`lexical`, `hybrid`):
-     `modsys context --task "<the domain terms and code identifiers, in English>" --match lexical --json`:
-     its `modules`; none but `near_misses`: list them and ask which module is meant.
+     `modsys context --task-file <the domain terms and code identifiers, in English, in a file> --match lexical --json`:
+     its `modules`; none but `near_misses`: list them, ask which is meant.
    - `hybrid`: merge the lists; a module found both ways ranks first. Pass `--match semantic` or
      `--match hybrid` only when `match.semantic` is true.
 
@@ -75,7 +75,7 @@ Pin the question in one sentence.
 7. Write the brief: the answer first, in a few sentences; file:line evidence for every claim; the
    gaps table (doc claim · code reality · file:line · how sure); who is affected (`reverse`) when
    it is about a change; the lint findings that matter; next: `module-sync` after a change,
-   `module-lint` for findings. Do not edit the docs here.
+   `module-lint` for findings.
 
 ## Gates
 

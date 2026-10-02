@@ -7,7 +7,7 @@ description: Maps a confirmed task, or a change on a branch, to the modules it t
 
 ## When to use
 
-- A task is agreed, or a branch or a list of changed files needs its modules, docs and code files.
+- A task is agreed, or a branch or changed files need their modules, docs and code files.
 
 ## When not to use
 
@@ -31,14 +31,14 @@ A change without a task starts at step 4.
 
    Run `modsys catalog --json`; read `match` and `search`. The text: the task as given. For the
    keyword half write 1–3 short English queries to a temporary `<file>` (step 4 uses it too): the
-   domain terms and code identifiers the task implies (the registry's keywords are English and
+   domain terms and code identifiers the task implies (registry keywords are English and
    match whole words). The mode: the user's words ("only lexical"), else `match.mode` unless
-   `lexical`, else `hybrid`; the user may also set the depth ("search deep") or the model ("use
+   `lexical`, else `hybrid`; the user may set the depth ("search deep") or the model ("use
    opus").
 
    - By meaning (`semantic`, `hybrid`):
-     `modsys choose --task '<the text, verbatim, any language>' --json` prints a work order. Answer
-     it in Claude Code by a subagent (`model: <search.claude_model>`), in Codex by
+     `modsys choose --task-file <the text, verbatim, in a file> --json` prints a work order. Answer
+     it whole (never a preview) in Claude Code by a subagent (`model: <search.claude_model>`), in Codex by
      `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --output-schema <schema file> -`
      (the order on stdin, `answer_schema` in the file; `low`, `medium`, `high` for `quick`,
      `standard`, `deep`), else answer it in this session, at the depth its rules set (or the
@@ -67,7 +67,7 @@ A change without a task starts at step 4.
 
    Changed files go to `--files`, a branch to the second form; without a task, drop `--task-file`.
    `<base>` is where the branch left its target: `git merge-base <target> HEAD` prints it — never
-   the target's own name, whose later commits would count as touched.
+   the target itself, whose later commits would count as touched.
 
 5. Read the result. Per module, best first: `usage` (`modify`: its files change; `reference`: only
    its keywords matched), `sources`, `touched_files`, `docs_to_read`, `docs_to_update`, on a split
@@ -89,8 +89,7 @@ A change without a task starts at step 4.
 
 ## Gates
 
-No gates — read-only: it reports and stops. It asks only for a missing input or the path of a JSON
-file.
+No gates — read-only: it reports and stops. It asks only for a missing input or a JSON file's path.
 
 ## Exit codes
 
