@@ -36,7 +36,8 @@ class P5aDocsTest(unittest.TestCase):  # P5A-AC-042
         block = re.search(r"```gitignore\n(.*?)```",
                           (ENGINE / "docs/cli-contract.md").read_text(encoding="utf-8"), re.S)
         self.assertEqual(block.group(1).splitlines(), ["modules/registry.json.lock",
-                                                       ".modsys/proposals/", ".modsys/init/"])
+                                                       ".modsys/proposals/", ".modsys/init/",
+                                                       ".modsys/config.user.toml"])
 
     def test_the_configuration_reference(self):
         text = flat("docs/configuration.md")

@@ -459,7 +459,7 @@ the designer and QA-acceptance packs). Copy them where the agents read them and 
 modsys packs sync --agent claude --agent codex   # .claude/skills/module-*/ and .agents/skills/module-*/
 ```
 
-- `module-scout` — quick context on the modules a task names, while it is discussed;
+- `module-scout` — quick context on the modules a task names (or finds by meaning), while it is discussed;
 - `module-discover` — the touch-set of a confirmed task or a branch: modules, docs, code files;
 - `module-research` — one question answered in depth from docs and code, with the gaps;
 - `module-sync` — after the work: docs, keywords and links brought in line, `ci` green;
@@ -470,6 +470,46 @@ modsys packs sync --agent claude --agent codex   # .claude/skills/module-*/ and 
 - `module-adopt` — an existing registry read as it is: the config inferred and explained.
 
 Each one, the `ui` / `qa` packs, keeping them current and owning one: [docs/skills.md](docs/skills.md).
+
+## Semantic module choice
+
+Keyword routing (`modsys match`, `context`, `discover --task`) needs the task to use the
+registry's words. To choose modules by MEANING — a task in any language, a synonym, a described
+behaviour — modsys hands the choice to the agent you already use:
+
+```bash
+modsys catalog --json                       # one card per module and child: what an agent reads
+modsys choose --task "customers get money back for a returned book" --json   # the work order
+modsys choose --apply answer.json --json    # check the agent's answer; prints the picks and their docs
+```
+
+The skills (`module-scout`, `module-discover`, `module-research`, `module-sync`) do this for you:
+they run `modsys choose`, your Claude Code or Codex answers it, and hybrid is the default (keyword
+and meaning together; say "only lexical" to switch it off). The models and the depth are
+`[search]` settings (`claude_model`, `codex_model`, `effort` = `quick` | `standard` | `deep`).
+
+For a script or CI, point modsys at your own agent command and use `--match semantic|hybrid`
+(or `[match] mode`) or `modsys choose --task … --run`. The command is read ONLY from your
+environment — a repository can never make modsys run a program — as a JSON array run without a
+shell (`{claude_model}`, `{codex_model}`, `{effort}` and `{reasoning}` are filled in from
+`[search]`); the work order arrives on stdin and as the file `$MODSYS_WORK_ORDER`, the answer's
+JSON Schema is the file `$MODSYS_SCHEMA`. Two examples (check the flags against your agent's
+`--help`; they are examples, not a recommendation):
+
+```bash
+# Claude Code: the answer is the `structured_output` of the JSON envelope
+export MODSYS_AGENT_COMMAND='["sh", "-c", "claude -p --model {claude_model} --output-format json --json-schema \"$(cat \"$MODSYS_SCHEMA\")\""]'
+
+# Codex: the last message is printed to stdout; the schema goes in as a file
+export MODSYS_AGENT_COMMAND='["sh", "-c", "codex exec -m {codex_model} -c model_reasoning_effort={reasoning} --output-schema \"$MODSYS_SCHEMA\" -"]'
+
+modsys match --match hybrid "customers get money back for a returned book" --json
+```
+
+modsys itself holds no model, no API key and no network code, ships no model and suggests none;
+the agent runs under your credentials, `MODSYS_AGENT_TIMEOUT` (default 300 seconds) stops it, and
+nothing is cached. [The settings and the trust boundary](docs/configuration.md#the-agent-command-and-search);
+[the JSON](docs/cli-contract.md#semantic-module-choice---match).
 
 ## Packs and skills
 

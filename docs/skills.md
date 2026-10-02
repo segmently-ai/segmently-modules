@@ -94,10 +94,10 @@ lists the agent (the next `packs sync` copies its skills again).
 
 | Skill | Use it when | Scope | Main commands |
 |---|---|---|---|
-| `module-scout` | a task is still being discussed and names modules: a short context brief | read-only | `show`, `related`, `context` |
-| `module-discover` | a task is confirmed, or a branch needs review: its modules, docs to read and update, code files | read-only | `discover`, `code-map files` |
-| `module-research` | one question about a module needs a deep answer with file:line evidence and doc/code gaps | read-only | `show --all-roles`, `related`, `code-map files`, `lint` |
-| `module-sync` | work is done: bring the touched modules' docs, keywords and links in line, run the sync hooks, check `ci` | writes docs and registry fields | `sync-instructions`, `registry`, `propose`, `sync`, `ci` |
+| `module-scout` | a task is still being discussed: a short context brief for the modules it names, or the candidates found by meaning | read-only | `catalog`, `choose`, `show`, `related`, `context` |
+| `module-discover` | a task is confirmed, or a branch needs review: its modules, docs to read and update, code files | read-only | `catalog`, `choose`, `discover`, `code-map files` |
+| `module-research` | one question about a module needs a deep answer with file:line evidence and doc/code gaps | read-only | `catalog`, `choose`, `show --all-roles`, `related`, `code-map files`, `lint` |
+| `module-sync` | work is done: bring the touched modules' docs, keywords and links in line, run the sync hooks, check `ci` | writes docs and registry fields | `sync-instructions`, `catalog`, `choose`, `registry`, `propose`, `sync`, `ci` |
 | `module-create` | a new module or child: gathers the answers, shows a dry run, waits for a yes, fills the docs | writes the new module | `create --dry-run`, `create`, `code-map add`, `lint` |
 | `module-split` | a module doc is over budget (MS030 / MS031): proposes children, stops for confirmation, moves sections verbatim | writes the children and the parent index | `show`, `create --parent`, `code-map add`, `lint` |
 | `module-lint` | the gate fails: explains each finding, fixes the safe ones, leaves decisions to you | writes safe fixes | `ci`, `lint`, `registry` |
@@ -127,6 +127,42 @@ drift and the `sync_hint` of every field ([configuration.md](configuration.md#fi
 BASE=$(git merge-base main HEAD)   # where the branch left main — never main itself
 modsys sync-instructions --from-diff "$BASE..HEAD" --json
 ```
+
+## Choosing modules by meaning
+
+Four skills (`module-scout`, `module-discover`, `module-research`, `module-sync`) share one
+module-choice step. The skill runs `modsys catalog --json`, reads `match` (the configured mode and
+whether an agent command exists) and `search` (the models and the depth), then:
+
+- **By meaning** (`semantic` or `hybrid`): `modsys choose --task "<the text, verbatim, in any
+  language>" --json` prints the work order; the skill hands it to YOUR agent — in Claude Code a
+  subagent on `search.claude_model`, in Codex `codex exec -m <search.codex_model>` with the
+  reasoning level of the depth (`quick` low, `standard` medium, `deep` high) — or answers it in
+  its own session; the answer goes to `modsys choose --apply - --json`, which prints the picks with
+  the docs to read. The depth sets how much the agent reads: `quick` the cards only, `standard`
+  also the INDEX of up to 3 candidates, `deep` also the candidates' docs and code.
+- **By keyword** (`lexical`, `hybrid`): the keyword half — short English queries (the registry's
+  keywords are English whole words) through `discover` or `context`. In `hybrid` the skill merges
+  both lists; a module found both ways ranks first.
+
+**Hybrid is the default**: the mode is what you say ("only lexical", "only by meaning"), else
+`match.mode` when it is `semantic` or `hybrid`, else `hybrid` — the engine's own default
+`[match] mode = "lexical"` does not switch the skills to keywords only (the mode a plain
+`modsys match` uses and the mode of the skills are separate: a skill always has your agent). Say
+"search deep" for the depth, "use opus" for the model. Set the models and the depth once in the
+team or personal config (`[search] claude_model`, `codex_model`, `effort`; `[match] mode =
+"semantic"` makes meaning-only the default; see
+[configuration.md](configuration.md#the-agent-command-and-search)). The skills never pass
+`--match`; they call `modsys choose` themselves, so they need no agent command in the
+environment (`match.semantic` only says whether `--match semantic` / `hybrid` would work for a
+plain `modsys` call). The engine holds no model, key or network code and ships no model: the
+agent that chooses is the one you already run, under your own credentials.
+
+Also in these skills: `module-discover` goes from the candidates to the code
+(`code-map files`, then `discover --files … --task-file …`) and reads the `children` list of a
+split parent to pick the child the change is in; `module-sync` updates that child's doc (which
+clears the parent's MS050) and adds a keyword only for a new public name a future task would
+search by.
 
 ## The ui and qa packs
 

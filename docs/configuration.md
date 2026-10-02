@@ -73,7 +73,7 @@ stub_pattern = 'status:?\**\s*\**(retired|merged|migrated|superseded)'
 
 ## `[match]`
 
-Keyword routing used by `match`, `context` and `discover`.
+Module routing used by `match`, `context` and `discover --task`: keyword routing by default, by meaning when `mode` says so (see [the agent command](#the-agent-command-and-search)).
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -82,7 +82,14 @@ Keyword routing used by `match`, `context` and `discover`.
 | `negative_weight` | `-5` | score per matched `negative_keywords` phrase |
 | `min_score` | `3` | rows below this are dropped |
 | `top` | `8` | at most this many rows (`--top` overrides) |
-| `mode` | `"lexical"` | `"lexical"`, `"semantic"` or `"hybrid"` (`--match` overrides); `semantic` and `hybrid` ask the user's own agent command (`[agent]`, below): `semantic` without one is refused (exit 2), `hybrid` without one runs lexically with a note; any other value is exit 2 naming the key |
+| `mode` | `"lexical"` | `"lexical"`, `"semantic"` or `"hybrid"` (`--match` overrides); `semantic` and `hybrid` ask the user's own agent command (`MODSYS_AGENT_COMMAND`, below): `semantic` without one is refused (exit 2), `hybrid` without one runs lexically with a note; any other value is exit 2 naming the key |
+
+`lexical` (the default) is the keyword routing described below and changes nothing in any output.
+`semantic` takes the rows from the user's own agent alone; `hybrid` fuses the keyword rows and the
+agent's picks by reciprocal rank fusion (k = 60) and every row carries `sources` (`keyword`,
+`semantic`) and, when the agent listed it, its `confidence`. The wording of the refusals and
+notes and the JSON shapes: [cli-contract.md](cli-contract.md#semantic-module-choice---match).
+There is no `[match.semantic]` table and no endpoint key: the engine has no network code.
 
 Matching is exact-token: a keyword or `negative_keywords` phrase must occur as a whole word (or
 whole phrase) in the task text — case-insensitive, with no stemming and no plural/singular
@@ -112,6 +119,14 @@ The engine holds no model, no API key and no network code. `semantic` / `hybrid`
 `modsys choose --run` run a command the user configured, with the work order of `modsys choose`
 on its stdin (also as the files `MODSYS_WORK_ORDER` and `MODSYS_SCHEMA`), and read its answer
 from stdout.
+
+Why an environment variable and not a config file: a command in a file the repository commits
+(a team config, or a pack someone installs) would let a commit make the engine run a program on
+every contributor's machine. So the command is read ONLY from the process environment of the
+user who runs modsys; an `[agent]` table in any config file is refused (exit 2 naming the file),
+whatever file it is in. Put the variable in your shell profile, or set it in the CI job's own
+settings. The agent uses the user's own credentials (the engine reads none), and the engine ships,
+installs and suggests no model.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -318,6 +333,12 @@ writes nothing when nothing is missing. `--recreate` writes the doc of a registe
 `modsys next` names a standard role with missing docs (for instance after an upgrade) together
 with the command. Fill each new doc with what that role needs for that module.
 
+**Children and the parent's role docs.** A child (`parent/child`) without a doc of its own for a
+role is covered by its parent's doc — `show` reads it that way — so `modsys roles list` reports
+it as `inherited` (a status of its own, neither `docs` nor `missing`), `modsys next` does not ask
+for it and `roles add ROLE --all` does not create it. Naming the child (`roles add ROLE
+parent/child`) creates its own doc.
+
 `modsys templates list` prints every template with the layer that wins (`override`,
 `role-template:<pack>`, `pack:<pack>`, `engine`, or `engine-fallback` for a role rendered from
 `roles/_role.md`) and its file. `modsys templates override roles/qa.md` copies the winning
@@ -517,7 +538,7 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS031 | error | `MODULE.md` longer than `module_doc_hard_stop` |
 | MS032 | warning | a role doc longer than `role_doc_max` |
 | MS040 | warning | a backticked path in the components table is missing on disk |
-| MS050 | `drift_severity` | `--changed`: a module's code changed but none of its docs |
+| MS050 | `drift_severity` | `--changed`: a module's code changed but none of its docs; a changed doc of the target, of its parent or of one of its children counts (so an update of a child's doc clears its parent), never a sibling's |
 | MS051 | error | `--changed`: a frozen `*.legacy.md` snapshot was modified or deleted |
 | MS052 | warning | a `[[code_map]]` rule's `module` is not a registry module or child (plain `lint` only) |
 | MS053 | `overlap_severity` | two `[[code_map]]` rules route the same file to two different modules (plain `lint` only; see below) |
