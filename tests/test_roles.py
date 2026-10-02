@@ -29,7 +29,7 @@ DESC = "Customer reviews of books: ratings, comments and moderation."
 KW = [a for k in ("review", "rating", "stars", "comment", "moderation") for a in ("--keyword", k)]
 BOOKSHOP = ["catalog", "checkout", "payments", "payments/refunds"]  # legacy-search is a stub
 ROW_KEYS = {"name", "order", "standard", "enabled", "applies_when", "description", "owner",
-            "docs", "missing"}
+            "docs", "missing", "inherited"}
 LOCK = "modules/registry.json.lock"
 
 
@@ -134,11 +134,14 @@ class RolesListTest(Repo):  # P61-AC-005
                           ("reviewer", 60, False, True, "reviews")])
         by = {r["name"]: r for r in rows}
         self.assertEqual((by["developer"]["docs"], by["developer"]["missing"]), (BOOKSHOP, []))
-        self.assertEqual((by["qa"]["docs"], by["qa"]["missing"]), (["catalog"], BOOKSHOP[1:]))
+        top = [t for t in BOOKSHOP if "/" not in t]  # payments/refunds inherits its parent's
+        self.assertEqual((by["qa"]["docs"], by["qa"]["missing"], by["qa"]["inherited"]),
+                         (["catalog"], top[1:], ["payments/refunds"]))
         self.assertEqual((by["designer"]["docs"], by["designer"]["missing"]),
-                         (["catalog"], BOOKSHOP[1:]))
+                         (["catalog"], top[1:]))
         for name in ("po", "architect", "reviewer"):
-            self.assertEqual((by[name]["docs"], by[name]["missing"]), ([], BOOKSHOP))
+            self.assertEqual((by[name]["docs"], by[name]["missing"]), ([], top))
+            self.assertEqual(by[name]["inherited"], ["payments/refunds"])
         self.assertEqual((by["reviewer"]["description"], by["reviewer"]["applies_when"]),
                          (REVIEWER, None))
         self.assertEqual(by["developer"]["description"],
@@ -158,7 +161,8 @@ class RolesListTest(Repo):  # P61-AC-005
     def test_a_registered_doc_missing_on_disk_is_in_neither_list(self):  # ruling
         (self.root / "modules/catalog/roles/qa.md").unlink()
         qa = {r["name"]: r for r in self.ok("roles", "list")["roles"]}["qa"]
-        self.assertEqual((qa["docs"], qa["missing"]), ([], BOOKSHOP[1:]))
+        self.assertEqual((qa["docs"], qa["missing"]), ([], ["checkout", "payments"]))
+        self.assertEqual(qa["inherited"], ["payments/refunds"])  # covered by payments' doc
 
     def test_owner_is_the_layer_that_declares_the_role(self):
         write(self.root / ".modsys/config.toml",
@@ -452,15 +456,17 @@ class TargetsTest(unittest.TestCase):  # P61-AC-008 (SI-P61-3)
         code, env, err = run_json("roles", "add", "reviewer", "--all", "--root", str(root))
         self.assertEqual((code, err), (0, ""))
         self.assertEqual([(r["module"], r["status"], r["path"]) for r in env["data"]["results"]],
-                         list(zip(self.MODULES, ["created"] * 4, self.PATHS)))
-        self.assertTrue(all((root / p).is_file() for p in self.PATHS))
+                         list(zip(self.MODULES, ["created", "created", "inherited", "inherited"],
+                                  self.PATHS)))  # a child without a doc of its own is covered
+        self.assertEqual([(root / p).is_file() for p in self.PATHS], [True, True, False, False])
         self.assertEqual(sorted(p.name for p in (root / "modules/old-search").iterdir()),
                          ["MODULE.md"])
         rows = {r["name"]: r for r in run_json("roles", "list", "--root", str(root))[1]["data"][
             "roles"]}
         self.assertEqual((rows["reviewer"]["docs"], rows["reviewer"]["missing"]),
-                         (sorted(self.MODULES), []))
-        self.assertEqual(rows["qa"]["missing"], sorted(self.MODULES))  # parents and children
+                         (["orders", "shelf"], []))
+        self.assertEqual(rows["reviewer"]["inherited"], ["orders/invoices", "orders/returns"])
+        self.assertEqual(rows["qa"]["missing"], ["orders", "shelf"])  # parents only
 
     def test_an_explicit_child(self):
         root = self.repo("one")
@@ -540,7 +546,7 @@ class UpgradeTest(unittest.TestCase):  # P61-AC-010 (steps 1, 3, 4; Task 4 adds 
             code, _, err = run("create", "reviews", "--description", DESC, *KW,
                                "--non-interactive", "--root", str(root))  # the base engine
             self.assertEqual(code, 0, err)
-            targets = sorted(BOOKSHOP + ["reviews"])
+            targets = sorted(t for t in BOOKSHOP + ["reviews"] if "/" not in t)  # a child inherits
             self.assertNotIn("security", [r["name"] for r in run_json(
                 "roles", "list", "--root", str(root))[1]["data"]["roles"]])
             engine = copy_engine(tmp / "engine")
@@ -565,9 +571,9 @@ class UpgradeTest(unittest.TestCase):  # P61-AC-010 (steps 1, 3, 4; Task 4 adds 
             code, env, err = new_engine("roles", "add", "security", "--all")  # (3)
             self.assertEqual((code, err), (0, ""))
             self.assertEqual([(r["module"], r["status"]) for r in env["data"]["results"]],
-                             [(t, "created") for t in ["catalog", "checkout", "payments",
-                                                       "payments/refunds", "reviews"]])
-            docs = {r["path"] for r in env["data"]["results"]}
+                             [("catalog", "created"), ("checkout", "created"), ("payments", "created"),
+                              ("payments/refunds", "inherited"), ("reviews", "created")])
+            docs = {r["path"] for r in env["data"]["results"] if r["status"] == "created"}
             code, env, _ = new_engine("roles", "list")  # (4)
             row = {r["name"]: r for r in env["data"]["roles"]}["security"]
             self.assertEqual((len(row["docs"]), row["docs"], row["missing"]),

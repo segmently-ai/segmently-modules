@@ -127,7 +127,7 @@ class ReadmeTest(unittest.TestCase):
                     code, out, err = run(*argv[1:], "--json", "--root", str(root))
                     self.assertEqual((code, err), (0, ""), line)
                     results.append(json.loads(out)["data"])
-            self.assertEqual([r["status"] for r in results[-1]["results"]], ["created"] * 4)
+            self.assertEqual([r["status"] for r in results[-1]["results"]], ["created"] * 3 + ["inherited"])
             self.assertTrue((root / "modules/catalog/roles/security.md").is_file())
 
 

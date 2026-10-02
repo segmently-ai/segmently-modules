@@ -410,7 +410,11 @@ def drift_findings(ws, files: list[str], frozen_touched: list[str]) -> tuple[lis
     out = []
     for target, m in mapping.items():
         code = [f for f in m["files"] if not f.startswith(mdir)]
-        if code and target not in docs_changed and target.partition("/")[0] not in docs_changed:
+        # a doc of the target, of its parent, or of one of its children counts (an update of a
+        # child's doc covers its parent; a parent's doc covers a child, never a sibling's)
+        covered = target in docs_changed or target.partition("/")[0] in docs_changed or (
+            "/" not in target and any(t.startswith(f"{target}/") for t in docs_changed))
+        if code and not covered:
             out.append(Finding("MS050", ws.config["lint"]["drift_severity"], target,
                                f"code changed ({len(code)} file(s)) but none of its docs"))
     for f in frozen_touched:

@@ -4,7 +4,8 @@ added to EXISTING modules (a team's new role, or a role a newer engine brings).
   list  one row per configured role (enabled or not), by `order` then name: where it comes
         from (`owner`: engine, a pack id, team, user) and its targets — a module, or a child
         `parent/child`, never a pointer stub — with the role's doc registered and on disk
-        (`docs`) and with no registered doc (`missing`); read-only, takes no lock
+        (`docs`), with no registered doc (`missing`) and children with none, covered by the
+        parent's doc (`inherited`); read-only, takes no lock
   add ROLE (--all | TARGET…) [--recreate] [--dry-run]
         per target (D3): no doc and unregistered → the doc rendered as `create` renders it
         (`create.render_role_doc`) and registered (`created`); a doc on disk, unregistered →
@@ -13,7 +14,8 @@ added to EXISTING modules (a team's new role, or a role a newer engine brings).
         command that writes it) or, with --recreate, the doc rendered at the registered path
         (`recreated`). One registry lock; the docs are written first and removed again —
         still under the lock — when the registry write fails; every refusal comes before the
-        first write: also two targets that would write one doc path. An explicit TARGET is
+        first write: also two targets that would write one doc path. --all leaves a child
+        with no doc of its own `inherited`; an explicit child TARGET writes it. An explicit TARGET is
         taken without its trailing `/` (`checkout/` is `checkout`)."""
 import argparse
 import contextlib
@@ -34,7 +36,7 @@ from modsys.store import DEFAULT_LOCK_TIMEOUT_S, atomic_write, open_store
 from modsys.workspace import Workspace
 
 ACTIONS = ("list", "add")
-STATUSES = ("created", "registered", "exists", "missing", "recreated")
+STATUSES = ("created", "registered", "exists", "missing", "recreated", "inherited")
 WRITING = {"created": "would create", "registered": "would register",
            "recreated": "would recreate"}  # the text of a --dry-run row
 USAGE = "usage: modsys roles add ROLE (--all | TARGET…) [--recreate] [--dry-run]"
@@ -186,9 +188,12 @@ def _owner(role: str, layers: list) -> str:
 def role_rows(ws, enabled_only: bool = False) -> list[dict]:
     """The role scan behind `roles list` (and `next`): one row per configured role — or per
     enabled role with `enabled_only` — sorted by order, then name: {name, order, standard,
-    enabled, applies_when, description, owner, docs, missing}; `docs` = the targets (sorted)
-    whose registered doc paths are all on disk, `missing` = the targets with no registered doc
-    for the role (a registered path whose file is absent is in neither list: lint's MS004).
+    enabled, applies_when, description, owner, docs, missing, inherited}; `docs` = the targets
+    (sorted) whose registered doc paths are all on disk, `missing` = the targets with no registered doc
+    for the role (a registered path whose file is absent is in neither list: lint's MS004);
+    `inherited` = the children with no registered doc — `show` reads the parent's role doc for
+    them as the baseline, so they are covered, not missing (a parent without a doc stays in
+    `missing`).
     Read-only: never writes, takes no lock."""
     roles, layers = ws.config.get("roles") or {}, _layers(ws)
     modules = ws.registry.modules
@@ -198,12 +203,12 @@ def role_rows(ws, enabled_only: bool = False) -> list[dict]:
         spec = as_dict(spec)
         if enabled_only and not spec.get("enabled", True):
             continue
-        docs, missing = [], []
+        docs, missing, inherited = [], [], []
         for target in targets:
             value = _registered(_holder(modules, target), name)
             paths = role_paths({"roles": {name: value}}, name) if value is not None else []
             if value is None:
-                missing.append(target)
+                (inherited if "/" in target else missing).append(target)
             elif paths and all(isinstance(p, str) and p and (ws.root / p).exists()
                                for p in paths):
                 docs.append(target)
@@ -212,7 +217,8 @@ def role_rows(ws, enabled_only: bool = False) -> list[dict]:
                      "enabled": bool(spec.get("enabled", True)),
                      "applies_when": spec.get("applies_when"),
                      "description": spec.get("description", ""), "owner": _owner(name, layers),
-                     "docs": sorted(docs), "missing": sorted(missing)})
+                     "docs": sorted(docs), "missing": sorted(missing),
+                     "inherited": sorted(inherited)})
     return sorted(rows, key=lambda r: (r["order"], r["name"]))
 
 
@@ -311,7 +317,16 @@ def plan_add(ws, role: str, every: bool, names: list[str], recreate: bool,
     writes nothing."""
     targets = all_targets(ws, modules) if every else \
         list(dict.fromkeys(_resolve(ws, modules, arg) for arg in names))
-    rows = [_plan_target(ws, role, t, _holder(modules, t), recreate) for t in targets]
+    rows = []
+    for t in targets:
+        holder = _holder(modules, t)
+        if every and "/" in t and _registered(holder, role) is None:
+            # a child with no doc of its own is covered by its parent's (as `show` reads it);
+            # only an explicit TARGET gives it a doc of its own (SI-P81-5)
+            rows.append({"module": t, "status": "inherited", "write": [], "register": False,
+                         "path": f"{_rel_dir(ws, t)}/roles/{role}.md", "text": None})
+            continue
+        rows.append(_plan_target(ws, role, t, holder, recreate))
     writer: dict[str, str] = {}
     for row in rows:
         for rel in row["write"]:
@@ -494,8 +509,9 @@ def _render_list(d) -> None:
         kind = ("standard" if r["standard"] else
                 f"tag {r['applies_when']}" if r["applies_when"] else "optional")
         state = "enabled" if r["enabled"] else "disabled"
+        inherited = f"  {len(r['inherited'])} inherited" if r.get("inherited") else ""
         print(f"{r['name']:<20} {r['order']:>5}  {kind:<12} {state:<8}  {r['owner']:<16} "
-              f"docs {len(r['docs']):<4} missing {len(r['missing'])}")
+              f"docs {len(r['docs']):<4} missing {len(r['missing'])}{inherited}")
 
 
 def _render_add(d) -> None:

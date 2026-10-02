@@ -151,7 +151,7 @@ SEEDED_ITEMS = [
      "modsys lint"),
     ("skills", "skill copies not in sync (claude): stale team-review", "modsys packs sync"),
     ("agents-md", "CLAUDE.md: the modsys block is stale", "modsys agents-md --target CLAUDE.md"),
-    ("role", "architect: no doc in 4 module(s)", "modsys roles add architect --all"),
+    ("role", "architect: no doc in 3 module(s)", "modsys roles add architect --all"),
     ("ejected", "ejected skill 'team-notes' is behind pack 'team' (ejected from 9.0.0, pack is "
                 "now 9.1.0)", "modsys eject --diff team-notes"),
     ("proposals", "1 pending proposal file(s), 1 item(s)", "modsys proposals list"),
@@ -446,7 +446,7 @@ class UpgradeTest(unittest.TestCase):  # P61-AC-010, P61-AC-014 (D2: no state fi
         for role in ("qa", "po", "architect"):  # the base engine's standard roles everywhere
             must("roles", "add", role, "--all", *R)
         self.assertEqual(nxt(root)["items"], [])
-        targets = sorted(BOOKSHOP + ["reviews"])
+        targets = sorted(t for t in BOOKSHOP + ["reviews"] if "/" not in t)  # a child inherits
         engine = copy_engine(self.tmp / "engine")
         append(engine / "modsys/defaults/config.toml", SECURITY)
         drop_locks(root)
@@ -468,7 +468,7 @@ class UpgradeTest(unittest.TestCase):  # P61-AC-010, P61-AC-014 (D2: no state fi
         self.assertEqual(engine_json(engine, root, "lint")["summary"]["error"], 0)
         after = snap(root)
         changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
-        docs = {r["path"] for r in results}
+        docs = {r["path"] for r in results if r["status"] == "created"}
         self.assertEqual(changed - {"modules/registry.json.lock"},
                          docs | {"modules/registry.json"})
 
@@ -503,7 +503,7 @@ class UpgradeTest(unittest.TestCase):  # P61-AC-010, P61-AC-014 (D2: no state fi
              "modsys packs sync"),
             ("agents-md", "CLAUDE.md: the modsys block is stale",
              "modsys agents-md --target CLAUDE.md"),
-            ("role", "security: no doc in 4 module(s)", "modsys roles add security --all"),
+            ("role", "security: no doc in 3 module(s)", "modsys roles add security --all"),
             ("ejected", "ejected skill 'module-scout' is behind pack 'core' (the pack's files "
                         "changed since the eject)", "modsys eject --diff module-scout")])
         self.assertEqual(engine_cli(engine, root, "next"), (0, text_of(data), ""))
@@ -570,8 +570,8 @@ class EdgesTest(unittest.TestCase):  # P61-AC-029, SI-P61-4, SI-P61-5, SI-P61-7,
                 data = nxt(root, *argv)
                 self.assertEqual(data["skipped"][-2:], [f"unmapped: {reason}", drift])
                 self.assertEqual([i["summary"] for i in data["items"]],  # the others still run
-                                 ["qa: no doc in 3 module(s)", "po: no doc in 4 module(s)",
-                                  "architect: no doc in 4 module(s)"])
+                                 ["qa: no doc in 2 module(s)", "po: no doc in 3 module(s)",
+                                  "architect: no doc in 3 module(s)"])
 
     def test_no_code_map_no_unmapped_item(self):  # (c)
         root = copy_fixture(self.tmp)

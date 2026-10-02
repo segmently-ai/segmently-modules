@@ -11,6 +11,7 @@ from modsys.changes import changed_files, map_files, missing_files
 from modsys.config import enabled_roles
 from modsys.match import match_modules, near_lines, near_misses
 from modsys.output import EXIT_OK, UsageError, emit
+from modsys.registry import as_dict
 from modsys.query import show_target
 from modsys.workspace import Workspace
 
@@ -76,6 +77,20 @@ def _mentioned_paths(ws, text: str) -> list[str]:
     return sorted(paths)
 
 
+def split_children(ws, module: str) -> list[dict]:
+    """The children of a split module, registry order: {module "p/c", description (its own, ''
+    when it has none), doc (its universal doc path, '' when unset)}; [] for an unsplit one."""
+    entry = as_dict(ws.registry.modules.get(module))
+    out = []
+    for child, sub in as_dict(entry.get("submodules")).items():
+        sub = as_dict(sub)
+        desc, doc = sub.get("description"), as_dict(sub.get("context_files")).get("universal")
+        out.append({"module": f"{module}/{child}",
+                    "description": desc if isinstance(desc, str) else "",
+                    "doc": doc if isinstance(doc, str) else ""})
+    return out
+
+
 def build_discover(ws, text: str | None, files: list[str], top: int | None,
                    missing: list[str] = ()) -> dict:
     """`text` None = no task: the change alone decides (no keyword scoring, `score` null).
@@ -116,6 +131,9 @@ def build_discover(ws, text: str | None, files: list[str], top: int | None,
             docs += [r["path"] for r in shown["read"] if r["path"] not in docs]
         s["docs_to_read"] = docs
         s["docs_to_update"] = docs if s["usage"] == "modify" else []
+        children = split_children(ws, module) if s["usage"] == "modify" else []
+        if children:  # the skill picks the child the change is in
+            s["children"] = children
         out.append(s)
     outside = sorted(set(touched["unmapped"]) | {f for f in in_text["unmapped"]
                                                   if (ws.root / f).exists()})
@@ -210,6 +228,8 @@ def _render_discover(d, ref: str | None = None) -> None:
         print(f"{m['usage']:<9} {m['module']:<30} {score}via {', '.join(sources)}")
         for doc in m["docs_to_update"]:
             print(f"          update {doc}")
+        for c in m.get("children", []):
+            print(f"          child  {c['module']}  {c['description']}  ({c['doc']})")
     for f in d["files"]:
         print(f"file      {f['path']} -> {', '.join(f['modules']) or '(no module)'}")
     for f in d["files_outside_modules"]:

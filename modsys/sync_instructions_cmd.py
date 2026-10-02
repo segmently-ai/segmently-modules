@@ -14,7 +14,7 @@ from dataclasses import asdict
 from modsys.changes import changed_files, diff_names, missing_files
 from modsys.lint import drift_findings
 from modsys.output import EXIT_OK, UsageError, emit
-from modsys.pipeline import build_discover
+from modsys.pipeline import build_discover, split_children
 from modsys.proposals import pending
 from modsys.query import show_target
 from modsys.workspace import Workspace
@@ -67,13 +67,16 @@ def build(ws, diff_range: str | None, files: list[str] | None,
           modules: list[str] | None) -> dict:
     queued = _queued(ws)
 
-    def row(module: str, docs: list[str], drift: list) -> dict:
-        return {"module": module, "usage": "modify", "docs_to_update": docs,
-                "drift": [{k: v for k, v in asdict(f).items() if k != "module"} for f in drift],
-                "fields": _fields(ws, module), "proposals_pending": queued.get(module, 0)}
+    def row(module: str, docs: list[str], drift: list, children: list = ()) -> dict:
+        out = {"module": module, "usage": "modify", "docs_to_update": docs}
+        if children:  # a split parent: the skill picks the child the change is in
+            out["children"] = list(children)
+        out.update(drift=[{k: v for k, v in asdict(f).items() if k != "module"} for f in drift],
+                   fields=_fields(ws, module), proposals_pending=queued.get(module, 0))
+        return out
 
     if modules:
-        return {"modules": [row(m, _module_docs(ws, m), []) for m in dict.fromkeys(modules)],
+        return {"modules": [row(m, _module_docs(ws, m), [], split_children(ws, m)) for m in dict.fromkeys(modules)],
                 "files_outside_modules": []}
     changed = changed_files(ws.root, diff_range=diff_range, files=files)
     frozen = ([f for f in diff_names(ws.root, diff_range, "--diff-filter=MD")
@@ -85,7 +88,7 @@ def build(ws, diff_range: str | None, files: list[str] | None,
     for m in found["modules"]:
         own = [f for f in drift if (f.path in m["touched_files"] if f.path
                                     else f.module == m["module"])]
-        rows.append(row(m["module"], m["docs_to_update"], own))
+        rows.append(row(m["module"], m["docs_to_update"], own, m.get("children", ())))
     return {"modules": rows, "files_outside_modules": found["files_outside_modules"]}
 
 
@@ -103,6 +106,8 @@ def _render(d) -> None:
         print(f"{m['module']}  {m['usage']}")
         for doc in m["docs_to_update"]:
             print(f"  update  {doc}")
+        for c in m.get("children", []):
+            print(f"  child   {c['module']}  {c['description']}  ({c['doc']})")
         for f in m["drift"]:
             print(f"  drift   {f['code']} {f['path'] or f['message']}")
         for f in m["fields"]:
