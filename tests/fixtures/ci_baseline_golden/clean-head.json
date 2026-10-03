@@ -1,0 +1,66 @@
+exit 1
+{
+  "schema": "modsys.ci/1",
+  "data": {
+    "base": "HEAD",
+    "fail_on": "warning",
+    "steps": [
+      {
+        "name": "lint",
+        "status": "failed",
+        "summary": {
+          "error": 0,
+          "warning": 2,
+          "info": 0
+        },
+        "findings": [
+          {
+            "code": "MS030",
+            "severity": "warning",
+            "module": "catalog",
+            "message": "9 lines > split signal 3",
+            "path": "modules/catalog/MODULE.md"
+          },
+          {
+            "code": "MS040",
+            "severity": "warning",
+            "module": "catalog",
+            "message": "component path missing on disk: src/catalog/gone.py",
+            "path": "modules/catalog/MODULE.md"
+          }
+        ]
+      },
+      {
+        "name": "drift",
+        "status": "no-changes",
+        "summary": {
+          "base": "HEAD",
+          "files": 0,
+          "committed": 0,
+          "uncommitted": 0,
+          "modules": [],
+          "error": 0,
+          "warning": 0,
+          "info": 0
+        },
+        "findings": []
+      },
+      {
+        "name": "coverage",
+        "status": "report-only",
+        "summary": {
+          "share": 1.0,
+          "mapped": 2,
+          "total": 2,
+          "unmapped": 0,
+          "fail_under": null
+        }
+      }
+    ],
+    "failed": true,
+    "notes": [
+      "nothing to compare: the working tree equals HEAD — in CI pass --base <target branch>"
+    ]
+  }
+}
+stderr ''

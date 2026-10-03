@@ -1,0 +1,9 @@
+exit 1
+lint      failed       0 error(s), 2 warning(s), 0 info
+  WARNING MS030 catalog: 9 lines > split signal 3  (modules/catalog/MODULE.md)
+  WARNING MS040 catalog: component path missing on disk: src/catalog/gone.py  (modules/catalog/MODULE.md)
+drift     failed       1 file(s) changed since HEAD~1 (1 committed, 0 uncommitted): 0 error(s), 1 warning(s), 0 info
+  WARNING MS050 payments: code changed (1 file(s)) but none of its docs
+coverage  report-only  share 1.0 (100.0 %), 0 unmapped
+ci: failed
+stderr ''

@@ -1,0 +1,6 @@
+exit 0
+lint      passed       0 error(s), 2 warning(s), 0 info
+drift     passed       1 file(s) changed since HEAD~1 (1 committed, 0 uncommitted): 0 error(s), 1 warning(s), 0 info
+coverage  report-only  share 1.0 (100.0 %), 0 unmapped
+ci: passed
+stderr ''

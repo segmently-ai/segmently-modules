@@ -1,0 +1,9 @@
+exit 1
+lint      failed       0 error(s), 2 warning(s), 0 info
+  WARNING MS030 catalog: 9 lines > split signal 3  (modules/catalog/MODULE.md)
+  WARNING MS040 catalog: component path missing on disk: src/catalog/gone.py  (modules/catalog/MODULE.md)
+drift     no-changes   no changed files since HEAD
+coverage  report-only  share 1.0 (100.0 %), 0 unmapped
+note: nothing to compare: the working tree equals HEAD — in CI pass --base <target branch>
+ci: failed
+stderr ''

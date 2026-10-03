@@ -1,0 +1,74 @@
+exit 0
+{
+  "schema": "modsys.ci/1",
+  "data": {
+    "base": "HEAD~1",
+    "fail_on": "never",
+    "steps": [
+      {
+        "name": "lint",
+        "status": "passed",
+        "summary": {
+          "error": 0,
+          "warning": 2,
+          "info": 0
+        },
+        "findings": [
+          {
+            "code": "MS030",
+            "severity": "warning",
+            "module": "catalog",
+            "message": "9 lines > split signal 3",
+            "path": "modules/catalog/MODULE.md"
+          },
+          {
+            "code": "MS040",
+            "severity": "warning",
+            "module": "catalog",
+            "message": "component path missing on disk: src/catalog/gone.py",
+            "path": "modules/catalog/MODULE.md"
+          }
+        ]
+      },
+      {
+        "name": "drift",
+        "status": "passed",
+        "summary": {
+          "base": "HEAD~1",
+          "files": 1,
+          "committed": 1,
+          "uncommitted": 0,
+          "modules": [
+            "payments"
+          ],
+          "error": 0,
+          "warning": 1,
+          "info": 0
+        },
+        "findings": [
+          {
+            "code": "MS050",
+            "severity": "warning",
+            "module": "payments",
+            "message": "code changed (1 file(s)) but none of its docs",
+            "path": null
+          }
+        ]
+      },
+      {
+        "name": "coverage",
+        "status": "report-only",
+        "summary": {
+          "share": 1.0,
+          "mapped": 2,
+          "total": 2,
+          "unmapped": 0,
+          "fail_under": null
+        }
+      }
+    ],
+    "failed": false,
+    "notes": []
+  }
+}
+stderr ''
