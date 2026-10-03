@@ -23,8 +23,8 @@ UPDATE_ROLES = ("developer", "qa")  # a modified module's developer + qa docs fo
 
 def read_input(source: str) -> bytes:
     """The bytes of the file `source`, or of stdin for `-` — never decoded by the locale (a text
-    stream a caller swapped in for stdin is encoded back as UTF-8). OSError when it cannot be
-    read (stdin closed at start: EBADF)."""
+    stream a caller swapped in for stdin is encoded back as UTF-8, a lone surrogate included).
+    OSError when it cannot be read (stdin closed at start: EBADF)."""
     if source != "-":
         return Path(source).read_bytes()
     stream = sys.stdin
@@ -33,12 +33,14 @@ def read_input(source: str) -> bytes:
     buffer = getattr(stream, "buffer", None)
     if buffer is not None:
         return buffer.read()
-    return stream.read().encode("utf-8", "surrogateescape")
+    return stream.read().encode("utf-8", "surrogatepass")
 
 
 def task_text(args) -> str:
     """The task text: `--task`, or `--task-file FILE|-` read as bytes and decoded as strict
-    UTF-8 whatever the locale (`cannot read <path>: <reason>`, `<stdin>` for `-`)."""
+    UTF-8 whatever the locale (`cannot read <path>: <reason>`, `<stdin>` for `-`). A FILE's
+    newlines are translated as a text-mode read does (CRLF and a lone CR become LF);
+    stdin's are not."""
     if args.task_file:
         source = str(args.task_file)
         name = "<stdin>" if source == "-" else source
@@ -48,6 +50,8 @@ def task_text(args) -> str:
             raise UsageError(f"cannot read {name}: {e.strerror or e}") from None
         except UnicodeDecodeError:
             raise UsageError(f"cannot read {name}: not valid UTF-8") from None
+        if source != "-":  # universal newlines, as `read_text` gave them before
+            text = text.replace("\r\n", "\n").replace("\r", "\n")
     else:
         text = args.task or ""
     if not text.strip():

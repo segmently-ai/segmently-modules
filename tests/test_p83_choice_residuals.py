@@ -182,45 +182,94 @@ class TaskTextTest(Base):
                 (str(missing), b"", f"cannot read {missing}: {os.strerror(errno.ENOENT)}"),
                 (str(folder), b"", f"cannot read {folder}: {os.strerror(errno.EISDIR)}")]
 
+    def in_process(self, argv, stdin: bytes = b""):
+        """`run(...)` with a byte stdin, as a real process has it."""
+        with mock.patch("sys.stdin", io.TextIOWrapper(io.BytesIO(stdin), encoding="utf-8")):
+            return run(*argv, *self.R)
+
     def test_refused_alike_under_both_locales(self):  # P83-AC-024
+        # real processes, both locales, one verb; the reader works on bytes and never looks at
+        # the locale, so every verb and form is checked below in process
         self.assertEqual(len(LOCALES), 2, "no UTF-8 locale on this machine")
         for loc in LOCALES:
-            for verb in self.VERBS:
-                for path, stdin, reason in self.refusals():
-                    for form in ((), ("--json",)):
-                        with self.subTest(locale=loc, verb=verb, path=Path(path).name,
-                                          json=bool(form)):
-                            got = self.spawn((verb, "--task-file", path, *form), stdin, loc)
-                            self.assertEqual(got, (2, b"", f"modsys: error: {reason}\n"))
+            for path, stdin, reason in self.refusals():
+                with self.subTest(locale=loc, path=Path(path).name):
+                    got = self.spawn(("choose", "--task-file", path), stdin, loc)
+                    self.assertEqual(got, (2, b"", f"modsys: error: {reason}\n"))
+        for verb in self.VERBS:
+            for path, stdin, reason in self.refusals():
+                for form in ((), ("--json",)):
+                    with self.subTest(verb=verb, path=Path(path).name, json=bool(form)):
+                        got = self.in_process((verb, "--task-file", path, *form), stdin)
+                        self.assertEqual(got, (2, "", f"modsys: error: {reason}\n"))
 
     def test_in_process_stdin_and_an_empty_file(self):  # P83-AC-024
         empty = self.tmp / "empty.txt"
         empty.write_bytes(b"")
         for verb in self.VERBS:
             with self.subTest(verb=verb):
-                stream = io.TextIOWrapper(io.BytesIO(b"r\xe9fund"), encoding="utf-8")
-                with mock.patch("sys.stdin", stream):
-                    got = run(verb, "--task-file", "-", *self.R)
-                self.assertEqual(got, (2, "", "modsys: error: cannot read <stdin>: "
-                                              "not valid UTF-8\n"))
                 code, out, err = run(verb, "--task-file", str(empty), *self.R)
                 self.assertEqual((code, out), (2, ""))
                 self.assertTrue(err.startswith("modsys: error: give the task: "), err)
+                # a text stream without .buffer holding a lone surrogate: a refusal, never an
+                # internal error (fix round 1, M-2)
+                with mock.patch("sys.stdin", io.StringIO("refund " + chr(0xD800))):
+                    got = run(verb, "--task-file", "-", *self.R)
+                self.assertEqual(got, (2, "", "modsys: error: cannot read <stdin>: "
+                                              "not valid UTF-8\n"))
 
     def test_valid_text_reads_as_before(self):  # P83-AC-024
         text = "partial refund for a returned book — für Bücher, «remboursé»\n"
         path = self.tmp / "task.txt"
         path.write_bytes(text.encode("utf-8"))
-        for loc in LOCALES:
-            for verb in self.VERBS:
-                for form in ((), ("--json",)):
-                    with self.subTest(locale=loc, verb=verb, json=bool(form)):
-                        by_text = self.spawn((verb, "--task", text, *form), loc=loc)
-                        self.assertEqual(by_text[0], 0, by_text[2])
-                        self.assertEqual(self.spawn((verb, "--task-file", str(path), *form),
-                                                    loc=loc), by_text)
-                        self.assertEqual(self.spawn((verb, "--task-file", "-", *form),
-                                                    text.encode("utf-8"), loc), by_text)
+        for loc in LOCALES:  # real processes, both locales, one verb
+            with self.subTest(locale=loc):
+                by_text = self.spawn(("choose", "--task", text), loc=loc)
+                self.assertEqual(by_text[0], 0, by_text[2])
+                self.assertEqual(self.spawn(("choose", "--task-file", str(path)), loc=loc),
+                                 by_text)
+                self.assertEqual(self.spawn(("choose", "--task-file", "-"),
+                                            text.encode("utf-8"), loc), by_text)
+        for verb in self.VERBS:
+            for form in ((), ("--json",)):
+                with self.subTest(verb=verb, json=bool(form)):
+                    by_text = run(verb, "--task", text, *self.R, *form)
+                    self.assertEqual(by_text[0], 0, by_text[2])
+                    self.assertEqual(run(verb, "--task-file", str(path), *self.R, *form), by_text)
+                    self.assertEqual(self.in_process((verb, "--task-file", "-", *form),
+                                                     text.encode("utf-8")), by_text)
+
+    def test_a_file_keeps_its_newline_translation(self):  # P83-AC-024, fix round 1 (I-1)
+        """758d085 read a FILE in text mode (CRLF and a lone CR became LF) and stdin as it is."""
+        raw = "refund the order\r\nsecond line\rthird line\n"
+        translated = "refund the order\nsecond line\nthird line\n"
+        path = self.tmp / "crlf.txt"
+        path.write_bytes(raw.encode("utf-8"))
+        loc = LOCALES[-1]  # real processes: the text order of a file and of a real stdin
+        by_file = self.spawn(("choose", "--task-file", str(path)), loc=loc)
+        self.assertEqual(by_file[0], 0, by_file[2])
+        self.assertEqual(by_file, self.spawn(("choose", "--task", translated), loc=loc))
+        by_stdin = self.spawn(("choose", "--task-file", "-"), raw.encode(), loc)
+        self.assertEqual(by_stdin[0], 0, by_stdin[2])
+        self.assertIn(b"Task:\nrefund the order\r\nsecond line\rthird line\n", by_stdin[1])
+        self.assertIn(b"Task:\nrefund the order\nsecond line\nthird line\n", by_file[1])
+        self.assertEqual(run_json("choose", "--task-file", str(path), *self.R)[1]["data"]["task"],
+                         translated)
+        self.assertEqual(self.in_process(("choose", "--task-file", "-", "--json"),
+                                         raw.encode())[1],
+                         run("choose", "--task", raw, "--json", *self.R)[1])
+        for verb in self.VERBS:
+            for form in ((), ("--json",)):
+                with self.subTest(verb=verb, json=bool(form)):
+                    self.assertEqual(run(verb, "--task-file", str(path), *self.R, *form),
+                                     run(verb, "--task", translated, *self.R, *form))
+                    self.assertEqual(self.in_process((verb, "--task-file", "-", *form),
+                                                     raw.encode()),
+                                     run(verb, "--task", raw, *self.R, *form))
+        self.agent(answer=picks(("payments", 0.9)))  # the agent's stdin: the translated task
+        self.assertEqual(run("choose", "--task-file", str(path), "--run", *self.R)[0], 0)
+        (call,) = self.calls()
+        self.assertEqual(json.loads(call["stdin"])["task"], translated)
 
     def test_match_is_unchanged(self):  # SI-P83-6: match takes its text as an argument
         code, out, _ = run("match", "--help")
@@ -236,7 +285,7 @@ RAW = json.dumps(ANSWER)
 # the P8.1 re-review's 25 answer forms, each with its exit code (all three paths alike)
 FORMS = [
     ("raw", RAW, 0),
-    ("raw + trailing nbsp", RAW + " ", 0),  # 758d085: --apply refused it (exit 2)
+    ("raw + trailing nbsp", RAW + "\u00a0", 0),  # 758d085: --apply refused it (exit 2)
     ("raw + trailing \\x1c", RAW + "\x1c", 0),  # 758d085: --apply refused it (exit 2)
     ("null", "null", 2), ("list", "[]", 2), ("string", '"x"', 2), ("number", "1", 2),
     ("envelope so", json.dumps({"structured_output": ANSWER, "result": "junk"}), 0),
@@ -255,7 +304,7 @@ FORMS = [
     ("whitespace", "   \n", 2),
     ("NaN confidence", RAW.replace("0.9", "NaN"), 2),
     ("dup keys", '{"picks": [], "picks": ' + json.dumps(ANSWER["picks"]) + ', "none": false}', 0),
-    ("bom", "﻿" + RAW, 2),
+    ("bom", "\ufeff" + RAW, 2),
     ("nested result envelope", json.dumps({"result": json.dumps({"structured_output": ANSWER})}),
      2),
 ]
@@ -288,10 +337,12 @@ def run_refusal(label: str, text: str) -> str:
 
 
 class AnswerReaderTest(Base):
-    def three(self, data: bytes, form=()):
-        """In process: (--run, --apply FILE, --apply -) of the answer bytes, and FILE."""
-        self.agent(answer_hex=data.hex())
-        ran = run("choose", "--task", TASK, "--run", *self.R, *form)
+    def three(self, data: bytes, form=(), ran=None):
+        """In process: (--run, --apply FILE, --apply -) of the answer bytes, and FILE; `ran`:
+        a --run result already taken (a refusal never reaches the text or JSON form)."""
+        if ran is None:
+            self.agent(answer_hex=data.hex())
+            ran = run("choose", "--task", TASK, "--run", *self.R, *form)
         path = self.tmp / "answer.json"
         path.write_bytes(data)
         applied = run("choose", "--apply", str(path), *self.R, *form)
@@ -303,9 +354,12 @@ class AnswerReaderTest(Base):
         self.assertEqual(len(FORMS), 25)
         who = f"agent {sys.executable}"
         for label, text, code in FORMS:
+            refused = None  # --run's refusal is taken once: it never reaches the output form
             for form in ((), ("--json",)):
                 with self.subTest(form=label, json=bool(form)):
-                    ran, applied, piped, path = self.three(text.encode("utf-8"), form)
+                    ran, applied, piped, path = self.three(text.encode("utf-8"), form, refused)
+                    if ran[0] != 0:
+                        refused = ran
                     self.assertEqual([ran[0], applied[0], piped[0]], [code] * 3,
                                      (ran[2], applied[2], piped[2]))
                     if code == 0:
@@ -340,27 +394,34 @@ class AnswerReaderTest(Base):
     def test_three_rows_under_both_locales(self):  # P83-AC-025, PRE-003(e)
         self.assertEqual(len(LOCALES), 2, "no UTF-8 locale on this machine")
         bad = RAW.encode("utf-8").replace(b'"reason": "r"', b'"reason": "r\xffr"')
-        rows = [("nbsp", (RAW + " ").encode("utf-8")), ("x1c", (RAW + "\x1c").encode()),
+        rows = [("nbsp", (RAW + "\u00a0").encode("utf-8")), ("x1c", (RAW + "\x1c").encode()),
                 ("xff in reason", bad)]
         for label, data in rows:
             path = self.tmp / f"answer-{label.split()[0]}.json"
             path.write_bytes(data)
             self.agent(answer_hex=data.hex())
-            for loc in LOCALES:
-                for form in ((), ("--json",)):
-                    with self.subTest(row=label, locale=loc, json=bool(form)):
-                        ran = self.spawn(("choose", "--task", TASK, "--run", *form), loc=loc)
-                        applied = self.spawn(("choose", "--apply", str(path), *form), loc=loc)
-                        piped = self.spawn(("choose", "--apply", "-", *form), data, loc)
-                        self.assertEqual(ran[0], 0, ran[2])
-                        self.assertEqual(applied, ran)
-                        self.assertEqual(piped, ran)
-                        if label == "xff in reason":
-                            if form:
-                                pick = json.loads(ran[1])["data"]["picks"][0]
-                                self.assertEqual(pick["reason"], "r�r")
-                            else:
-                                self.assertIn("r�r".encode("utf-8"), ran[1])
+            replaced = "r" + chr(0xFFFD) + "r"  # the invalid byte, decoded with replacement
+            for loc in LOCALES:  # real processes, both locales: the text form
+                with self.subTest(row=label, locale=loc):
+                    applied = self.spawn(("choose", "--apply", str(path)), loc=loc)
+                    piped = self.spawn(("choose", "--apply", "-"), data, loc)
+                    self.assertEqual(applied[0], 0, applied[2])
+                    self.assertEqual(piped, applied)
+                    if label == "xff in reason":  # the row whose result hung on the locale
+                        ran = self.spawn(("choose", "--task", TASK, "--run"), loc=loc)
+                        self.assertEqual(ran, applied)
+                        self.assertIn(replaced.encode("utf-8"), ran[1])
+                    else:  # --run reads bytes in any locale: its text form, in process
+                        ran = run("choose", "--task", TASK, "--run", *self.R)
+                        self.assertEqual((ran[0], ran[1].encode("utf-8"), ran[2]), applied)
+            with self.subTest(row=label, json=True):  # the JSON form, in process
+                ran, applied, piped, _ = self.three(data, ("--json",))
+                self.assertEqual(ran[0], 0, ran[2])
+                self.assertEqual(applied, ran)
+                self.assertEqual(piped, ran)
+                if label == "xff in reason":
+                    pick = json.loads(ran[1])["data"]["picks"][0]
+                    self.assertEqual(pick["reason"], replaced)
 
     def test_one_function_reads_every_answer(self):  # P83-AC-025
         self.agent(answer=RAW)
@@ -549,6 +610,27 @@ class CardLinesTest(CardLinesBase):
                     self.assertEqual(lines[0], card_line(card)[:LIMIT])
                 if len(card_line(card)) <= LIMIT:
                     self.assertEqual(lines, [card_line(card)])
+
+
+class WrapEdgesTest(unittest.TestCase):  # P83-AC-027, fix round 1 (M-3), with a limit of 10
+    CASES = [  # (line, its parts, how a continuation joins back: " " soft break, "" hard cut)
+        (" " + "x" * 12, [" xxxxxxxxx", "    xxx"], ""),  # a space at 0 is no break
+        ("abcdefghij  xyz", ["abcdefghij", "     xyz"], " "),  # a break inside a run of spaces
+        ("abcdefghij ", ["abcdefghij", "     "], ""),  # the space at the limit ends the line
+        ("ab cd ef gh ij kl", ["ab cd ef", "    gh ij", "    kl"], " "),
+        ("x" * 23, ["x" * 10, "    " + "x" * 6, "    " + "x" * 6, "    x"], ""),
+    ]
+
+    def test_no_empty_part_and_an_exact_join(self):
+        from modsys.workorder import wrap_card
+        for line, parts, joiner in self.CASES:
+            with self.subTest(line=line):
+                got = wrap_card(line, 10)
+                self.assertEqual(got, parts)
+                self.assertTrue(all(len(p) <= 10 for p in got))
+                self.assertTrue(got[0] and all(p.startswith("    ") and p[4:] for p in got[1:]))
+                self.assertEqual(joiner.join([got[0]] + [p[4:] for p in got[1:]]), line)
+        self.assertEqual(wrap_card("abcdefghij", 10), ["abcdefghij"])
 
 
 class WhatDoesNotChangeTest(CardLinesBase):

@@ -105,12 +105,14 @@ def wrap_card(line: str, limit: int = CARD_LINE_MAX) -> list[str]:
     """A card line as printed lines of at most `limit` characters. A longer one goes on over
     following lines indented by four spaces: each break is the last space whose preceding text
     fits (the space is dropped — a soft break), or, without one, a cut at exactly the limit
-    (nothing dropped). A line within the limit is unchanged."""
+    (nothing dropped). A break has text on both sides, so no part is empty; after a break inside
+    a run of spaces the continuation starts with a space (joining back stays exact). A line
+    within the limit is unchanged."""
     out, indent = [], ""
     while len(indent) + len(line) > limit:
         room = limit - len(indent)
-        cut = line.rfind(" ", 0, room + 1)
-        if cut >= 0:
+        cut = line.rfind(" ", 1, min(room, len(line) - 2) + 1)  # never an empty part
+        if cut > 0:
             out.append(indent + line[:cut])
             line = line[cut + 1:]
         else:
