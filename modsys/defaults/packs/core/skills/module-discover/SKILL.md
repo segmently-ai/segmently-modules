@@ -29,18 +29,18 @@ A change without a task starts at step 4.
 
 1. Choose the candidate modules.
 
-   Run `modsys catalog --json`; read `match` and `search`. The text: the task as given. For the
+   Run `modsys catalog --json`; read `match.mode` and `search`. The text: the task as given. For the
    keyword half write 1–3 short English queries to a temporary `<file>` (step 4 uses it too): the
    domain terms and code identifiers the task implies (registry keywords are English and match whole
    words). The mode: `hybrid` unless the user says otherwise ("only lexical", "by meaning", in any
    language) or `match.mode` is `semantic`; a `lexical` config is only the command line's default
    and never skips the search by meaning, which needs no setting; the keyword commands always pass
    `--match lexical`. The user may set the model ("use opus") and the depth ("search deep":
-   `--effort deep`; `<reasoning>` follows it).
+   `choose --effort deep`; `<reasoning>` follows it).
 
    - By meaning (`semantic`, `hybrid`): write the text, verbatim, to `<task file>`. **Claude Code:**
      `modsys choose --task-file <task file> > <order file>`; give `<order file>`'s path to the
-     `modsys:module-chooser` agent with `model: <search.claude_model>` (when it is not available: a
+     `modsys:module-chooser` agent with `model: <search.claude_model>` (without that agent: a
      subagent told "this file is your whole task; answer with its JSON only; change nothing"); its
      reply is the answer. **Codex:** the same with `--json`, its `answer_schema` written to
      `<schema file>`, then

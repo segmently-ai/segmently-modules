@@ -21,7 +21,8 @@ description: Brings module docs and registry fields in line with finished work. 
 
 Writes: the docs of the modules the change touched or made untrue, and their registry fields (the
 `registry` verb or queued proposals). It never edits a `*.legacy.md` file, never edits code, never
-commits, and never touches another module unless the user asks.
+commits, and never touches another module unless the user asks. Temporary files go outside the
+repository.
 
 If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
 
@@ -49,16 +50,16 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 3. Find the modules whose docs describe what changed (the code map misses one that only documents
    it).
 
-   Run `modsys catalog --json`; read `match` and `search`. The text: a summary of the change with
-   its identifiers, as the code spells them. The mode: `hybrid` unless the user says otherwise
+   Run `modsys catalog --json`; read `match.mode` and `search`. The text: a summary of the change
+   with its identifiers, as the code spells them. The mode: `hybrid` unless the user says otherwise
    ("only lexical", "by meaning", in any language) or `match.mode` is `semantic`; a `lexical` config
    is only the command line's default and never skips the search by meaning, which needs no setting;
    the keyword commands always pass `--match lexical`. The user may set the model ("use opus") and
-   the depth ("search deep": `--effort deep`; `<reasoning>` follows it).
+   the depth ("search deep": `choose --effort deep`; `<reasoning>` follows it).
 
    - By meaning (`semantic`, `hybrid`): write the text, verbatim, to `<task file>`. **Claude Code:**
      `modsys choose --task-file <task file> > <order file>`; give `<order file>`'s path to the
-     `modsys:module-chooser` agent with `model: <search.claude_model>` (when it is not available: a
+     `modsys:module-chooser` agent with `model: <search.claude_model>` (without that agent: a
      subagent told "this file is your whole task; answer with its JSON only; change nothing"); its
      reply is the answer. **Codex:** the same with `--json`, its `answer_schema` written to
      `<schema file>`, then

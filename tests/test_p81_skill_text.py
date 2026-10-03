@@ -89,9 +89,31 @@ def filled(cmd: str, values: dict[str, str]) -> tuple[list[str], str | None]:
     return shlex.split(cmd)[1:], (target or None)
 
 
+def strict_problems(node, path: str, objects: list[str]) -> list[str]:
+    """Why a JSON schema is not strict-mode ready: every object node closed
+    (`additionalProperties: false`) with every property required. `objects` collects the object
+    nodes' paths."""
+    out = []
+    if isinstance(node, dict):
+        if node.get("type") == "object" or "properties" in node:
+            objects.append(path)
+            if node.get("additionalProperties") is not False:
+                out.append(f"{path}: additionalProperties is not false")
+            keys = sorted(node.get("properties", {}))
+            if sorted(node.get("required", [])) != keys:
+                out.append(f"{path}: required {keys} != {sorted(node.get('required', []))}")
+        for key, value in node.items():
+            out += strict_problems(value, f"{path}.{key}", objects)
+    elif isinstance(node, list):
+        for i, value in enumerate(node):
+            out += strict_problems(value, f"{path}[{i}]", objects)
+    return out
+
+
 class SharedStepTest(unittest.TestCase):  # P82-AC-034…039
     PHRASES = [
-        "modsys catalog --json", "read `match` and `search`.",
+        # fix 1 I-1: the mode key only; `match.semantic` is the CLI's agent command, not the skill's
+        "modsys catalog --json", "read `match.mode` and `search`.",
         # D1 (P82-AC-035): hybrid, whatever a lexical config says; English examples (SI-P82-21)
         "The mode: `hybrid` unless the user says otherwise",
         '("only lexical", "by meaning", in any language)',
@@ -101,15 +123,17 @@ class SharedStepTest(unittest.TestCase):  # P82-AC-034…039
         "the keyword commands always pass `--match lexical`.",
         # SI-P82-14 ruling (b), D8 (P82-AC-039): the user's model and depth
         'The user may set the model ("use opus")',
-        'and the depth ("search deep": `--effort deep`; `<reasoning>` follows it).',
+        # fix 1 I-2: the command named, so the flag never lands on `discover` / `context`
+        'and the depth ("search deep": `choose --effort deep`; `<reasoning>` follows it).',
         MEANING,
         # D5 (P82-AC-036): the Claude Code path
         "write the text, verbatim, to `<task file>`.",
         f"**Claude Code:** `{CLAUDE_CODE}`;",
         f"give `<order file>`'s path to the `{AGENT}` agent with `model: <search.claude_model>`",
-        # SI-P82-15 (P82-AC-037): the fallback without the plugin names its condition
-        '(when it is not available: a subagent told "this file is your whole task; answer with '
-        'its JSON only; change nothing");',
+        # SI-P82-15 (P82-AC-037): the fallback without the plugin names its condition (fix 1
+        # M-1: the agent, never the model it was just given)
+        '(without that agent: a subagent told "this file is your whole task; answer with its '
+        'JSON only; change nothing");',
         "its reply is the answer.",
         # P82-AC-038: the Codex path, the file form
         "**Codex:** the same with `--json`, its `answer_schema` written to `<schema file>`, then "
@@ -127,6 +151,7 @@ class SharedStepTest(unittest.TestCase):  # P82-AC-034…039
         "Answer it whole (never a preview)", "a subagent (`model: <search.claude_model>`)",
         "`quick` the cards only", "`standard` also the INDEX", "`deep` also their docs and code",
         "at the depth its rules set",
+        "read `match` and `search`", "when it is not available",  # fix 1 I-1, M-1
     ]
 
     def test_every_skill_says_it_once_and_in_order(self):
@@ -142,6 +167,21 @@ class SharedStepTest(unittest.TestCase):  # P82-AC-034…039
             with self.subTest(skill=skill):
                 body = flat(text(skill))
                 self.assertEqual([p for p in self.GONE if p in body], [])
+
+    def test_no_skill_names_match_semantic(self):  # fix 1 I-1: round 3 read it as "off"
+        root = builtin_packs_root()
+        found = [p.relative_to(root).as_posix() for p in sorted(root.rglob("*.md"))
+                 if "match.semantic" in p.read_bytes().decode("utf-8")]
+        self.assertEqual(found, [])
+
+    def test_the_depth_goes_to_choose_only(self):  # fix 1 I-2: never on discover / context
+        for skill in SKILLS:
+            with self.subTest(skill=skill):
+                body = flat(text(skill))
+                self.assertEqual(body.count("`choose --effort deep`"), 1)
+                self.assertEqual(body.count("--effort"), 1)
+                for a in (argv(c) for c in commands(text(skill))):
+                    self.assertNotIn("--effort", a)
 
     def test_word_for_word_the_same(self):
         parts = {s: between(text(s), MODE, KEYWORD) for s in SKILLS}
@@ -269,6 +309,18 @@ class CommandsRunTest(unittest.TestCase):  # P82-AC-036, 038, 039, 040
         self.assertEqual(schema, envelope["data"]["answer_schema"])
         self.assertEqual(schema["type"], "object")
         self.assertEqual(envelope["data"]["task"], self.TASK)
+        # fix 1 M-4: what `--output-schema` needs (strict structured outputs)
+        objects = []
+        self.assertEqual(strict_problems(schema, "$", objects), [])
+        self.assertEqual(objects, ["$", "$.properties.picks.items"])
+
+    def test_the_strict_check_can_fail(self):
+        open_object = {"type": "object", "properties": {"a": {"type": "object", "properties": {
+            "b": {"type": "string"}}, "required": [], "additionalProperties": False}},
+            "required": ["a"]}
+        self.assertEqual(strict_problems(open_object, "$", []),
+                         ["$: additionalProperties is not false",
+                          "$.properties.a: required ['b'] != []"])
 
     def test_the_users_depth(self):  # D8, SI-P82-14 ruling (b): "search deep" -> --effort deep
         default = json.loads(self.cli(["choose", "--task-file", str(self.task), "--json"]))
@@ -437,6 +489,10 @@ class SyncTest(unittest.TestCase):  # P81-AC-042 (F10, F13, F15)
         body = flat(text("module-sync"))
         self.assertIn(f'{KEYWORD} `modsys discover --task-file <', body)
 
+    def test_temporary_files_go_outside_the_repository(self):  # fix 1 M-3: the order files
+        scope = flat(section(text("module-sync"), "## Scope"))
+        self.assertIn("Temporary files go outside the repository.", scope)
+
 
 class ScoutAndResearchTest(unittest.TestCase):  # P81-AC-043
     START, END = "No module named? Choose the candidates.", "never widen the list on your own."
@@ -464,7 +520,8 @@ class DocsTest(unittest.TestCase):  # P8.2 task 5: docs/skills.md follows the sh
     def test_skills_doc(self):
         doc = flat((ENGINE / "docs/skills.md").read_text(encoding="utf-8"))
         part = doc.split("## Choosing modules by meaning", 1)[1].split(" ## ", 1)[0]
-        for needle in (f"`{CLAUDE_CODE}`", f"`{AGENT}`", f"`{CODEX}`", "`--effort deep`",
+        for needle in (f"`{CLAUDE_CODE}`", f"`{AGENT}`", f"`{CODEX}`",
+                       "reads `match.mode` and `search`", "`--effort deep` to `modsys choose`",
                        "A `lexical` config",
                        "is only the command line's default and never skips the search by meaning",
                        "always pass `--match lexical`",
@@ -474,6 +531,13 @@ class DocsTest(unittest.TestCase):  # P8.2 task 5: docs/skills.md follows the sh
         for gone in ("only when `match.semantic` is true", "never a preview",
                      "`quick` the cards only"):
             self.assertNotIn(gone, doc)
+
+    def test_changelog(self):  # fix 1 M-2: the mode said the right way round
+        log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
+        unreleased = flat(log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0])
+        self.assertIn("search both ways (`hybrid`) unless the user says otherwise or `match.mode` "
+                      "is `semantic`", unreleased)
+        self.assertNotIn("search by meaning unless the user says otherwise", unreleased)
 
 
 if __name__ == "__main__":

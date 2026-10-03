@@ -28,16 +28,16 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
 1. No module named? Choose the candidates.
 
-   Run `modsys catalog --json`; read `match` and `search`. The text: the user's topic or question.
-   The mode: `hybrid` unless the user says otherwise ("only lexical", "by meaning", in any language)
-   or `match.mode` is `semantic`; a `lexical` config is only the command line's default and never
-   skips the search by meaning, which needs no setting; the keyword commands always pass
+   Run `modsys catalog --json`; read `match.mode` and `search`. The text: the user's topic or
+   question. The mode: `hybrid` unless the user says otherwise ("only lexical", "by meaning", in any
+   language) or `match.mode` is `semantic`; a `lexical` config is only the command line's default
+   and never skips the search by meaning, which needs no setting; the keyword commands always pass
    `--match lexical`. The user may set the model ("use opus") and the depth ("search deep":
-   `--effort deep`; `<reasoning>` follows it).
+   `choose --effort deep`; `<reasoning>` follows it).
 
    - By meaning (`semantic`, `hybrid`): write the text, verbatim, to `<task file>`. **Claude Code:**
      `modsys choose --task-file <task file> > <order file>`; give `<order file>`'s path to the
-     `modsys:module-chooser` agent with `model: <search.claude_model>` (when it is not available: a
+     `modsys:module-chooser` agent with `model: <search.claude_model>` (without that agent: a
      subagent told "this file is your whole task; answer with its JSON only; change nothing"); its
      reply is the answer. **Codex:** the same with `--json`, its `answer_schema` written to
      `<schema file>`, then
