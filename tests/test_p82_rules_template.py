@@ -221,7 +221,12 @@ class ResolutionTest(Base):
         self.assertEqual(self.row()["source"], "engine")
 
     def test_a_role_template_key_never_applies(self):  # P82-AC-004
-        self.config('[roles.qa]\ntemplate = "roles/qa.md"\n')
+        self.write(".modsys/packs/team/pack.toml",
+                   'id = "team"\nversion = "0.1.0"\n\n[roles.reviewer]\norder = 100\n'
+                   'description = "What a reviewer checks"\ntemplate = "roles/reviewer.md"\n')
+        self.write(".modsys/packs/team/roles/reviewer.md", "- from role template\n")
+        rows = {r["template"]: r for r in run_json("templates", "list", *self.R)[1]["data"]}
+        self.assertEqual(rows["roles/reviewer.md"]["source"], "role-template:team")
         self.assertEqual(self.rules(), DEFAULT_RULES)
         self.assertEqual(self.row()["source"], "engine")
 
@@ -243,12 +248,13 @@ class BrokenTemplateTest(Base):
                 ("choose", "--apply", str(self.answer), "--json"),
                 ("choose", "--task-file", t, "--run"),
                 ("match", TASK, "--match", "hybrid"), ("match", TASK, "--match", "semantic"),
+                ("discover", "--task", TASK, "--match", "hybrid"),
                 ("context", "--task", TASK, "--match", "hybrid")]
 
     def layers(self, data):
         yield "override", REL, lambda: self.override(data)
         yield "pack", ".modsys/packs/team/templates/choose/rules.md", \
-            lambda: self.pack("team", data)
+            lambda: self.root / self.pack("team", data)
 
     def check(self, data, message_for):
         for layer, rel, make in self.layers(data):
@@ -270,13 +276,16 @@ class BrokenTemplateTest(Base):
 
     @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root reads mode 000")
     def test_unreadable_is_refused(self):  # P82-AC-005
-        path = self.override("- ok\n")
-        path.chmod(0)
-        self.addCleanup(path.chmod, 0o644)
-        self.agent(answer=picks(("payments", 0.9)))
-        for argv in self.verbs():
-            self.refuses(argv, f"cannot read {REL}: Permission denied")
-        self.assertEqual(self.calls(), [])
+        for layer, rel, make in self.layers("- ok\n"):
+            path = make()
+            path.chmod(0)
+            self.agent(answer=picks(("payments", 0.9)))
+            for argv in self.verbs():
+                with self.subTest(layer=layer, argv=argv):
+                    self.refuses(argv, f"cannot read {rel}: Permission denied")
+            self.assertEqual(self.calls(), [])
+            path.chmod(0o644)  # a failed assertion above leaves a mode-000 file in a temp dir
+            path.unlink()
 
     def test_a_broken_pack_does_not_fall_back_to_a_lower_layer(self):  # P82-AC-005
         self.pack("team", b"", 10)
@@ -288,13 +297,14 @@ class BrokenTemplateTest(Base):
         argvs = [("match", TASK), ("match", TASK, "--match", "lexical"),
                  ("context", "--task", TASK), ("discover", "--task", TASK),
                  ("catalog",), ("show", "payments"), ("lint",), ("list",)]
-        before = {a: run(*a, "--json", *self.R) for a in argvs}
+        forms = ((), ("--json",))
+        before = {(a, f): run(*a, *f, *self.R) for a in argvs for f in forms}
         before_list = run("templates", "list", *self.R)
         self.override(b"")
-        for a in argvs:
-            with self.subTest(argv=a):
-                self.assertEqual(run(*a, "--json", *self.R), before[a])
-                self.assertEqual(before[a][0] in (0, 1), True)
+        for (a, f), want in before.items():
+            with self.subTest(argv=a, form=f):
+                self.assertEqual(run(*a, *f, *self.R), want)
+                self.assertIn(want[0], (0, 1))
         code, out, err = run("templates", "list", *self.R)
         self.assertEqual((code, err), (0, ""))
         self.assertNotEqual(out, before_list[1])  # the row names the override now
@@ -384,6 +394,62 @@ class OverrideTest(Base):
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(env["data"]["from"], "pack:team")
         self.assertEqual((self.root / REL).read_bytes(), b"- from team\n")
+
+
+class OverrideUnreadableSourceTest(Base):
+    def refuses(self, path_text: str, reason: str) -> None:
+        tree = sorted(self.root.rglob("*"))
+        for form in ((), ("--json",)):
+            for dry in ((), ("--dry-run",)):
+                with self.subTest(form=form, dry=dry):
+                    code, out, err = run("templates", "override", "choose/rules.md", *dry,
+                                         *form, *self.R)
+                    self.assertEqual((code, out), (2, ""))
+                    self.assertEqual(err, f"modsys: error: cannot read {path_text}: {reason}\n")
+        self.assertEqual(sorted(self.root.rglob("*")), tree)
+        self.assertFalse((self.root / ".modsys/overrides/templates/choose").exists())
+
+    def test_a_missing_engine_file_is_refused(self):  # P82-AC-042, SI-P82-2
+        copy = self.tmp / "engine-templates"
+        shutil.copytree(engine_templates(), copy)
+        (copy / "choose/rules.md").unlink()
+        with mock.patch("modsys.create.engine_templates", return_value=copy):
+            self.refuses(str(copy / "choose/rules.md"), "No such file or directory")
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root reads mode 000")
+    def test_an_unreadable_pack_template_is_refused(self):  # P82-AC-042
+        path = self.root / self.pack("team", "- ok\n")
+        path.chmod(0)
+        self.addCleanup(path.chmod, 0o644)
+        self.refuses(".modsys/packs/team/templates/choose/rules.md", "Permission denied")
+
+
+class DocsTest(unittest.TestCase):  # P82-AC-014 (the template items; 1b adds the cap and --effort)
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def doc(self, name: str) -> str:
+        return (self.ROOT / name).read_text(encoding="utf-8")
+
+    def test_configuration_documents_the_template(self):
+        text = self.doc("docs/configuration.md")
+        for needle in ("choose/rules.md", 'starts with\n`- `', "is not sent", "`$max_picks`",
+                       "`$depth`", "`$$`", "modsys templates override choose/rules.md"):
+            self.assertIn(needle, text)
+
+    def test_cli_contract_documents_the_template(self):
+        text = self.doc("docs/cli-contract.md")
+        lines = text.splitlines()
+        templates = next(ln for ln in lines if ln.startswith("| `templates list"))
+        self.assertLess(templates.index("`init/routing_prompt.md`"),
+                        templates.index("`choose/rules.md`"))
+        choose = next(ln for ln in lines if ln.startswith("| `choose "))
+        for needle in ("choose/rules.md", NO_RULE, "cannot read <path>: <reason>"):
+            self.assertIn(needle, choose)
+
+    def test_the_changelog_names_it(self):
+        text = self.doc("CHANGELOG.md")
+        unreleased = text.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+        self.assertIn("choose/rules.md", unreleased)
 
 
 class DeterminismTest(Base):

@@ -210,7 +210,7 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
         (pack / "pack.toml").write_text('id = "team"\nversion = "9.0.0"\n')
         (pack / "templates/init/module_prompt.md").write_text("Pack prompt for ${module}: "
                                                               "${files_note}\n")
-        self.assertEqual(ok(root, "templates", "list")[-3]["source"], "pack:team")
+        self.assertEqual({r["template"]: r for r in ok(root, "templates", "list")}["init/module_prompt.md"]["source"], "pack:team")
         ok(root, "init", "fanout")
         self.assertEqual(self.item(root, "cart")["prompt"], "Pack prompt for cart: (3 files)\n")
         data = ok(root, "templates", "override", "init/module_prompt.md")
@@ -218,7 +218,7 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
         self.assertEqual((data["from"], override.read_text()),
                          ("pack:team", "Pack prompt for ${module}: ${files_note}\n"))
         override.write_text("Team prompt for ${module} ${unknown}\n")
-        self.assertEqual(ok(root, "templates", "list")[-3]["source"], "override")
+        self.assertEqual({r["template"]: r for r in ok(root, "templates", "list")}["init/module_prompt.md"]["source"], "override")
         ok(root, "init", "fanout")
         self.assertEqual(self.item(root, "cart")["prompt"], "Team prompt for cart <unknown>\n")
 

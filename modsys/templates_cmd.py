@@ -26,8 +26,9 @@ def register(sub, common) -> None:
     p = sub.add_parser("templates", parents=[common],
                        help="list the templates docs are rendered from, or copy one to edit it",
                        description="list: MODULE.md, roles/<role>.md of every enabled role, "
-                                   "agents-md.md and the init prompts (init/module_prompt.md, "
-                                   "init/routing_prompt.md), each with the layer that wins "
+                                   "agents-md.md, the init prompts (init/module_prompt.md, "
+                                   "init/routing_prompt.md) and choose/rules.md (the rules of "
+                                   "the choose work order), each with the layer that wins "
                                    "(override, "
                                    "role-template:<pack>, pack:<pack>, engine, "
                                    "engine-fallback) and its file. override TEMPLATE: copy "
@@ -74,8 +75,11 @@ def override(ws, template: str, dry_run: bool) -> dict:
     target = ws.config_dir / "overrides" / "templates" / template
     if os.path.lexists(target):
         raise UsageError(f"{ws.rel(target)} already exists — edit it")
-    if not dry_run:
+    try:  # the source is read for a dry run too: it must promise only what a run can do
         text = path.read_bytes()
+    except OSError as e:
+        raise UsageError(f"cannot read {ws.rel(path)}: {e.strerror or e}") from None
+    if not dry_run:
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             with open(target, "xb") as fh:  # never replaces a file created in the meantime

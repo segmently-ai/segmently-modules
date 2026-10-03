@@ -9,6 +9,8 @@ Template resolution (first hit wins), for `MODULE.md`, `roles/<role>.md` and `ag
   3. `<pack>/templates/<path>` for packs in precedence order           "pack:<pack>"
   4. engine defaults: MODULE.md, agents-md.md and one file per         "engine"
      standard role; `roles/_role.md` for any other role                "engine-fallback"
+`choose/rules.md` (the rules of the `choose` work order) resolves the same way but has no
+"engine-fallback": a missing engine file stays "engine" and reading it fails (`workorder`).
 Templates use `${name}` placeholders: name, title, description, status, keywords, parent,
 role, role_description, article (`a` or `an` before the role)."""
 import contextlib
