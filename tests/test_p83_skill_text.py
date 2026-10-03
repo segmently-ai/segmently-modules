@@ -2,6 +2,9 @@
 module-discover (AC-011), module-sync's saved gate and baseline check (AC-012), the chooser's
 cost sentence (AC-013), "a temporary file outside the repository" (AC-014), and the budgets
 (AC-015)."""
+import json
+import re
+import shlex
 import tempfile
 import unittest
 from pathlib import Path
@@ -126,6 +129,45 @@ class BudgetTest(unittest.TestCase):  # P83-AC-015
     def test_exact_sizes_of_the_two_rewritten_skills(self):
         self.assertLessEqual(len(skill("module-sync")), 9_000)
         self.assertLessEqual(len(skill("module-discover")), 9_000)
+
+
+class SavedGateEndToEndTest(unittest.TestCase):  # P83-AC-012 (the two commands, run in order)
+    def commands(self):
+        text = skill("module-sync")
+        save = re.search(r"save the gate: `(modsys ci [^`]*)`", text).group(1)
+        check = re.search(r"7\. Check: `(modsys ci [^`]*)`", text).group(1)
+        return save, check
+
+    def test_save_then_check_on_a_repository_with_a_known_finding(self):
+        from tests.test_ci_baseline import build_repo
+        from tests.helpers import git
+        save, check = self.commands()
+        with tempfile.TemporaryDirectory() as repo_tmp, tempfile.TemporaryDirectory() as out_tmp:
+            root = build_repo(repo_tmp)
+            ci_file = Path(out_tmp) / "ci.json"
+            fill = lambda c: c.replace("<base>", "HEAD~1")  # noqa: E731
+            # (1) the step-1 command, as the skill writes it; its redirect is done here
+            self.assertTrue(save.endswith(" > <ci file>"), save)
+            argv = shlex.split(fill(save[:-len(" > <ci file>")]))[1:]
+            code, out, err = run(*argv, "--root", str(root))
+            self.assertEqual((code, err), (1, ""))  # the exit code is ignored by the skill
+            ci_file.write_text(out, encoding="utf-8")
+            # (2) a doc edit; the pre-existing finding stays (its count may change: SI-P83-1)
+            with (root / "modules/catalog/MODULE.md").open("a", encoding="utf-8") as fh:
+                fh.write("One more sentence.\n")
+            with (root / "modules/payments/MODULE.md").open("a", encoding="utf-8") as fh:
+                fh.write("The till code changed.\n")  # documents the code change: no MS050
+            # (3) the step-7 command, as written
+            argv = shlex.split(fill(check).replace("<ci file>", str(ci_file)))[1:]
+            code, out, err = run(*argv, "--root", str(root))
+            data = json.loads(out)["data"]
+            steps = {st["step"] if "step" in st else st["name"]: st for st in data["steps"]}
+            known = sum(st["summary"].get("known", 0) for st in steps.values() if "summary" in st)
+            self.assertGreater(known, 0, out)
+            self.assertEqual(err, "")
+            self.assertEqual(code, 0, out)
+            # (4) nothing of the gate in the repository
+            self.assertNotIn("ci.json", git(root, "status", "--porcelain"))
 
 
 if __name__ == "__main__":
