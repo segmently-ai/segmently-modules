@@ -11,7 +11,7 @@ from modsys.skills import read_front_matter
 from tests.helpers import copy_fixture, run
 
 SKILL_MAX = 9_000       # each shipped SKILL.md
-CORE_MAX = 53_200       # the core pack's nine SKILL.md together
+CORE_MAX = 53_600       # the core pack's nine SKILL.md together (raised from 53_200: P8.3 D1–D3, ruled)
 # P8.2 (2026-10-03): the decision taken again for the shipped choice agent and the Codex path
 DESCRIPTIONS_MAX = 6_600  # the shipped skills' `description` values together
 SKILL_COUNT = 12        # core 9 + qa 2 + ui 1

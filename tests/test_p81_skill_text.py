@@ -449,8 +449,8 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20
         "modsys code-map files <candidate> --json",  # F6b: from the candidates to the code
         "its code is the files whose `via` is not `docs`",  # review I-2: a doc is not code
         "(a child without code: its parent's)",
-        "Grep the terms of `<file>` inside that code first",
-        "only when it gives nothing",
+        "Search its source files (tests and plans last)",  # P83-AC-011 (D2)
+        "the rest of the repository only when that gives nothing",
         "modsys discover --files <found files> --task-file <file> --match lexical --json",
         F20,  # P82-AC-040
         "on a split parent `children` (name the one the change is in and add its `doc` to the "
@@ -477,8 +477,8 @@ class SyncTest(unittest.TestCase):  # P81-AC-042 (F10, F13, F15)
         "The text: a summary of the change with its identifiers",
         "joins the modules to update, with the docs the search listed",  # review M-6
         "modsys registry append <module> keywords",
-        "only for a new public name a future task would search by",  # F15
-        "never a keyword per task",
+        "add one only for a new feature, command or concept later tasks will name",  # P83-AC-010
+        "never a code identifier",
     ]
 
     def test_the_steps_in_order(self):

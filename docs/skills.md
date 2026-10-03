@@ -182,7 +182,9 @@ one you already run, under your own credentials.
 file of a `modsys choose` work order, calling it with `model: <search.claude_model>`. Its own
 `model: sonnet` line covers only a call without a model (an @-mention): the Agent tool's `model`
 wins, and `inherit` is not used, so the chooser never costs as much as the session model. The agent
-is thin; the rules it follows are in the work order. To change how modules are chosen, use
+is thin; the rules it follows are in the work order. The agent reads the whole work order in its own
+context: on a registry of about 170 modules (an 80 KB order) a call costs about 55k tokens with the
+plugin's agent and about 47k with `codex exec` (measured 2026-10-03). To change how modules are chosen, use
 `modsys templates override choose/rules.md`, not the agent file: every plugin update replaces the
 agent file in the plugin cache. Codex ignores `agents/`, and Claude Code with `builtin_delivery =
 "repo"` (no plugin skills) uses the skills' fallback.
@@ -190,8 +192,8 @@ agent file in the plugin cache. Codex ignores `agents/`, and Claude Code with `b
 Also in these skills: `module-discover` goes from the candidates to the code
 (`code-map files`, then `discover --files … --task-file …`) and reads the `children` list of a
 split parent to pick the child the change is in; `module-sync` updates that child's doc (which
-clears the parent's MS050) and adds a keyword only for a new public name a future task would
-search by.
+clears the parent's MS050) and adds a keyword only for a new feature, command or concept, never a
+code identifier.
 
 ## The ui and qa packs
 

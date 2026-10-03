@@ -154,7 +154,7 @@ def scaffold_files(pack_id: str, roles: list[str], skills: list[str], descriptio
         files[f"roles/{role}.md"] = _scaffold("role.md").replace("${article}", article(role))
     # the task goes through a file (a quoted argument would expand `$` and backticks) and the
     # keyword routing is pinned: a team's `[match] mode` never makes the step refuse (P8.1)
-    task = "--task-file <the task in one sentence, in a file>"
+    task = "--task-file <the task in one sentence, in a temporary file outside the repository>"
     if roles:
         context = "\n".join(f"   `modsys context {task} --role {r} --match lexical --json`"
                              for r in roles)

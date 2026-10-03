@@ -57,8 +57,10 @@ A change without a task starts at step 4.
    why.
 
 3. Go to the code: `modsys code-map files <candidate> --json`; its code is the files whose `via` is
-   not `docs` (a child without code: its parent's). Grep the terms of `<file>` inside that code
-   first, the rest of the repository only when it gives nothing. Note each code hit as file:line.
+   not `docs` (a child without code: its parent's). Search its source files (tests and plans last)
+   for the terms of `<file>` and their code forms ("trial days" → `trialDays`): `git grep -n -e
+   <term> -- <paths>`; the rest of the repository only when that gives nothing. For a wrong value,
+   find the line that computes it. Note each code hit as file:line.
 
 4. Get the touch-set.
 

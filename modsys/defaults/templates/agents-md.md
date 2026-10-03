@@ -3,7 +3,7 @@
 This repository keeps a module registry (`${registry}`) with docs per module under
 `${modules_dir}/`. Read them before a task and keep them current after it:
 
-- Before a task, write it to a file and run
+- Before a task, write it to a temporary file outside the repository and run
   `modsys context --task-file <file> --role <role> --match lexical`; read every file it lists.
 - Roles in this repository: ${roles}.
 - After a change, `modsys sync-instructions --from-diff <base>..HEAD` says what to bring up to

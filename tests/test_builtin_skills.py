@@ -347,8 +347,12 @@ class TextRulesTest(SkillRules):  # P4B-AC-014, P4B-AC-017
                         continue
                     with self.subTest(skill=sid, command=command):
                         self.assertTrue({"--json", "--dry-run"} & set(argv(command)))
-        # only the work order's text form, once in each skill that chooses modules by meaning
-        self.assertEqual(exempt, [["choose", "--task-file", "X"]] * len(exempt))
+        # only the work order's text form, once in each skill that chooses modules by meaning,
+        # and module-sync's saved gate (P83-AC-012: `ci --base <base> --json > <ci file>`)
+        saved_gate = [["ci", "--base", "X", "--json"]]
+        self.assertEqual([e for e in exempt if e != saved_gate[0]],
+                         [["choose", "--task-file", "X"]] * (len(exempt) - 1))
+        self.assertEqual(exempt.count(saved_gate[0]), 1)
 
     def test_sections(self):
         names = set(self.all_skills())

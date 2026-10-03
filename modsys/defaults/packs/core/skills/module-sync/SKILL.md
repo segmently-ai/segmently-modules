@@ -34,6 +34,9 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    uncommitted work is the files `git diff --name-only <base>` prints plus the new ones
    `git ls-files --others --exclude-standard` prints, all to `--files` (never a directory).
 
+   Before you edit, save the gate: `modsys ci --base <base> --json > <ci file>` (outside the
+   repository; ignore its exit code).
+
 2. Ask modsys what to update.
 
    ```bash
@@ -91,9 +94,9 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    modsys registry append <module> related_modules '{"module": "<other>", "relation": "<relation>", "description": "<why>"}' --json
    ```
 
-   - `keywords`: add one only for a new public name a future task would search by (a new component,
-     command or term), never a keyword per task. Keywords only grow; a split parent keeps all of
-     them — never remove one from it.
+   - `keywords`: most changes add none — add one only for a new feature, command or concept later
+     tasks will name, never a code identifier (class, function, file or variable: code search finds
+     those). Keywords only grow; a split parent keeps all of them — never remove one from it.
    - `related_modules`: when the change made this module rely on another (or share a contract), add
      the edge after checking `related`; an unknown relation is refused with the allowed ones.
    - A refused write (exit 2) names the rule it broke: fix the value, never force it.
@@ -115,8 +118,9 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
    Report every hook message. A failed required hook (exit 1): report it and stop, never work around it.
 
-7. Check: `modsys ci --base <base> --json`. Its steps (`lint`, `drift`, `coverage`) should pass or
-   be report-only. Fix what your updates caused and rerun; report what failed before you began.
+7. Check: `modsys ci --base <base> --baseline <ci file> --json`. Its steps (`lint`, `drift`,
+   `coverage`) should pass or be report-only; a `known` finding predates you: report it, never fix
+   it here. Fix what your updates caused and rerun.
 
 8. Report per module: the docs changed (a line each), the fields and edges, the hook messages, the
    `ci` result, the files no module owns. Ask the user to review and commit.
