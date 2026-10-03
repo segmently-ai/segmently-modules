@@ -14,6 +14,7 @@ Template resolution (first hit wins), for `MODULE.md`, `roles/<role>.md` and `ag
 Templates use `${name}` placeholders: name, title, description, status, keywords, parent,
 role, role_description, article (`a` or `an` before the role)."""
 import contextlib
+import errno
 import json
 import os
 import re
@@ -192,12 +193,16 @@ def _candidate_exists(ws, path: Path) -> bool:
     candidate that exists but cannot be used as a template (a directory, a FIFO, a dangling
     symlink or loop, no permission on it or a parent) is `cannot read <path>: <reason>`, exit 2."""
     def refuse(reason):
-        return UsageError(f"cannot read {ws.rel(path)}: {reason}")
+        return UsageError(f"cannot read {ws.rel(path).replace(chr(0), chr(92) + '0')}: {reason}")
     try:
         os.lstat(path)
     except (FileNotFoundError, NotADirectoryError):
         return False
+    except ValueError:  # a NUL in the path
+        raise refuse("embedded null byte") from None
     except OSError as e:
+        if e.errno == errno.ENAMETOOLONG:  # a name that long cannot exist: the next layer
+            return False
         raise refuse(e.strerror or e) from None
     try:
         st = os.stat(path)

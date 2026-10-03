@@ -27,7 +27,7 @@ directory, else the current directory), `--config-dir DIR` (default `<root>/.mod
   refusal, a usage error, an internal error and an interrupt leave stdout empty and keep their exit
   code. When fd 2 is closed at start the run puts the null device on fd 2 itself (an open fd 2 is
   never touched): no file the run opens (a lock, a temp file, the agent's work-order file) becomes
-  fd 2, and a child that inherits stderr writes to the null device. Any other stdout write error (a full disk, a
+  fd 2, and a child that inherits stderr writes to the null device. With stderr open, any other stdout write error (a full disk, a
   file size limit) is exit `2` with one stderr line `modsys: error: cannot write stdout: <reason>`.
 - **Writers** (`registry`, `index`, `proposals apply`, `sync --apply-proposals`, `create`,
   `roles add`, `migrate`) take the registry lock (`<registry>.lock`), write atomically, and refuse a file that
@@ -88,9 +88,9 @@ directory, else the current directory), `--config-dir DIR` (default `<root>/.mod
 - `<config_dir>/overrides/templates/<template>` (default `.modsys/overrides/templates/`): the
   team's copy of a template, written once by `modsys templates override` and never replaced by
   the engine — commit it.
-  A template candidate that does not exist (`lstat` says ENOENT or ENOTDIR) falls through to the
+  A template candidate that does not exist (`lstat` says ENOENT, ENOTDIR or ENAMETOOLONG) falls through to the
   next layer. One that exists but cannot be read — a directory, a FIFO, a dangling symlink or a
-  symlink loop, a file or a parent directory without permission — is exit `2`
+  symlink loop, a file or a parent directory without permission, a NUL in the name (shown as `\0`) — is exit `2`
   `modsys: error: cannot read <path>: <reason>` (root-relative inside the root), for every verb
   that resolves a template (`templates list` included) and nothing is written; the layers
   below the winner are never examined.

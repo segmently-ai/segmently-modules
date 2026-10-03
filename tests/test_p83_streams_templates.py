@@ -84,13 +84,14 @@ class ClosedStderrTest(Spawn):
     def test_a_closed_stderr_leaves_stdout_clean_for_every_entry(self):  # P83-AC-031
         for entry in self.entries:
             for name, argv, want in self.matrix():
-                open_code, open_out, _ = self.shell("", argv, entry)
+                open_code, open_out, open_err = self.shell("", argv, entry)
                 self.assertEqual(open_code, want, (name, entry))
+                if name == "note run":
+                    self.assertIn("modsys: note:", open_err)
                 for redirect in ("2>&-", "1>&- 2>&-"):
                     with self.subTest(case=name, entry=entry, redirect=redirect):
                         code, out, err = self.shell(redirect, argv, entry)
                         self.assertEqual(code, want)
-                        self.assertEqual(err, "")
                         if redirect == "1>&- 2>&-":
                             self.assertEqual(out, b"")
                         elif want == 2:
@@ -319,11 +320,11 @@ class ResolutionTest(unittest.TestCase):
                  ("choose/rules.md", ("choose", "--task", "x")),
                  ("choose/rules.md", ("templates", "override", "choose/rules.md")),
                  ("roles/qa.md", ("roles", "add", "qa", "--all"))]
-        for py in PYTHONS:
+        for py, kind in [(p, k) for p in PYTHONS for k in ("dangling", "dir", "fifo")]:
             for template, argv in specs:
-                with self.subTest(python=py, template=template, verb=argv[0]):
+                with self.subTest(python=py, kind=kind, template=template, verb=argv[0]):
                     root, over = self.fresh()
-                    self.make(over, "dangling", template)
+                    self.make(over, kind, template)
                     base = tree(root)
                     code, out, err = self.cli(py, root, *argv)
                     self.assertEqual(code, 2, err)
@@ -333,6 +334,37 @@ class ResolutionTest(unittest.TestCase):
                         err)
                     self.assertEqual(tree(root), base)  # nothing written
                     self.assertEqual(list(root.rglob("*.lock")), [])  # the lock is released
+
+    def role_template(self, template):
+        """A repository pack whose role `designer` names this `template` file."""
+        root, _ = self.fresh()
+        base = root / ".modsys/packs/books"
+        base.mkdir(parents=True)
+        (base / "pack.toml").write_text(
+            'id = "books"\nversion = "0.1.0"\n[roles.designer]\n'
+            f'description = "Designs"\ntemplate = {json.dumps(template)}\n', encoding="utf-8")
+        return root
+
+    def test_a_nul_in_a_role_template_is_a_refusal(self):  # P83-AC-033 (review I-1)
+        for py in PYTHONS:
+            root = self.role_template("a\u0000b")
+            for argv in (("templates", "list"), ("roles", "add", "designer", "--all")):
+                with self.subTest(python=py, verb=argv[0]):
+                    code, out, err = self.cli(py, root, *argv)
+                    self.assertEqual((code, out), (2, ""), err)
+                    lines = err.splitlines()
+                    self.assertEqual(len(lines), 1, err)
+                    self.assertTrue(lines[0].startswith("modsys: error: cannot read "), err)
+                    self.assertTrue(lines[0].endswith("a\\0b: embedded null byte"), err)
+                    self.assertNotIn("internal error", err)
+
+    def test_a_name_too_long_to_exist_falls_through(self):  # P83-AC-033 (review M-1)
+        for py in PYTHONS:
+            root = self.role_template("x" * 300 + ".md")
+            code, out, err = self.cli(py, root, "templates", "list", extra=("--json",))
+            self.assertEqual((code, err), (0, ""))
+            rows = {r["template"]: r["source"] for r in json.loads(out)["data"]}
+            self.assertEqual(rows["roles/designer.md"], "engine-fallback")
 
     def test_a_path_outside_the_root_is_absolute(self):  # P83-AC-033
         cfg = Path(os.path.realpath(self.tmp)) / "cfg"
