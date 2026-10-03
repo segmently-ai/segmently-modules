@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The rules of the `modsys choose` work order are the overridable template `choose/rules.md`
+  (`modsys templates list` shows it; `modsys templates override choose/rules.md` copies it):
+  a `- ` line is a rule, `$max_picks` and `$depth` are filled in; a template without a rule, or
+  one that cannot be read, is exit 2. The default rules gain three: read every card, pick the
+  child of a split module, best first.
 - `modsys roles list` shows each module's role docs; `modsys roles add` adds a role doc to
   existing modules and registers it.
 - `modsys next`: one ranked list of what the repository needs, each item with the command

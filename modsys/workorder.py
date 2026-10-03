@@ -6,9 +6,12 @@ deterministic (no time, path, host or random value), so two runs on one tree are
 `--match semantic|hybrid`."""
 import hashlib
 import json
+import string
+from pathlib import Path
 
 from modsys.catalog_cmd import cards as catalog_cards
 from modsys.config import search_settings
+from modsys.create import resolve_template_source
 from modsys.output import UsageError
 
 DEFAULT_MAX_PICKS = 5
@@ -33,6 +36,7 @@ ANSWER_SCHEMA = {
     "required": ["picks", "none", "catalog_digest"],
     "additionalProperties": False,
 }
+RULES_TEMPLATE = "choose/rules.md"  # the instruction of the work order, a template (D3)
 DEPTH = {  # fixed English texts: the work order must not vary from run to run
     "quick": "Choose from the cards only; do not open any file.",
     "standard": "Choose from the cards, and also open the INDEX or the head of MODULE.md of up "
@@ -55,17 +59,36 @@ def digest_of(cards: list[dict]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def choose_rules_source(ws) -> tuple[str, Path]:
+    """(source, path) of `choose/rules.md`: the template chain without the role fallback."""
+    return resolve_template_source(ws, RULES_TEMPLATE, None, fallback=False)
+
+
+def template_rules(ws, max_picks: int, depth: str) -> list[str]:
+    """The rules of the work order: every line of the winning `choose/rules.md` that starts
+    with `- ` (the text after it, trailing whitespace removed, an empty one is a note), in file
+    order, with `$max_picks` / `$depth` / `$$` substituted per rule. A template that cannot be
+    read, or holds no rule, is a usage error naming its root-relative path."""
+    path = choose_rules_source(ws)[1]
+    try:
+        text = path.read_bytes().decode("utf-8")
+    except OSError as e:
+        raise UsageError(f"cannot read {ws.rel(path)}: {e.strerror or e}") from None
+    except UnicodeDecodeError:
+        raise UsageError(f"cannot read {ws.rel(path)}: not valid UTF-8") from None
+    text = text.removeprefix("\ufeff")
+    rules = [line[2:].rstrip() for line in text.split("\n") if line.startswith("- ")]
+    rules = [r for r in rules if r]
+    if not rules:
+        raise UsageError(f'{ws.rel(path)}: no rule in choose/rules.md (a rule is a line '
+                         f'starting with "- ")')
+    return [string.Template(r).safe_substitute(max_picks=max_picks, depth=depth) for r in rules]
+
+
 def build(ws, task: str, max_picks: int = DEFAULT_MAX_PICKS) -> dict:
     search = search_settings(ws.config)
     cards = [work_card(c) for c in catalog_cards(ws.registry.modules)]
-    rules = [
-        "Choose the modules this task needs by meaning, in any language the task is written in.",
-        "Use only module ids that appear in the cards; never invent one.",
-        'Answer {"picks": [], "none": true} when you are not sure.',
-        f"Give at most {max_picks} picks, each with a confidence from 0 to 1 and a short reason.",
-        DEPTH[search["effort"]],
-        "Answer with one JSON object that matches the answer schema, and nothing else.",
-    ]
+    rules = template_rules(ws, max_picks, DEPTH[search["effort"]])
     return {"task": task, "rules": rules, "cards": cards, "answer_schema": ANSWER_SCHEMA,
             "catalog_digest": digest_of(cards), "max_picks": max_picks, "search": search}
 

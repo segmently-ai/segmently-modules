@@ -2,8 +2,9 @@
 override.
 
   list               `MODULE.md`, `roles/<role>.md` of every enabled role (config order),
-                     `agents-md.md` and the two `init` prompts (`init/module_prompt.md`,
-                     `init/routing_prompt.md`), each with the layer that wins
+                     `agents-md.md`, the two `init` prompts (`init/module_prompt.md`,
+                     `init/routing_prompt.md`) and `choose/rules.md` (the rules of the
+                     `choose` work order), each with the layer that wins
                      (`resolve_template_source`)
   override TEMPLATE  copy the winning template's text to
                      `<config_dir>/overrides/templates/TEMPLATE`, where it wins from then on;
@@ -14,6 +15,7 @@ from pathlib import Path, PurePosixPath
 from modsys.config import enabled_roles
 from modsys.create import resolve_template_source
 from modsys.output import EXIT_OK, UsageError, emit
+from modsys.workorder import RULES_TEMPLATE, choose_rules_source
 from modsys.workspace import Workspace
 
 ACTIONS = ("list", "override")
@@ -44,12 +46,19 @@ def template_rows(ws) -> list[dict]:
     """[{template, role, source, path}] in the order `templates list` prints them."""
     wanted = ([("MODULE.md", None)] + [(f"roles/{r}.md", r) for r in enabled_roles(ws.config)]
               + [("agents-md.md", None)] + [(t, None) for t in INIT_PROMPTS])
+    wanted.append((RULES_TEMPLATE, None))
     rows = []
     for template, role in wanted:
-        source, path = resolve_template_source(ws, template, role)
+        source, path = _source(ws, template, role)
         rows.append({"template": template, "role": role, "source": source,
                      "path": ws.rel(path)})
     return rows
+
+
+def _source(ws, template: str, role: str | None) -> tuple[str, Path]:
+    if template == RULES_TEMPLATE:  # no role fallback for the work order's rules
+        return choose_rules_source(ws)
+    return resolve_template_source(ws, template, role)
 
 
 def override(ws, template: str, dry_run: bool) -> dict:
@@ -61,7 +70,7 @@ def override(ws, template: str, dry_run: bool) -> dict:
     rows = {r["template"]: r for r in template_rows(ws)}
     if template not in rows:
         raise UsageError(f"unknown template {template!r} (templates: {', '.join(rows)})")
-    source, path = resolve_template_source(ws, template, rows[template]["role"])
+    source, path = _source(ws, template, rows[template]["role"])
     target = ws.config_dir / "overrides" / "templates" / template
     if os.path.lexists(target):
         raise UsageError(f"{ws.rel(target)} already exists — edit it")

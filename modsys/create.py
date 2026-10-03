@@ -183,9 +183,12 @@ def engine_templates() -> Path:
     return Path(str(resources.files("modsys").joinpath("defaults/templates")))
 
 
-def resolve_template_source(ws, relpath: str, role: str | None = None) -> tuple[str, Path]:
+def resolve_template_source(ws, relpath: str, role: str | None = None,
+                            fallback: bool = True) -> tuple[str, Path]:
     """(source, path) of the template file that wins for `relpath` — see the module docstring
-    for the order and the source names."""
+    for the order and the source names. `fallback=False` (a template that is no role's, like
+    `choose/rules.md`): a missing engine file is still `engine` and its expected path, never
+    the generic role template."""
     candidates = [("override", ws.config_dir / "overrides" / "templates" / relpath)]
     spec = (ws.config.get("roles") or {}).get(role or "", {})
     pack_dirs = ws.config.get("_pack_dirs", {})
@@ -201,6 +204,8 @@ def resolve_template_source(ws, relpath: str, role: str | None = None) -> tuple[
             return source, path
     engine = engine_templates() / relpath
     if engine.is_file():
+        return "engine", engine
+    if not fallback:
         return "engine", engine
     return "engine-fallback", engine_templates() / "roles" / "_role.md"
 

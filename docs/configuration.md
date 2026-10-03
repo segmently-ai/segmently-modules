@@ -348,6 +348,21 @@ parent/child`) creates its own doc.
 template to `.modsys/overrides/templates/roles/qa.md` once; edit that copy — it wins from then
 on (the engine never rewrites it, and a later upstream change to the template does not reach it).
 
+**The rules of `modsys choose`.** The instruction of the choose work order is the template
+`choose/rules.md` (`modsys templates list` shows it last, after the init prompts). It resolves
+through the same chain (override → a pack's `templates/choose/rules.md` → the engine's), but a
+missing engine file is never replaced by a role template. Format: every line that starts with
+`- ` (at column 0) is one rule, sent as written without the `- ` and without trailing
+whitespace, in file order; every other line is a note for the person editing and is not sent.
+Placeholders (as in every template): `$max_picks` (the most picks the order allows), `$depth`
+(the fixed sentence of `[search] effort`), `$$` for a literal `$`; any other `$name` stays as
+written. To change the rules: `modsys templates override choose/rules.md`, then edit
+`.modsys/overrides/templates/choose/rules.md`. A template without a rule is exit 2
+(`<path>: no rule in choose/rules.md (a rule is a line starting with "- ")`), an unreadable or
+non-UTF-8 one is exit 2 (`cannot read <path>: <reason>`). Only a run that builds a work order
+reads it (`choose`, including `--apply` and `--run`, and `match` / `context` / `discover --task`
+in semantic or hybrid mode); lexical runs, `catalog` and the other verbs never do.
+
 ## `[fields.<name>]`
 
 Every registry field beyond the core ones is declared once; the declaration drives validation

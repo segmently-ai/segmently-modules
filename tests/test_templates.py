@@ -105,7 +105,7 @@ class ProvenanceTest(Fixture):  # P4A-AC-005
         self.assertEqual([r["template"] for r in rows],
                          ["MODULE.md", "roles/developer.md", "roles/qa.md", "roles/po.md",
                           "roles/architect.md", "agents-md.md", "init/module_prompt.md",
-                          "init/routing_prompt.md"])  # P5B-AC-002: + the init prompts
+                          "init/routing_prompt.md", "choose/rules.md"])  # P5B-AC-002, P82-AC-007
         for r in rows:
             with self.subTest(template=r["template"]):
                 self.assertEqual(set(r), {"template", "role", "source", "path"})
@@ -113,7 +113,7 @@ class ProvenanceTest(Fixture):  # P4A-AC-005
                 self.assertEqual(Path(r["path"]), engine_templates() / r["template"])
                 self.assertTrue(Path(r["path"]).is_absolute() and Path(r["path"]).is_file())
         self.assertEqual([r["role"] for r in rows],
-                         [None, "developer", "qa", "po", "architect", None, None, None])
+                         [None, "developer", "qa", "po", "architect", None, None, None, None])
 
     def test_a_pack_role_without_a_template_falls_back(self):
         row = self.by_template()["roles/designer.md"]
@@ -129,7 +129,8 @@ class ProvenanceTest(Fixture):  # P4A-AC-005
         self.assertEqual(list(rows), ["MODULE.md", "roles/developer.md", "roles/qa.md",
                                       "roles/architect.md", "roles/designer.md",
                                       "roles/reviewer.md", "agents-md.md",
-                                      "init/module_prompt.md", "init/routing_prompt.md"])
+                                      "init/module_prompt.md", "init/routing_prompt.md",
+                                      "choose/rules.md"])
         self.assertEqual({t: (r["source"], r["path"]) for t, r in rows.items()
                           if r["source"] not in ("engine", "engine-fallback")}, {
             "MODULE.md": ("override", ".modsys/overrides/templates/MODULE.md"),
@@ -157,7 +158,7 @@ class ProvenanceTest(Fixture):  # P4A-AC-005
         out = run("templates", "list", *self.R)[1].splitlines()
         self.assertEqual(out[6].split(), ["roles/reviewer.md", "role-template:team",
                                           ".modsys/packs/team/roles/reviewer.md"])
-        self.assertEqual(len(out), 10)  # P5B-AC-002: + the two init prompts
+        self.assertEqual(len(out), 11)  # P5B-AC-002 + P82-AC-007: the init prompts, choose/rules.md
 
 
 class OverrideTest(Fixture):  # P4A-AC-006
@@ -203,7 +204,8 @@ class OverrideTest(Fixture):  # P4A-AC-006
                  (("roles/nosuch.md",), "unknown template 'roles/nosuch.md' (templates: "
                                         "MODULE.md, roles/developer.md, roles/qa.md, roles/po.md, "
                                         "roles/architect.md, roles/designer.md, agents-md.md, "
-                                        "init/module_prompt.md, init/routing_prompt.md)"),
+                                        "init/module_prompt.md, init/routing_prompt.md, "
+                                        "choose/rules.md)"),
                  (("../x.md",), "not a file path"), (("/etc/hosts",), "not a file path"),
                  (("roles/../../x.md",), "not a file path")]
         for argv, needle in cases:

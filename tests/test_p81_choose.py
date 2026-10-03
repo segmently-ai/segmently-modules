@@ -122,9 +122,9 @@ class WorkOrderTest(Base):
         for effort, data in runs.items():
             rules = data["rules"]
             self.assertEqual(len(rules), len(quick))
-            self.assertEqual(rules[:4] + rules[5:], quick[:4] + quick[5:])  # only the depth differs
-            self.assertIn(DEPTH[effort], rules[4])
-        self.assertEqual(len({r["rules"][4] for r in runs.values()}), 3)
+            self.assertEqual(rules[:6] + rules[7:], quick[:6] + quick[7:])  # only the depth differs
+            self.assertIn(DEPTH[effort], rules[6])
+        self.assertEqual(len({r["rules"][6] for r in runs.values()}), 3)
         self.assertEqual(len({d["catalog_digest"] for d in runs.values()}), 1)
 
     def test_digest_follows_the_cards_only(self):  # P81-AC-053
@@ -322,7 +322,7 @@ class SearchSettingsTest(Base):
         self.assertEqual(env["data"]["search"], want)
         data = run_json("choose", "--task", "t", *self.R)[1]["data"]
         self.assertEqual(data["search"], want)
-        self.assertIn(DEPTH["quick"], data["rules"][4])
+        self.assertIn(DEPTH["quick"], data["rules"][6])
 
 
 class CatalogAgentTest(Base):
