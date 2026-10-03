@@ -10,6 +10,7 @@ from pathlib import Path
 
 from modsys import agent, workorder
 from modsys.catalog_cmd import cards
+from modsys.config import EFFORTS
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.pipeline import task_text
 from modsys.query import show_target
@@ -31,6 +32,8 @@ def register(sub, common) -> None:
     t.add_argument("--task-file", type=Path, metavar="FILE",
                    help="read the task text from FILE ('-' = stdin)")
     p.add_argument("--top", type=int, help="at most N picks (default 5)")
+    p.add_argument("--effort", choices=EFFORTS,
+                   help="the depth of the search for this run, over [search] effort")
     g = p.add_mutually_exclusive_group()
     g.add_argument("--apply", metavar="FILE", help="validate an answer ('-' = stdin)")
     g.add_argument("--run", action="store_true",
@@ -75,11 +78,11 @@ def run(args) -> int:
                              else NO_TASK)
         task = task_text(args)
         if not args.run:
-            emit("choose", workorder.build(ws, task, max_picks), args.json, workorder.render)
+            emit("choose", workorder.build(ws, task, max_picks, args.effort), args.json, workorder.render)
             return EXIT_OK
         if not agent_configured(ws.config):
             raise UsageError(agent.NESTED if agent.nested() else NO_AGENT)
-    order = workorder.build(ws, task, max_picks)
+    order = workorder.build(ws, task, max_picks, args.effort)
     check = lambda answer: workorder.validate_answer(answer, order, max_picks)  # noqa: E731
     if not args.run:
         picks, none, notes = check(_read_answer(args.apply))

@@ -10,7 +10,7 @@ import string
 from pathlib import Path
 
 from modsys.catalog_cmd import cards as catalog_cards
-from modsys.config import search_settings
+from modsys.config import card_keywords, search_settings
 from modsys.create import resolve_template_source
 from modsys.output import UsageError
 
@@ -46,9 +46,10 @@ DEPTH = {  # fixed English texts: the work order must not vary from run to run
 }
 
 
-def work_card(card: dict) -> dict:
-    out = {"module": card["name"], "description": card["description"],
-           "keywords": card["keywords"]}
+def work_card(card: dict, keywords: int | None = None) -> dict:
+    """A card of the work order: the first `keywords` registry keywords (all when None)."""
+    kw = card["keywords"] if keywords is None else card["keywords"][:keywords]
+    out = {"module": card["name"], "description": card["description"], "keywords": kw}
     if "parent" in card:
         out["parent"] = card["parent"]
     return out
@@ -85,9 +86,14 @@ def template_rules(ws, max_picks: int, depth: str) -> list[str]:
     return [string.Template(r).safe_substitute(max_picks=max_picks, depth=depth) for r in rules]
 
 
-def build(ws, task: str, max_picks: int = DEFAULT_MAX_PICKS) -> dict:
+def build(ws, task: str, max_picks: int = DEFAULT_MAX_PICKS, effort: str | None = None) -> dict:
+    """The work order. `effort` (`choose --effort`) overrides `[search] effort` for this order;
+    the cards carry the first `[search] card_keywords` keywords, and the digest covers them."""
     search = search_settings(ws.config)
-    cards = [work_card(c) for c in catalog_cards(ws.registry.modules)]
+    if effort is not None:
+        search["effort"] = effort
+    limit = card_keywords(ws.config)
+    cards = [work_card(c, limit) for c in catalog_cards(ws.registry.modules)]
     rules = template_rules(ws, max_picks, DEPTH[search["effort"]])
     return {"task": task, "rules": rules, "cards": cards, "answer_schema": ANSWER_SCHEMA,
             "catalog_digest": digest_of(cards), "max_picks": max_picks, "search": search}

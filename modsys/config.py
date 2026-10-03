@@ -53,6 +53,7 @@ CI_FAIL_ON = ("error", "never", "warning")
 MATCH_MODES = ("lexical", "semantic", "hybrid")  # [match] mode / --match (P8.1 S1)
 _MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,99}")
 EFFORTS = ("quick", "standard", "deep")  # [search] effort (P8.1 S9)
+CARD_KEYWORDS_DEFAULT = 10  # [search] card_keywords (P8.2 D2)
 SEARCH_DEFAULTS = {"claude_model": "sonnet", "codex_model": "gpt-5.6-luna", "effort": "standard"}
 ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str",
                "applies_when": "str", "template": "str"}
@@ -70,8 +71,20 @@ def search_settings(config: dict) -> dict:
     return {key: table.get(key, default) for key, default in SEARCH_DEFAULTS.items()}
 
 
+def card_keywords(config: dict) -> int:
+    """`[search] card_keywords` of the merged config: how many keywords a work-order card
+    carries (D2). Read apart from `search_settings` so `catalog` keeps its three keys."""
+    table = config.get("search") or {}
+    return table.get("card_keywords", CARD_KEYWORDS_DEFAULT)
+
+
 def _validate_search(table, source) -> None:
     table = _require_table(table, "search", source)
+    if "card_keywords" in table:
+        v = table["card_keywords"]
+        if not _is_int(v) or v < 0:
+            raise UsageError(f"{source}: [search] card_keywords: expected an integer >= 0, "
+                             f"got {v!r}")
     for key in ("claude_model", "codex_model"):
         if key not in table:
             continue

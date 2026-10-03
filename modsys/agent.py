@@ -261,7 +261,8 @@ def run(config: dict, work_order: dict, schema: dict, check=lambda answer: answe
     that short: the cleanup runs with the three ignored); its output is capped."""
     from modsys.config import search_settings
     cfg = settings(config)
-    search = search_settings(config)
+    # the order's `search` wins: `choose --effort` overrides the config for one run
+    search = {**search_settings(config), **(work_order.get("search") or {})}
     values = {**search, "reasoning": REASONING[search["effort"]]}
     argv = substitute(cfg["command"], values)
     name, timeout_s = argv[0], cfg["timeout_s"]

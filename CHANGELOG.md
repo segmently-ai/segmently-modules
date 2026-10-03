@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `[search] card_keywords` (default 10, an integer >= 0) caps the keywords of each card in the
+  `modsys choose` work order (also `--run` and semantic / hybrid matching); `catalog` keeps every
+  keyword, and `catalog_digest` covers the capped cards.
+- `modsys choose --effort quick|standard|deep` overrides `[search] effort` for one run (the
+  depth rule, the order's `search.effort`, `--run`'s `{effort}` / `{reasoning}`).
 - The rules of the `modsys choose` work order are the overridable template `choose/rules.md`
   (`modsys templates list` shows it; `modsys templates override choose/rules.md` copies it):
   a `- ` line is a rule, `$max_picks` and `$depth` are filled in; a template without a rule, or
