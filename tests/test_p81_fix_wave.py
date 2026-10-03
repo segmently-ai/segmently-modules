@@ -141,11 +141,14 @@ class AgentWordingTest(Base):  # deferred 4: the command lives in the environmen
                              (["{effort}", "x"], "argv[0]")):
             with self.subTest(argv=argv):
                 os.environ["MODSYS_AGENT_COMMAND"] = json.dumps(argv)
-                code, out, err = run("catalog", *self.R)
+                code, out, err = run("choose", "--task", "t", "--run", *self.R)
                 self.assertEqual((code, out), (2, ""))
                 self.assertTrue(err.startswith("modsys: error: MODSYS_AGENT_COMMAND: "), err)
                 self.assertIn(needle, err)
                 self.assertNotIn("[agent]", err)
+                code, _, note = run("catalog", *self.R)  # P8.3 D6: the same text, as a note
+                self.assertEqual((code, note), (0, err.replace("modsys: error: ", "modsys: note: ")
+                                                .replace("\n", " — match.semantic is false\n")))
 
     def test_no_stale_wording_in_the_engine(self):
         for path in sorted((ENGINE / "modsys").rglob("*.py")):
@@ -161,11 +164,15 @@ class TimeoutLengthTest(Base):  # deferred 19
         for bad in ("9" * 5000, "00300"):
             with self.subTest(length=len(bad)):
                 self.agent(answer=picks(), timeout_s=bad)
-                for argv in (("catalog",), ("choose", "--task", "t", "--run")):
-                    code, out, err = run(*argv, *self.R)
-                    self.assertEqual((code, out), (2, ""))
-                    self.assertIn("MODSYS_AGENT_TIMEOUT: expected an integer from 1 to 3600", err)
-                    self.assertNotIn("internal error", err)
+                code, out, err = run("choose", "--task", "t", "--run", *self.R)
+                self.assertEqual((code, out), (2, ""))
+                self.assertIn("MODSYS_AGENT_TIMEOUT: expected an integer from 1 to 3600", err)
+                self.assertNotIn("internal error", err)
+                code, _, note = run("catalog", *self.R)  # P8.3 D6: exit 0 and one note
+                self.assertEqual(code, 0)
+                self.assertTrue(note.startswith("modsys: note: MODSYS_AGENT_TIMEOUT: expected an "
+                                                "integer from 1 to 3600"), note)
+                self.assertNotIn("internal error", note)
         self.assertEqual(self.calls(), [])
 
 

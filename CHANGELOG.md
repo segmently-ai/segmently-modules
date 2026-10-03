@@ -76,6 +76,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `codex exec … --sandbox read-only --output-schema <schema file> - < <order file>`; elsewhere
   they answer the order themselves. The user's depth goes to `choose --effort`. `module-discover`
   says that `--files` takes the paths as separate arguments.
+- `catalog` with a malformed `MODSYS_AGENT_COMMAND` or `MODSYS_AGENT_TIMEOUT` exits 0 with
+  `match.semantic` false and one stderr note (`modsys: note: <variable>: <problem> —
+  match.semantic is false`) instead of exit 2; the verbs that run the agent still refuse it (exit
+  2), and an `[agent]` table in a config file stays exit 2.
+- The text work order (`modsys choose --task`) wraps card lines longer than 2,000 characters over
+  following lines indented by four spaces (at the last space that fits, else at the limit); the
+  task and rule lines, the JSON form, `catalog_digest` and the agent's work order are unchanged.
 
 ### Fixed
 
@@ -113,6 +120,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `choose --run`: a note says so); `catalog` prints `no modules in the registry`; `context` in
   `semantic` mode without a pick says the agent chose no module instead of the keyword hint.
 - The agent command reads the work order as compact JSON (stdin and `MODSYS_WORK_ORDER`).
+- A first Ctrl-C, SIGTERM or SIGHUP at the very start or end of an agent call no longer leaves the
+  temp directory or a handler behind (exit 130).
+- A task file or stdin that is not UTF-8 is exit 2 `cannot read <path>: <reason>` (`<stdin>` for
+  `-`, the same in every locale) in `choose`, `context` and `discover`, instead of an internal
+  error; an unreadable task file says so in the same words.
+- `choose --apply` reads an answer as `choose --run` does: its bytes decoded as UTF-8 with
+  replacement, then one reader strips, parses and unwraps it — a trailing no-break space or an
+  invalid byte in a `reason` no longer splits the two; `--apply`'s refusals start with the file
+  or `stdin`.
+- `match` and `context` with `--match semantic --top 0` print `no module matched (--top 0)`
+  instead of the agent's wording (no agent was asked).
 - A repeated Ctrl-C or SIGTERM during an agent call still kills an agent that ignores SIGTERM
   and removes the temp files (exit 130).
 - `MODSYS_AGENT_TIMEOUT` is an integer from 1 to 3600 written with at most 4 digits: a longer

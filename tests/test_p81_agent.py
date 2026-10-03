@@ -42,6 +42,16 @@ class Base(AgentRepo, unittest.TestCase):
             return False
         return True
 
+    def assert_catalog_notes(self, error: str) -> None:
+        """P8.3 D6 (baseline update of P81-AC-058/060/062): `catalog` gives the refusal of the
+        verbs that run the agent as one note — exit 0, `match.semantic` false."""
+        problem = error.removeprefix("modsys: error: ").removesuffix("\n")
+        code, out, err = run("catalog", *self.R)
+        self.assertEqual((code, err), (0, f"modsys: note: {problem} — match.semantic is false\n"))
+        self.assertTrue(out)
+        code, env, _ = run_json("catalog", *self.R)
+        self.assertEqual((code, env["data"]["match"]["semantic"]), (0, False))
+
 
 class TrustBoundaryTest(Base):
     GOOD = picks(("payments", 0.9))
@@ -100,14 +110,14 @@ class TrustBoundaryTest(Base):
         _, env, _ = run_json("catalog", *self.R)
         self.assertTrue(env["data"]["match"]["semantic"])
 
-    def test_invalid_env_is_refused(self):  # P81-AC-058
+    def test_invalid_env_is_refused(self):  # P81-AC-058 (P8.3 D6: catalog notes it)
         for bad in ("nope", '"a string"', '["ok", 3]', "[]", '{"a": 1}'):
             with self.subTest(bad=bad), mock.patch.dict(os.environ,
                                                         {"MODSYS_AGENT_COMMAND": bad}):
-                for argv in (("choose", "--task", "t", "--run"), ("catalog",)):
-                    code, out, err = run(*argv, *self.R)
-                    self.assertEqual((code, out), (2, ""))
-                    self.assertIn("MODSYS_AGENT_COMMAND", err)
+                code, out, err = run("choose", "--task", "t", "--run", *self.R)
+                self.assertEqual((code, out), (2, ""))
+                self.assertIn("MODSYS_AGENT_COMMAND", err)
+                self.assert_catalog_notes(err)
         with mock.patch.dict(os.environ, {"MODSYS_AGENT_COMMAND": "  "}):  # empty = unset
             self.assertEqual(run("catalog", *self.R)[0], 0)
 
@@ -117,10 +127,10 @@ class TrustBoundaryTest(Base):
             self.assertEqual(run("catalog", *self.R)[0], 0, ok)
         for bad in ("0", "3601", "-1", "1.5", "abc", "5s", "٣"):
             self.agent(answer=picks(), timeout_s=bad)
-            for argv in (("catalog",), ("choose", "--task", "t", "--run")):
-                code, out, err = run(*argv, *self.R)
-                self.assertEqual((code, out), (2, ""), bad)
-                self.assertIn("MODSYS_AGENT_TIMEOUT", err)
+            code, out, err = run("choose", "--task", "t", "--run", *self.R)
+            self.assertEqual((code, out), (2, ""), bad)
+            self.assertIn("MODSYS_AGENT_TIMEOUT", err)
+            self.assert_catalog_notes(err)  # P8.3 D6
 
 
 class RunningTest(Base):
@@ -164,18 +174,21 @@ class RunningTest(Base):
         for item, needle in (("{foo}", "{foo}"), ("a{", "unmatched"), ("}x", "unmatched"),
                              ("{ effort}", "unmatched"), ("{claude_model", "unmatched")):
             self.agent([item], answer=picks())
-            for argv in (("catalog",), ("choose", "--task", "t", "--run")):
-                code, out, err = run(*argv, *self.R)
-                self.assertEqual((code, out), (2, ""), (item, argv))
-                self.assertIn(needle, err)
-                self.assertIn(repr(item), err)
+            code, out, err = run("choose", "--task", "t", "--run", *self.R)
+            self.assertEqual((code, out), (2, ""), item)
+            self.assertIn(needle, err)
+            self.assertIn(repr(item), err)
+            self.assert_catalog_notes(err)  # P8.3 D6
         os.environ["MODSYS_AGENT_COMMAND"] = '["{effort}", "x"]'
-        code, _, err = run("catalog", *self.R)
+        code, _, err = run("choose", "--task", "t", "--run", *self.R)
         self.assertEqual(code, 2)
         self.assertIn("argv[0]", err)
+        self.assert_catalog_notes(err)
         for bad in ("[]", '[1]', '"string"'):
             os.environ["MODSYS_AGENT_COMMAND"] = bad
-            self.assertEqual(run("catalog", *self.R)[0], 2, bad)
+            code, _, err = run("choose", "--task", "t", "--run", *self.R)
+            self.assertEqual(code, 2, bad)
+            self.assert_catalog_notes(err)
 
     def test_answer_parsing_order(self):  # P81-AC-061
         raw = picks(("payments", 0.9))

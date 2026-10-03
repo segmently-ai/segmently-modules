@@ -2,7 +2,7 @@
 keywords (a child also names its parent) — the input an agent reads to choose modules by
 meaning (P8.1 S2). Read-only: no lock, no write, never runs the agent. JSON carries `match: {mode,
 semantic}` (`semantic` = a valid `MODSYS_AGENT_COMMAND` is set) and the `search` settings."""
-from modsys.output import EXIT_OK, emit
+from modsys.output import EXIT_OK, UsageError, defer_note, emit
 from modsys.registry import as_dict
 from modsys.config import search_settings
 from modsys.semantic import agent_configured, configured_mode
@@ -44,10 +44,20 @@ def register(sub, common) -> None:
     p.set_defaults(func=run)
 
 
+def _semantic(config: dict) -> bool:
+    """`match.semantic`. A malformed `MODSYS_AGENT_COMMAND` / `MODSYS_AGENT_TIMEOUT` (the timeout
+    is checked first) makes it false with one deferred stderr note — the refusal the verbs that
+    run the agent give with exit 2: `catalog` itself reports, it never runs the agent."""
+    try:
+        return agent_configured(config)
+    except UsageError as e:
+        defer_note(f"{e} — match.semantic is false")
+        return False
+
+
 def run(args) -> int:
     ws = Workspace.from_args(args)
-    data = {"match": {"mode": configured_mode(ws.config),
-                      "semantic": agent_configured(ws.config)},
+    data = {"match": {"mode": configured_mode(ws.config), "semantic": _semantic(ws.config)},
             "search": search_settings(ws.config),
             "modules": cards(ws.registry.modules)}
     emit("catalog", data, args.json, _render)

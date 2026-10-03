@@ -16,6 +16,7 @@ NO_AGENT = ("semantic matching needs your agent: set MODSYS_AGENT_COMMAND (a JSO
             "in Claude Code / Codex the skills do it with modsys choose")
 NO_AGENT_NOTE = "semantic part skipped: no agent command configured"
 NO_CARDS_NOTE = "the registry has no modules: the agent was not asked"
+TOP_ZERO = "no module matched (--top 0)"  # semantic `match` / `context` text: no agent asked
 SKIPPED = (NO_AGENT_NOTE, agent.NESTED_NOTE)  # the notes of a hybrid run without its agent part
 RRF_K = 60
 MIN_PICKS = 5  # picks asked from the agent per match run: at least this, else `top`

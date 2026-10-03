@@ -1,6 +1,7 @@
 """Pipeline verbs. `context` answers "what should this role read before planning this task";
 `discover` answers "which modules will this change touch, and which docs follow along".
 Both are deterministic (keywords, code pointers, code_map, paths) — agents add judgment."""
+import errno
 import functools
 import os
 import re
@@ -13,20 +14,40 @@ from modsys.match import match_modules, near_lines, near_misses
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.registry import as_dict
 from modsys.query import show_target
-from modsys.semantic import NO_CARDS_NOTE, add_match_flag, ranked, resolve, skipped
+from modsys.semantic import NO_CARDS_NOTE, TOP_ZERO, add_match_flag, ranked, resolve, skipped
 from modsys.workspace import Workspace
 
 _PATHLIKE = re.compile(r"(?<![\w/.-])((?:\.{0,2}/)?[\w.-]+(?:/[\w.-]+)+)")
 UPDATE_ROLES = ("developer", "qa")  # a modified module's developer + qa docs follow the code
 
 
+def read_input(source: str) -> bytes:
+    """The bytes of the file `source`, or of stdin for `-` — never decoded by the locale (a text
+    stream a caller swapped in for stdin is encoded back as UTF-8). OSError when it cannot be
+    read (stdin closed at start: EBADF)."""
+    if source != "-":
+        return Path(source).read_bytes()
+    stream = sys.stdin
+    if stream is None:  # fd 0 was closed at start
+        raise OSError(errno.EBADF, os.strerror(errno.EBADF))
+    buffer = getattr(stream, "buffer", None)
+    if buffer is not None:
+        return buffer.read()
+    return stream.read().encode("utf-8", "surrogateescape")
+
+
 def task_text(args) -> str:
+    """The task text: `--task`, or `--task-file FILE|-` read as bytes and decoded as strict
+    UTF-8 whatever the locale (`cannot read <path>: <reason>`, `<stdin>` for `-`)."""
     if args.task_file:
+        source = str(args.task_file)
+        name = "<stdin>" if source == "-" else source
         try:
-            text = sys.stdin.read() if str(args.task_file) == "-" else \
-                args.task_file.read_text(encoding="utf-8")
+            text = read_input(source).decode("utf-8")
         except OSError as e:
-            raise UsageError(f"{args.task_file}: cannot read: {e}") from None
+            raise UsageError(f"cannot read {name}: {e.strerror or e}") from None
+        except UnicodeDecodeError:
+            raise UsageError(f"cannot read {name}: not valid UTF-8") from None
     else:
         text = args.task or ""
     if not text.strip():
@@ -208,7 +229,8 @@ def run_context(args) -> int:
         rows, notes = _mode_rows(ws, text, mode, notes, args.top)
         data = {**build_context(ws, text, args.role, args.all_roles, args.top, rows),
                 "mode": mode, "notes": notes}
-    emit("context", data, args.json, _render_context)
+    top = ws.config["match"]["top"] if args.top is None else args.top
+    emit("context", data, args.json, functools.partial(_render_context, top=top))
     return EXIT_OK
 
 
@@ -237,9 +259,11 @@ def run_discover(args) -> int:
     return EXIT_OK
 
 
-def _render_context(d) -> None:
+def _render_context(d, top: int | None = None) -> None:
     if not d["modules"] and d.get("mode") == "semantic":  # only the agent chose (P8.1)
-        if NO_CARDS_NOTE not in d["notes"]:
+        if top == 0:  # the agent was not asked
+            print(TOP_ZERO)
+        elif NO_CARDS_NOTE not in d["notes"]:
             print("no module matched (the agent chose no module; try rephrasing the task)")
     elif not d["modules"]:
         print("no module matched (try domain terms, or: modsys list)")

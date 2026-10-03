@@ -143,20 +143,23 @@ def _json(text: str, who: str, what: str):
         raise UsageError(f"{who}: {what} is not JSON: {text[:120]!r}") from None
 
 
-def parse_output(stdout: str, name: str):
-    """The answer object inside an agent's stdout (`unwrap`); refusals name the agent."""
-    text = stdout.strip()
+def answer_from(text: str, who: str, what: str, empty: str):
+    """The answer object in `text` — an agent's stdout (`choose --run`, semantic matching) or the
+    input of `choose --apply`, both decoded as UTF-8 with replacement: stripped of whitespace,
+    parsed as JSON and unwrapped (`unwrap`). The one reader of every answer; `empty` is the
+    refusal of an empty text, `who` and `what` word the others."""
+    text = text.strip()
     if not text:
-        raise UsageError(f"agent {name} printed nothing")
-    return unwrap(_json(text, f"agent {name}", "its output"), f"agent {name}", "its output")
+        raise UsageError(empty)
+    return unwrap(_json(text, who, what), who, what)
 
 
 def unwrap(doc, who: str, what: str):
     """The answer object in `doc`, a parsed JSON value: the answer itself, or a `claude -p
     --output-format json` envelope's `structured_output` / `result` (a string `result` may sit
     in one ```json fence). The first matching step decides; no free-text scraping (SI-P81-12).
-    `choose --run` and `choose --apply` share it; `who` and `what` word the refusals ("agent
-    NAME", "its output")."""
+    `answer_from` calls it for `choose --run` and `choose --apply`; `who` and `what` word the
+    refusals ("agent NAME", "its output")."""
     if not isinstance(doc, dict):
         raise UsageError(f"{who}: {what} is not a JSON object")
     if "picks" in doc or "none" in doc:
@@ -271,10 +274,10 @@ def run(config: dict, work_order: dict, schema: dict, check=lambda answer: answe
         tmp = Path(tempfile.mkdtemp(prefix="modsys-agent-"))
     except OSError as e:
         raise UsageError(f"cannot write {tempfile.gettempdir()}: {e.strerror or e}") from None
-    before: dict = {}
+    before: dict = {}  # filled by _set_signals before each handler is installed (N-1)
     proc, readers = None, []
     try:
-        before = _set_signals()
+        _set_signals(before)
         order_file, schema_file, _ = _write_files(tmp, work_order, schema)
         env = {**os.environ, "MODSYS_WORK_ORDER": str(order_file),
                "MODSYS_SCHEMA": str(schema_file)}
@@ -309,20 +312,22 @@ def run(config: dict, work_order: dict, schema: dict, check=lambda answer: answe
         if proc.returncode != 0:
             tail = f": {stderr.strip()[:STDERR_CHARS]}" if stderr.strip() else ""
             raise UsageError(f"agent {name} exited {proc.returncode}{tail}")
-        answer = parse_output(stdout, name)
+        answer = answer_from(stdout, f"agent {name}", "its output", f"agent {name} printed nothing")
         try:
             return check(answer)
         except UsageError as e:
             raise UsageError(f"agent {name}: {e}") from None
-    finally:
-        _ignore_signals(before)  # from here a repeated Ctrl-C / SIGTERM cannot stop the cleanup
+    finally:  # nested: a first signal at any point of it still reaches the cleanup and restore
         try:
-            if proc is not None:
-                _kill_now(proc)  # the TERM grace was given above: whatever is left is killed
-                _close(proc, readers)
-            shutil.rmtree(tmp, ignore_errors=True)
+            _ignore_signals(before)  # from here a repeated Ctrl-C / SIGTERM cannot stop the cleanup
         finally:
-            _restore_signals(before)
+            try:
+                if proc is not None:
+                    _kill_now(proc)  # the TERM grace was given above: whatever is left is killed
+                    _close(proc, readers)
+                shutil.rmtree(tmp, ignore_errors=True)
+            finally:
+                _restore_signals(before)
 
 
 def _kill_now(proc: subprocess.Popen) -> None:
@@ -336,11 +341,12 @@ def _kill_now(proc: subprocess.Popen) -> None:
         pass
 
 
-def _set_signals() -> dict:
+def _set_signals(before: dict) -> None:
     """Ctrl-C, SIGTERM and SIGHUP raise KeyboardInterrupt (exit 130) — once: a repeat while the
     run stops is a no-op. A signal already ignored (`nohup`) stays ignored; main thread only.
-    The handlers in force before, to restore."""
-    before, fired = {}, []
+    Each handler in force before goes into the caller's `before` (to restore) BEFORE the new one
+    is installed: a signal that fires at once still finds its old handler there."""
+    fired = []
 
     def interrupt(signum, frame) -> None:
         if not fired:
@@ -351,12 +357,13 @@ def _set_signals() -> dict:
         if sig is None:
             continue
         try:
-            if signal.getsignal(sig) in (signal.SIG_IGN, None):  # `nohup` keeps it ignored;
+            current = signal.getsignal(sig)
+            if current in (signal.SIG_IGN, None):  # `nohup` keeps it ignored;
                 continue  # None: a handler set outside Python, which could not be restored
-            before[sig] = signal.signal(sig, interrupt)
-        except ValueError:  # not the main thread
-            pass
-    return before
+            before[sig] = current
+            signal.signal(sig, interrupt)
+        except ValueError:  # not the main thread: nothing installed, nothing to restore
+            before.pop(sig, None)
 
 
 def _ignore_signals(before: dict) -> None:

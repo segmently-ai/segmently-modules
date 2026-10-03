@@ -5,7 +5,8 @@ written `started`), `stderr` (text), `log` (a JSON file it writes: its argv, its
 files `MODSYS_WORK_ORDER` / `MODSYS_SCHEMA` name and their content, its environment),
 `started` (a marker file), `grandchild` (a file to write the pid of a `sleep` child into),
 `nested` (an argv to run as a child and record: rc, stdout, stderr), `flood` (bytes to print), `helper` (seconds a session-leading helper holds stdout), `ignore_term`
-(true: SIGTERM is ignored, only SIGKILL stops it)."""
+(true: SIGTERM is ignored, only SIGKILL stops it), `answer_hex` (the bytes it prints, in hex:
+an answer that is not valid UTF-8)."""
 import json
 import os
 import signal
@@ -52,6 +53,9 @@ def main() -> int:
         sys.stderr.write(cfg["stderr"])
     if "answer" in cfg:
         sys.stdout.write(cfg["answer"])
+    if "answer_hex" in cfg:
+        sys.stdout.flush()
+        sys.stdout.buffer.write(bytes.fromhex(cfg["answer_hex"]))
     return cfg.get("exit", 0)
 
 

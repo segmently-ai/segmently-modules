@@ -3,16 +3,14 @@ the validation of its answer. `choose --task T` (or `--task-file PATH|-`) prints
 (a prompt; `--json` the document); `choose --apply FILE|-` validates an answer offline and prints
 the picks with each module's read set; `choose --task T --run` asks the user's own agent command
 (`MODSYS_AGENT_COMMAND`, see `modsys.agent`) and prints the same. `--apply` and `--run` read an
-answer the same way (`agent.unwrap`). Read-only: no lock, no write, no cache."""
-import json
-import sys
+answer the same way (`agent.answer_from`). Read-only: no lock, no write, no cache."""
 from pathlib import Path
 
 from modsys import agent, workorder
 from modsys.catalog_cmd import cards
 from modsys.config import EFFORTS
 from modsys.output import EXIT_OK, UsageError, emit
-from modsys.pipeline import task_text
+from modsys.pipeline import read_input, task_text
 from modsys.query import show_target
 from modsys.semantic import NO_AGENT, NO_CARDS_NOTE, agent_configured
 from modsys.workspace import Workspace
@@ -41,20 +39,22 @@ def register(sub, common) -> None:
     p.set_defaults(func=run)
 
 
+def _source(apply: str) -> str:
+    """How `--apply`'s refusals name the answer: FILE as given, or `stdin`."""
+    return "stdin" if apply == "-" else apply
+
+
 def _read_answer(source: str):
-    """The answer object in FILE or stdin: the answer itself or an agent's JSON envelope, read
-    as `--run` reads the agent's stdout (`agent.unwrap`)."""
+    """The answer object in FILE or stdin: the answer itself or an agent's JSON envelope. Its
+    bytes are decoded as UTF-8 with replacement and go through `agent.answer_from`, as `--run`
+    reads the agent's stdout; every refusal starts with the source."""
+    name = _source(source)
     try:
-        text = sys.stdin.read() if source == "-" else Path(source).read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as e:
-        raise UsageError(f"{source}: cannot read the answer: {e}") from None
-    if not text.strip():
-        raise UsageError(f"{source}: the answer is empty (expected a JSON object)")
-    try:
-        doc = json.loads(text)
-    except ValueError as e:
-        raise UsageError(f"{source}: the answer is not JSON: {e}") from None
-    return agent.unwrap(doc, "answer", "stdin" if source == "-" else source)
+        data = read_input(source)
+    except OSError as e:
+        raise UsageError(f"{name}: cannot read the answer: {e.strerror or e}") from None
+    return agent.answer_from(data.decode("utf-8", "replace"), name, "its text",
+                             f"{name}: the answer is empty (expected a JSON object)")
 
 
 def _with_read_sets(ws, picks: list[dict]) -> list[dict]:
@@ -86,7 +86,11 @@ def run(args) -> int:
     order = workorder.build(ws, task, max_picks, args.effort)
     check = lambda answer: workorder.validate_answer(answer, order, max_picks)  # noqa: E731
     if not args.run:
-        picks, none, notes = check(_read_answer(args.apply))
+        answer = _read_answer(args.apply)
+        try:
+            picks, none, notes = check(answer)
+        except UsageError as e:  # as `--run` names the agent: `agent NAME: answer: …`
+            raise UsageError(f"{_source(args.apply)}: {e}") from None
     elif not cards(ws.registry.modules):  # nothing to choose from: no agent call (M-2)
         picks, none, notes = [], False, [NO_CARDS_NOTE]
     else:

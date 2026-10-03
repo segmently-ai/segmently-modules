@@ -37,6 +37,8 @@ ANSWER_SCHEMA = {
     "additionalProperties": False,
 }
 RULES_TEMPLATE = "choose/rules.md"  # the instruction of the work order, a template (D3)
+CARD_LINE_MAX = 2000  # characters (`len()`, the indent included) of a printed card line
+CONTINUATION = "    "  # a card line that goes on: no card line starts with a space
 DEPTH = {  # fixed English texts: the work order must not vary from run to run
     "quick": "Choose from the cards only; do not open any file.",
     "standard": "Choose from the cards, and also open the INDEX or the head of MODULE.md of up "
@@ -99,8 +101,28 @@ def build(ws, task: str, max_picks: int = DEFAULT_MAX_PICKS, effort: str | None 
             "catalog_digest": digest_of(cards), "max_picks": max_picks, "search": search}
 
 
+def wrap_card(line: str, limit: int = CARD_LINE_MAX) -> list[str]:
+    """A card line as printed lines of at most `limit` characters. A longer one goes on over
+    following lines indented by four spaces: each break is the last space whose preceding text
+    fits (the space is dropped — a soft break), or, without one, a cut at exactly the limit
+    (nothing dropped). A line within the limit is unchanged."""
+    out, indent = [], ""
+    while len(indent) + len(line) > limit:
+        room = limit - len(indent)
+        cut = line.rfind(" ", 0, room + 1)
+        if cut >= 0:
+            out.append(indent + line[:cut])
+            line = line[cut + 1:]
+        else:
+            out.append(indent + line[:room])
+            line = line[room:]
+        indent = CONTINUATION
+    return out + [indent + line]
+
+
 def render(order: dict) -> None:
-    """The work order as a prompt any agent can take."""
+    """The work order as a prompt any agent can take. The task and rule lines print as written;
+    a card line longer than `CARD_LINE_MAX` wraps (`wrap_card`; the JSON form keeps it whole)."""
     print("Task:")
     print(order["task"])
     print()
@@ -111,7 +133,10 @@ def render(order: dict) -> None:
     print("Candidates (one per line: module, description, keywords):")
     for c in order["cards"]:
         parent = f"  (child of {c['parent']})" if "parent" in c else ""
-        print(f"{c['module']}  {c['description']}  [{', '.join(c['keywords'])}]{parent}")
+        line = f"{c['module']}  {c['description']}  [{', '.join(c['keywords'])}]{parent}"
+        for part in line.split("\n"):  # a newline in a description already ends a line
+            for printed in wrap_card(part):
+                print(printed)
     print()
     print("Answer schema:")
     print(json.dumps(order["answer_schema"], indent=2))
