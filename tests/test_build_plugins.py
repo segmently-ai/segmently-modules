@@ -64,6 +64,8 @@ class LayoutTest(BuilderRepo):  # P6-AC-008
                              if rel.startswith(src + "/")]
                 if name == "modsys":
                     want += ["bin/modsys"] + [f"runtime/{rel}" for rel in self.tracked()]
+                    want += [f"agents/{rel.rsplit('/', 1)[1]}" for rel in self.tracked()
+                             if rel.startswith("modsys/defaults/agents/")]
                 self.assertEqual(files, sorted(want))
         self.assertIn("skills/module-lint/references/lint-codes.md",
                       [p.relative_to(self.out / "modsys").as_posix()

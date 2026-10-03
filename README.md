@@ -30,6 +30,10 @@ claude plugin install modsys-ui@modsys     # optional: the designer-review skill
 claude plugin install modsys-qa@modsys     # optional: the acceptance-criteria skills
 ```
 
+The `modsys` plugin also carries the read-only `module-chooser` subagent (`modsys:module-chooser`)
+that the skills hand a `modsys choose` work order; change how modules are chosen with `modsys
+templates override choose/rules.md`.
+
 **Codex** — the plugin carries the skills; install the command line first (a Codex plugin puts
 nothing on `PATH`), at the released version the plugin comes from:
 

@@ -4,7 +4,8 @@
 
 writes three plugin directories into --out (default `dist/plugins` of this engine tree):
   modsys     the `core` pack's skills, `bin/modsys` (tools/launcher.sh, mode 0755) and
-             `runtime/modsys/` (the tracked files of `modsys/`, byte for byte)
+             `runtime/modsys/` (the tracked files of `modsys/`, byte for byte) and `agents/` (every tracked
+             file of `modsys/defaults/agents/`, mode 0644: the `module-chooser` subagent)
   modsys-ui  the `ui` pack's skills;  modsys-qa  the `qa` pack's skills
 each with `.claude-plugin/plugin.json` (Claude Code), `plugin.json` (Agent Plugins, read by
 Codex), `.codex-plugin/plugin.json` (Codex's compatibility manifest) and a README.md, every
@@ -211,7 +212,10 @@ def readme(name: str, skills: list[str]) -> str:
     if name == CORE:
         what += (" It also carries the modsys command line those skills run: `bin/modsys` runs "
                  "the engine in `runtime/` with Python 3.11 or newer (or `uv`); set "
-                 "`MODSYS_PYTHON` to choose the interpreter.")
+                 "`MODSYS_PYTHON` to choose the interpreter. It ships the read-only "
+                 "`module-chooser` agent (`modsys:module-chooser`, Claude Code) that the skills "
+                 "hand a `modsys choose` work order; every plugin update replaces it, so change "
+                 "how modules are chosen with `modsys templates override choose/rules.md`.")
         needs = ("- Codex: `codex plugin marketplace add <owner>/<publish repo> --ref stable`, "
                  f"then `codex plugin add {name}@modsys`. Codex puts no plugin command on "
                  "PATH, so install the CLI first, at the plugin's version: `uv tool install "
@@ -284,6 +288,10 @@ def build_one(engine: Path, files: dict[str, int], name: str, version: str,
         for rel in sorted(files):
             write(dest / "runtime" / rel, read(engine, rel), files[rel])
         count += 1 + len(files)
+        agents = "modsys/defaults/agents/"  # Claude Code finds a plugin's agents/ itself
+        for rel in sorted(p for p in files if p.startswith(agents)):
+            write(dest / "agents" / rel[len(agents):], read(engine, rel), 0o644)
+            count += 1
     for rel, value in manifests(name, version, spdx).items():
         write(dest / rel, (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode(),
               0o644)

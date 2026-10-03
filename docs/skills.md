@@ -169,6 +169,16 @@ by-meaning half goes through `modsys choose`, which needs no agent command in th
 The engine holds no model, key or network code and ships no model: the agent that chooses is the
 one you already run, under your own credentials.
 
+**The choosing agent.** The `modsys` plugin ships one read-only Claude Code subagent,
+`module-chooser` (`modsys:module-chooser`; tools Read, Grep, Glob), and the skills hand it the
+file of a `modsys choose` work order, calling it with `model: <search.claude_model>`. Its own
+`model: sonnet` line covers only a call without a model (an @-mention): the Agent tool's `model`
+wins, and `inherit` is not used, so the chooser never costs as much as the session model. The agent
+is thin; the rules it follows are in the work order. To change how modules are chosen, use
+`modsys templates override choose/rules.md`, not the agent file: every plugin update replaces the
+agent file in the plugin cache. Codex ignores `agents/`, and Claude Code with `builtin_delivery =
+"repo"` (no plugin skills) uses the skills' fallback.
+
 Also in these skills: `module-discover` goes from the candidates to the code
 (`code-map files`, then `discover --files … --task-file …`) and reads the `children` list of a
 split parent to pick the child the change is in; `module-sync` updates that child's doc (which

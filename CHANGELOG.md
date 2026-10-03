@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The `modsys` plugin ships the read-only subagent `module-chooser` (`modsys:module-chooser`; tools
+  Read, Grep, Glob; `model: sonnet` only for a call without a model): the build copies every tracked
+  file of `modsys/defaults/agents/` into the plugin's `agents/`; the manifests are unchanged.
 - `[search] card_keywords` (default 10, an integer >= 0) caps the keywords of each card in the
   `modsys choose` work order (also `--run` and semantic / hybrid matching); `catalog` keeps every
   keyword, and `catalog_digest` covers the capped cards.
