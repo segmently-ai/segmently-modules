@@ -210,9 +210,9 @@ class LexicalIdenticalTest(Repo):
 
 class NoAgentTest(Repo):
     def test_semantic_refuses(self):  # P81-AC-024
-        os.environ["MODSYS_AGENT_ALLOW_REPO_MODE"] = "1"  # D6: a config mode runs only opted in
         for cfg_mode in (False, True):
             if cfg_mode:
+                os.environ["MODSYS_AGENT_ALLOW_REPO_MODE"] = "1"  # D6: opted in
                 self.config('[match]\nmode = "semantic"\n')
             before = tree_hash(self.root)
             flag = () if cfg_mode else ("--match", "semantic")

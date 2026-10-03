@@ -30,6 +30,11 @@ def flush_notes() -> None:
     `cli.main` calls it only after a verb returned exit 0."""
     lines = list(_DEFERRED_NOTES)
     _DEFERRED_NOTES.clear()
+    if lines:
+        try:  # stdout is block-buffered in a pipe or a file: the note must come after it
+            sys.stdout.flush()
+        except (OSError, ValueError):  # closed or broken stdout: not this function's contract
+            pass
     for line in lines:
         print(f"modsys: note: {line}", file=sys.stderr)
 

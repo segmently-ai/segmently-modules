@@ -58,20 +58,33 @@ class DecisionTableTest(Repo):  # P82-AC-015
     def test_r1_the_flag_never_reads_the_opt_in(self):
         self.good_agent()
         for name, argv in self.verbs():
-            for flag in ("lexical", "semantic", "hybrid"):
-                results = []
-                for value in (None, "garbage", "1", "0"):
-                    os.environ.pop(OPT, None)
-                    if value is not None:
-                        os.environ[OPT] = value
-                    for cfg in ("absent", "semantic"):
-                        if cfg != "absent":
-                            self.mode(cfg)
-                        results.append(self.go(argv, "--match", flag))
-                with self.subTest(verb=name, flag=flag):
-                    self.assertEqual(len(set(results)), 1, results)
-                    self.assertEqual(results[0][0], 0)
-                    self.assertNotIn("note:", results[0][2])
+            for js in (False, True):
+                for flag in ("lexical", "semantic", "hybrid"):
+                    for cmd in ("valid", "malformed"):
+                        results = []
+                        for cfg in (None, "lexical", "semantic", "hybrid"):
+                            (self.root / ".modsys" / "config.toml").unlink(missing_ok=True)
+                            if cfg:
+                                self.mode(cfg)
+                            for value in (None, "garbage", "1", "0"):
+                                os.environ.pop(OPT, None)
+                                if value is not None:
+                                    os.environ[OPT] = value
+                                if cmd == "malformed":
+                                    os.environ["MODSYS_AGENT_COMMAND"] = "not json"
+                                else:
+                                    self.good_agent()
+                                results.append(self.go(argv, "--match", flag, json_out=js))
+                        with self.subTest(verb=name, json=js, flag=flag, cmd=cmd):
+                            self.assertEqual(len(set(results)), 1)
+                            code, _, err = results[0]
+                            self.assertNotIn("note:", err)
+                            if cmd == "malformed" and flag != "lexical":
+                                self.assertEqual(code, 2)
+                                self.assertTrue(
+                                    err.startswith("modsys: error: MODSYS_AGENT_COMMAND:"), err)
+                            else:
+                                self.assertEqual((code, err), (0, ""))
 
     def test_r2_a_lexical_or_absent_config_reads_nothing(self):
         os.environ["MODSYS_AGENT_COMMAND"] = "not json"
@@ -125,12 +138,17 @@ class DecisionTableTest(Repo):  # P82-AC-015
                 _, _, err = self.go(argv)
                 self.assertEqual(err.count("\n"), 1)
         # a refusal later in the run: the single error line, no note
-        for verb in ("context", "discover"):
-            code, out, err = run(verb, "--task-file", str(self.tmp / "missing.txt"), *self.R)
-            self.assertEqual((code, out), (2, ""))
-            self.assertEqual(err.count("\n"), 1)
-            self.assertTrue(err.startswith("modsys: error:"), err)
-            self.assertNotIn("note:", err)
+        for mode in ("semantic", "hybrid"):
+            self.mode(mode)
+            for verb in ("context", "discover"):
+                for js in (False, True):
+                    code, out, err = self.go((verb, "--task-file", str(self.tmp / "missing.txt")),
+                                             json_out=js)
+                    with self.subTest(mode=mode, verb=verb, json=js):
+                        self.assertEqual((code, out), (2, ""))
+                        self.assertEqual(err.count("\n"), 1)
+                        self.assertTrue(err.startswith("modsys: error:"), err)
+                        self.assertNotIn("note:", err)
         # nothing leaks into the next run in the same process
         code, out, err = run("list", *self.R)
         self.assertEqual((code, err), (0, ""))
@@ -157,6 +175,22 @@ class DecisionTableTest(Repo):  # P82-AC-015
         self.assertEqual(events[-1], "err")
         self.assertNotIn("err", events[:-1 - events[::-1].index("out")])
 
+    def test_the_note_is_the_last_line_of_a_merged_pipe(self):  # SI-P82-9, stdout is buffered
+        import subprocess
+        import sys
+        for mode in ("semantic", "hybrid"):
+            self.mode(mode)
+            for name, argv in self.verbs():
+                for js in (False, True):
+                    cmd = [sys.executable, "-m", "modsys", *argv, *self.R,
+                           *(("--json",) if js else ())]
+                    env = {**os.environ, "PYTHONPATH": str(ENGINE)}
+                    merged = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                            text=True, env=env, cwd=self.tmp).stdout
+                    with self.subTest(mode=mode, verb=name, json=js):
+                        self.assertTrue(merged.endswith(note(mode)), merged[-300:])
+                        self.assertEqual(merged[:-len(note(mode))], self.lex(argv, js))
+
     def test_r5_an_invalid_opt_in_with_a_non_lexical_config_is_exit_2(self):
         self.good_agent()
         os.environ[OPT] = "true"
@@ -168,6 +202,11 @@ class DecisionTableTest(Repo):  # P82-AC-015
                         self.assertEqual(
                             self.go(argv, json_out=js),
                             (2, "", f"modsys: error: {OPT}: expected 1 or 0, got 'true'\n"))
+        os.environ["MODSYS_AGENT_COMMAND"] = "not json"  # the opt-in is validated first
+        for name, argv in self.verbs():
+            self.assertEqual(
+                self.go(argv),
+                (2, "", f"modsys: error: {OPT}: expected 1 or 0, got 'true'\n"))
 
     def test_r6_semantic_opted_in_asks_the_agent_once(self):
         os.environ[OPT] = "1"
@@ -190,8 +229,10 @@ class DecisionTableTest(Repo):  # P82-AC-015
         os.environ[OPT] = "1"
         self.mode("semantic")
         for name, argv in self.verbs():
-            with self.subTest(verb=name):
-                self.assertEqual(self.go(argv), (2, "", f"modsys: error: {NO_AGENT}\n"))
+            for js in (False, True):
+                with self.subTest(verb=name, json=js):
+                    self.assertEqual(self.go(argv, json_out=js),
+                                     (2, "", f"modsys: error: {NO_AGENT}\n"))
 
     def test_r8_hybrid_opted_in_without_a_command_runs_lexically_with_a_stdout_note(self):
         os.environ[OPT] = "1"
@@ -210,16 +251,18 @@ class DecisionTableTest(Repo):  # P82-AC-015
         os.environ[OPT] = "1"
         os.environ["MODSYS_WORK_ORDER"] = "/nonexistent"
         self.good_agent()
-        self.mode("semantic")
         for name, argv in self.verbs():
-            with self.subTest(verb=name, mode="semantic"):
-                self.assertEqual(self.go(argv), (2, "", f"modsys: error: {NESTED}\n"))
-        self.mode("hybrid")
-        for name, argv in self.verbs():
-            with self.subTest(verb=name, mode="hybrid"):
-                code, out, err = self.go(argv)
-                self.assertEqual((code, err), (0, ""))
-                self.assertIn(NESTED_NOTE, out)
+            for js in (False, True):
+                self.mode("semantic")
+                with self.subTest(verb=name, mode="semantic", json=js):
+                    self.assertEqual(self.go(argv, json_out=js),
+                                     (2, "", f"modsys: error: {NESTED}\n"))
+                self.mode("hybrid")
+                with self.subTest(verb=name, mode="hybrid", json=js):
+                    code, out, err = self.go(argv, json_out=js)
+                    self.assertEqual((code, err), (0, ""))
+                    self.assertIn(NESTED_NOTE, out)
+                    self.assertEqual(out, self.go(argv, "--match", "hybrid", json_out=js)[1])
         self.assertEqual(self.calls(), [])
 
     def test_r11_malformed_agent_variables_opted_in_are_refused(self):
@@ -228,10 +271,12 @@ class DecisionTableTest(Repo):  # P82-AC-015
             self.mode(mode)
             os.environ["MODSYS_AGENT_COMMAND"] = "not json"
             for name, argv in self.verbs():
-                with self.subTest(mode=mode, verb=name):
-                    code, out, err = self.go(argv)
-                    self.assertEqual((code, out), (2, ""))
-                    self.assertTrue(err.startswith("modsys: error: MODSYS_AGENT_COMMAND:"), err)
+                for js in (False, True):
+                    with self.subTest(mode=mode, verb=name, json=js):
+                        code, out, err = self.go(argv, json_out=js)
+                        self.assertEqual((code, out), (2, ""))
+                        self.assertTrue(
+                            err.startswith("modsys: error: MODSYS_AGENT_COMMAND:"), err)
 
     def test_r12_hybrid_opted_in_with_a_command(self):
         os.environ[OPT] = "1"
@@ -329,6 +374,10 @@ class LayersTest(Repo):  # P82-AC-018
             (pack / "pack.toml").write_text(
                 f'id = "team"\nversion = "1.0.0"\npriority = 50\n[match]\nmode = "{mode}"\n',
                 encoding="utf-8")
+        elif layer == "config.user.tracked.toml":  # a personal config the repository tracks
+            self.mode(mode, "config.user.toml")
+            git(self.root, "add", "-f", ".modsys/config.user.toml")
+            git(self.root, "commit", "-q", "-m", "track the personal config")
         else:
             self.mode(mode, layer)
 
@@ -339,7 +388,7 @@ class LayersTest(Repo):  # P82-AC-018
         git(self.root, "commit", "-q", "-m", "second")
         verbs = self.verbs() + (("discover-diff", ("discover", "--from-diff", "HEAD~1..HEAD",
                                                    "--task-file", str(self.task_file))),)
-        for layer in ("config.toml", "config.user.toml", "pack"):
+        for layer in ("config.toml", "config.user.toml", "config.user.tracked.toml", "pack"):
             for mode in ("semantic", "hybrid"):
                 self.write_layer(layer, mode)
                 for name, argv in verbs:
@@ -408,7 +457,8 @@ class DocsTest(unittest.TestCase):  # P82-AC-021
     def test_configuration_doc(self):
         doc = self.text("docs/configuration.md")
         row = next(line for line in doc.splitlines() if line.startswith(f"| `{OPT}`"))
-        for needle in ("environment", "`1`", "`0`", "exit 2", "non-lexical"):
+        for needle in ("environment", "`1`", "`0`", "exit 2", "non-lexical", "unset", "empty",
+                       '`" 1 "`'):
             self.assertIn(needle, row)
         flat = " ".join(doc.split())
         self.assertNotIn("decide WHETHER the command runs", flat)
@@ -420,9 +470,14 @@ class DocsTest(unittest.TestCase):  # P82-AC-021
 
     def test_cli_contract(self):
         doc = " ".join(self.text("docs/cli-contract.md").split())
-        self.assertIn("modsys: note:", doc)
-        self.assertIn(f"expected 1 or 0, got", doc)
-        self.assertIn("ran lexical", doc)
+        for mode in ("<mode>",):
+            self.assertIn(note(mode).rstrip("\n").replace("<mode>", "<mode>"), doc)
+        self.assertIn(f"modsys: error: {OPT}: expected 1 or 0, got '<value>'", doc)
+        self.assertIn("only when the run exits `0`", doc)
+
+    def test_skills_doc_no_longer_promises_exit_2_for_a_plain_call(self):
+        doc = " ".join(self.text("docs/skills.md").split())
+        self.assertNotIn("then refuses (exit 2)", doc)
         self.assertIn(OPT, doc)
 
     def test_readme_and_changelog(self):
@@ -431,6 +486,8 @@ class DocsTest(unittest.TestCase):  # P82-AC-021
         self.assertIn(OPT, readme)
         unreleased = self.text("CHANGELOG.md").split("## [", 2)[1]
         self.assertIn(OPT, unreleased)
+        self.assertIn("checked only when a config file sets a non-lexical mode",
+                      " ".join(unreleased.split()))
         self.assertTrue(re.search(r"\[match\] mode", unreleased))
 
 

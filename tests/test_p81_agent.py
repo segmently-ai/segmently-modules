@@ -82,6 +82,7 @@ class TrustBoundaryTest(Base):
         (self.root / ".modsys" / "Config.User.Toml").write_text(
             f'[agent]\ncommand = ["{sys.executable}", "{evil}"]\n', encoding="utf-8")
         self.config('[match]\nmode = "hybrid"\n')
+        os.environ["MODSYS_AGENT_ALLOW_REPO_MODE"] = "1"  # D6: reach the agent settings
         for argv in (("match", MATCH_TASK), ("context", "--task", MATCH_TASK),
                      ("discover", "--task", MATCH_TASK), ("choose", "--task", "t", "--run"),
                      ("catalog",)):

@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MODSYS_AGENT_ALLOW_REPO_MODE=1` in the user's environment; without it `match`, `context` and
   `discover --task` run lexically (stdout identical to `--match lexical`) and print one stderr
   line `modsys: note: …` after a successful run. `--match`, `choose --run` and `catalog` need no
-  opt-in; any value other than `1` / `0` / empty is exit 2.
+  opt-in; any value other than `1` / `0` / empty is exit 2 (checked only when a config file sets a
+  non-lexical mode and no `--match` is given).
 
 ### Added
 

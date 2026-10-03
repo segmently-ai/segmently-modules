@@ -159,9 +159,10 @@ apostrophe, a `$name` or a backtick in it arrives as written.
 team or personal config (`[search] claude_model`, `codex_model`, `effort`; `claude_model` is a
 Claude Code subagent model alias — `sonnet`, `opus` or `haiku` — as a subagent takes no full
 model id; see [configuration.md](configuration.md#the-agent-command-and-search)).
-`[match] mode = "semantic"` makes meaning-only the skills' default, and it applies to every
-`match`, `context` and `discover --task` run in the repository: a plain CLI call without
-`MODSYS_AGENT_COMMAND` then refuses (exit 2). It never stops a skill: every keyword call of the
+`[match] mode = "semantic"` makes meaning-only the skills' default. A plain CLI `match`, `context`
+or `discover --task` call runs it only with `MODSYS_AGENT_ALLOW_REPO_MODE=1` in the user's
+environment (without it the run is lexical, with one stderr note; with it and without
+`MODSYS_AGENT_COMMAND` the call refuses, exit 2). It never stops a skill: every keyword call of the
 shipped skills (`module-create` and `qa-acceptance` too) and of the `agents-md` block passes
 `--match lexical`, `--match semantic|hybrid` comes only when `match.semantic` is true, and the
 by-meaning half goes through `modsys choose`, which needs no agent command in the environment.
