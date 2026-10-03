@@ -15,6 +15,7 @@ from pathlib import Path
 
 from tests.agent_helpers import AgentRepo, picks
 from tests.helpers import FIXTURE, SPLIT_FIXTURE, copy_fixture, init_git, make_repo, run, run_json
+from tests.test_p82_repo_mode import note
 
 try:
     import resource
@@ -321,7 +322,73 @@ class RefusalAndEntryPointTest(Spawn):
         self.quiet(err)
 
 
-SKILL = "---\nname: {n}\ndescription: Skill {n}.\n---\n\n# {n}\n"
+class DeferredNoteStreamsTest(Spawn):  # final review I-1: the D6 note under every stdout state
+    """A run with a config `[match] mode` and no opt-in (D6 R3/R4: lexical + one note) whose
+    stdout is CLOSED at start (`>&-`: fd 1 is not open, Python's `sys.stdout` is None) or fails
+    with a real write error (a file size limit). The note comes only with exit 0."""
+    LIMIT = 60  # bytes a file may grow to; every output below is larger
+
+    def setUp(self):
+        super().setUp()
+        self.verbs = (("match", "partial refund for a returned book"),
+                      ("context", "--task-file", str(self.task)),
+                      ("discover", "--task-file", str(self.task)))
+
+    def mode(self, mode):
+        self.config(f'[match]\nmode = "{mode}"\n')
+
+    def cases(self):
+        for mode in ("hybrid", "semantic"):
+            self.mode(mode)
+            for argv in self.verbs:
+                for form in ((), ("--json",)):
+                    yield mode, (*argv, *self.R, *form)
+
+    def shell(self, redirect, argv, preexec_fn=None, stdout=subprocess.PIPE):
+        """(exit code, stdout bytes, stderr text) of modsys run through `/bin/sh` with
+        `redirect` applied."""
+        cmd = ["/bin/sh", "-c", f'exec "$@" {redirect}', "sh", *self.entries["module"], *argv]
+        proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=stdout,
+                              stderr=subprocess.PIPE, env=self.env, cwd=ENGINE,
+                              preexec_fn=preexec_fn, timeout=TIMEOUT)
+        return proc.returncode, proc.stdout or b"", proc.stderr.decode("utf-8", "replace")
+
+    def test_a_stdout_closed_at_start_is_exit_0_with_the_note(self):  # I-1 (a)
+        for mode, argv in self.cases():
+            with self.subTest(mode=mode, argv=argv[0], json="--json" in argv):
+                lex = self.spawn((*argv, "--match", "lexical"))
+                self.assertEqual(lex[::2], (0, ""))
+                self.assertEqual(self.spawn(argv), (0, lex[1], note(mode)))  # the open run
+                self.assertEqual(self.shell(">&-", argv), (0, b"", note(mode)))
+                self.assertEqual(self.shell(">&-", (*argv, "--match", "lexical")), (0, b"", ""))
+                # stderr closed at start instead: the note never falls back to stdout
+                self.assertEqual(self.shell("2>&-", argv), (0, lex[1], ""))
+
+    @unittest.skipIf(resource is None, "no resource module")
+    def test_a_stdout_write_error_is_one_error_line_without_the_note(self):  # I-1 (b) (c)
+        def limit():
+            signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+            resource.setrlimit(resource.RLIMIT_FSIZE, (self.LIMIT, self.LIMIT))
+        out = self.tmp / "out.txt"
+        for mode, argv in self.cases():
+            with self.subTest(mode=mode, argv=argv[0], json="--json" in argv):
+                self.assertGreater(len(self.spawn(argv)[1]), self.LIMIT)
+                for redirect in ("", "2>&-"):  # stderr open, then stderr closed too
+                    with open(out, "wb") as f:
+                        code, _, err = self.shell(redirect, argv, limit, f)
+                    self.assertEqual(out.stat().st_size, self.LIMIT)
+                    self.assertEqual(code, 2, (redirect, err))
+                    if redirect:
+                        continue
+                    lines = err.splitlines()
+                    self.assertEqual(len(lines), 1, err)
+                    self.assertTrue(lines[0].startswith("modsys: error: cannot write stdout: "),
+                                    err)
+                    self.assertNotIn("note", err)
+                    self.quiet(err)
+
+
+SKILL ="---\nname: {n}\ndescription: Skill {n}.\n---\n\n# {n}\n"
 NOTE = ("git ignores {k} of the {m} skill copies in {d} ({names}) — they are written but will "
         "not be committed; take them out of .gitignore to share them with the team")
 ALLOW = ".agents/skills/*\n!.agents/skills/module-*/\n"

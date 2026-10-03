@@ -90,7 +90,7 @@ def quiet_streams():
                 setattr(sys, name, raw)
             if guard.error is not None:
                 failed = True
-                if name == "stdout":
+                if name == "stdout" and sys.stderr is not None:  # None: fd 2 closed at start
                     reason = guard.error.strerror or guard.error
                     try:
                         print(f"modsys: error: cannot write stdout: {reason}", file=sys.stderr)
@@ -116,14 +116,23 @@ def clear_notes() -> None:
 
 def flush_notes() -> None:
     """Print the queued notes to stderr (`modsys: note: …`, one line each) and empty the queue.
-    `cli.main` calls it only after a verb returned exit 0."""
+    `cli.main` calls it only after a verb returned exit 0, and a note is printed only when the
+    run still ends with exit 0: a stdout write error (`quiet_streams` ends that run with exit 2
+    and its one error line) drops the notes."""
     lines = list(_DEFERRED_NOTES)
     _DEFERRED_NOTES.clear()
-    if lines:
+    if not lines:
+        return
+    out = sys.stdout
+    if out is not None:  # None: fd 1 was closed at start, there is no output to come after
         try:  # stdout is block-buffered in a pipe or a file: the note must come after it
-            sys.stdout.flush()
+            out.flush()
         except (OSError, ValueError):  # closed or broken stdout: not this function's contract
             pass
+        if isinstance(out, _QuietStream) and out.error is not None:
+            return  # a real write error: the run ends with exit 2
+    if sys.stderr is None:  # fd 2 closed at start: print() would fall back to stdout
+        return
     for line in lines:
         print(f"modsys: note: {line}", file=sys.stderr)
 
