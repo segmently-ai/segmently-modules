@@ -152,9 +152,16 @@ def commands(text: str) -> list[str]:
 
 
 def argv(command: str) -> list[str]:
-    """A command's arguments: a comment or heredoc cut, every `<…>` and `…` one value."""
-    command = _PLACEHOLDER.sub("X", command.split(" #")[0].split("<<")[0]).replace("…", "X")
-    return shlex.split(command)[1:]
+    """A command's arguments: a comment, a heredoc or a redirect of its output cut, every `<…>`
+    and `…` one value."""
+    command = command.split(" #")[0].split("<<")[0].split(" > ")[0]
+    return shlex.split(_PLACEHOLDER.sub("X", command).replace("…", "X"))[1:]
+
+
+def to_a_file(command: str) -> bool:
+    """The command's output goes to a file (`… > <order file>`): the skill hands the file on and
+    never parses it (P8.2 D5: the work order's text form)."""
+    return " > " in command.split(" #")[0]
 
 
 def parse_problem(command: str) -> str | None:
@@ -297,6 +304,12 @@ class CommandGuardTest(SkillRules):  # P4B-AC-018
         self.assertEqual(argv("modsys sync --from-diff <base>..HEAD --dry-run"),
                          ["sync", "--from-diff", "X..HEAD", "--dry-run"])
         self.assertEqual(argv("modsys create … --dry-run"), ["create", "X", "--dry-run"])
+        # P8.2 D5: the work order's text form goes to a file; the redirect is the shell's
+        self.assertEqual(argv("modsys choose --task-file <task file> > <order file>"),
+                         ["choose", "--task-file", "X"])
+        self.assertTrue(to_a_file("modsys choose --task-file <task file> > <order file>"))
+        self.assertFalse(to_a_file("modsys choose --task-file <task file>"))
+        self.assertFalse(to_a_file("modsys show x --json  # a > b"))
 
     def test_the_guard_can_fail(self):
         planted = {"SKILL.md": "Run `modsys shwo x` first.\n\n```bash\nmodsys packs install ui\n"
@@ -325,11 +338,17 @@ class TextRulesTest(SkillRules):  # P4B-AC-014, P4B-AC-017
                     self.assertIsNone(path_problem(text))
 
     def test_what_a_skill_parses_is_json(self):
+        exempt = []
         for sid, (_, directory) in self.all_skills().items():
             for name, text in skill_files(directory).items():
                 for command in commands(text):
+                    if to_a_file(command):  # handed on as a file, never parsed (P8.2 D5)
+                        exempt.append(argv(command))
+                        continue
                     with self.subTest(skill=sid, command=command):
                         self.assertTrue({"--json", "--dry-run"} & set(argv(command)))
+        # only the work order's text form, once in each skill that chooses modules by meaning
+        self.assertEqual(exempt, [["choose", "--task-file", "X"]] * len(exempt))
 
     def test_sections(self):
         names = set(self.all_skills())

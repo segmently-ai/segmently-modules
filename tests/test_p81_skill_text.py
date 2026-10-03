@@ -1,17 +1,24 @@
-"""P8.1 task 5: the text of the four skills that find modules (S3 layer 2, S5, S9, SI-P81-10).
-The shared "choose modules" step — `modsys catalog`, the work order of `modsys choose` answered
-by the user's own agent, `modsys choose --apply`, the keyword half, the merge — is word for word
-the same in module-discover, module-sync, module-scout and module-research; module-discover goes
-from the candidates to the code (F6a, F6b); module-sync picks the child, searches the docs that
-describe the change and adds a keyword only for a new public name (F10, F13, F15). Sizes and
-descriptions are pinned by `test_budgets` and `test_builtin_skills` (P81-AC-040). Every task text
+"""The text of the four skills that find modules (P8.1 task 5, rewritten by P8.2 task 5: D1, D5,
+D8, F20). The shared "choose modules" step — `modsys catalog`, the mode, the work order of
+`modsys choose` handed to the shipped `modsys:module-chooser` agent (Claude Code), to
+`codex exec` (Codex) or answered in the session (elsewhere), `modsys choose --apply`, the keyword
+half, the merge — is word for word the same in module-discover, module-sync, module-scout and
+module-research (P82-AC-034…039). A `lexical` config never skips the search by meaning (D1); the
+depth sentences live in the order's rules, the user's depth travels as `choose --effort` (D8);
+module-discover passes `--files` as separate arguments (F20, P82-AC-040), and the commands of the
+step run on the split fixture with a canned chooser reply (P82-AC-038, P82-AC-040). Sizes and
+descriptions are pinned by `test_budgets` and `test_builtin_skills` (P82-AC-041). Every task text
 goes to modsys through a file (final review M-6), and every `match` / `context` / `discover`
-given a task in a shipped skill, reference or template runs `--match lexical` (final review
-I-1): a team's `[match] mode` never reaches them."""
+given a task in a shipped skill, reference or template runs `--match lexical` (final review I-1,
+P8.2 ruling M-6): a repository's `[match] mode` never turns a skill's keyword check into an agent
+run."""
 import io
 import json
+import re
+import shlex
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from modsys.config import builtin_packs_root
@@ -19,11 +26,19 @@ from modsys.packs_cmd import scaffold_files
 from tests.helpers import SPLIT_FIXTURE, copy_fixture, init_git, run, run_json
 from tests.test_builtin_skills import argv, commands, section, uses
 
+ENGINE = Path(__file__).resolve().parents[1]
 SKILLS = ("module-discover", "module-sync", "module-scout", "module-research")
 MODE = "The mode:"  # the shared text starts here …
+MEANING = "- By meaning (`semantic`, `hybrid`):"
 KEYWORD = "- By keyword (`lexical`, `hybrid`):"  # … the skill's own keyword half sits here …
-HYBRID = "- `hybrid`: merge the lists"  # … and the shared merge follows
-HYBRID_END = "only when `match.semantic` is true."
+HYBRID = "- `hybrid`: merge the lists; a module found both ways ranks first."  # … then the merge
+AGENT = "modsys:module-chooser"
+CLAUDE_CODE = "modsys choose --task-file <task file> > <order file>"
+CODEX = ("codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> "
+         "--output-schema <schema file> - < <order file>")
+APPLY = "modsys choose --apply - --json"
+F20 = ("`--files` takes the paths as separate arguments (`--files a.ts b/c.ts`); one quoted string "
+       "is one path.")
 
 
 def text(skill: str) -> str:
@@ -55,51 +70,86 @@ def in_order(body: str, phrases: list[str]) -> list[int]:
     return out
 
 
-class SharedStepTest(unittest.TestCase):  # P81-AC-074, SI-P81-10
+def command(skill: str, start: str) -> str:
+    """The one command of the skill's steps that starts with `start`."""
+    found = [c for c in commands(section(text(skill), "## Steps")) if c.startswith(start)]
+    assert len(found) == 1, (skill, start, found)
+    return found[0]
+
+
+def filled(cmd: str, values: dict[str, str]) -> tuple[list[str], str | None]:
+    """A skill command as the agent runs it: each `<placeholder>` replaced by its value (a value
+    with spaces stays several words, as the shell splits it), the output's file cut off.
+    Returns (the verb's argv, the file the output goes to or None)."""
+    cmd, _, target = cmd.partition(" > ")
+    for key, value in values.items():
+        cmd, target = cmd.replace(key, value), target.replace(key, value)
+    left = re.search(r"<[^<>]*>", cmd)
+    assert left is None, f"unfilled placeholder in {cmd!r}"
+    return shlex.split(cmd)[1:], (target or None)
+
+
+class SharedStepTest(unittest.TestCase):  # P82-AC-034…039
     PHRASES = [
         "modsys catalog --json", "read `match` and `search`.",
-        '"only lexical"', '"search deep"', '"use opus"',  # the user's words win
-        "else `hybrid`",  # the skills' default mode
-        "- By meaning (`semantic`, `hybrid`):", KEYWORD, HYBRID,
-        "`modsys choose --task-file <the text, verbatim, in a file> --json`",  # final review
-        # M-6: a file, so a task's apostrophes, backticks or `$` reach modsys as written
-        "Answer it whole (never a preview)",  # final review M-3: a long order is saved whole
-        "a subagent (`model: <search.claude_model>`)",
-        "`codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> "
-        "--output-schema <schema file> -`",
-        "`low`, `medium`, `high` for `quick`, `standard`, `deep`",
-        "answer it in this session",
-        "`quick` the cards only",
-        "`standard` also the INDEX or the main doc's head of up to 3 candidates",
-        "`deep` also their docs and code",
-        "at the depth its rules set (or the user's)",  # review M-2
-        "`modsys choose --apply - --json`",
-        "Pass `--match semantic` or `--match hybrid` only when `match.semantic` is true",
+        # D1 (P82-AC-035): hybrid, whatever a lexical config says; English examples (SI-P82-21)
+        "The mode: `hybrid` unless the user says otherwise",
+        '("only lexical", "by meaning", in any language)',
+        "or `match.mode` is `semantic`;",
+        "a `lexical` config is only the command line's default and never skips the search by "
+        "meaning, which needs no setting;",
+        "the keyword commands always pass `--match lexical`.",
+        # SI-P82-14 ruling (b), D8 (P82-AC-039): the user's model and depth
+        'The user may set the model ("use opus")',
+        'and the depth ("search deep": `--effort deep`; `<reasoning>` follows it).',
+        MEANING,
+        # D5 (P82-AC-036): the Claude Code path
+        "write the text, verbatim, to `<task file>`.",
+        f"**Claude Code:** `{CLAUDE_CODE}`;",
+        f"give `<order file>`'s path to the `{AGENT}` agent with `model: <search.claude_model>`",
+        # SI-P82-15 (P82-AC-037): the fallback without the plugin names its condition
+        '(when it is not available: a subagent told "this file is your whole task; answer with '
+        'its JSON only; change nothing");',
+        "its reply is the answer.",
+        # P82-AC-038: the Codex path, the file form
+        "**Codex:** the same with `--json`, its `answer_schema` written to `<schema file>`, then "
+        f"`{CODEX}`",
+        "(`low`, `medium`, `high` for `quick`, `standard`, `deep`).",
+        # P82-AC-037: the fallback elsewhere
+        "**Elsewhere** (no subagent, no `codex exec`): answer the order yourself, every card "
+        "read, by its rules.",
+        f"Pipe the answer to `{APPLY}`.",  # every path ends in the same --apply
+        KEYWORD, HYBRID,
+    ]
+    GONE = [  # the P8.1 wording D1 / D5 / D8 replace (P82-AC-034, 036, 039)
+        "only when `match.semantic` is true", "Pass `--match semantic`",
+        "else `match.mode` unless `lexical`", "match.semantic",
+        "Answer it whole (never a preview)", "a subagent (`model: <search.claude_model>`)",
+        "`quick` the cards only", "`standard` also the INDEX", "`deep` also their docs and code",
+        "at the depth its rules set",
     ]
 
-    def test_every_skill_says_it(self):
+    def test_every_skill_says_it_once_and_in_order(self):
         for skill in SKILLS:
             with self.subTest(skill=skill):
                 body = flat(text(skill))
-                self.assertEqual([p for p in self.PHRASES if p not in body], [])
+                self.assertEqual([p for p in self.PHRASES if body.count(p) != 1], [])
+                found = in_order(body, self.PHRASES)
+                self.assertEqual([p for p, i in zip(self.PHRASES, found) if i < 0], [])
+
+    def test_the_p81_wording_is_gone(self):
+        for skill in SKILLS:
+            with self.subTest(skill=skill):
+                body = flat(text(skill))
+                self.assertEqual([p for p in self.GONE if p in body], [])
 
     def test_word_for_word_the_same(self):
-        for start, end in ((MODE, KEYWORD), (HYBRID, HYBRID_END)):
-            parts = {s: between(text(s), start, end) for s in SKILLS}
-            with self.subTest(part=start):
-                self.assertTrue(all(parts.values()), parts)
-                self.assertEqual(len(set(parts.values())), 1, parts)
-
-    def test_said_once_and_in_order(self):
+        parts = {s: between(text(s), MODE, KEYWORD) for s in SKILLS}
+        self.assertTrue(all(parts.values()), parts)
+        self.assertEqual(len(set(parts.values())), 1, parts)
         for skill in SKILLS:
-            with self.subTest(skill=skill):
-                body = flat(text(skill))
-                for p in ("modsys catalog --json", MODE, "modsys choose --task",
-                          "modsys choose --apply", KEYWORD, HYBRID):
-                    self.assertEqual(body.count(p), 1, p)
-                self.assertNotIn(-1, in_order(body, ["modsys catalog --json", MODE,
-                                                     "modsys choose --task",
-                                                     "modsys choose --apply", KEYWORD, HYBRID]))
+            with self.subTest(skill=skill):  # the merge is one line, the same in all four
+                self.assertEqual(text(skill).count(f"\n   {HYBRID}\n"), 1)
 
     def test_the_steps_run_the_verbs(self):
         for skill in SKILLS:
@@ -107,8 +157,14 @@ class SharedStepTest(unittest.TestCase):  # P81-AC-074, SI-P81-10
                 cmds = commands(section(text(skill), "## Steps"))
                 for verb in (("catalog",), ("choose", "--task-file"), ("choose", "--apply")):
                     self.assertTrue(uses(cmds, verb), verb)
+                self.assertEqual(command(skill, "modsys choose --task-file"), CLAUDE_CODE)
 
-    def test_keyword_commands_are_lexical(self):  # review I-1: `[match] mode` never leaks in
+    def test_the_agent_is_the_shipped_one(self):  # D4 / D5: the name the skills hand work to
+        agent = (ENGINE / "modsys/defaults/agents/module-chooser.md").read_text("utf-8")
+        name = re.search(r"^name: (\S+)$", agent, re.M).group(1)
+        self.assertEqual(AGENT, f"modsys:{name}")
+
+    def test_keyword_commands_are_lexical(self):  # review I-1, ruling M-6
         for skill in SKILLS:
             with self.subTest(skill=skill):
                 body = flat(text(skill))
@@ -129,28 +185,125 @@ class SharedStepTest(unittest.TestCase):  # P81-AC-074, SI-P81-10
                     self.assertNotIn("--task", a, a)
                 self.assertTrue(any("--task-file" in argv(c) for c in commands(text(skill))))
 
-    def test_the_keys_it_names_are_printed(self):  # the text and the engine agree
+    def test_no_cyrillic_in_shipped_text(self):  # SI-P82-21: English user words only
+        root = builtin_packs_root().parent
+        found = [p.relative_to(root).as_posix() for p in sorted(root.rglob("*"))
+                 if p.is_file() and p.suffix in (".md", ".toml", ".json")
+                 and re.search("[Ѐ-ӿ]", p.read_bytes().decode("utf-8"))]
+        self.assertEqual(found, [])
+
+    def test_the_keys_it_names_are_printed(self):  # P82-AC-039: the text and the engine agree
+        named = set()
+        for skill in SKILLS:
+            named |= set(re.findall(r"\b(?:match|search)\.[a-z_]+\b", text(skill)))
+        self.assertLessEqual({"match.mode", "search.claude_model", "search.codex_model"}, named)
         with tempfile.TemporaryDirectory() as tmp:
             R = ("--root", str(copy_fixture(tmp, SPLIT_FIXTURE)))
             code, out, err = run("catalog", "--json", *R)
             self.assertEqual((code, err), (0, ""))
             catalog = json.loads(out)["data"]
-            self.assertEqual(sorted(catalog["match"]), ["mode", "semantic"])
-            self.assertEqual(sorted(catalog["search"]), ["claude_model", "codex_model", "effort"])
+            printed = {f"{group}.{key}" for group in ("match", "search") for key in catalog[group]}
+            self.assertEqual(sorted(named - printed), [])
             self.assertIn(catalog["search"]["effort"], ("quick", "standard", "deep"))
-            code, out, err = run("choose", "--task", "a partial refund", "--json", *R)
-            self.assertEqual((code, err), (0, ""))
-            order = json.loads(out)["data"]
-            self.assertEqual(order["search"], catalog["search"])
-            self.assertEqual(order["answer_schema"]["type"], "object")
-            answer = {"picks": [{"module": "orders/refunds", "confidence": 0.8, "reason": "r"}],
-                      "none": False}
-            with mock.patch("sys.stdin", io.StringIO(json.dumps(answer))):
-                code, out, err = run("choose", "--apply", "-", "--json", *R)
-            self.assertEqual((code, err), (0, ""))
-            pick = json.loads(out)["data"]["picks"][0]
-            self.assertEqual(pick["module"], "orders/refunds")
-            self.assertTrue(pick["read"])
+
+
+class CommandsRunTest(unittest.TestCase):  # P82-AC-036, 038, 039, 040
+    """The skills' by-meaning commands, filled in as an agent fills them, run on the split
+    fixture: the task file, the work order's text form to a file, a canned chooser reply through
+    `--apply`; the Codex form's `<schema file>`; the user's depth; then module-discover's
+    `code-map files` and `discover --files a b` (F20)."""
+    TASK = "Customers' money back for a returned book — `refund` $now"  # written verbatim
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = copy_fixture(self._tmp.name, SPLIT_FIXTURE)
+        init_git(self.root)
+        self.files = Path(self._tmp.name) / "files"  # temporary files outside the repository
+        self.files.mkdir()
+        self.task = self.files / "task.txt"
+        self.task.write_text(self.TASK, encoding="utf-8")
+        self.values = {"<task file>": str(self.task), "<order file>": str(self.files / "order.txt")}
+
+    def cli(self, args: list[str], stdin: str | None = None) -> str:
+        with mock.patch("sys.stdin", io.StringIO(stdin or "")):
+            code, out, err = run(*args, "--root", str(self.root))
+        self.assertEqual((code, err), (0, ""), args)
+        return out
+
+    def order(self, skill: str, *extra: str) -> tuple[str, Path]:
+        """The skill's `choose` command, filled in and run; its output in `<order file>`."""
+        args, target = filled(command(skill, "modsys choose --task-file"), self.values)
+        out = self.cli([*args, *extra])
+        Path(target).write_text(out, encoding="utf-8")
+        return out, Path(target)
+
+    def test_claude_code_path(self):  # P82-AC-036: text form, the agent's reply, --apply
+        for skill in SKILLS:
+            with self.subTest(skill=skill):
+                out, order = self.order(skill)
+                self.assertTrue(out.startswith(f"Task:\n{self.TASK}\n"))  # verbatim
+                self.assertIn("Candidates (one per line: module, description, keywords):", out)
+                self.assertFalse(out.lstrip().startswith("{"))  # the text form, not JSON
+                digest = re.search(r"^catalog_digest: (\S+)$",
+                                   order.read_text(encoding="utf-8"), re.M).group(1)
+                reply = json.dumps({"picks": [{"module": "orders/refunds", "confidence": 0.9,
+                                               "reason": "returned books"}],
+                                    "none": False, "catalog_digest": digest})
+                args, target = filled(command(skill, "modsys choose --apply"), {})
+                self.assertIsNone(target)
+                applied = json.loads(self.cli(args, stdin=reply))
+                self.assertEqual(applied["schema"], "modsys.choose/1")
+                pick = applied["data"]["picks"][0]
+                self.assertEqual(pick["module"], "orders/refunds")
+                self.assertTrue(pick["read"])
+
+    def test_codex_path_writes_the_schema_file(self):  # P82-AC-038
+        args, _ = filled(command("module-sync", "modsys choose --task-file"), self.values)
+        envelope = json.loads(self.cli([*args, "--json"]))  # "the same with `--json`"
+        (self.files / "order.json").write_text(json.dumps(envelope), encoding="utf-8")
+        schema_file = self.files / "schema.json"  # "its `answer_schema` written to <schema file>"
+        schema_file.write_text(json.dumps(envelope["data"]["answer_schema"], indent=2),
+                               encoding="utf-8")
+        schema = json.loads(schema_file.read_text(encoding="utf-8"))  # valid JSON
+        self.assertEqual(schema, envelope["data"]["answer_schema"])
+        self.assertEqual(schema["type"], "object")
+        self.assertEqual(envelope["data"]["task"], self.TASK)
+
+    def test_the_users_depth(self):  # D8, SI-P82-14 ruling (b): "search deep" -> --effort deep
+        default = json.loads(self.cli(["choose", "--task-file", str(self.task), "--json"]))
+        args, _ = filled(command("module-scout", "modsys choose --task-file"), self.values)
+        deep = json.loads(self.cli([*args, "--effort", "deep", "--json"]))
+        self.assertEqual(deep["data"]["search"]["effort"], "deep")
+        self.assertNotEqual(deep["data"]["rules"], default["data"]["rules"])
+        out, _ = self.order("module-scout", "--effort", "deep")
+        self.assertIn("also read the candidates' docs and confirm the choice in their code", out)
+
+    def test_discover_commands_in_order(self):  # P82-AC-040
+        self.order("module-discover")  # the task file, then the order to <order file>
+        args, _ = filled(command("module-discover", "modsys choose --apply"), {})
+        reply = json.dumps({"picks": [{"module": "orders", "confidence": 0.8, "reason": "r"}],
+                            "none": False, "catalog_digest": None})
+        self.assertEqual(json.loads(self.cli(args, stdin=reply))["data"]["picks"][0]["module"],
+                         "orders")
+        args, _ = filled(command("module-discover", "modsys code-map files"),
+                         {"<candidate>": "orders"})
+        mapped = json.loads(self.cli(args))["data"]["files"]
+        self.assertIn("src/orders/service.py",
+                      [f["path"] for f in mapped if f["via"] != ["docs"]])
+        keywords = self.files / "queries.txt"  # the keyword half's `<file>`
+        keywords.write_text("refund\norder service\n", encoding="utf-8")
+        found = "src/orders/service.py src/payments/gateway.py"  # separate arguments (F20)
+        args, _ = filled(command("module-discover", "modsys discover --files"),
+                         {"<found files>": found, "<file>": str(keywords)})
+        self.assertEqual(args[:3], ["discover", "--files", "src/orders/service.py"])
+        data = json.loads(self.cli(args))["data"]
+        self.assertEqual([f["path"] for f in data["files"]],
+                         ["src/orders/service.py", "src/payments/gateway.py"])
+        self.assertEqual(data["missing_files"], [])
+        # one quoted string is one path: a file that does not exist
+        data = json.loads(self.cli(["discover", "--files", found, *args[4:]]))["data"]
+        self.assertEqual(data["missing_files"], [found])
 
 
 class EveryShippedTextIsLexicalTest(unittest.TestCase):  # final review I-1 (and 5 D-4)
@@ -182,6 +335,9 @@ class EveryShippedTextIsLexicalTest(unittest.TestCase):  # final review I-1 (and
         for name in ("templates/agents-md.md", "packs/core/skills/module-create/SKILL.md",
                      "packs/qa/skills/qa-acceptance/SKILL.md",
                      "packs/core/skills/module-discover/SKILL.md",
+                     "packs/core/skills/module-sync/SKILL.md",
+                     "packs/core/skills/module-scout/SKILL.md",
+                     "packs/core/skills/module-research/SKILL.md",
                      "packs new (2 roles): skills/api-review/SKILL.md",
                      "packs new (0 roles): skills/api-review/SKILL.md"):
             self.assertIn(name, found)  # the scan reaches what the reviews named
@@ -223,18 +379,17 @@ class OtherKeysTest(unittest.TestCase):  # review M-9: the keys the steps read, 
                           [f["path"] for f in parent if f["via"] != ["docs"]])
 
 
-class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b)
+class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20)
     ORDER = [
         "modsys catalog --json",
         "1–3 short English queries",  # F6a: the registry's language, domain terms, identifiers
         "(step 4 uses it too)",  # review M-4
         "the domain terms and code identifiers",
+        "The mode: `hybrid` unless",
         '"only lexical"',
-        "else `hybrid`",
-        "- By meaning (`semantic`, `hybrid`):",
-        "`modsys choose --apply - --json`",
-        "- By keyword (`lexical`, `hybrid`): "
-        "`modsys discover --task-file <file> --match lexical --json`",
+        MEANING,
+        f"`{APPLY}`",
+        f"{KEYWORD} `modsys discover --task-file <file> --match lexical --json`",
         HYBRID,
         "Verify each candidate",
         "the child the task is in",
@@ -244,6 +399,7 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b)
         "Grep the terms of `<file>` inside that code first",
         "only when it gives nothing",
         "modsys discover --files <found files> --task-file <file> --match lexical --json",
+        F20,  # P82-AC-040
         "on a split parent `children` (name the one the change is in and add its `doc` to the "
         "docs to update)",  # review M-3
         "every `modify` row with its code at file:line",
@@ -253,6 +409,11 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b)
         body = flat(section(text("module-discover"), "## Steps"))
         found = in_order(body, self.ORDER)
         self.assertEqual([p for p, i in zip(self.ORDER, found) if i < 0], [])
+
+    def test_step_4_says_how_files_are_passed(self):  # P82-AC-040 (F20)
+        step4 = between(section(text("module-discover"), "## Steps"), "4. Get the touch-set.",
+                        "5. Read the result.")
+        self.assertEqual(step4.count(F20), 1)
 
 
 class SyncTest(unittest.TestCase):  # P81-AC-042 (F10, F13, F15)
@@ -285,7 +446,7 @@ class ScoutAndResearchTest(unittest.TestCase):  # P81-AC-043
                  for s in ("module-scout", "module-research")}
         self.assertTrue(all(parts.values()), parts)
         self.assertEqual(parts["module-scout"], parts["module-research"])
-        self.assertIn("else `hybrid`", parts["module-scout"])
+        self.assertIn("The mode: `hybrid` unless", parts["module-scout"])
         self.assertIn(f'{KEYWORD} `modsys context --task-file <', parts["module-scout"])
         self.assertIn("Keep the top 3;", parts["module-scout"])  # review M-7
 
@@ -297,6 +458,22 @@ class ScoutAndResearchTest(unittest.TestCase):  # P81-AC-043
         for skill in ("module-scout", "module-research"):
             with self.subTest(skill=skill):
                 self.assertIn(self.START, flat(section(text(skill), "## Steps")))
+
+
+class DocsTest(unittest.TestCase):  # P8.2 task 5: docs/skills.md follows the shared step
+    def test_skills_doc(self):
+        doc = flat((ENGINE / "docs/skills.md").read_text(encoding="utf-8"))
+        part = doc.split("## Choosing modules by meaning", 1)[1].split(" ## ", 1)[0]
+        for needle in (f"`{CLAUDE_CODE}`", f"`{AGENT}`", f"`{CODEX}`", "`--effort deep`",
+                       "A `lexical` config",
+                       "is only the command line's default and never skips the search by meaning",
+                       "always pass `--match lexical`",
+                       "this file is your whole task; answer with its JSON only",
+                       "every card read, by its rules"):
+            self.assertIn(needle, part)
+        for gone in ("only when `match.semantic` is true", "never a preview",
+                     "`quick` the cards only"):
+            self.assertNotIn(gone, doc)
 
 
 if __name__ == "__main__":

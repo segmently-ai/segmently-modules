@@ -27,9 +27,9 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
 ## Steps
 
-1. Pin the change. `<base>` is the commit the work branched off: `git merge-base <target> HEAD`,
-   `<target>` being the branch it will merge into (ask when unclear). Never the target branch
-   itself (its later commits would drag in untouched modules). Committed work is `<base>..HEAD`;
+1. Pin the change. `<base>` is where the work branched off: `git merge-base <target> HEAD`,
+   `<target>` being the branch it merges into (ask when unclear) — never the target itself (its
+   later commits would drag in untouched modules). Committed work is `<base>..HEAD`;
    uncommitted work is the files `git diff --name-only <base>` prints plus the new ones
    `git ls-files --others --exclude-standard` prints, all to `--files` (never a directory).
 
@@ -50,23 +50,25 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    it).
 
    Run `modsys catalog --json`; read `match` and `search`. The text: a summary of the change with
-   its identifiers, as the code spells them. The mode: the user's words ("only lexical"), else
-   `match.mode` unless `lexical`, else `hybrid`; the user may set the depth ("search deep") or
-   the model ("use opus").
+   its identifiers, as the code spells them. The mode: `hybrid` unless the user says otherwise
+   ("only lexical", "by meaning", in any language) or `match.mode` is `semantic`; a `lexical` config
+   is only the command line's default and never skips the search by meaning, which needs no setting;
+   the keyword commands always pass `--match lexical`. The user may set the model ("use opus") and
+   the depth ("search deep": `--effort deep`; `<reasoning>` follows it).
 
-   - By meaning (`semantic`, `hybrid`):
-     `modsys choose --task-file <the text, verbatim, in a file> --json` prints a work order. Answer
-     it whole (never a preview) in Claude Code by a subagent (`model: <search.claude_model>`), in Codex by
-     `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --output-schema <schema file> -`
-     (the order on stdin, `answer_schema` in the file; `low`, `medium`, `high` for `quick`,
-     `standard`, `deep`), else answer it in this session, at the depth its rules set (or the
-     user's): `quick` the cards only, `standard` also the INDEX or the main doc's head of up to 3
-     candidates, `deep` also their docs and code. Pipe the answer to
-     `modsys choose --apply - --json`: `picks` with their `read` docs.
+   - By meaning (`semantic`, `hybrid`): write the text, verbatim, to `<task file>`. **Claude Code:**
+     `modsys choose --task-file <task file> > <order file>`; give `<order file>`'s path to the
+     `modsys:module-chooser` agent with `model: <search.claude_model>` (when it is not available: a
+     subagent told "this file is your whole task; answer with its JSON only; change nothing"); its
+     reply is the answer. **Codex:** the same with `--json`, its `answer_schema` written to
+     `<schema file>`, then
+     `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --output-schema <schema file> - < <order file>`
+     (`low`, `medium`, `high` for `quick`, `standard`, `deep`). **Elsewhere** (no subagent, no
+     `codex exec`): answer the order yourself, every card read, by its rules. Pipe the answer to
+     `modsys choose --apply - --json`.
    - By keyword (`lexical`, `hybrid`):
      `modsys discover --task-file <the changed identifiers and domain terms, in English, in a file> --match lexical --json`.
-   - `hybrid`: merge the lists; a module found both ways ranks first. Pass `--match semantic` or
-     `--match hybrid` only when `match.semantic` is true.
+   - `hybrid`: merge the lists; a module found both ways ranks first.
 
    Each candidate whose docs describe the change joins the modules to update, with the
    docs the search listed.
@@ -74,9 +76,9 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 4. Per module to update, read the change (`git diff <base>..HEAD -- <its files>`; uncommitted:
    `git diff <base> -- <its files>` and each new file in full) and its `docs_to_update` (a child's
    list holds the parent's docs too: module-wide rules go in the parent, area-specific ones in the
-   child). Edit the docs, each kind of text where its readers look: what the module is and its
+   child). Put each text where its readers look: what the module is and its
    rules in the module doc, how to change the code in the developer doc, how to test it in the qa
-   doc, other roles as their headings say. Add what the change introduced (a component, a rule, a
+   doc, other roles by their headings. Add what the change introduced (a component, a rule, a
    limit, a pitfall), correct what it made untrue, remove nothing still true. Short, factual,
    linked to code paths, never copied code.
 
@@ -103,15 +105,14 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    ```
 
 6. Run the team's sync hooks (the second form for uncommitted work). Skip this step when step 5 ran
-   `sync --apply-proposals`: that run already ran the hooks.
+   `sync --apply-proposals` (it ran them).
 
    ```bash
    modsys sync --from-diff <base>..HEAD --json
    modsys sync --files <path> <path> --json
    ```
 
-   Report every hook message. A failed required hook (exit 1): report it and stop, never work
-   around it.
+   Report every hook message. A failed required hook (exit 1): report it and stop, never work around it.
 
 7. Check: `modsys ci --base <base> --json`. Its steps (`lint`, `drift`, `coverage`) should pass or
    be report-only. Fix what your updates caused and rerun; report what failed before you began.

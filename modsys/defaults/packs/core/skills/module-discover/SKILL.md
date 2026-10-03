@@ -31,23 +31,25 @@ A change without a task starts at step 4.
 
    Run `modsys catalog --json`; read `match` and `search`. The text: the task as given. For the
    keyword half write 1–3 short English queries to a temporary `<file>` (step 4 uses it too): the
-   domain terms and code identifiers the task implies (registry keywords are English and
-   match whole words). The mode: the user's words ("only lexical"), else `match.mode` unless
-   `lexical`, else `hybrid`; the user may set the depth ("search deep") or the model ("use
-   opus").
+   domain terms and code identifiers the task implies (registry keywords are English and match whole
+   words). The mode: `hybrid` unless the user says otherwise ("only lexical", "by meaning", in any
+   language) or `match.mode` is `semantic`; a `lexical` config is only the command line's default
+   and never skips the search by meaning, which needs no setting; the keyword commands always pass
+   `--match lexical`. The user may set the model ("use opus") and the depth ("search deep":
+   `--effort deep`; `<reasoning>` follows it).
 
-   - By meaning (`semantic`, `hybrid`):
-     `modsys choose --task-file <the text, verbatim, in a file> --json` prints a work order. Answer
-     it whole (never a preview) in Claude Code by a subagent (`model: <search.claude_model>`), in Codex by
-     `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --output-schema <schema file> -`
-     (the order on stdin, `answer_schema` in the file; `low`, `medium`, `high` for `quick`,
-     `standard`, `deep`), else answer it in this session, at the depth its rules set (or the
-     user's): `quick` the cards only, `standard` also the INDEX or the main doc's head of up to 3
-     candidates, `deep` also their docs and code. Pipe the answer to
-     `modsys choose --apply - --json`: `picks` with their `read` docs.
+   - By meaning (`semantic`, `hybrid`): write the text, verbatim, to `<task file>`. **Claude Code:**
+     `modsys choose --task-file <task file> > <order file>`; give `<order file>`'s path to the
+     `modsys:module-chooser` agent with `model: <search.claude_model>` (when it is not available: a
+     subagent told "this file is your whole task; answer with its JSON only; change nothing"); its
+     reply is the answer. **Codex:** the same with `--json`, its `answer_schema` written to
+     `<schema file>`, then
+     `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --output-schema <schema file> - < <order file>`
+     (`low`, `medium`, `high` for `quick`, `standard`, `deep`). **Elsewhere** (no subagent, no
+     `codex exec`): answer the order yourself, every card read, by its rules. Pipe the answer to
+     `modsys choose --apply - --json`.
    - By keyword (`lexical`, `hybrid`): `modsys discover --task-file <file> --match lexical --json`.
-   - `hybrid`: merge the lists; a module found both ways ranks first. Pass `--match semantic` or
-     `--match hybrid` only when `match.semantic` is true.
+   - `hybrid`: merge the lists; a module found both ways ranks first.
 
 2. Verify each candidate by its description and the head of its main doc (a split module: its
    INDEX). Keep those the task is about and, in a split module, the child the task is in
@@ -66,6 +68,8 @@ A change without a task starts at step 4.
    ```
 
    Changed files go to `--files`, a branch to the second form; without a task, drop `--task-file`.
+   `--files` takes the paths as separate arguments (`--files a.ts b/c.ts`); one quoted string is one
+   path.
    `<base>` is where the branch left its target: `git merge-base <target> HEAD` prints it — never
    the target itself, whose later commits would count as touched.
 
