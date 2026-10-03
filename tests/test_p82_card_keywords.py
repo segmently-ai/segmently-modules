@@ -57,44 +57,49 @@ class ValuesTest(Base):
             with self.subTest(value=value):
                 self.cap(value)
                 self.assertEqual(self.card(self.order(), "catalog")["keywords"], KW12[:want])
+                self.assertEqual(run("lint", *self.R)[0], 0)
         self.root.joinpath(".modsys/config.toml").write_text("", encoding="utf-8")
         self.assertEqual(self.card(self.order(), "catalog")["keywords"], KW12[:10])
+        self.assertEqual(run("lint", *self.R)[0], 0)
+
+    def refused(self, argv, tail: str) -> None:
+        code, out, err = run(*argv, *self.R)
+        self.assertEqual((code, out), (2, ""))
+        lines = err.strip().splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertTrue(lines[0].startswith("modsys: error: "))
+        self.assertTrue(lines[0].endswith(tail), lines[0])
 
     def test_refused_values(self):  # P82-AC-009
         for value, shown in (("-1", "-1"), ('"10"', "'10'"), ("1.5", "1.5"),
                              ("true", "True"), ("false", "False")):
             for form in (("choose", "--task-file", str(self.task)), ("lint",)):
-                with self.subTest(value=value, form=form[0]):
-                    self.cap(value)
-                    code, out, err = run(*form, *self.R)
-                    self.assertEqual((code, out), (2, ""))
-                    lines = err.strip().splitlines()
-                    self.assertEqual(len(lines), 1)
-                    self.assertTrue(lines[0].startswith("modsys: error: "))
-                    self.assertTrue(lines[0].endswith(
-                        f"/.modsys/config.toml: [search] card_keywords: expected an integer "
-                        f">= 0, got {shown}"))
+                for js in ((), ("--json",)):
+                    with self.subTest(value=value, form=form[0], json=bool(js)):
+                        self.cap(value)
+                        self.refused((*form, *js), f"/.modsys/config.toml: [search] "
+                                     f"card_keywords: expected an integer >= 0, got {shown}")
 
     def test_layers_and_pack(self):  # P82-AC-009
         self.cap(5)
         self.assertEqual(len(self.card(self.order(), "catalog")["keywords"]), 5)
         self.cap(2, "config.user.toml")  # the user's value wins
         self.assertEqual(len(self.card(self.order(), "catalog")["keywords"]), 2)
+        self.cap(-1, "config.user.toml")
+        for argv in (("choose", "--task-file", str(self.task)), ("lint",)):
+            self.refused(argv, "/.modsys/config.user.toml: [search] card_keywords: expected "
+                               "an integer >= 0, got -1")
         (self.root / ".modsys/config.user.toml").unlink()
         (self.root / ".modsys/config.toml").unlink()
         pack = self.root / ".modsys/packs/capper"
         pack.mkdir(parents=True)
-        (pack / "pack.toml").write_text(
-            'id = "capper"\nversion = "0.1.0"\npriority = 50\n\n[search]\ncard_keywords = 4\n',
-            encoding="utf-8")
+        head = 'id = "capper"\nversion = "0.1.0"\npriority = 50\n\n[search]\n'
+        (pack / "pack.toml").write_text(head + "card_keywords = 4\n", encoding="utf-8")
         self.assertEqual(len(self.card(self.order(), "catalog")["keywords"]), 4)
-        (pack / "pack.toml").write_text(
-            'id = "capper"\nversion = "0.1.0"\npriority = 50\n\n[search]\ncard_keywords = true\n',
-            encoding="utf-8")
-        code, out, err = run("choose", "--task-file", str(self.task), *self.R)
-        self.assertEqual((code, out), (2, ""))
-        self.assertIn("[search] card_keywords: expected an integer >= 0, got True", err)
-        self.assertIn("capper", err)
+        (pack / "pack.toml").write_text(head + "card_keywords = true\n", encoding="utf-8")
+        for argv in (("choose", "--task-file", str(self.task)), ("lint",)):
+            self.refused(argv, "/.modsys/packs/capper/pack.toml: [search] card_keywords: "
+                               "expected an integer >= 0, got True")
 
 
 class WorkOrderOnlyTest(Base):
@@ -159,6 +164,10 @@ class WorkOrderOnlyTest(Base):
                 finally:
                     os.chdir(cwd)
             self.assertEqual(outputs[0], outputs[1])
+            for form in outputs[0]:
+                for text in form[1:2]:
+                    self.assertNotIn(str(self.tmp), text)
+                    self.assertNotIn("TMPDIR", text)
 
 
 class DigestTest(Base):
@@ -210,19 +219,26 @@ class DigestTest(Base):
 
 
 class EffortTest(Base):
+    def assertDepth(self, order, effort) -> None:
+        self.assertIn(DEPTH[effort], order["rules"])
+        for other, sentence in DEPTH.items():
+            if other != effort:
+                self.assertNotIn(sentence, order["rules"])
+
     def test_flag_overrides_config(self):  # P82-AC-057
         for cfg in (None, "quick", "deep"):
             if cfg:
                 self.config(f'[search]\neffort = "{cfg}"\n', "config.user.toml")
             plain = self.order()
             self.assertEqual(plain["search"]["effort"], cfg or "standard")
-            self.assertEqual(plain["rules"][6], DEPTH[cfg or "standard"])
+            self.assertDepth(plain, cfg or "standard")
             for effort in DEPTH:
                 with self.subTest(config=cfg, effort=effort):
                     order = self.order("--effort", effort)
                     self.assertEqual(order["search"], {**plain["search"], "effort": effort})
-                    self.assertEqual(order["rules"][6], DEPTH[effort])
-                    self.assertEqual(order["rules"][:6], plain["rules"][:6])
+                    self.assertDepth(order, effort)
+                    self.assertEqual([r for r in order["rules"] if r not in DEPTH.values()],
+                                     [r for r in plain["rules"] if r not in DEPTH.values()])
                     self.assertEqual(order["catalog_digest"], plain["catalog_digest"])
         out = run("choose", "--task-file", str(self.task), "--effort", "deep", *self.R)[1]
         self.assertIn(f"- {DEPTH['deep']}", out)
@@ -258,17 +274,22 @@ class EffortTest(Base):
     def test_apply_ignores_effort(self):  # P82-AC-057
         ans = self.tmp / "a.json"
         ans.write_text(json.dumps(picks(("payments", 0.9))), encoding="utf-8")
-        self.assertEqual(run("choose", "--apply", str(ans), "--effort", "deep", *self.R),
-                         run("choose", "--apply", str(ans), *self.R))
+        flagged = run("choose", "--apply", str(ans), "--effort", "deep", *self.R)
+        self.assertEqual(flagged[0], 0)
+        self.assertEqual(flagged, run("choose", "--apply", str(ans), *self.R))
+        code, env, err = run_json("choose", "--apply", str(ans), "--effort", "deep", *self.R)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual([p["module"] for p in env["data"]["picks"]], ["payments"])
         self.assertEqual(run("choose", "--apply", str(ans), "--effort", "deep", "--json",
                              *self.R),
                          run("choose", "--apply", str(ans), "--json", *self.R))
 
     def test_invalid_effort(self):  # P82-AC-057
-        code, out, err = run("choose", "--task-file", str(self.task), "--effort", "fast",
-                             *self.R)
-        self.assertEqual((code, out), (2, ""))
-        self.assertIn("invalid choice", err)
+        for js in ((), ("--json",)):
+            code, out, err = run("choose", "--task-file", str(self.task), "--effort", "fast",
+                                 *js, *self.R)
+            self.assertEqual((code, out), (2, ""))
+            self.assertIn("invalid choice", err)
 
 
 class DocsTest(unittest.TestCase):  # P82-AC-014 (the cap and --effort items)
@@ -292,6 +313,12 @@ class DocsTest(unittest.TestCase):  # P82-AC-014 (the cap and --effort items)
         self.assertIn("[--effort quick\\|standard\\|deep]", choose)
         for needle in ("card_keywords", "capped", "catalog_digest"):
             self.assertIn(needle, choose)
+        text = self.doc("docs/cli-contract.md")
+        self.assertIn("three keys (`card_keywords` is not shown)", text)
+        self.assertIn("the work order caps them at `[search] card_keywords`", text)
+        self.assertIn("`choose --effort` overrides `effort` for one run",
+                      self.doc("README.md"))
+        self.assertIn("or of `choose --effort` when given", self.doc("docs/configuration.md"))
 
     def test_the_changelog_names_both(self):
         text = self.doc("CHANGELOG.md")

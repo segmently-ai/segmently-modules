@@ -78,7 +78,8 @@ def run(args) -> int:
                              else NO_TASK)
         task = task_text(args)
         if not args.run:
-            emit("choose", workorder.build(ws, task, max_picks, args.effort), args.json, workorder.render)
+            order = workorder.build(ws, task, max_picks, args.effort)
+            emit("choose", order, args.json, workorder.render)
             return EXIT_OK
         if not agent_configured(ws.config):
             raise UsageError(agent.NESTED if agent.nested() else NO_AGENT)

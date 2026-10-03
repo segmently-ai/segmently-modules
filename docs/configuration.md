@@ -138,7 +138,7 @@ engine reads none), and the engine ships, installs and suggests no model.
 | `[search] claude_model` | `"sonnet"` | the model the Claude Code skill's subagent uses: a Claude Code subagent model alias (`sonnet`, `opus`, `haiku`) — the subagent takes no full model id; a full model id works only where your agent command passes the value to `claude -p --model`; 1–100 characters of letters, digits and `. _ : / @ + -`, starting with a letter or digit (the value becomes an item of your agent command) |
 | `[search] codex_model` | `"gpt-5.6-luna"` | the model `codex exec -m` uses; same rule |
 | `[search] effort` | `"standard"` | `quick` (choose from the cards only), `standard` (also open the INDEX of up to 3 candidates), `deep` (also read the candidates' docs and the code). Team or user config; the user's wins per key; any other value is exit 2; `modsys choose --effort quick\|standard\|deep` overrides it for one run |
-| `[search] card_keywords` | `10` | an integer >= 0: a work-order card carries the first N keywords of its module, in registry order (`0` = none, a card with fewer keeps them all). Team, personal or pack config; the personal value wins per key; `true`, `false`, a string, a fraction or a negative number is exit 2 naming the file. It caps the work order only (`choose`, `choose --apply` / `--run`, `--match semantic` / `hybrid`); `catalog` keeps every keyword, and so does its `search` object (three keys). `catalog_digest` is computed over the capped cards, so a change of the cap changes the digest (`choose --apply` then notes `catalog changed since the work order`); `--effort` and the task do not change it |
+| `[search] card_keywords` | `10` | an integer >= 0: a work-order card carries the first N keywords of its module, in registry order (`0` = none, a card with fewer keeps them all). Team, personal or pack config; the personal value wins per key; `true`, `false`, a string, a fraction or a negative number is exit 2 naming the file. It caps the work order only (`choose`, `choose --apply` / `--run`, `--match semantic` / `hybrid`); `catalog` keeps every keyword; the `search` object of `catalog` and of the work order keeps its three keys. `catalog_digest` is computed over the capped cards, so a change of the cap changes the digest (`choose --apply` then notes `catalog changed since the work order`); `--effort` and the task do not change it |
 
 ## `[lint]`
 
@@ -356,7 +356,7 @@ missing engine file is never replaced by a role template. Format: every line tha
 `- ` (at column 0) is one rule, sent as written without the `- ` and without trailing
 whitespace, in file order; every other line is a note for the person editing and is not sent.
 Placeholders (as in every template): `$max_picks` (the most picks the order allows), `$depth`
-(the fixed sentence of `[search] effort`), `$$` for a literal `$`; any other `$name` stays as
+(the fixed sentence of `[search] effort`, or of `choose --effort` when given), `$$` for a literal `$`; any other `$name` stays as
 written. To change the rules: `modsys templates override choose/rules.md`, then edit
 `.modsys/overrides/templates/choose/rules.md`. A template without a rule is exit 2
 (`<path>: no rule in choose/rules.md (a rule is a line starting with "- ")`), an unreadable or

@@ -258,7 +258,8 @@ def run(config: dict, work_order: dict, schema: dict, check=lambda answer: answe
     answer schema, to two files in a private temp directory (`MODSYS_WORK_ORDER`,
     `MODSYS_SCHEMA`) removed afterwards, whatever happens. The child runs in `cwd`, in its own
     process group; Ctrl-C, SIGTERM and SIGHUP stop it and its group (a repeated one cannot cut
-    that short: the cleanup runs with the three ignored); its output is capped."""
+    that short: the cleanup runs with the three ignored); its output is capped. The argv placeholders (`{effort}` …) come from the order's `search`
+    (`choose --effort` overrides the config there), the merged config being the fallback."""
     from modsys.config import search_settings
     cfg = settings(config)
     # the order's `search` wins: `choose --effort` overrides the config for one run

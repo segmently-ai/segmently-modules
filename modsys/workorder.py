@@ -46,9 +46,9 @@ DEPTH = {  # fixed English texts: the work order must not vary from run to run
 }
 
 
-def work_card(card: dict, keywords: int | None = None) -> dict:
-    """A card of the work order: the first `keywords` registry keywords (all when None)."""
-    kw = card["keywords"] if keywords is None else card["keywords"][:keywords]
+def work_card(card: dict, limit: int | None = None) -> dict:
+    """A card of the work order: the first `limit` registry keywords (all when None)."""
+    kw = card["keywords"] if limit is None else card["keywords"][:limit]
     out = {"module": card["name"], "description": card["description"], "keywords": kw}
     if "parent" in card:
         out["parent"] = card["parent"]

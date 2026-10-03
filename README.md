@@ -493,7 +493,7 @@ For a script or CI, point modsys at your own agent command and use `--match sema
 (or `[match] mode`) or `modsys choose --task … --run` (`--task-file FILE|-` reads the task from a
 file or stdin). The command is read ONLY from your environment, as a JSON array run without a
 shell (`{claude_model}`, `{codex_model}`, `{effort}` and `{reasoning}` are filled in from
-`[search]`); the work order arrives on stdin (compact JSON) and as the file `$MODSYS_WORK_ORDER`,
+`[search]`; `choose --effort` overrides `effort` for one run); the work order arrives on stdin (compact JSON) and as the file `$MODSYS_WORK_ORDER`,
 the answer's JSON Schema is the file `$MODSYS_SCHEMA`. A repository cannot choose or change the
 command, but its `[match] mode` decides whether `match`, `context` and `discover --task` call it,
 on card text the repository wrote: if you work in repositories you do not trust, set the variable
