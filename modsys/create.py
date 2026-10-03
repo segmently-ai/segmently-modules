@@ -15,7 +15,9 @@ Templates use `${name}` placeholders: name, title, description, status, keywords
 role, role_description, article (`a` or `an` before the role)."""
 import contextlib
 import json
+import os
 import re
+import stat
 import string
 import sys
 from importlib import resources
@@ -185,6 +187,29 @@ def engine_templates() -> Path:
     return Path(str(resources.files("modsys").joinpath("defaults/templates")))
 
 
+def _candidate_exists(ws, path: Path) -> bool:
+    """Does a template candidate exist? `lstat` ENOENT / ENOTDIR: no, the next layer decides. A
+    candidate that exists but cannot be used as a template (a directory, a FIFO, a dangling
+    symlink or loop, no permission on it or a parent) is `cannot read <path>: <reason>`, exit 2."""
+    def refuse(reason):
+        return UsageError(f"cannot read {ws.rel(path)}: {reason}")
+    try:
+        os.lstat(path)
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except OSError as e:
+        raise refuse(e.strerror or e) from None
+    try:
+        st = os.stat(path)
+        if not stat.S_ISREG(st.st_mode):  # never open a FIFO or a device
+            raise refuse("not a regular file")
+        with open(path, "rb"):
+            pass
+    except OSError as e:
+        raise refuse(e.strerror or e) from None
+    return True
+
+
 def resolve_template_source(ws, relpath: str, role: str | None = None,
                             fallback: bool = True) -> tuple[str, Path]:
     """(source, path) of the template file that wins for `relpath` — see the module docstring
@@ -202,7 +227,7 @@ def resolve_template_source(ws, relpath: str, role: str | None = None,
     candidates += [(f"pack:{p}", Path(pack_dirs[p]) / "templates" / relpath)
                    for p in ws.config.get("_packs", [])]
     for source, path in candidates:
-        if path.is_file():
+        if _candidate_exists(ws, path):
             return source, path
     engine = engine_templates() / relpath
     if engine.is_file():

@@ -67,12 +67,42 @@ class _QuietStream:
         return getattr(self._raw, name)
 
 
+def _null_stderr():
+    """A text stream on file descriptor 2 when fd 2 is not open at start, else None. With fd 2
+    closed Python sets `sys.stderr = None`, `print(..., file=None)` writes to stdout, and the next
+    file the process opens would take fd 2 (a lock, a temp file, the agent's order file). So the
+    null device is put on fd 2 itself: no file the run opens becomes fd 2, and a child that
+    inherits stderr writes to the null device. An open fd 2 is never touched."""
+    try:
+        os.fstat(2)
+        return None
+    except OSError:
+        pass
+    try:
+        null = os.open(os.devnull, os.O_WRONLY)
+    except OSError:
+        return None
+    try:
+        if null != 2:  # fd 0 or 1 may be closed too: they are given back as they were
+            os.dup2(null, 2)
+    except OSError:
+        return None
+    finally:
+        if null != 2:
+            os.close(null)
+    return os.fdopen(2, "w", encoding="utf-8", errors="backslashreplace",
+                     closefd=False, buffering=1)
+
+
 @contextlib.contextmanager
 def quiet_streams():
     """Wrap the process's own stdout and stderr in `_QuietStream` for one run (a stream a test
     or a caller swapped in is left alone) and flush them before the interpreter does. A write
     error other than a closed reader ends the run with one stderr line and exit 2."""
     wrapped = []
+    sink = _null_stderr() if sys.stderr is None and sys.__stderr__ is None else None
+    if sink is not None:
+        sys.stderr = sink
     for name, fd in (("stdout", 1), ("stderr", 2)):
         raw = getattr(sys, name)
         if raw is not None and raw is getattr(sys, f"__{name}__"):
@@ -82,6 +112,13 @@ def quiet_streams():
     try:
         yield
     finally:
+        if sink is not None:
+            try:
+                sink.flush()
+            except (OSError, ValueError):
+                pass
+            sys.stderr = None
+            sink.close()
         failed = False
         for name, raw, guard in wrapped:
             try:
@@ -90,7 +127,7 @@ def quiet_streams():
                 setattr(sys, name, raw)
             if guard.error is not None:
                 failed = True
-                if name == "stdout" and sys.stderr is not None:  # None: fd 2 closed at start
+                if name == "stdout" and sys.stderr is not None:  # None: no stderr to report on
                     reason = guard.error.strerror or guard.error
                     try:
                         print(f"modsys: error: cannot write stdout: {reason}", file=sys.stderr)

@@ -79,6 +79,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- With stderr closed at start (`modsys … 2>&-`) no line meant for stderr reaches stdout: the run
+  puts the null device on fd 2 itself, so a refusal leaves stdout empty and no file the run opens
+  becomes fd 2.
+- Template resolution: a candidate that exists but cannot be read (a directory, a FIFO, a dangling
+  symlink, no permission on it or a parent) is exit 2 `cannot read <path>: <reason>` instead of
+  silently falling through to a lower layer; a missing one still falls through.
+- The README's `codex exec` agent-command example gains `--sandbox read-only`.
 - A closed stdout reader (`modsys catalog --json | head -1`) ends the output silently: no
   `internal error`, no `Exception ignored` at exit, the verb runs to its end and the exit code is
   its own (also for `--help` and `--version`, and with stderr closed too); any other stdout write

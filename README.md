@@ -512,7 +512,7 @@ examples, not a recommendation; `codex exec` outside a git repository also needs
 export MODSYS_AGENT_COMMAND='["sh", "-c", "claude -p --model {claude_model} --output-format json --json-schema \"$(cat \"$MODSYS_SCHEMA\")\""]'
 
 # Codex: the last message is printed to stdout; the schema goes in as a file
-export MODSYS_AGENT_COMMAND='["sh", "-c", "codex exec -m {codex_model} -c model_reasoning_effort={reasoning} --output-schema \"$MODSYS_SCHEMA\" -"]'
+export MODSYS_AGENT_COMMAND='["sh", "-c", "codex exec -m {codex_model} -c model_reasoning_effort={reasoning} --sandbox read-only --output-schema \"$MODSYS_SCHEMA\" -"]'
 
 modsys match --match hybrid "customers get money back for a returned book" --json
 ```
