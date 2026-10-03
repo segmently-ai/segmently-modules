@@ -63,6 +63,30 @@ class SignalTest(SuiteRepo):  # P83-AC-018
                     self.assertEqual(list(self.tmpdir.iterdir()), [])
                     self.assertEqual(list(self.engine.rglob("__pycache__")), [])
 
+    def test_sigint_first_then_sigkill_after_the_grace(self):  # review M-2 (ruling)
+        before = self.both()
+        proc = self.run_release("dev", "--jobs", "3", env={
+            "R1_SLOW": "test_m_middle", "R1_WAIT_FOR": "3", "R1_SIGNAL": "TERM", "R1_SIGNALS": "1",
+            "R1_DELAY": "1.5", "R1_HOLD": "60", "R1_TEMP": "test_release_zz",  # cleans up at exit
+            "R1_DEAF": "test_a_first"})  # ignores SIGINT: only the SIGKILL ends it
+        ended = time.time()
+        self.assertEqual((proc.returncode, proc.stderr),
+                         (130, "release.py: interrupted — both repositories are as they were\n"))
+        signalled = self.recorded("slow")["test_m_middle"]["time"]
+        self.assertGreaterEqual(ended - signalled, 2.0)  # the deaf module had its grace
+        self.assertLess(ended - signalled, 2.0 + 8.0)  # then the SIGKILL and the put-back
+        temp = self.recorded("temp")["test_release_zz"]["path"]
+        self.assertTrue(temp.startswith(str(self.tmpdir)), temp)
+        self.assertFalse(os.path.exists(temp))  # its finalizer ran: SIGINT came first
+        starts = self.recorded("start")
+        self.assertEqual(sorted(starts), ["test_a_first", "test_m_middle", "test_release_zz"])
+        self.assertEqual(self.alive([row["pid"] for row in starts.values()]), [])
+        for row in starts.values():
+            with self.assertRaises(ProcessLookupError):
+                os.killpg(row["pgid"], 0)
+        self.assertEqual(list(self.tmpdir.iterdir()), [])
+        self.assertEqual(self.both(), before)
+
     def test_a_child_the_interrupt_ends_is_reaped(self):  # the guard in step 1, git in step 7
         before = self.both()
         for case, env in (("guard", {"FAKE_GUARD_MODE": "hangup"}), ("git", {})):  # SIGHUP from
@@ -92,7 +116,7 @@ class SignalTest(SuiteRepo):  # P83-AC-018
             1, "release.py: step 3 tests failed: the adoption eval failed: adoption eval: "
                f"planted failure{AS_THEY_WERE}"))  # the suite ran to its end, then the E-A
         self.assertEqual(sorted(self.recorded("end")), list(PLANTED))
-        self.assertTrue((records / "test_m_middle.marker").exists())
+        self.assertEqual(sorted(self.recorded("marker")), ["test_m_middle"])
         self.assertTrue((records / "test_m_middle.grandchild").exists())
         self.assertEqual({row["hup_ignored"] for row in self.recorded("start").values()},
                          {True})  # the children inherit the ignore

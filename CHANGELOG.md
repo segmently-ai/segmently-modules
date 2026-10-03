@@ -65,8 +65,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tools/release.py` step 3 runs each `tests/test_*.py` module in its own process, `--jobs N` at
   a time (1–32, default `min(4, CPU count)`), the `test_release*` modules first; the step line is
   `Ran <N> tests in <M> modules (<J> jobs), OK …`, a failure names the failing modules, and
-  Ctrl-C, SIGTERM or SIGHUP kill every running test process group before the put-back; any
-  other child the interrupt ends (the guard, git, the adoption eval) is reaped too.
+  Ctrl-C, SIGTERM or SIGHUP stop every running test process group before the put-back (SIGINT,
+  then SIGKILL after at most 2 s); the guard, the adoption eval, `claude` and the tool's own git
+  calls (not the build's) that the interrupt ends are reaped too.
   `--suite-passed TREE` skips the unit suite when TREE is the engine's `HEAD^{tree}` (step 2
   refuses any other tree); the adoption eval always runs. The release tests are split into
   `tests/test_release*.py` modules.

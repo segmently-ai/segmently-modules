@@ -69,8 +69,9 @@ class JobsTest(SuiteRepo):  # P83-AC-016
                 self.assertTrue(proc.stderr.endswith(AS_THEY_WERE), proc.stderr)
                 used = default_jobs() if jobs is None else jobs
                 self.assertIn(step3(7, 6, used, skipped=1), proc.stdout)
-                starts, ends = self.recorded("start"), self.recorded("end")
+                starts, ends = self.recorded("start"), self.recorded("end")  # one per module
                 self.assertEqual(sorted(starts), list(PLANTED))  # each module once
+                self.assertEqual(len(list(self.records.glob("*.*.start"))), len(PLANTED))
                 self.assertEqual(sorted(ends), list(PLANTED))
                 for stem, row in starts.items():
                     self.assertEqual(row["python"], sys.executable)  # the release's own
@@ -140,6 +141,9 @@ class StepLineTest(SuiteRepo):  # P83-AC-017
             self.assertEqual(release.suite_line(*args), want)
 
     def test_with_and_without_a_skip_and_one_module(self):
+        proc = self.run_release("dev", "--jobs", "2", env={  # a second skip, in a module that
+            **VALIDATE, "R1_SKIP": "test_z_last", "R1_TRAILER": "test_z_last"})  # prints a line
+        self.assertIn(step3(7, 6, 2, skipped=2), proc.stdout)  # after unittest's verdict
         proc = self.run_release("dev", "--jobs", "2", env=VALIDATE)
         self.assertIn(step3(7, 6, 2, skipped=1), proc.stdout)
         self.commit(self.engine, "tests/test_ok.py", "import unittest\n\n\nclass OkTest("
@@ -154,13 +158,19 @@ class StepLineTest(SuiteRepo):  # P83-AC-017
         self.assertIn(step3(1, 1, 1), proc.stdout)
         self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
 
-    def test_a_failing_module_is_named(self):
+    def test_a_failing_module_is_named(self):  # SI-P83-14: in start order, the tail of the first
         for failing, named in (("test_m_middle", "test_m_middle"),
-                               ("test_z_last,test_release_zz", "test_release_zz, test_z_last")):
+                               ("test_z_last,test_release_zz", "test_release_zz, test_z_last"),
+                               ("test_a_first,test_release_zz", "test_release_zz, test_a_first")):
             with self.subTest(failing=failing):
                 before = self.both()
+                late = {"R1_FAIL_LATE": "test_release_zz"} if "test_a_first" in failing else {}
                 proc = self.run_release("dev", "--jobs", "3", env={"R1_FAIL": failing,
-                                                                  "R1_HOLD": "0.3"})
+                                                                  "R1_HOLD": "0.3", **late})
+                if late:  # started first, failed last, after test_a_first by name: only the
+                    fails = self.recorded("fail")  # start order names test_release_zz first
+                    self.assertGreater(fails["test_release_zz"]["time"],
+                                       fails["test_a_first"]["time"])
                 first = named.split(", ")[0]
                 self.assertEqual((proc.returncode, proc.stderr), (
                     1, f"release.py: step 3 tests failed: the unit suite failed in {named}: "

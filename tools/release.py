@@ -36,9 +36,10 @@ Steps, in this order (each printed with its result):
                  default `min(4, CPU count)`), the `test_release*` modules first, then the rest
                  by name; every module runs to its end, and the failing ones are named with the
                  last 600 characters of the first one's stderr. Ctrl-C, SIGTERM and SIGHUP
-                 during the suite kill every running test process group, then the put-back
-                 runs. With `--suite-passed TREE` (the suite passed on this tree before: a
-                 gate's run) no unit test runs; the adoption eval always runs, on both channels
+                 during the suite kill every running test process group (SIGINT, then SIGKILL
+                 after at most 2 s), then the put-back runs. With `--suite-passed TREE` (the
+                 suite passed on this tree before: a gate's run) no unit test runs; the
+                 adoption eval always runs, on both channels
   4 build        `stable`: first the release commit here (`__version__` and pyproject.toml
                  X.Y.Z.devN → X.Y.Z; CHANGELOG.md's `## [Unreleased]` becomes `## [X.Y.Z] -
                  DATE` below a new empty `## [Unreleased]`, the notes under it, the file's line
@@ -69,18 +70,19 @@ Steps, in this order (each printed with its result):
   CHANGELOG.md alone), and only with --push: `git push --atomic origin` of the channel branch
   and its tags, then of this engine's branch and `v<version>`; without it the two commands are
   printed. `dev` writes nothing in this engine.
-All or nothing up to the push: a failed step or Ctrl-C (SIGTERM and SIGHUP too; a child it ends
-is killed and reaped first) puts back what the run wrote — the branches and tags it made or
-moved, HEAD, the index, the files it writes (the engine's CHANGELOG.md among them) — and
-removes every temp directory; a branch, a tag or an untracked file that appeared beside the run
-stays, and a repository that changed between step 2 and the run's first write to it is a
-refusal that writes nothing there. The put-back is checked: "as they were" is printed only when
-it is true. A failed or interrupted push is never put back: the release stands locally and the
-commands left to run are printed. Exit 0 done (or nothing to release) · 1 a step failed · 2 a
-refusal (stderr names it) · 130 interrupted. Test seams: MODSYS_RELEASE_INTERRUPT=6 raises
-Ctrl-C in the middle of step 6, =7 in step 7 between the commit and the tags;
-MODSYS_RELEASE_DATE=YYYY-MM-DD is the date step 4 gives the notes (a run across midnight is not
-flaky)."""
+All or nothing up to the push: a failed step or Ctrl-C (SIGTERM and SIGHUP too; the guard, the
+E-A, claude, the plugin's launcher or a git call of this tool that it ends is killed and reaped
+first — the build's own git calls in tools/build_plugins.py are not) puts back what the run
+wrote — the branches and tags it made or moved, HEAD, the index, the files it writes (the
+engine's CHANGELOG.md among them) — and removes every temp directory; a branch, a tag or an
+untracked file that appeared beside the run stays, and a repository that changed between step 2
+and the run's first write to it is a refusal that writes nothing there. The put-back is
+checked: "as they were" is printed only when it is true. A failed or interrupted push is never
+put back: the release stands locally and the commands left to run are printed. Exit 0 done (or
+nothing to release) · 1 a step failed · 2 a refusal (stderr names it) · 130 interrupted. Test
+seams: MODSYS_RELEASE_INTERRUPT=6 raises Ctrl-C in the middle of step 6, =7 in step 7 between
+the commit and the tags; MODSYS_RELEASE_DATE=YYYY-MM-DD is the date step 4 gives the notes (a
+run across midnight is not flaky)."""
 import argparse
 import datetime
 import json
@@ -128,6 +130,7 @@ SHOWN = 10  # places a message names before `… and <n> more`
 MAX_JOBS = 32  # step 3's --jobs: 1 to 32 test modules at a time
 TREE_ID = re.compile(r"[0-9a-f]{40}")  # --suite-passed: a tree id as git prints it
 POLL = 0.02  # seconds between two looks at step 3's running test processes
+GRACE = 2.0  # seconds an interrupted test process group has after SIGINT, before SIGKILL
 
 
 class Refused(Exception):
@@ -159,13 +162,7 @@ class Repo:
         self.path, self.label = path, label
 
     def git(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
-        """`build_plugins.run_git` through `run_child`: a git an interrupt ends is reaped."""
-        try:
-            proc = run_child(["git", "-C", str(self.path), *args], encoding="utf-8",
-                             errors="surrogateescape", env=build_plugins.git_env())
-        except OSError as e:
-            raise build_plugins.GitMissing(f"git is not installed or cannot run: "
-                                           f"{e.strerror or e}") from None
+        proc = run_git(self.path, *args)
         if check and proc.returncode:
             raise Failed(f"{self.label}: git {' '.join(args)} failed: "
                          f"{(proc.stderr or proc.stdout).strip()}")
@@ -225,6 +222,17 @@ def run_child(argv: list[str], timeout: float | None = None,
             proc.wait()
             raise
     return subprocess.CompletedProcess(argv, proc.returncode, out, err)
+
+
+def run_git(where: Path, *args: str) -> subprocess.CompletedProcess:
+    """`build_plugins.run_git` through `run_child`: every git call of this tool — not the
+    build's — is reaped when an interrupt ends it."""
+    try:
+        return run_child(["git", "-C", str(where), *args], encoding="utf-8",
+                         errors="surrogateescape", env=build_plugins.git_env())
+    except OSError as e:
+        raise build_plugins.GitMissing(f"git is not installed or cannot run: "
+                                       f"{e.strerror or e}") from None
 
 
 def run_guard(guard: Path, target: Path, where: str) -> None:
@@ -662,8 +670,8 @@ class Release:
             err = (logs / f"{name}.err").read_text(encoding="utf-8", errors="replace")
             ran = re.findall(r"^Ran (\d+) tests? in ", err, re.M)
             tests += int(ran[-1]) if ran else 0
-            last = [line for line in err.splitlines() if line.strip()][-1:]
-            skip = re.search(r"\bskipped=(\d+)", last[0]) if last else None
+            verdict = re.findall(r"^(?:OK|FAILED)(?: \((.*)\))?$", err, re.M)  # unittest's
+            skip = re.search(r"\bskipped=(\d+)", verdict[-1]) if verdict else None  # last one
             skipped += int(skip.group(1)) if skip else 0
             if codes[name]:
                 failing.append((name, err))
@@ -1144,9 +1152,9 @@ class Suite:
     (never a pipe: a module that prints a lot cannot stall the step), its exit code is kept.
     Ctrl-C, SIGTERM and SIGHUP — those not ignored at the start: `nohup` keeps the suite
     running, and the children inherit the ignore — end the suite: every running test process
-    group is killed and its leader reaped before KeyboardInterrupt reaches the put-back. A
-    signal that arrives while a process starts waits until that process is registered, and
-    the ones after the first are ignored."""
+    group is stopped (`halt`) and its leader reaped before KeyboardInterrupt reaches the
+    put-back. A signal that arrives while a process starts waits until that process is
+    registered, and the ones after the first are ignored."""
 
     def __init__(self, root: Path, logs: Path, jobs: int):
         self.root, self.logs, self.jobs = root, logs, jobs
@@ -1199,16 +1207,29 @@ class Suite:
             raise KeyboardInterrupt
 
     def halt(self) -> None:
-        """Kill every running test process group (SIGKILL: the module, and what it started
-        in its group) and reap each leader."""
-        for proc in self.running.values():
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                pass
+        """Stop every running test process group: SIGINT first — a unittest process runs its
+        finalizers (its temp directories go), a release a test runs stops its own groups —
+        then, after at most GRACE seconds (less once every leader is reaped), SIGKILL to every
+        group, whatever is left in it; each leader reaped. A process a test moved to a process
+        group or session of its own gets neither signal."""
+        if not self.running:
+            return
+        self.signal_groups(signal.SIGINT)
+        deadline = time.monotonic() + GRACE
+        while time.monotonic() < deadline and any(
+                proc.poll() is None for proc in self.running.values()):
+            time.sleep(POLL)
+        self.signal_groups(signal.SIGKILL)
         for proc in self.running.values():
             proc.wait()
         self.running.clear()
+
+    def signal_groups(self, sig: int) -> None:
+        for proc in self.running.values():
+            try:
+                os.killpg(proc.pid, sig)
+            except (ProcessLookupError, PermissionError):
+                pass
 
 
 def set_signals(signals: tuple, handler, keep_ignored: bool = False) -> dict:
@@ -1233,7 +1254,7 @@ def as_interrupt(signum, frame) -> None:
 
 def top_of(path: Path) -> bool:
     """`path` is the top of a git work tree."""
-    proc = build_plugins.run_git(path, "rev-parse", "--show-toplevel")
+    proc = run_git(path, "rev-parse", "--show-toplevel")
     return not proc.returncode and os.path.realpath(proc.stdout.strip()) == \
         os.path.realpath(path)
 
@@ -1256,7 +1277,7 @@ def refusal(args, repo: Path) -> str | None:
     pushed = [("the publish repo", repo)] + ([("the engine", ENGINE)]
                                              if args.channel == "stable" else [])
     for label, path in pushed:
-        if build_plugins.run_git(path, "remote", "get-url", "origin").returncode:
+        if run_git(path, "remote", "get-url", "origin").returncode:
             return (f"--push: {label} has no remote named origin — add it, or release "
                     f"without --push and push by hand")
     return None

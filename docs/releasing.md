@@ -115,7 +115,11 @@ is a usage error, exit 2 — the `test_release*` modules first (the longest), th
 Every module runs to its end; the step says `Ran <N> tests in <M> modules (<J> jobs), OK` (with
 `(skipped=<K>)` when tests were skipped), or fails naming each failing module with the last 600
 characters of the first one's stderr. Ctrl-C, SIGTERM or a closed terminal during the suite kill
-every running test process group before the put-back starts. Then the adoption eval.
+every running test process group before the put-back starts: SIGINT first, so a test runs its
+clean-up (its temp directories go, a release it runs stops its own tests), then SIGKILL to the
+groups after at most 2 s. A process a test moves to its own process group or session is reached
+only through that test's clean-up: if the test ignores SIGINT, the SIGKILL of the test's group
+does not reach it. Then the adoption eval.
 
 `--suite-passed TREE` says the unit suite already passed on this tree — a gate ran it, so the
 release need not run it again: TREE is the 40-hex tree id the gate printed (`git rev-parse

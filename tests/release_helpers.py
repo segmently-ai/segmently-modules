@@ -351,11 +351,12 @@ def two_headings(count: int, lines: str) -> str:
 
 # --- step 3's parallel unit suite and --suite-passed (P8.3 D5 R-1, R-2) ----------------------
 SUITE_MODULE = '''"""A planted test module of the release tests (P8.3 D5 R-1): it records
-its process in $R1_RECORD -- argv, cwd, pid, process group, its parent's, whether SIGHUP is
-ignored -- and does what the R1_* variables ask: hold, print a lot, fail, or be the slow module
-that signals the release, starts a grandchild in its process group and leaves a marker after a
-delay."""
-import json, os, signal, subprocess, sys, time, unittest
+its process in $R1_RECORD (one file per process and event) -- argv, cwd, pid, process group,
+its parent's, whether SIGHUP is ignored -- and does what the R1_* variables ask: hold, print a
+lot, skip, print after unittest's verdict, fail (late), ignore SIGINT, keep a temp directory
+(removed by its finalizer), or be the slow module that signals the release, starts a grandchild
+in its process group and leaves a marker after a delay."""
+import atexit, json, os, signal, subprocess, sys, tempfile, time, unittest
 from pathlib import Path
 
 STEM = Path(__file__).stem
@@ -365,13 +366,24 @@ RECORD = os.environ.get("R1_RECORD")
 def note(event, **more):
     if RECORD:
         row = {"stem": STEM, "time": time.time(), "pid": os.getpid(), "pgid": os.getpgid(0)}
-        (Path(RECORD) / f"{STEM}.{event}").write_text(json.dumps({**row, **more}))
+        (Path(RECORD) / f"{STEM}.{os.getpid()}.{event}").write_text(json.dumps({**row, **more}))
 
 
 def failure(stem):
     return "".join(f"{stem}: planted failure, line {n:02d}\\n" for n in range(40))
 
 
+def named(variable):
+    return STEM in os.environ.get(variable, "").split(",")
+
+
+if named("R1_DEAF"):
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+if named("R1_TEMP"):  # removed at exit by its finalizer -- never after a SIGKILL
+    TEMP = tempfile.TemporaryDirectory()
+    note("temp", path=TEMP.name)
+if named("R1_TRAILER"):  # a line on stderr after unittest's verdict
+    atexit.register(print, "planted: a line after the verdict", file=sys.stderr)
 note("start", python=sys.executable, argv=sys.orig_argv[1:], cwd=os.getcwd(), parent=os.getppid(),
      parent_pgid=os.getpgid(os.getppid()), bytecode=os.environ.get("PYTHONDONTWRITEBYTECODE"),
      hup_ignored=signal.getsignal(signal.SIGHUP) is signal.SIG_IGN)
@@ -380,11 +392,14 @@ note("start", python=sys.executable, argv=sys.orig_argv[1:], cwd=os.getcwd(), pa
 class PlantedTest(unittest.TestCase):
     def test_planted(self):
         env = os.environ
-        if STEM in env.get("R1_FAIL", "").split(","):
+        if named("R1_FAIL"):
+            if STEM == env.get("R1_FAIL_LATE"):  # the first started fails last
+                time.sleep(1.0)
+            note("fail")
             sys.stderr.write(failure(STEM))
             sys.stderr.flush()
             os._exit(1)
-        if STEM in env.get("R1_LOUD", "").split(","):
+        if named("R1_LOUD"):
             for stream in (sys.stdout, sys.stderr):
                 stream.write(("x" * 99 + "\\n") * 2000)
                 stream.flush()
@@ -392,6 +407,8 @@ class PlantedTest(unittest.TestCase):
             self.slow(env)
         time.sleep(float(env.get("R1_HOLD", "0")))
         note("end")
+        if named("R1_SKIP"):
+            self.skipTest("planted")
 
     def slow(self, env):
         deadline = time.time() + 30
@@ -454,9 +471,14 @@ class SuiteRepo(ReleaseRepo):
                         **{"timeout": 120, **kw})
 
     def recorded(self, event: str) -> dict[str, dict]:
-        """{module: its `event` record} of the last run."""
-        return {p.name.rsplit(".", 1)[0]: json.loads(p.read_text())
-                for p in sorted(self.records.glob(f"*.{event}"))}
+        """{module: its `event` record} of the last run — one per module: a module that
+        recorded `event` from two processes (started twice) fails the test."""
+        rows = {}
+        for path in sorted(self.records.glob(f"*.*.{event}")):
+            rows.setdefault(path.name.split(".", 1)[0], []).append(json.loads(path.read_text()))
+        for stem, found in rows.items():
+            self.assertEqual(len(found), 1, f"{stem}: {len(found)} `{event}` records")
+        return {stem: found[0] for stem, found in rows.items()}
 
     def tree(self, rev: str = "HEAD") -> str:
         return git(self.engine, "rev-parse", f"{rev}^{{tree}}").strip()
