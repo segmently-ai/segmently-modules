@@ -9,7 +9,7 @@ from modsys import (adopt_cmd, agents_md_cmd, catalog_cmd, choose_cmd, ci_cmd, c
                     migrate_cmd, next_cmd, packs_cmd, pipeline, proposals_cmd, query,
                     registry_cmd, roles_cmd, schema_cmd, setup_cmd, sync_cmd,
                     sync_instructions_cmd, templates_cmd)
-from modsys.output import EXIT_INTERRUPTED, EXIT_OK, EXIT_USAGE, UsageError, clear_notes, flush_notes
+from modsys.output import EXIT_INTERRUPTED, EXIT_OK, EXIT_USAGE, UsageError, clear_notes, flush_notes, quiet_streams
 
 COMMANDS: list = [init_cmd, schema_cmd, match, query, lint, registry_cmd, index_cmd,
                   proposals_cmd, hooks_cmd, sync_cmd, create_cmd, migrate_cmd, pipeline,
@@ -37,6 +37,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    with quiet_streams():  # a closed reader of stdout (or stderr) ends the output, not the run
+        return _main(argv)
+
+
+def _main(argv: list[str] | None) -> int:
     args = build_parser().parse_args(argv)
     clear_notes()
     try:

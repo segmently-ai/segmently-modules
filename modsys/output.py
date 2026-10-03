@@ -1,4 +1,6 @@
+import contextlib
 import json
+import os
 import sys
 from typing import Callable
 
@@ -10,6 +12,68 @@ EXIT_INTERRUPTED = 130  # SIGINT (Ctrl-C), the shell convention 128 + 2
 
 class UsageError(Exception):
     """Bad input, config or registry. Reported on stderr with exit code 2."""
+
+
+class _QuietStream:
+    """A process stream that survives a closed reader (F19): on the first EPIPE it points the
+    file descriptor at `os.devnull`, so every later write, and the interpreter's flush at exit,
+    land there silently — the verb runs to its end and its exit code stays its own."""
+
+    def __init__(self, raw, fd: int):
+        self._raw, self._fd = raw, fd
+
+    def _trip(self) -> None:
+        try:
+            null = os.open(os.devnull, os.O_WRONLY)
+            try:
+                os.dup2(null, self._fd)
+            finally:
+                os.close(null)
+        except OSError:
+            pass
+        try:  # the bytes the failed write left in the buffer go to the null device too
+            self._raw.flush()
+        except (OSError, ValueError):
+            pass
+
+    def write(self, text):
+        try:
+            return self._raw.write(text)
+        except BrokenPipeError:
+            self._trip()
+            return len(text)
+
+    def writelines(self, lines) -> None:
+        for line in lines:
+            self.write(line)
+
+    def flush(self) -> None:
+        try:
+            self._raw.flush()
+        except BrokenPipeError:
+            self._trip()
+
+    def __getattr__(self, name):
+        return getattr(self._raw, name)
+
+
+@contextlib.contextmanager
+def quiet_streams():
+    """Wrap the process's own stdout and stderr in `_QuietStream` for one run (a stream a test
+    or a caller swapped in is left alone) and flush them before the interpreter does."""
+    wrapped = []
+    for name, fd in (("stdout", 1), ("stderr", 2)):
+        raw = getattr(sys, name)
+        if raw is not None and raw is getattr(sys, f"__{name}__"):
+            guard = _QuietStream(raw, fd)
+            setattr(sys, name, guard)
+            wrapped.append((name, raw, guard))
+    try:
+        yield
+    finally:
+        for name, raw, guard in wrapped:
+            guard.flush()
+            setattr(sys, name, raw)
 
 
 _DEFERRED_NOTES: list[str] = []

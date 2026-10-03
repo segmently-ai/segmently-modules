@@ -64,6 +64,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A closed stdout reader (`modsys catalog --json | head -1`) ends the output silently: no
+  `internal error`, no `Exception ignored` at exit, the verb runs to its end and the exit code is
+  its own (also for `--help` and `--version`, and with stderr closed too).
+- `packs sync` probes each skill copy it wrote (or would write) for the ignored note and names only
+  the ignored copies (`git ignores <n> of the <m> skill copies in <dir> (…)`); an allow-list such as
+  `!.agents/skills/module-*/` no longer gives a false note, before or after the copies exist.
+- The contract says `code-map files --json` `via` is a list of sources.
 - `show` gives a child its own description; `related parent/child` names the child and says
   `inherited_from` when the edges are the parent's.
 - A repeated `--files` adds up (`sync`, `discover`, `sync-instructions`).

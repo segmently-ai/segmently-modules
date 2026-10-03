@@ -251,11 +251,32 @@ def sync_notes(ws, chosen: list[str], plugin: bool, rows: list[dict]) -> list[st
         notes.append("GitHub Copilot reads both .claude/skills and .agents/skills, so it sees "
                      "each skill twice — where Copilot works, sync only one of the two "
                      "directories (Copilot reads either)")
-    for d in sorted(dirs):
-        if _git_ignores(ws.root, f"{d}/x"):
-            notes.append(f"git ignores {d} — the synced skills are written there but will not "
-                         f"be committed; take it out of .gitignore to share them with the team")
+    notes.extend(_ignored_copies_notes(ws.root, rows))
     return notes
+
+
+COPY_STATUSES = ("created", "updated", "unchanged")
+
+
+def _ignored_copies_notes(root: Path, rows: list[dict]) -> list[str]:
+    """One note per skills directory in which git ignores some of the copies the run wrote or
+    would write (rows `created`, `updated`, `unchanged`; a copy shared by `same_as` rows counts
+    once). Each copy is probed through its own `SKILL.md` — a path git judges the same before
+    and after the directory exists — and only the ignored ones are named, in row order."""
+    copies: dict[str, dict[str, bool]] = {}  # directory -> copy dir -> ignored
+    names: dict[str, list[str]] = {}
+    for r in rows:
+        parent = os.path.dirname(r["dir"])
+        if r["status"] not in COPY_STATUSES or r["dir"] in copies.get(parent, {}):
+            continue
+        ignored = _git_ignores(root, f"{r['dir']}/SKILL.md")
+        copies.setdefault(parent, {})[r["dir"]] = ignored
+        if ignored:
+            names.setdefault(parent, []).append(r["skill"])
+    return [f"git ignores {len(names[d])} of the {len(copies[d])} skill copies in {d} "
+            f"({_names(names[d])}) — they are written but will not be committed; take them "
+            f"out of .gitignore to share them with the team"
+            for d in sorted(copies) if d in names]
 
 
 def _git_ignores(root: Path, rel: str) -> bool:
