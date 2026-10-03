@@ -95,8 +95,8 @@ MODSYS_GUARD=/path/to/the/private/guard.py python3 tools/release.py \
 | Step | What it does |
 |---|---|
 | 1 leak guard | first the notes check: the notes under `## [Unreleased]` in `CHANGELOG.md` — `stable` needs at least one note (a tracked file; `MODSYS_RELEASE_DATE`, when set, a date), `dev` publishes `no notes yet` without; two `## [Unreleased]` headings or a note holding the changelog marker are refused on both (see Release notes); then the private guard `MODSYS_GUARD` names reports this repository clean (files and history), and the organisation of `--publish-slug` appears nowhere in it |
-| 2 clean trees | this repository and the publish repository have no uncommitted change; for `stable` the version is not tagged yet in either |
-| 3 tests | the unit suite and the adoption eval |
+| 2 clean trees | this repository and the publish repository have no uncommitted change; for `stable` the version is not tagged yet in either; with `--suite-passed TREE`, TREE is this repository's `HEAD^{tree}` |
+| 3 tests | the unit suite — each `tests/test_*.py` module in its own process, `--jobs N` at a time — and the adoption eval (see Step 3 below) |
 | 4 build | `stable`: the release commit here (`X.Y.Z.devN` → `X.Y.Z`, and in `CHANGELOG.md` the `## [Unreleased]` heading becomes `## [X.Y.Z] - DATE` below a new, empty `## [Unreleased]`); then the three plugins with the channel's version |
 | 5 validate | the guard and the organisation scan over the build; our checks of the publish tree; `claude plugin validate --strict` of each plugin and the marketplace |
 | 6 publish repo | on the channel's branch: exactly `plugins/modsys`, `plugins/modsys-ui`, `plugins/modsys-qa` replaced, both marketplace files merged by plugin name, its own sections of `README.md` and `CHANGELOG.md` |
@@ -107,6 +107,24 @@ Then, for `stable`, the commit that starts the next version here (`X.Y.(Z+1).dev
 `stable` needs `__version__` = `X.Y.Z.devN` (step 2 says so otherwise). A build the channel
 already holds is "nothing to release" (exit 0, nothing committed). The run leaves the publish
 repository on the channel branch.
+
+**Step 3.** The release runs each `tests/test_*.py` module in its own process (`<python> -m
+unittest discover -s tests -p <module>.py` from this repository, `PYTHONDONTWRITEBYTECODE=1`, its
+own process group), `--jobs N` at a time (1–32, default `min(4, CPU count)`) — any other value
+is a usage error, exit 2 — the `test_release*` modules first (the longest), then the rest by name.
+Every module runs to its end; the step says `Ran <N> tests in <M> modules (<J> jobs), OK` (with
+`(skipped=<K>)` when tests were skipped), or fails naming each failing module with the last 600
+characters of the first one's stderr. Ctrl-C, SIGTERM or a closed terminal during the suite kill
+every running test process group before the put-back starts. Then the adoption eval.
+
+`--suite-passed TREE` says the unit suite already passed on this tree — a gate ran it, so the
+release need not run it again: TREE is the 40-hex tree id the gate printed (`git rev-parse
+'HEAD^{tree}'` on the tree it tested). Step 2 checks it against this repository's `HEAD^{tree}`
+and refuses anything else, writing nothing: `--suite-passed <TREE> is not this engine's tree
+<tree> — leave the flag out and the suite runs`. With a matching TREE step 3 runs no unit test
+and says `the unit suite passed on tree <first 12 hex> before (--suite-passed)`; the adoption
+eval always runs, on both channels. A stable release's own commits come after step 3, so the
+same TREE is accepted again after a put-back and refused after a finished stable release.
 
 **The channel branch.** An existing local branch is used; a clone that has the branch only as
 `origin/<channel>` gets a local branch made from it (tracking it); a local branch behind or

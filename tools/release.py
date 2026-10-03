@@ -1,7 +1,8 @@
 """Release the modsys plugins from this engine tree into a publish repository (P6 D7).
 
     MODSYS_GUARD=<the private leak guard> python3 tools/release.py \\
-        --publish-repo DIR --channel dev|stable --publish-slug OWNER/REPO [--push]
+        --publish-repo DIR --channel dev|stable --publish-slug OWNER/REPO [--push] \\
+        [--jobs N] [--suite-passed TREE]
 
 Steps, in this order (each printed with its result):
   1 leak guard   first the release notes, before the guard runs: the lines under the engine's
@@ -25,8 +26,19 @@ Steps, in this order (each printed with its result):
                  `.agents/plugins` are directories (or absent), never symlinks; its channel
                  branch is not behind `origin/<channel>`; for `stable`, `__version__` is
                  X.Y.Z.devN, `v<version>` is in neither and no `<plugin>--v<version>` in the
-                 publish repository
-  3 tests        the unit suite and the adoption eval (E-A) of this engine
+                 publish repository; with `--suite-passed TREE`, TREE (40 lower-case hex
+                 digits) is this engine's `HEAD^{tree}`, else a refusal: `--suite-passed <TREE>
+                 is not this engine's tree <tree> — leave the flag out and the suite runs`
+  3 tests        the unit suite and the adoption eval (E-A) of this engine. The suite runs
+                 each `tests/test_*.py` module in its own process (`<python> -m unittest
+                 discover -s tests -p <module>.py`, cwd = this engine, PYTHONDONTWRITEBYTECODE=1,
+                 its own process group, its output in temp files), `--jobs N` at a time (1–32,
+                 default `min(4, CPU count)`), the `test_release*` modules first, then the rest
+                 by name; every module runs to its end, and the failing ones are named with the
+                 last 600 characters of the first one's stderr. Ctrl-C, SIGTERM and SIGHUP
+                 during the suite kill every running test process group, then the put-back
+                 runs. With `--suite-passed TREE` (the suite passed on this tree before: a
+                 gate's run) no unit test runs; the adoption eval always runs, on both channels
   4 build        `stable`: first the release commit here (`__version__` and pyproject.toml
                  X.Y.Z.devN → X.Y.Z; CHANGELOG.md's `## [Unreleased]` becomes `## [X.Y.Z] -
                  DATE` below a new empty `## [Unreleased]`, the notes under it, the file's line
@@ -57,17 +69,18 @@ Steps, in this order (each printed with its result):
   CHANGELOG.md alone), and only with --push: `git push --atomic origin` of the channel branch
   and its tags, then of this engine's branch and `v<version>`; without it the two commands are
   printed. `dev` writes nothing in this engine.
-All or nothing up to the push: a failed step or Ctrl-C (SIGTERM and SIGHUP too) puts back what
-the run wrote — the branches and tags it made or moved, HEAD, the index, the files it writes
-(the engine's CHANGELOG.md among them) — and removes every temp directory; a branch, a tag or
-an untracked file that appeared beside the run stays, and a repository that changed between
-step 2 and the run's first write to it is a refusal that writes nothing there. The put-back is
-checked: "as they were" is printed only when it is true. A failed or interrupted push is never
-put back: the release stands locally and the commands left to run are printed. Exit 0 done (or
-nothing to release) · 1 a step failed · 2 a refusal (stderr names it) · 130 interrupted. Test
-seams: MODSYS_RELEASE_INTERRUPT=6 raises Ctrl-C in the middle of step 6, =7 in step 7 between
-the commit and the tags; MODSYS_RELEASE_DATE=YYYY-MM-DD is the date step 4 gives the notes (a
-run across midnight is not flaky)."""
+All or nothing up to the push: a failed step or Ctrl-C (SIGTERM and SIGHUP too; a child it ends
+is killed and reaped first) puts back what the run wrote — the branches and tags it made or
+moved, HEAD, the index, the files it writes (the engine's CHANGELOG.md among them) — and
+removes every temp directory; a branch, a tag or an untracked file that appeared beside the run
+stays, and a repository that changed between step 2 and the run's first write to it is a
+refusal that writes nothing there. The put-back is checked: "as they were" is printed only when
+it is true. A failed or interrupted push is never put back: the release stands locally and the
+commands left to run are printed. Exit 0 done (or nothing to release) · 1 a step failed · 2 a
+refusal (stderr names it) · 130 interrupted. Test seams: MODSYS_RELEASE_INTERRUPT=6 raises
+Ctrl-C in the middle of step 6, =7 in step 7 between the commit and the tags;
+MODSYS_RELEASE_DATE=YYYY-MM-DD is the date step 4 gives the notes (a run across midnight is not
+flaky)."""
 import argparse
 import datetime
 import json
@@ -79,6 +92,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # running a tool never leaves tools/__pycache__ in the engine
@@ -111,6 +125,9 @@ CLAUDE_TIMEOUT = 300  # seconds per `claude` call: a hanging CLI fails the step,
 NAMES = {1: "leak guard", 2: "clean trees", 3: "tests", 4: "build", 5: "validate",
          6: "publish repo", 7: "commit", 8: "smoke install", 9: "next version", 10: "push"}
 SHOWN = 10  # places a message names before `… and <n> more`
+MAX_JOBS = 32  # step 3's --jobs: 1 to 32 test modules at a time
+TREE_ID = re.compile(r"[0-9a-f]{40}")  # --suite-passed: a tree id as git prints it
+POLL = 0.02  # seconds between two looks at step 3's running test processes
 
 
 class Refused(Exception):
@@ -142,7 +159,13 @@ class Repo:
         self.path, self.label = path, label
 
     def git(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
-        proc = build_plugins.run_git(self.path, *args)
+        """`build_plugins.run_git` through `run_child`: a git an interrupt ends is reaped."""
+        try:
+            proc = run_child(["git", "-C", str(self.path), *args], encoding="utf-8",
+                             errors="surrogateescape", env=build_plugins.git_env())
+        except OSError as e:
+            raise build_plugins.GitMissing(f"git is not installed or cannot run: "
+                                           f"{e.strerror or e}") from None
         if check and proc.returncode:
             raise Failed(f"{self.label}: git {' '.join(args)} failed: "
                          f"{(proc.stderr or proc.stdout).strip()}")
@@ -189,14 +212,29 @@ class Repo:
         return found + [line[3:] for line in self.dirty()]
 
 
+def run_child(argv: list[str], timeout: float | None = None,
+              **kw) -> subprocess.CompletedProcess:
+    """`subprocess.run(argv, capture_output=True, timeout=timeout, **kw)` — except that a child
+    an interrupt (Ctrl-C, SIGTERM, SIGHUP) or the timeout ends is killed and reaped before the
+    exception goes on: the put-back never starts beside a child still running or unreaped."""
+    with subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kw) as proc:
+        try:
+            out, err = proc.communicate(timeout=timeout)
+        except BaseException:
+            proc.kill()
+            proc.wait()
+            raise
+    return subprocess.CompletedProcess(argv, proc.returncode, out, err)
+
+
 def run_guard(guard: Path, target: Path, where: str) -> None:
     """The private leak guard over `target`: exit 0 with its CLEAN line, or a refusal — hits
     only when its output holds the `<n> hit(s)` line (its own lines go to the operator's
     terminal only); anything else is a guard that failed, with its last line."""
     try:
-        proc = subprocess.run([sys.executable, str(guard), "--target", str(target)],
-                              capture_output=True, encoding="utf-8", errors="replace",
-                              env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+        proc = run_child([sys.executable, str(guard), "--target", str(target)],
+                         encoding="utf-8", errors="replace",
+                         env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
     except OSError as e:
         raise Refused(f"the leak guard cannot run: {e.strerror or e}") from None
     if proc.returncode == 0 and CLEAN.search(proc.stdout):
@@ -560,6 +598,11 @@ class Release:
                 raise Refused(f"the {repo.label} is dirty: " + "; ".join(
                     line[3:] for line in dirty[:10]) + " — commit or remove the changes")
             self.snaps[repo.label] = repo.snapshot()  # what the first write compares with
+        if self.args.suite_passed:
+            tree = self.engine.out("rev-parse", "HEAD^{tree}").strip()
+            if tree != self.args.suite_passed:
+                raise Refused(f"--suite-passed {self.args.suite_passed} is not this engine's "
+                              f"tree {tree} — leave the flag out and the suite runs")
         try:
             current = build_plugins.engine_version(ENGINE)
             version = publish.base_version(current)
@@ -591,19 +634,43 @@ class Release:
         return "the engine and the publish repo are clean"
 
     def step3(self) -> str:
+        if self.args.suite_passed:  # step 2 checked it is HEAD^{tree}
+            ran = (f"the unit suite passed on tree {self.args.suite_passed[:12]} before "
+                   f"(--suite-passed)")
+        else:
+            ran = self.unit_suite()
         env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-        suite = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests"],
-                               cwd=ENGINE, capture_output=True, text=True, env=env)
-        lines = [line for line in suite.stderr.splitlines() if line.strip()]
-        ran = next((line for line in lines if line.startswith("Ran ")), "no tests")
-        if suite.returncode:
-            raise Failed(f"the unit suite failed ({ran}): {suite.stderr.strip()[-600:]}")
-        eval_ = subprocess.run([sys.executable, "evals/adoption/run_eval.py"], cwd=ENGINE,
-                               capture_output=True, text=True, env=env)
+        eval_ = run_child([sys.executable, "evals/adoption/run_eval.py"], cwd=ENGINE, text=True,
+                          env=env)
         if eval_.returncode:
             raise Failed(f"the adoption eval failed: {eval_.stderr.strip()[-600:]}")
-        verdict = lines[-1] if lines else "OK"  # unittest's own last line: `OK (skipped=1)`
-        return f"{ran}, {verdict}; the adoption eval passed"
+        return f"{ran}; the adoption eval passed"
+
+    def unit_suite(self) -> str:
+        """The engine's unit suite, one process per test module (`Suite`): its summary, or the
+        failed step naming every failing module in start order with the last 600 characters
+        of the first one's stderr."""
+        modules = test_modules(ENGINE)
+        if not modules:
+            raise Failed("the unit suite has no tests/test_*.py module")
+        jobs = self.args.jobs or default_jobs()
+        logs = self.temp("modsys-release-suite-")
+        codes = Suite(ENGINE, logs, jobs).run(modules)
+        tests = skipped = 0
+        failing = []
+        for name in modules:
+            err = (logs / f"{name}.err").read_text(encoding="utf-8", errors="replace")
+            ran = re.findall(r"^Ran (\d+) tests? in ", err, re.M)
+            tests += int(ran[-1]) if ran else 0
+            last = [line for line in err.splitlines() if line.strip()][-1:]
+            skip = re.search(r"\bskipped=(\d+)", last[0]) if last else None
+            skipped += int(skip.group(1)) if skip else 0
+            if codes[name]:
+                failing.append((name, err))
+        if failing:
+            raise Failed(f"the unit suite failed in {', '.join(name for name, _ in failing)}: "
+                         f"{failing[0][1].strip()[-600:]}")
+        return suite_line(tests, len(modules), jobs, skipped)
 
     def step4(self) -> str:
         notes = ""
@@ -649,9 +716,9 @@ class Release:
             return "our checks passed; claude plugin validate skipped: claude not on PATH"
         config = self.temp("modsys-release-claude-")
         for target in [*(self.build / name for name in build_plugins.PLUGINS), tree]:
-            proc = subprocess.run([self.claude, "plugin", "validate", "--strict", "--json",
-                                   str(target)], capture_output=True, text=True,
-                                  env=self.claude_env(config), timeout=CLAUDE_TIMEOUT)
+            proc = run_child([self.claude, "plugin", "validate", "--strict", "--json",
+                              str(target)], text=True, env=self.claude_env(config),
+                             timeout=CLAUDE_TIMEOUT)
             if proc.returncode:
                 raise Failed(f"claude plugin validate --strict {target.name}: exit "
                              f"{proc.returncode} {proc.stdout.strip()[-600:]}")
@@ -802,8 +869,7 @@ class Release:
         env = self.claude_env(config)
 
         def claude(*argv: str) -> str:
-            proc = subprocess.run([self.claude, *argv], capture_output=True, text=True, env=env,
-                                  timeout=CLAUDE_TIMEOUT)
+            proc = run_child([self.claude, *argv], text=True, env=env, timeout=CLAUDE_TIMEOUT)
             if proc.returncode:
                 raise Failed(f"claude {' '.join(argv)}: exit {proc.returncode} "
                              f"{(proc.stderr or proc.stdout).strip()[-400:]}")
@@ -833,14 +899,13 @@ class Release:
             raise Failed(f"claude plugin details modsys does not name {', '.join(absent)}")
         launcher = str(installed / "bin/modsys")
         version = build_plugins.engine_version(ENGINE)
-        proc = subprocess.run([launcher, "--version"], capture_output=True, text=True)
+        proc = run_child([launcher, "--version"], text=True)
         if proc.returncode or proc.stdout.strip() != f"modsys {version}":
             raise Failed(f"bin/modsys --version: exit {proc.returncode} "
                          f"{(proc.stdout + proc.stderr).strip()} (want modsys {version})")
         shop = self.temp("modsys-release-shop-") / "bookshop"
         shutil.copytree(ENGINE / "tests/fixtures/bookshop", shop)
-        proc = subprocess.run([launcher, "lint", "--root", str(shop)], capture_output=True,
-                              text=True)
+        proc = run_child([launcher, "lint", "--root", str(shop)], text=True)
         if proc.returncode:
             raise Failed(f"bin/modsys lint on the bookshop fixture: exit {proc.returncode} "
                          f"{(proc.stdout + proc.stderr).strip()[-400:]}")
@@ -1036,6 +1101,116 @@ class Release:
 TERMINATE = tuple(s for s in (signal.SIGTERM, getattr(signal, "SIGHUP", None)) if s)
 
 
+def default_jobs() -> int:
+    """Step 3's test modules at a time without --jobs: min(4, the CPU count), 1 when Python
+    cannot tell the count."""
+    return min(4, os.cpu_count() or 1)
+
+
+def jobs_value(text: str) -> int:
+    """--jobs N: an integer from 1 to 32 — anything else is a usage error (exit 2)."""
+    if re.fullmatch(r"[0-9]{1,2}", text) and 1 <= int(text) <= MAX_JOBS:
+        return int(text)
+    raise argparse.ArgumentTypeError(f"expected an integer from 1 to {MAX_JOBS}, got {text!r}")
+
+
+def tree_value(text: str) -> str:
+    """--suite-passed TREE: 40 lower-case hex digits — anything else is a usage error."""
+    if TREE_ID.fullmatch(text):
+        return text
+    raise argparse.ArgumentTypeError(f"expected a tree id of 40 lower-case hex digits, got "
+                                     f"{text!r}")
+
+
+def test_modules(root: Path) -> list[str]:
+    """The test modules step 3 runs, in their start order: the stems of `root`'s
+    `tests/test_*.py`, the `test_release*` ones first (the longest), then the rest by name."""
+    names = sorted(p.stem for p in (root / "tests").glob("test_*.py") if p.is_file())
+    return sorted(names, key=lambda name: (not name.startswith("test_release"), name))
+
+
+def suite_line(tests: int, modules: int, jobs: int, skipped: int) -> str:
+    """Step 3's summary of a green suite: `Ran 3 tests in 2 modules (4 jobs), OK (skipped=1)`
+    — `1 test`, `1 module`, `1 job` in the singular, no `(skipped=0)`."""
+    def count(n: int, word: str) -> str:
+        return f"{n} {word}{'s' * (n != 1)}"
+    return (f"Ran {count(tests, 'test')} in {count(modules, 'module')} ({count(jobs, 'job')}), "
+            f"OK" + (f" (skipped={skipped})" if skipped else ""))
+
+
+class Suite:
+    """Step 3's unit suite: each test module in its own process and process group, at most
+    `jobs` at a time, every one to its end; a module's stdout and stderr go to files in `logs`
+    (never a pipe: a module that prints a lot cannot stall the step), its exit code is kept.
+    Ctrl-C, SIGTERM and SIGHUP — those not ignored at the start: `nohup` keeps the suite
+    running, and the children inherit the ignore — end the suite: every running test process
+    group is killed and its leader reaped before KeyboardInterrupt reaches the put-back. A
+    signal that arrives while a process starts waits until that process is registered, and
+    the ones after the first are ignored."""
+
+    def __init__(self, root: Path, logs: Path, jobs: int):
+        self.root, self.logs, self.jobs = root, logs, jobs
+        self.running: dict[str, subprocess.Popen] = {}
+        self.codes: dict[str, int] = {}
+        self.starting = self.ending = self.pending = False
+
+    def on_signal(self, signum, frame) -> None:
+        if self.starting or self.ending:
+            self.pending = True  # raised once the starting process is registered
+            return
+        self.ending = True
+        raise KeyboardInterrupt
+
+    def run(self, modules: list[str]) -> dict[str, int]:
+        """{module: its exit code}, the modules started in the order given."""
+        held = set_signals((signal.SIGINT, *TERMINATE), self.on_signal, keep_ignored=True)
+        try:
+            queue = list(modules)
+            while queue or self.running:
+                while queue and len(self.running) < self.jobs:
+                    self.start(queue.pop(0))
+                for name, proc in list(self.running.items()):
+                    if proc.poll() is not None:
+                        self.codes[name] = proc.returncode
+                        del self.running[name]
+                if self.running and (not queue or len(self.running) >= self.jobs):
+                    time.sleep(POLL)
+            return self.codes
+        finally:
+            self.ending = True
+            self.halt()
+            for sig, handler in held.items():
+                signal.signal(sig, handler)
+
+    def start(self, name: str) -> None:
+        self.starting = True
+        try:
+            with open(self.logs / f"{name}.out", "wb") as out, \
+                    open(self.logs / f"{name}.err", "wb") as err:
+                self.running[name] = subprocess.Popen(
+                    [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p",
+                     f"{name}.py"], cwd=self.root, stdin=subprocess.DEVNULL, stdout=out,
+                    stderr=err, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+                    process_group=0)
+        finally:
+            self.starting = False
+        if self.pending and not self.ending:
+            self.ending = True
+            raise KeyboardInterrupt
+
+    def halt(self) -> None:
+        """Kill every running test process group (SIGKILL: the module, and what it started
+        in its group) and reap each leader."""
+        for proc in self.running.values():
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+        for proc in self.running.values():
+            proc.wait()
+        self.running.clear()
+
+
 def set_signals(signals: tuple, handler, keep_ignored: bool = False) -> dict:
     """Set `handler` for `signals`; {signal: the handler before} to put them back (nothing in
     a thread that is not the main one: signals are the main thread's). `keep_ignored`: a signal
@@ -1098,6 +1273,13 @@ def main(argv: list[str] | None = None) -> int:
                              "the organisation scan use it)")
     parser.add_argument("--push", action="store_true",
                         help="push the channel branch and the tags (an owner command)")
+    parser.add_argument("--jobs", type=jobs_value, metavar="N",
+                        help=f"step 3 runs N test modules at a time (1-{MAX_JOBS}; default "
+                             f"min(4, the CPU count))")
+    parser.add_argument("--suite-passed", type=tree_value, metavar="TREE",
+                        help="the unit suite passed on this engine tree before (a gate's run): "
+                             "step 3 runs only the adoption eval; TREE must be the engine's "
+                             "HEAD^{tree}")
     args = parser.parse_args(argv)
     held = set_signals(TERMINATE, as_interrupt, keep_ignored=True)
     try:
