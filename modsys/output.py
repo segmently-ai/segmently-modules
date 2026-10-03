@@ -17,10 +17,15 @@ class UsageError(Exception):
 class _QuietStream:
     """A process stream that survives a closed reader (F19): on the first EPIPE it points the
     file descriptor at `os.devnull`, so every later write, and the interpreter's flush at exit,
-    land there silently — the verb runs to its end and its exit code stays its own."""
+    land there silently — the verb runs to its end and its exit code stays its own. Any other
+    write error (a full disk, a file size limit) is remembered the same way and reported once by
+    `quiet_streams` (`modsys: error: cannot write stdout: …`, exit 2). Only the stream's text
+    methods are guarded: `.buffer` is forwarded as it is, so engine code writes through
+    `print` / `write`."""
 
     def __init__(self, raw, fd: int):
         self._raw, self._fd = raw, fd
+        self.error: OSError | None = None
 
     def _trip(self) -> None:
         try:
@@ -36,11 +41,16 @@ class _QuietStream:
         except (OSError, ValueError):
             pass
 
+    def _failed(self, error: OSError) -> None:
+        if not isinstance(error, BrokenPipeError) and self.error is None:
+            self.error = error
+        self._trip()
+
     def write(self, text):
         try:
             return self._raw.write(text)
-        except BrokenPipeError:
-            self._trip()
+        except OSError as e:
+            self._failed(e)
             return len(text)
 
     def writelines(self, lines) -> None:
@@ -50,8 +60,8 @@ class _QuietStream:
     def flush(self) -> None:
         try:
             self._raw.flush()
-        except BrokenPipeError:
-            self._trip()
+        except OSError as e:
+            self._failed(e)
 
     def __getattr__(self, name):
         return getattr(self._raw, name)
@@ -60,7 +70,8 @@ class _QuietStream:
 @contextlib.contextmanager
 def quiet_streams():
     """Wrap the process's own stdout and stderr in `_QuietStream` for one run (a stream a test
-    or a caller swapped in is left alone) and flush them before the interpreter does."""
+    or a caller swapped in is left alone) and flush them before the interpreter does. A write
+    error other than a closed reader ends the run with one stderr line and exit 2."""
     wrapped = []
     for name, fd in (("stdout", 1), ("stderr", 2)):
         raw = getattr(sys, name)
@@ -71,9 +82,23 @@ def quiet_streams():
     try:
         yield
     finally:
+        failed = False
         for name, raw, guard in wrapped:
-            guard.flush()
-            setattr(sys, name, raw)
+            try:
+                guard.flush()
+            finally:
+                setattr(sys, name, raw)
+            if guard.error is not None:
+                failed = True
+                if name == "stdout":
+                    reason = guard.error.strerror or guard.error
+                    try:
+                        print(f"modsys: error: cannot write stdout: {reason}", file=sys.stderr)
+                        sys.stderr.flush()
+                    except (OSError, ValueError):
+                        pass
+        if failed:
+            raise SystemExit(2)
 
 
 _DEFERRED_NOTES: list[str] = []

@@ -66,9 +66,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A closed stdout reader (`modsys catalog --json | head -1`) ends the output silently: no
   `internal error`, no `Exception ignored` at exit, the verb runs to its end and the exit code is
-  its own (also for `--help` and `--version`, and with stderr closed too).
-- `packs sync` probes each skill copy it wrote (or would write) for the ignored note and names only
-  the ignored copies (`git ignores <n> of the <m> skill copies in <dir> (…)`); an allow-list such as
+  its own (also for `--help` and `--version`, and with stderr closed too); any other stdout write
+  error is exit 2 with one line `modsys: error: cannot write stdout: …`.
+- `packs sync` notes the skill copies git ignores: it probes each copy it wrote (or would write)
+  with one `git check-ignore` per skills directory and names only the ignored copies (`git ignores <n> of the <m> skill copies in <dir> (…)`); an allow-list such as
   `!.agents/skills/module-*/` no longer gives a false note, before or after the copies exist.
 - The contract says `code-map files --json` `via` is a list of sources.
 - `show` gives a child its own description; `related parent/child` names the child and says
@@ -76,7 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A repeated `--files` adds up (`sync`, `discover`, `sync-instructions`).
 - MS050: a doc update of a child counts for its parent.
 - `init` hints `modsys next` on a registry that has modules and git-ignores
-  `.modsys/config.user.toml`; `packs sync` notes a skills directory that git ignores.
+  `.modsys/config.user.toml`.
 - `agents-md`: the skill list is one line per skill (the description's first sentence); under
   `builtin_delivery = "plugin"` the enabled built-in skills get the plugins lead-in and a
   repository pack's skills keep the `packs sync` one.

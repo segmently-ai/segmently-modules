@@ -16,6 +16,11 @@ from pathlib import Path
 from tests.agent_helpers import AgentRepo, picks
 from tests.helpers import FIXTURE, SPLIT_FIXTURE, copy_fixture, init_git, make_repo, run, run_json
 
+try:
+    import resource
+except ImportError:  # no rlimits here
+    resource = None
+
 ENGINE = Path(__file__).resolve().parents[1]
 LAUNCHER = ENGINE / "tools/launcher.sh"
 SCRIPT = "import sys; from modsys.cli import main; sys.exit(main())"  # the console script
@@ -135,6 +140,31 @@ class ClosedReaderTest(Spawn):
         code, out, err = run("list", *self.R)
         self.assertEqual((code, err), (0, ""))
         self.assertIn("module000", out)
+
+
+@unittest.skipIf(resource is None, "no resource module")
+class WriteErrorTest(Spawn):  # I1
+    def limited(self, argv):
+        def limit():
+            signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+            resource.setrlimit(resource.RLIMIT_FSIZE, (200, 200))
+        out = self.tmp / "out.txt"
+        with open(out, "wb") as f:
+            proc = subprocess.run([sys.executable, "-m", "modsys", *argv], stdout=f,
+                                  stderr=subprocess.PIPE, env=self.env, cwd=ENGINE,
+                                  preexec_fn=limit, timeout=TIMEOUT)
+        return proc.returncode, proc.stderr.decode()
+
+    def test_a_full_stdout_is_one_error_line_and_exit_2(self):
+        for argv in (("list", "--root", str(FIXTURE)), ("--help",),
+                     ("list", "--root", str(FIXTURE), "--json")):
+            with self.subTest(argv=argv):
+                code, err = self.limited(argv)
+                self.assertEqual(code, 2)
+                lines = err.splitlines()
+                self.assertEqual(len(lines), 1, err)
+                self.assertTrue(lines[0].startswith("modsys: error: cannot write stdout: "), err)
+                self.quiet(err)
 
 
 class WriterTest(Spawn):
@@ -305,8 +335,13 @@ class IgnoredCopiesTest(unittest.TestCase):
         self.R = ("--root", str(self.root))
         self.skills: list[str] = []
 
+    def fresh_root(self):
+        self.root = copy_fixture(tempfile.mkdtemp(dir=self._tmp.name))
+        self.R = ("--root", str(self.root))
+
     def pack(self, *names):
         d = self.root / ".modsys/packs/team"
+        shutil.rmtree(d, ignore_errors=True)
         text = 'id = "team"\nversion = "9.0.0"\npriority = 50\n'
         for n in names:
             (d / "skills" / n).mkdir(parents=True, exist_ok=True)
@@ -340,7 +375,7 @@ class IgnoredCopiesTest(unittest.TestCase):
         for name, gitignore, skills, extra, want in cases:
             for json_out in (True, False):
                 with self.subTest(case=name, json=json_out):
-                    self.setUp()
+                    self.fresh_root()
                     self.pack(*skills)
                     (self.root / ".gitignore").write_text(gitignore, encoding="utf-8")
                     code, notes, _ = self.sync("--agent", "codex", json_out=json_out)
@@ -348,7 +383,6 @@ class IgnoredCopiesTest(unittest.TestCase):
                     self.assertEqual(self.ignored_notes(notes), [want] if want else [])
                     for s in skills:
                         self.assertTrue((self.root / f".agents/skills/{s}/SKILL.md").exists())
-                    self.tearDown()
 
     def test_unchanged_copies_count(self):  # P82-AC-025
         self.pack("module-a", "module-b", "api-review")
@@ -397,6 +431,39 @@ class IgnoredCopiesTest(unittest.TestCase):
                          {"api-review": "conflict", "module-a": "created"})
         self.assertEqual(self.ignored_notes(notes), [NOTE.format(
             k=1, m=1, d=".agents/skills", names="module-a")])
+
+    def test_removed_and_invalid_rows_do_not_count_either(self):  # P82-AC-025 (I3)
+        self.pack("api-review", "module-a", "module-b")
+        (self.root / ".gitignore").write_text(".agents/\n", encoding="utf-8")
+        self.assertEqual(self.sync("--agent", "codex")[0], 0)
+        self.pack("api-review", "module-a")  # module-b leaves the pack: its copy is `removed`
+        (self.root / ".modsys/packs/team/skills/api-review/SKILL.md").write_text(
+            "no front matter\n", encoding="utf-8")  # an unloadable source: `invalid`
+        code, notes, env = self.sync("--agent", "codex")
+        self.assertEqual(code, 1)
+        self.assertEqual({r["skill"]: r["status"] for r in env["data"]["skills"]},
+                         {"api-review": "invalid", "module-a": "unchanged",
+                          "module-b": "removed"})
+        self.assertEqual(self.ignored_notes(notes), [NOTE.format(
+            k=1, m=1, d=".agents/skills", names="module-a")])
+
+    def test_one_git_process_per_skills_directory(self):  # I2
+        from unittest import mock
+        from modsys import packs_cmd
+        self.pack("module-a", "module-b", "api-review", "zeta")
+        (self.root / ".gitignore").write_text(ALLOW, encoding="utf-8")
+        init_git(self.root)
+        calls = []
+        real = subprocess.run
+        def spy(cmd, *a, **k):
+            if "check-ignore" in cmd:
+                calls.append(cmd)
+            return real(cmd, *a, **k)
+        with mock.patch.object(packs_cmd.subprocess, "run", spy):
+            _, notes, _ = self.sync("--agent", "claude", "--agent", "codex")
+        self.assertEqual(len(calls), 2)  # .claude/skills and .agents/skills
+        self.assertEqual(self.ignored_notes(notes), [NOTE.format(
+            k=2, m=4, d=".agents/skills", names="api-review, zeta")])
 
     def test_the_old_sentence_is_gone(self):  # P82-AC-025
         self.assertNotIn("the synced skills are written there", (ENGINE / "modsys/packs_cmd.py")

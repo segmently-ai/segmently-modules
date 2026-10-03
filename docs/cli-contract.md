@@ -18,11 +18,13 @@ directory, else the current directory), `--config-dir DIR` (default `<root>/.mod
 - **Never a traceback:** an unexpected failure is exit `2` with `modsys: internal error: …`;
   set `MODSYS_DEBUG=1` to see the traceback.
 - **A closed stdout reader** (`modsys catalog --json | head -1`, a pager that quits): the rest of
-  the output is dropped, a closed stdout reader ends the output silently — no stderr line, no
-  `internal error`, no `Exception ignored` at exit — the verb still runs to its end (a writer
-  still writes) and the exit code is the verb's own exit code (`0` / `1` / `2`; a refusal keeps its
-  `modsys: error: …` line, Ctrl-C stays `130`); `--help` and `--version` into a closed reader
-  exit `0` silently. A closed stderr reader is dropped the same way.
+  the output is dropped and a closed stdout reader ends the output silently — no extra stderr
+  line (a refusal keeps its `modsys: error: …` line, a deferred note still prints) and no
+  `Exception ignored` at exit; the verb still runs to its end (a writer still writes) and the
+  exit code is the verb's own exit code (`0` / `1` / `2`; Ctrl-C stays `130`); `--help` and
+  `--version` into a closed reader exit `0` silently. A closed stderr reader is dropped the same
+  way. Any other stdout write error (a full disk, a file size limit) is exit `2` with one stderr
+  line `modsys: error: cannot write stdout: <reason>`.
 - **Writers** (`registry`, `index`, `proposals apply`, `sync --apply-proposals`, `create`,
   `roles add`, `migrate`) take the registry lock (`<registry>.lock`), write atomically, and refuse a file that
   changed since it was read. `code-map add` appends one rule to `<config_dir>/config.toml` (one

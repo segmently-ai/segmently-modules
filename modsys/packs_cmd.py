@@ -262,31 +262,35 @@ def _ignored_copies_notes(root: Path, rows: list[dict]) -> list[str]:
     """One note per skills directory in which git ignores some of the copies the run wrote or
     would write (rows `created`, `updated`, `unchanged`; a copy shared by `same_as` rows counts
     once). Each copy is probed through its own `SKILL.md` — a path git judges the same before
-    and after the directory exists — and only the ignored ones are named, in row order."""
-    copies: dict[str, dict[str, bool]] = {}  # directory -> copy dir -> ignored
-    names: dict[str, list[str]] = {}
+    and after the directory exists — with one `git check-ignore` per skills directory, and only
+    the ignored ones are named, in row order."""
+    copies: dict[str, dict[str, str]] = {}  # directory -> copy dir -> skill id
     for r in rows:
-        parent = os.path.dirname(r["dir"])
-        if r["status"] not in COPY_STATUSES or r["dir"] in copies.get(parent, {}):
-            continue
-        ignored = _git_ignores(root, f"{r['dir']}/SKILL.md")
-        copies.setdefault(parent, {})[r["dir"]] = ignored
-        if ignored:
-            names.setdefault(parent, []).append(r["skill"])
-    return [f"git ignores {len(names[d])} of the {len(copies[d])} skill copies in {d} "
-            f"({_names(names[d])}) — they are written but will not be committed; take them "
-            f"out of .gitignore to share them with the team"
-            for d in sorted(copies) if d in names]
+        if r["status"] in COPY_STATUSES and not r.get("same_as"):
+            copies.setdefault(os.path.dirname(r["dir"]), {}).setdefault(r["dir"], r["skill"])
+    notes = []
+    for d in sorted(copies):
+        ignored = _git_ignored(root, [f"{c}/SKILL.md" for c in copies[d]])
+        names = [skill for c, skill in copies[d].items() if f"{c}/SKILL.md" in ignored]
+        if names:
+            notes.append(f"git ignores {len(names)} of the {len(copies[d])} skill copies in {d} "
+                         f"({_names(names)}) — they are written but will not be committed; "
+                         f"take them out of .gitignore to share them with the team")
+    return notes
 
 
-def _git_ignores(root: Path, rel: str) -> bool:
-    """`rel` is ignored by git (false outside a repository, or when git cannot run)."""
+def _git_ignored(root: Path, rels: list[str]) -> set[str]:
+    """The paths among `rels` that git ignores, from one `git check-ignore -z --stdin` (none
+    outside a repository, or when git cannot run)."""
     try:
-        proc = subprocess.run(["git", "-C", str(root), "check-ignore", "-q", "--", rel],
+        proc = subprocess.run(["git", "-C", str(root), "check-ignore", "-z", "--stdin"],
+                              input="".join(f"{r}\0" for r in rels).encode(),
                               capture_output=True, env=git_env())
     except OSError:
-        return False
-    return proc.returncode == 0
+        return set()
+    if proc.returncode != 0:  # 1: none ignored; 128: not a repository or a path git refuses
+        return set()
+    return {p for p in proc.stdout.decode("utf-8", "replace").split("\0") if p}
 
 
 def remove_scope(ws, agents: list[str] | None, check: bool) -> list[str]:
