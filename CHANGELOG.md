@@ -48,7 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without one runs lexically with a note; a failing agent (exit, timeout, bad answer) is exit 2.
 - `module-scout`, `module-discover`, `module-research` and `module-sync` choose modules by meaning
   through `modsys choose` (hybrid by default); `module-discover` goes from the candidates to the
-  code; `module-sync` picks the child and adds a keyword only for a new public name.
+  code; `module-sync` picks the child and adds a keyword only for a new feature, command or
+  concept, never a code identifier.
 - A split module's child without its own role doc is `inherited` in `roles list`; `next` does not
   ask for it and `roles add --all` does not create it.
 - `children` (child, description, doc) on a split parent's `modify` row in `discover` and
@@ -85,6 +86,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `codex exec … --sandbox read-only --output-schema <schema file> - < <order file>`; elsewhere
   they answer the order themselves. The user's depth goes to `choose --effort`. `module-discover`
   says that `--files` takes the paths as separate arguments.
+- The core skills: `module-sync` adds a keyword only for a new feature, command or concept later
+  tasks will name, never a code identifier; `module-discover` searches the candidates' own code
+  for the task's terms (`git grep -n -e <term> -- <paths>`, the rest of the repository only when
+  that finds nothing) and, for a wrong value, the line that computes it; `module-sync` saves the
+  gate (`modsys ci --base <base> --json`, to a file outside the repository) before it edits and
+  checks its result with `ci --baseline` against that file — a finding the saved gate holds is
+  reported, one the change caused (a moved or deleted path) is fixed. The `agents-md` block and
+  the skill `packs new` scaffolds write the task to a temporary file outside the repository: run
+  `modsys agents-md` and `modsys packs sync` after the upgrade — `--check` reports the old block
+  and stale copies until then.
 - `catalog` with a malformed `MODSYS_AGENT_COMMAND` or `MODSYS_AGENT_TIMEOUT` exits 0 with
   `match.semantic` false and one stderr note (`modsys: note: <variable>: <problem> —
   match.semantic is false`) instead of exit 2; the verbs that run the agent still refuse it (exit
@@ -96,11 +107,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - With stderr closed at start (`modsys … 2>&-`) no line meant for stderr reaches stdout: the run
-  puts the null device on fd 2 itself, so a refusal leaves stdout empty and no file the run opens
-  becomes fd 2.
+  puts the null device on fd 2 itself, so a refusal leaves stdout empty, no file the run opens
+  becomes fd 2 and a child that inherits stderr writes to the null device.
 - Template resolution: a candidate that exists but cannot be read (a directory, a FIFO, a dangling
   symlink, no permission on it or a parent) is exit 2 `cannot read <path>: <reason>` instead of
-  silently falling through to a lower layer; a missing one still falls through.
+  silently falling through to a lower layer; a missing one still falls through. A template that
+  is not UTF-8 is `cannot read <path>: not valid UTF-8` (exit 2) instead of an internal error.
 - The README's `codex exec` agent-command example gains `--sandbox read-only`.
 - A closed stdout reader (`modsys catalog --json | head -1`) ends the output silently: no
   `internal error`, no `Exception ignored` at exit, the verb runs to its end and the exit code is

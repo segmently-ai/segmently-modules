@@ -332,7 +332,10 @@ engine's defaults: `MODULE.md`, one template per standard role (`roles/developer
 `roles/qa.md`, `roles/po.md`, `roles/architect.md` — each with a few headed sections for that
 audience) and the generic `roles/_role.md` for any other role. `agents-md.md` — the text of the
 managed block `modsys agents-md` keeps in agent instruction files (`${modules_dir}`,
-`${registry}`, `${roles}`, `${skills}`, `${version}`) — resolves the same way. Templates use `${name}`,
+`${registry}`, `${roles}`, `${skills}`, `${version}`) — resolves the same way. A candidate that
+does not exist falls through to the next layer; one that exists but cannot be read stops the verb
+with exit 2 and `cannot read <path>: <reason>`, writing nothing — and so does a template that is
+not UTF-8 where a verb renders it ([cli-contract.md](cli-contract.md)). Templates use `${name}`,
 `${title}`, `${description}`, `${status}`, `${keywords}`, `${parent}`, `${role}`,
 `${role_description}`, `${article}` (`a` or `an`, for the role name that follows it).
 

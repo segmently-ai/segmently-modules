@@ -451,7 +451,10 @@ or the `"$BASE"` captured before a change; against the default `HEAD` a clean ch
 nothing to compare, and `ci` says so in its notes. Outside a merge-ref checkout, pass
 `--base "$(git merge-base origin/main HEAD)"` so the target branch's own later commits are not
 counted as changes. Put the team's defaults in `[ci]` of `.modsys/config.toml` (`fail_on`,
-`base`, `coverage_fail_under`), then CI runs a bare `modsys ci`.
+`base`, `coverage_fail_under`), then CI runs a bare `modsys ci`. `--baseline FILE|-` takes the
+`--json` output of an earlier `ci` run (`-` = stdin): a lint or drift finding it already holds is
+`known`, and a step fails only on findings that are not (MS050 / MS051 are never known) —
+`module-sync` saves the gate before it edits and checks its result this way.
 
 ## Core skills
 

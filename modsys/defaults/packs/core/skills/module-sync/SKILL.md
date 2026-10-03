@@ -7,8 +7,8 @@ description: Brings module docs and registry fields in line with finished work. 
 
 ## When to use
 
-- A task changed module code and is done (or nearly), the gate reports drift (MS050), or the user
-  asks to sync the module docs.
+- A task changed module code and is done, the gate reports drift (MS050), or the user asks to
+  sync the module docs.
 
 ## When not to use
 
@@ -116,14 +116,14 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    modsys sync --files <path> <path> --json
    ```
 
-   Report every hook message. A failed required hook (exit 1): report it and stop, never work around it.
+   Report every hook message. A failed required hook (exit 1): stop, never work around it.
 
 7. Check: `modsys ci --base <base> --baseline <ci file> --json`. Its steps (`lint`, `drift`,
-   `coverage`) should pass or be report-only; a `known` finding predates you: report it, never fix
-   it here. Fix what your updates caused and rerun.
+   `coverage`) should pass or be report-only; a `known` finding predates your edits: report it, but
+   fix one the change caused (a moved or deleted path). Fix what your updates caused and rerun.
 
-8. Report per module: the docs changed (a line each), the fields and edges, the hook messages, the
-   `ci` result, the files no module owns. Ask the user to review and commit.
+8. Report per module: the docs changed, the fields and edges, the hook messages, the `ci` result,
+   the files no module owns. Ask the user to review and commit.
 
 ## A new role
 

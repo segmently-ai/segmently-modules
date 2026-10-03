@@ -8,14 +8,13 @@ for a usage error (an unknown or option-like --base, a threshold outside 0–100
 predates the change (`known`) from a new one; a step then fails only on the new ones."""
 import json
 import re
-import sys
 from dataclasses import asdict
-from pathlib import Path
 
 from modsys.changes import changed_files, commit_ref, diff_names, repo_files, require_work_tree
 from modsys.coverage_cmd import coverage_report, percent
 from modsys.lint import FAIL_ON, drift_report, failing, lint_registry, severity_counts
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
+from modsys.pipeline import read_input
 from modsys.workspace import Workspace
 
 NOTHING_TO_COMPARE = ("nothing to compare: the working tree equals HEAD — in CI pass --base "
@@ -60,17 +59,20 @@ def _not_ci(source: str):
                       f"(schema {BASELINE_SCHEMA})")
 
 
+def _valid_finding(f) -> bool:
+    """A finding a baseline can hold: an object with string `code`, `module`, `message` and a
+    `path` key that is a string or null."""
+    return (isinstance(f, dict) and "path" in f
+            and (f["path"] is None or isinstance(f["path"], str))
+            and all(isinstance(f.get(k), str) for k in ("code", "module", "message")))
+
+
 def read_baseline(source: str) -> set:
-    """The set of finding keys of the `lint` and `drift` steps of a saved `ci --json` run."""
+    """The set of finding keys of the `lint` and `drift` steps of a saved `ci --json` run, read
+    as bytes by the shared `-` reader (`pipeline.read_input`) and decoded as strict UTF-8."""
     name = "<stdin>" if source == "-" else source
     try:
-        if source == "-":
-            if sys.stdin is None:
-                raise OSError("no standard input")
-            raw = sys.stdin.buffer.read()
-        else:
-            raw = Path(source).read_bytes()
-        text = raw.decode("utf-8")
+        text = read_input(source).decode("utf-8")
     except OSError as e:
         raise UsageError(f"cannot read {name}: {e.strerror or e}") from None
     except UnicodeDecodeError:
@@ -92,10 +94,7 @@ def read_baseline(source: str) -> set:
         if not isinstance(found, list):
             raise _not_ci(source)
         for f in found:
-            if not (isinstance(f, dict)
-                    and all(isinstance(f.get(k), str) for k in ("code", "module", "message"))
-                    and (f.get("path") is None or isinstance(f.get("path"), str))
-                    and "path" in f):
+            if not _valid_finding(f):
                 raise _not_ci(source)
             keys.add(finding_key(f))
     return keys

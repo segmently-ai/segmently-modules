@@ -243,7 +243,16 @@ def resolve_template_source(ws, relpath: str, role: str | None = None,
 
 
 def resolve_template(ws, relpath: str, role: str | None = None) -> str:
-    return resolve_template_source(ws, relpath, role)[1].read_text(encoding="utf-8")
+    """The text of the winning template (newlines translated, as a text-mode read gives them). A
+    template that is not UTF-8, or that cannot be read after all, is `cannot read <path>:
+    <reason>` (exit 2, root-relative inside the root), never an internal error."""
+    path = resolve_template_source(ws, relpath, role)[1]
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise UsageError(f"cannot read {ws.rel(path)}: not valid UTF-8") from None
+    except OSError as e:
+        raise UsageError(f"cannot read {ws.rel(path)}: {e.strerror or e}") from None
 
 
 def doc_values(name: str, parent: str | None, description: str, status: str,

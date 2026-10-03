@@ -22,13 +22,14 @@ directory, else the current directory), `--config-dir DIR` (default `<root>/.mod
   line, a deferred note still prints) and no `Exception ignored` at exit; the verb still runs to
   its end (a writer still writes) and the exit code is the verb's own exit code (`0` / `1` /
   `2`; Ctrl-C stays `130`); `--help` and `--version` into a closed reader exit `0` silently. A
-  closed stderr reader is dropped the same way.
+  closed stderr reader is dropped the same way. With stderr open, any other stdout write error (a
+  full disk, a file size limit) is exit `2` with one stderr line
+  `modsys: error: cannot write stdout: <reason>`.
 - **stderr closed at start** (`modsys … 2>&-`): no line meant for stderr reaches stdout — a
   refusal, a usage error, an internal error and an interrupt leave stdout empty and keep their exit
   code. When fd 2 is closed at start the run puts the null device on fd 2 itself (an open fd 2 is
   never touched): no file the run opens (a lock, a temp file, the agent's work-order file) becomes
-  fd 2, and a child that inherits stderr writes to the null device. With stderr open, any other stdout write error (a full disk, a
-  file size limit) is exit `2` with one stderr line `modsys: error: cannot write stdout: <reason>`.
+  fd 2, and a child that inherits stderr writes to the null device.
 - **Writers** (`registry`, `index`, `proposals apply`, `sync --apply-proposals`, `create`,
   `roles add`, `migrate`) take the registry lock (`<registry>.lock`), write atomically, and refuse a file that
   changed since it was read. `code-map add` appends one rule to `<config_dir>/config.toml` (one
@@ -99,7 +100,9 @@ directory, else the current directory), `--config-dir DIR` (default `<root>/.mod
   symlink loop, a file or a parent directory without permission, a NUL in the name (shown as `\0`) — is exit `2`
   `modsys: error: cannot read <path>: <reason>` (root-relative inside the root), for every verb
   that resolves a template (`templates list` included) and nothing is written; the layers
-  below the winner are never examined.
+  below the winner are never examined. A verb that renders the winner reads it as UTF-8: a
+  template that is not UTF-8 is `cannot read <path>: not valid UTF-8`, exit `2` as well
+  (`templates list` and `templates override` never decode it).
 
 ```gitignore
 modules/registry.json.lock

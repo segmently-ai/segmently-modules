@@ -72,7 +72,9 @@ def _null_stderr():
     closed Python sets `sys.stderr = None`, `print(..., file=None)` writes to stdout, and the next
     file the process opens would take fd 2 (a lock, a temp file, the agent's order file). So the
     null device is put on fd 2 itself: no file the run opens becomes fd 2, and a child that
-    inherits stderr writes to the null device. An open fd 2 is never touched."""
+    inherits stderr writes to the null device (fd 2 is made inheritable: `os.open` returns 2
+    itself when fd 0 and 1 are open, and that descriptor is close-on-exec). An open fd 2 is never
+    touched."""
     try:
         os.fstat(2)
         return None
@@ -90,6 +92,8 @@ def _null_stderr():
     finally:
         if null != 2:
             os.close(null)
+    with contextlib.suppress(OSError):  # in both cases: a child inherits the null device
+        os.set_inheritable(2, True)
     return os.fdopen(2, "w", encoding="utf-8", errors="backslashreplace",
                      closefd=False, buffering=1)
 

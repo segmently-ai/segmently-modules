@@ -128,6 +128,12 @@ BASE=$(git merge-base main HEAD)   # where the branch left main — never main i
 modsys sync-instructions --from-diff "$BASE..HEAD" --json
 ```
 
+Before it edits, `module-sync` saves the gate (`modsys ci --base "$BASE" --json` to a file
+outside the repository) and checks its own result with
+`modsys ci --base "$BASE" --baseline <that file> --json`: a finding the saved gate already holds
+is `known` and only reported, unless the change itself caused it (a moved or deleted path) — that
+one it fixes.
+
 ## Choosing modules by meaning
 
 Four skills (`module-scout`, `module-discover`, `module-research`, `module-sync`) share one

@@ -1,7 +1,8 @@
 """P8.3 task 2: the skill and docs wording — the keyword rule (P83-AC-010), the code step of
 module-discover (AC-011), module-sync's saved gate and baseline check (AC-012), the chooser's
 cost sentence (AC-013), "a temporary file outside the repository" (AC-014), and the budgets
-(AC-015)."""
+(AC-015). The final review's fix wave: step 7 fixes a stale path the change itself caused (I-1),
+the release notes name T2's changes (I-3), the docs name the saved gate (M-2)."""
 import json
 import re
 import shlex
@@ -29,10 +30,15 @@ CODE_STEP = (
 STEP_1 = (
     "   Before you edit, save the gate: `modsys ci --base <base> --json > <ci file>` (outside the\n"
     "   repository; ignore its exit code).\n")
-STEP_7 = (
+STEP_7 = (  # final review I-1 (ruled): a stale path the change itself caused is fixed, not excused
     "7. Check: `modsys ci --base <base> --baseline <ci file> --json`. Its steps (`lint`, `drift`,\n"
-    "   `coverage`) should pass or be report-only; a `known` finding predates you: report it, never fix\n"
-    "   it here. Fix what your updates caused and rerun.\n")
+    "   `coverage`) should pass or be report-only; a `known` finding predates your edits: report it, but\n"
+    "   fix one the change caused (a moved or deleted path). Fix what your updates caused and rerun.\n")
+FIX_CLAUSE = ("a `known` finding predates your edits: report it, but fix one the change caused "
+              "(a moved or deleted path).")
+MAP_ONLY = '[[code_map]]\nid = "src"\npattern = "src/{module}/**"\n'
+PAYMENTS_DOC = ("# payments\n\nThe till and the receipts.\n\n## EXISTING Components\n\n"
+                "| Path | Role |\n|---|---|\n| `src/payments/till.py` | the till |\n")
 COST = ("The agent reads the whole work order in its own context: on a registry of about 170 modules "
         "(an 80 KB order) a call costs about 55k tokens with the plugin's agent and about 47k with "
         "`codex exec` (measured 2026-10-03).")
@@ -75,13 +81,15 @@ class SavedGateTest(unittest.TestCase):  # P83-AC-012
         text = skill("module-sync")
         self.assertEqual(text.count(STEP_1), 1)
         step1 = text.split("\n2. Ask modsys what to update.")[0]
-        self.assertTrue(step1.endswith("\n\n" + STEP_1.rstrip("\n") + "\n") or
-                        step1.rstrip("\n").endswith(STEP_1.rstrip("\n")), step1[-300:])
+        self.assertTrue(step1.endswith("\n\n" + STEP_1), step1[-300:])  # its own lines (review M-1)
 
     def test_step_7_is_exact(self):
         text = skill("module-sync")
         self.assertEqual(text.count(STEP_7), 1)
         self.assertNotIn("report what failed before you began", text)
+        flat = " ".join(text.split())
+        self.assertEqual(flat.count(FIX_CLAUSE), 1)
+        self.assertNotIn("predates you: report it, never fix it here", flat)  # final review I-1
 
 
 class CostSentenceTest(unittest.TestCase):  # P83-AC-013
@@ -126,7 +134,7 @@ class TemporaryFileTest(unittest.TestCase):  # P83-AC-014
 
 
 class BudgetTest(unittest.TestCase):  # P83-AC-015
-    def test_exact_sizes_of_the_two_rewritten_skills(self):
+    def test_the_two_rewritten_skills_are_within_the_skill_bound(self):  # review M-3: a name
         self.assertLessEqual(len(skill("module-sync")), 9_000)
         self.assertLessEqual(len(skill("module-discover")), 9_000)
 
@@ -166,8 +174,90 @@ class SavedGateEndToEndTest(unittest.TestCase):  # P83-AC-012 (the two commands,
             self.assertGreater(known, 0, out)
             self.assertEqual(err, "")
             self.assertEqual(code, 0, out)
-            # (4) nothing of the gate in the repository
-            self.assertNotIn("ci.json", git(root, "status", "--porcelain"))
+            # (4) the two commands wrote nothing into the repository: only the two doc edits
+            self.assertEqual(sorted(git(root, "status", "--porcelain").splitlines()),
+                             [" M modules/catalog/MODULE.md", " M modules/payments/MODULE.md"])
+
+    def test_a_path_the_change_moved_is_known_and_the_skill_says_fix_it(self):  # final review I-1
+        from tests.helpers import git, init_git, make_repo
+        save, check = self.commands()
+        self.assertEqual(" ".join(skill("module-sync").split()).count(FIX_CLAUSE), 1)
+        stale = ("MS040", "payments", "component path missing on disk: src/payments/till.py",
+                 "modules/payments/MODULE.md")
+        with tempfile.TemporaryDirectory() as repo_tmp, tempfile.TemporaryDirectory() as out_tmp:
+            root = make_repo(repo_tmp, {"catalog": ["book", "shelf"],
+                                        "payments": ["till", "receipt"]},
+                             MAP_ONLY, ("src/catalog/shelf.py", "src/payments/till.py"))
+            doc = root / "modules/payments/MODULE.md"
+            doc.write_text(PAYMENTS_DOC, encoding="utf-8")
+            init_git(root)
+            # the committed change renames the file the payments doc lists
+            git(root, "mv", "src/payments/till.py", "src/payments/register.py")
+            git(root, "commit", "-q", "-m", "payments: the till is the register")
+            ci_file = Path(out_tmp) / "ci.json"
+            def ci(command):  # a command of the skill, its placeholders filled in
+                command = command.replace("<base>", "HEAD~1").replace("<ci file>", str(ci_file))
+                code, out, err = run(*shlex.split(command)[1:], "--root", str(root))
+                self.assertEqual(err, "")
+                data = json.loads(out)["data"]
+                return code, out, {(st["name"], f["code"], f["module"], f["message"], f["path"]):
+                                   f.get("known") for st in data["steps"]
+                                   for f in st.get("findings", [])}
+
+            # step 1: the saved gate already holds the stale path the change caused
+            code, out, first = ci(save[:-len(" > <ci file>")])
+            self.assertEqual(code, 1)
+            self.assertIn(("lint", *stale), first)
+            self.assertIn(("drift", *stale), first)
+            ci_file.write_text(out, encoding="utf-8")
+            # the sync documents the change but keeps the stale path: step 7 calls it known …
+            with doc.open("a", encoding="utf-8") as fh:
+                fh.write("The till is the register now.\n")
+            code, _, found = ci(check)
+            self.assertEqual(code, 0)
+            self.assertEqual((found[("lint", *stale)], found[("drift", *stale)]), (True, True))
+            # … and the skill says to fix it: with the path fixed the finding is gone
+            doc.write_text(doc.read_text(encoding="utf-8").replace("till.py", "register.py"),
+                           encoding="utf-8")
+            code, _, found = ci(check)
+            self.assertEqual((code, found), (0, {}))
+
+
+class ReleaseNotesTest(unittest.TestCase):  # final review I-3
+    def unreleased(self):
+        log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
+        return log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+
+    def test_the_keyword_line_states_the_d1_rule(self):
+        flat = " ".join(self.unreleased().split())
+        self.assertNotIn("a keyword only for a new public name", flat)
+        self.assertIn("`module-sync` picks the child and adds a keyword only for a new feature, "
+                      "command or concept, never a code identifier.", flat)
+
+    def test_one_changed_entry_names_t2(self):
+        changed = self.unreleased().split("### Changed", 1)[1].split("### Fixed", 1)[0]
+        entries = [" ".join(e.split()) for e in changed.split("\n- ")]
+        mine = [e for e in entries if "`ci --baseline`" in e and "never a code identifier" in e]
+        self.assertEqual(len(mine), 1, entries)
+        for needle in ("`git grep -n -e <term> -- <paths>`", "the line that computes",
+                       "saves the gate", "a temporary file outside the repository", "`packs new`"):
+            self.assertIn(needle, mine[0])
+        self.assertTrue(mine[0].endswith(
+            "run `modsys agents-md` and `modsys packs sync` after the upgrade — `--check` "
+            "reports the old block and stale copies until then."), mine[0])
+
+
+class DocsSavedGateTest(unittest.TestCase):  # final review M-2 (1)
+    def test_skills_md_names_the_saved_gate(self):
+        docs = (ENGINE / "docs" / "skills.md").read_text(encoding="utf-8")
+        start = docs.index("\n`module-sync` reads the plan")  # module-sync's passage
+        passage = docs[start:docs.index("\n## ", start)]
+        paras = [p for p in passage.split("\n\n") if "saves the gate" in p]
+        self.assertEqual(len(paras), 1, passage)
+        flat = " ".join(paras[0].split())
+        for needle in ("saves the gate", "`modsys ci --base \"$BASE\" --json`",
+                       "`modsys ci --base \"$BASE\" --baseline", "known"):
+            self.assertIn(needle, flat)
 
 
 if __name__ == "__main__":

@@ -40,7 +40,9 @@ def probe(args):
     null = os.stat(os.devnull)
     st = os.fstat(2)
     fh = open(report + ".probe", "w")          # a file the run opens: never fd 2
-    child = subprocess.run([sys.executable, "-c", "import os; os.write(2, b'CHILD-TEXT')"],
+    # a child that inherits stderr: it opens a file first (a closed fd 2 would become that file)
+    child = subprocess.run([sys.executable, "-c", "import os, sys; f = open(sys.argv[1], 'w'); "
+                            "os.write(2, b'CHILD-TEXT'); f.close()", report + ".child"],
                            stdout=subprocess.DEVNULL, check=False)
     json.dump({"fd2_is_null": stat.S_ISCHR(st.st_mode) and st.st_rdev == null.st_rdev,
                "ino": [st.st_dev, st.st_ino], "opened_fd": fh.fileno(),
@@ -150,7 +152,9 @@ class ClosedStderrTest(Spawn):
                               timeout=TIMEOUT)
 
     def test_the_sink_is_fd_2_itself(self):  # P83-AC-032
-        for redirect in ("2>&-", "1>&- 2>&-"):
+        # the child inherits the null device on fd 2 (final review I-2): it exits 0 and its own
+        # file stays empty, also when the null device landed on fd 2 without a dup2
+        for redirect in ("2>&-", "0<&- 2>&-", "1>&- 2>&-"):
             with self.subTest(redirect=redirect):
                 report = self.tmp / "r.json"
                 proc = self.probe(redirect, report)
@@ -158,9 +162,12 @@ class ClosedStderrTest(Spawn):
                 got = json.loads(report.read_text(encoding="utf-8"))
                 self.assertTrue(got["fd2_is_null"])
                 self.assertNotEqual(got["opened_fd"], 2)
+                self.assertEqual(got["child"], 0)
+                child = Path(str(report) + ".child")
+                self.assertEqual(child.read_bytes(), b"")  # CHILD-TEXT went to the null device
                 self.assertEqual((proc.stdout, proc.stderr), (b"", b""))  # CHILD-TEXT nowhere
-                report.unlink()
-                Path(str(report) + ".probe").unlink()
+                for path in (report, Path(str(report) + ".probe"), child):
+                    path.unlink()
 
     def test_an_open_fd_2_is_untouched(self):  # P83-AC-032
         report, errfile = self.tmp / "r.json", self.tmp / "err.txt"
@@ -173,6 +180,7 @@ class ClosedStderrTest(Spawn):
         self.assertEqual(got["ino"], [st.st_dev, st.st_ino])
         self.assertFalse(got["fd2_is_null"])
         self.assertEqual(errfile.read_bytes(), b"CHILD-TEXT")
+        self.assertEqual((got["child"], Path(str(report) + ".child").read_bytes()), (0, b""))
         self.assertEqual(proc.stdout, b"")
 
     def test_writers_write_the_same_bytes_with_fd_2_closed(self):  # P83-AC-032
@@ -335,6 +343,27 @@ class ResolutionTest(unittest.TestCase):
                     self.assertEqual(tree(root), base)  # nothing written
                     self.assertEqual(list(root.rglob("*.lock")), [])  # the lock is released
 
+    def test_a_template_that_is_not_utf8_is_a_refusal(self):  # final review M-3
+        words = [a for k in ("review", "reviews", "rating", "ratings", "mod", "mods")
+                 for a in ("--keyword", k)]
+        specs = [("MODULE.md", ("create", "reviews", "--description",
+                                "Customer reviews of books: ratings, moderation and display.",
+                                *words, "--non-interactive", "--dry-run")),
+                 ("agents-md.md", ("agents-md", "--target", "CLAUDE.md", "--dry-run"))]
+        for py in PYTHONS:
+            for template, argv in specs:
+                with self.subTest(python=py, template=template, verb=argv[0]):
+                    root, over = self.fresh()
+                    path = over / template
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(b"# ${title}\n\nR\xe9views of the books.\n")  # latin-1
+                    base = tree(root)
+                    code, out, err = self.cli(py, root, *argv)
+                    self.assertEqual((code, out, err), (2, "", (
+                        f"modsys: error: cannot read .modsys/overrides/templates/{template}: "
+                        f"not valid UTF-8\n")))
+                    self.assertEqual(tree(root), base)
+
     def role_template(self, template):
         """A repository pack whose role `designer` names this `template` file."""
         root, _ = self.fresh()
@@ -385,6 +414,28 @@ class DocsTest(unittest.TestCase):
         validate_command(command, "MODSYS_AGENT_COMMAND")
         self.assertIn('claude -p --model {claude_model} --output-format json --json-schema',
                       README)
+
+    def test_configuration_names_the_refusal(self):  # final review M-2 (2)
+        doc = (ENGINE / "docs/configuration.md").read_text(encoding="utf-8")
+        para = next(p for p in doc.split("\n\n") if p.startswith("`create` resolves a template"))
+        flat = " ".join(para.split())
+        for needle in ("exists but cannot be read", "exit 2", "cli-contract.md"):
+            self.assertIn(needle, flat)
+
+    def test_the_stream_bullets(self):  # final review M-2 (3, 4), I-2, M-3
+        bullets = {b.split("**", 1)[0]: "- **" + b for b in DOCS.split("\n- **")[1:]}
+        stdout, stderr = bullets["A closed stdout reader"], bullets["stderr closed at start"]
+        sentence = ("With stderr open, any other stdout write error (a full disk, a file size "
+                    "limit) is exit `2` with one stderr line `modsys: error: cannot write "
+                    "stdout: <reason>`.")
+        self.assertIn(sentence, " ".join(stdout.split()))
+        self.assertNotIn("cannot write stdout", stderr)
+        self.assertIn("a child that inherits stderr writes to the null device",
+                      " ".join(stderr.split()))
+        for line in [*stdout.splitlines(), *stderr.splitlines()]:
+            self.assertLessEqual(len(line), 100, line)
+        self.assertIn("a template that is not UTF-8 is `cannot read <path>: not valid UTF-8`",
+                      " ".join(DOCS.split()))
 
     def test_the_contract_and_the_changelog_name_the_changes(self):  # P83-AC-034
         for needle in ("fd 2 is closed at start", "the null device", "exists but cannot be read"):

@@ -137,6 +137,19 @@ class KnownTest(CiBaselineCase):  # P83-AC-001
                 self.assertEqual(self.marks(data, "lint"), [("MS030", "catalog", True),
                                                             ("MS040", "catalog", False)])
 
+    def test_a_null_path_against_a_baseline_path_is_not_known(self):  # row 3, reversed (review M-3)
+        (self.root / ".modsys/config.toml").write_text(
+            CONFIG + '\n[[code_map]]\nid = "x"\nglobs = ["lib/**"]\nmodule = "nosuch"\n',
+            encoding="utf-8")  # MS052: a config-level finding, its path null
+        ms052 = next(f for f in self.findings(self.ci_json(), "lint") if f["code"] == "MS052")
+        self.assertIsNone(ms052["path"])
+        with_path = dict(ms052, path=".modsys/config.toml")
+        for held, want in ((with_path, False), (ms052, True)):
+            with self.subTest(baseline_path=held["path"]):
+                data = self.ci_json("--baseline", str(self.write_baseline(lint=[held])))
+                self.assertEqual([f["known"] for f in self.findings(data, "lint")
+                                  if f["code"] == "MS052"], [want])
+
     def test_digits_in_the_message_do_not_matter(self):  # row 4
         self.append("catalog", EXTRA)
         data = self.ci_json("--baseline", str(self.write_baseline(lint=[MS030_9, MS040])))
@@ -277,7 +290,7 @@ class JsonFormTest(CiBaselineCase):  # P83-AC-003, P83-AC-005
                 if given == "-":
                     data = self.ci_json("--baseline", "-", stdin=path.read_bytes())
                 elif given == "b.json":
-                    with mock.patch("modsys.ci_cmd.Path") as P:
+                    with mock.patch("modsys.pipeline.Path") as P:  # the shared reader
                         P.return_value.read_bytes.return_value = path.read_bytes()
                         data = self.ci_json("--baseline", "b.json")
                 else:
@@ -334,6 +347,17 @@ class TextFormTest(CiBaselineCase):  # P83-AC-004
         self.assertTrue(out.rstrip().endswith("ci: failed"))
         lint_line = next(line for line in out.splitlines() if line.startswith("lint"))
         self.assertTrue(lint_line.endswith("(2 known from the baseline)"), lint_line)
+        # the drift step marks the same way (review M-2): its line and its own finding lines
+        lines = out.splitlines()
+        at = next(i for i, line in enumerate(lines) if line.startswith("drift"))
+        self.assertTrue(lines[at].startswith("drift     failed"), lines[at])
+        self.assertTrue(lines[at].endswith("(2 known from the baseline)"), lines[at])
+        under = [line for line in lines[at + 1:] if line.startswith("  ")][:3]
+        self.assertEqual(lines[at + 1:at + 4], under)
+        self.assertIn("  WARNING MS030 catalog: 10 lines > split signal 3  "
+                      "(modules/catalog/MODULE.md) (known)", under)
+        self.assertIn("  WARNING MS040 payments: component path missing on disk: "
+                      "src/payments/missing.py  (modules/payments/MODULE.md)", under)
 
     def test_a_passing_step_line(self):
         base = self.save()
@@ -478,6 +502,38 @@ class SubprocessTest(CiBaselineCase):  # P83-AC-005, P83-AC-035 (real pipes)
                             stdin=stdin)
             self.assertEqual((done.returncode, done.stdout, done.stderr), (2, b"", line))
 
+    def test_stdin_closed_at_start_reads_as_the_other_readers_say(self):  # final review M-1
+        env = dict(os.environ, PYTHONPATH=str(ENGINE), PYTHONDONTWRITEBYTECODE="1")
+        got = {}
+        for argv in (("ci", "--baseline", "-"),
+                     ("context", "--task-file", "-", "--match", "lexical")):
+            done = subprocess.run(["/bin/sh", "-c", 'exec "$@" 0<&-', "sh", sys.executable, "-m",
+                                   "modsys", *argv, *self.R],
+                                  capture_output=True, env=env, cwd=str(ENGINE))
+            self.assertEqual((done.returncode, done.stdout), (2, b""), argv)
+            got[argv[0]] = done.stderr
+        self.assertTrue(got["ci"].startswith(b"modsys: error: cannot read <stdin>: "), got)
+        self.assertEqual(got["ci"].count(b"\n"), 1)
+        self.assertNotIn(b"internal error", got["ci"])
+        self.assertEqual(got["ci"], got["context"])  # the same words as every `-` reader
+
+    def test_a_swapped_text_stdin(self):  # final review M-1: an in-process caller's stream
+        saved = self.save().read_text(encoding="utf-8")
+        for text, code in ((saved, 1), ("[", 2)):
+            with self.subTest(text=text[:10]):
+                with mock.patch("sys.stdin", io.StringIO(text)):
+                    got, out, err = run("ci", "--base", "HEAD~1", "--baseline", "-", "--json",
+                                        *self.R)
+                self.assertEqual(got, code, err)
+                self.assertNotIn("internal error", err)
+                if code == 1:
+                    self.assertEqual(self.marks(json.loads(out)["data"], "lint"),
+                                     [("MS030", "catalog", True), ("MS040", "catalog", True)])
+                else:
+                    self.assertEqual((out, err), ("", "modsys: error: --baseline -: not the "
+                                                      "--json output of modsys ci (schema "
+                                                      "modsys.ci/1)\n"))
+
     def test_a_closed_stdin(self):
         env = dict(os.environ, PYTHONPATH=str(ENGINE), PYTHONDONTWRITEBYTECODE="1")
         done = subprocess.run(
@@ -540,6 +596,13 @@ class DocsTest(unittest.TestCase):  # P83-AC-009
         log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
         unreleased = log.split("## [Unreleased]")[1].split("\n## [")[0]
         self.assertIn("ci --baseline", unreleased)
+
+    def test_the_readme_ci_gate_names_the_flag(self):  # final review M-2 (1)
+        readme = (ENGINE / "README.md").read_text(encoding="utf-8")
+        gate = " ".join(readme.split("\n## CI gate\n", 1)[1].split("\n## ", 1)[0].split())
+        for needle in ("`--baseline FILE|-`", "`known`", "fails only on", "MS050 / MS051",
+                       "`module-sync` saves the gate"):
+            self.assertIn(needle, gate)
 
 
 if __name__ == "__main__":
