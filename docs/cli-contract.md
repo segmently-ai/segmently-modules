@@ -18,13 +18,12 @@ directory, else the current directory), `--config-dir DIR` (default `<root>/.mod
 - **Never a traceback:** an unexpected failure is exit `2` with `modsys: internal error: …`;
   set `MODSYS_DEBUG=1` to see the traceback.
 - **A closed stdout reader** (`modsys catalog --json | head -1`, a pager that quits): the rest of
-  the output is dropped and a closed stdout reader ends the output silently — no extra stderr
-  line (a refusal keeps its `modsys: error: …` line, a deferred note still prints) and no
-  `Exception ignored` at exit; the verb still runs to its end (a writer still writes) and the
-  exit code is the verb's own exit code (`0` / `1` / `2`; Ctrl-C stays `130`); `--help` and
-  `--version` into a closed reader exit `0` silently. A closed stderr reader is dropped the same
-  way. Any other stdout write error (a full disk, a file size limit) is exit `2` with one stderr
-  line `modsys: error: cannot write stdout: <reason>`.
+  the output is dropped silently — no extra stderr line (a refusal keeps its `modsys: error: …`
+  line, a deferred note still prints) and no `Exception ignored` at exit; the verb still runs to
+  its end (a writer still writes) and the exit code is the verb's own exit code (`0` / `1` /
+  `2`; Ctrl-C stays `130`); `--help` and `--version` into a closed reader exit `0` silently. A
+  closed stderr reader is dropped the same way. Any other stdout write error (a full disk, a
+  file size limit) is exit `2` with one stderr line `modsys: error: cannot write stdout: <reason>`.
 - **Writers** (`registry`, `index`, `proposals apply`, `sync --apply-proposals`, `create`,
   `roles add`, `migrate`) take the registry lock (`<registry>.lock`), write atomically, and refuse a file that
   changed since it was read. `code-map add` appends one rule to `<config_dir>/config.toml` (one
@@ -184,7 +183,7 @@ mode without a row print `no matches (the agent chose no module; try rephrasing 
   4 MiB on stdout, no answer in the output, an answer that breaks the schema) is exit `2` with
   `modsys: error: agent …`; Ctrl-C, SIGTERM or SIGHUP during the call is exit `130` — a repeated
   one too: the agent's process group is killed and the temp files removed. Never a traceback.
-- **`modsys catalog`** prints the cards an agent reads, with every keyword (the work order caps them at `[search] card_keywords`) (`match.mode`, `match.semantic`, `search`);
+- **`modsys catalog`** prints the cards an agent reads (`match.mode`, `match.semantic`, `search`), with every keyword — the work order caps them at `[search] card_keywords`;
   **`modsys choose --task TEXT`** prints the work order (`modsys.choose/1`); the agent answers
   `{"picks": [{"module", "confidence", "reason"}], "none": bool, "catalog_digest": "<the order's digest>" | null}`; **`modsys choose --apply FILE|-`**
   validates that answer offline (unknown module ids are dropped with a note each, a different

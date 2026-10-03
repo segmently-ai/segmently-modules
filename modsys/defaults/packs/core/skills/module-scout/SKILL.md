@@ -41,7 +41,7 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
      subagent told "this file is your whole task; answer with its JSON only; change nothing"); its
      reply is the answer. **Codex:** the same with `--json`, its `answer_schema` written to
      `<schema file>`, then
-     `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --output-schema <schema file> - < <order file>`
+     `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --sandbox read-only --output-schema <schema file> - < <order file>`
      (`low`, `medium`, `high` for `quick`, `standard`, `deep`). **Elsewhere** (no subagent, no
      `codex exec`): answer the order yourself, every card read, by its rules. Pipe the answer to
      `modsys choose --apply - --json`.

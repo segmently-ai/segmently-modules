@@ -141,7 +141,7 @@ models and the depth), then:
   available, to a subagent told "this file is your whole task; answer with its JSON only; change
   nothing". In Codex the same command adds `--json`, its `answer_schema` goes to a schema file,
   and
-  `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --output-schema <schema file> - < <order file>`
+  `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --sandbox read-only --output-schema <schema file> - < <order file>`
   answers it (`<reasoning>` is `low`, `medium` or `high` for the depth `quick`, `standard` or
   `deep`; add `--skip-git-repo-check` outside a git repository). Elsewhere (no subagent, no
   `codex exec`) the skill answers the order itself, every card read, by its rules. Every path ends

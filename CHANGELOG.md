@@ -7,23 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- A `[match] mode` of `semantic` or `hybrid` from a config file now runs the agent command only with
-  `MODSYS_AGENT_ALLOW_REPO_MODE=1` in the user's environment; without it `match`, `context` and
-  `discover --task` run lexically (stdout identical to `--match lexical`) and print one stderr
-  line `modsys: note: …` after a successful run. `--match`, `choose --run` and `catalog` need no
-  opt-in; any value other than `1` / `0` / empty is exit 2 (checked only when a config file sets a
-  non-lexical mode and no `--match` is given).
-- The skills that find modules (`module-discover`, `module-sync`, `module-scout`,
-  `module-research`) search both ways (`hybrid`) unless the user says otherwise or `match.mode`
-  is `semantic`: a `lexical` config no longer skips the search by meaning. In Claude Code they
-  write the work order's text form to a file and hand its path to `modsys:module-chooser`; in
-  Codex they run
-  `codex exec … --output-schema <schema file> - < <order file>`; elsewhere they answer the order
-  themselves. The user's depth goes to `choose --effort`. `module-discover` says that `--files`
-  takes the paths as separate arguments.
-
 ### Added
 
 - The `modsys` plugin ships the read-only subagent `module-chooser` (`modsys:module-chooser`; tools
@@ -72,6 +55,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `modsys choose --task-file FILE|-` reads the task text from a file or stdin, as `context` and
   `discover` do; the four skills that choose modules pass every task text through a file, so an
   apostrophe, a `$name` or a backtick reaches modsys as written.
+
+### Changed
+
+- A `[match] mode` of `semantic` or `hybrid` from a config file now runs the agent command only with
+  `MODSYS_AGENT_ALLOW_REPO_MODE=1` in the user's environment; without it `match`, `context` and
+  `discover --task` run lexically (stdout identical to `--match lexical`) and print one stderr
+  line `modsys: note: …` after a successful run. `--match`, `choose --run` and `catalog` need no
+  opt-in; any value other than `1` / `0` / empty is exit 2 (checked only when a config file sets a
+  non-lexical mode and no `--match` is given).
+- The skills that find modules (`module-discover`, `module-sync`, `module-scout`,
+  `module-research`) search both ways (`hybrid`) unless the user says otherwise or `match.mode`
+  is `semantic`: a `lexical` config no longer skips the search by meaning. In Claude Code they
+  write the work order's text form to a file and hand its path to `modsys:module-chooser`; in
+  Codex they run
+  `codex exec … --sandbox read-only --output-schema <schema file> - < <order file>`; elsewhere
+  they answer the order themselves. The user's depth goes to `choose --effort`. `module-discover`
+  says that `--files` takes the paths as separate arguments.
 
 ### Fixed
 

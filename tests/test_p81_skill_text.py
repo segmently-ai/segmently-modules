@@ -35,7 +35,7 @@ HYBRID = "- `hybrid`: merge the lists; a module found both ways ranks first."  #
 AGENT = "modsys:module-chooser"
 CLAUDE_CODE = "modsys choose --task-file <task file> > <order file>"
 CODEX = ("codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> "
-         "--output-schema <schema file> - < <order file>")
+         "--sandbox read-only --output-schema <schema file> - < <order file>")  # AC-038 amended
 APPLY = "modsys choose --apply - --json"
 F20 = ("`--files` takes the paths as separate arguments (`--files a.ts b/c.ts`); one quoted string "
        "is one path.")
@@ -152,6 +152,7 @@ class SharedStepTest(unittest.TestCase):  # P82-AC-034…039
         "`quick` the cards only", "`standard` also the INDEX", "`deep` also their docs and code",
         "at the depth its rules set",
         "read `match` and `search`", "when it is not available",  # fix 1 I-1, M-1
+        "model_reasoning_effort=<reasoning> --output-schema",  # final review M-2: read-only
     ]
 
     def test_every_skill_says_it_once_and_in_order(self):
@@ -529,7 +530,8 @@ class DocsTest(unittest.TestCase):  # P8.2 task 5: docs/skills.md follows the sh
                        "every card read, by its rules"):
             self.assertIn(needle, part)
         for gone in ("only when `match.semantic` is true", "never a preview",
-                     "`quick` the cards only"):
+                     "`quick` the cards only",
+                     "model_reasoning_effort=<reasoning> --output-schema"):  # final review M-2
             self.assertNotIn(gone, doc)
 
     def test_changelog(self):  # fix 1 M-2: the mode said the right way round

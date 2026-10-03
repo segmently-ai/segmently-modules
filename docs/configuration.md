@@ -124,15 +124,19 @@ Why an environment variable and not a config file: a command in a file the repos
 (a team config, or a pack someone installs) would let a commit put an agent command on every
 contributor's machine. So the command is read ONLY from the process environment of the user who
 runs modsys; an `[agent]` table in any config file is refused (exit 2 naming the file), whatever
-file it is in. A repository cannot choose or change the command, and it cannot make it run: a `[match] mode`
-from any config file (team, personal or pack) runs the agent command only with your opt-in,
+file it is in. A repository cannot choose or change the command, and it cannot make `match`,
+`context` or `discover --task` run it: a `[match] mode` from any config file (team, personal or
+pack) runs the agent command only with your opt-in,
 `MODSYS_AGENT_ALLOW_REPO_MODE=1` in your environment (card text the repository wrote would reach
 your agent: prompt injection, and one agent call per run). Without it the run is lexical and says
 so in one stderr line (`modsys: note: [match] mode "hybrid" is set in a config file; it runs your
 agent command only with MODSYS_AGENT_ALLOW_REPO_MODE=1 (or pass --match hybrid) — ran lexical`);
-`--match` and `choose --run` are your own requests and need no opt-in. So set the opt-in per CI
-job or per shell session in repositories you trust, not in your shell profile, and keep the
-command's own permissions read-only. The agent uses the user's own credentials (the
+`--match` and `choose --run` are your own requests and need no opt-in. A repository can still
+run commands of its own: a `[[hooks.post_sync]]` hook (in the team config or a pack) runs on
+`modsys sync` with your environment, the agent variables included, so it can start your agent
+command too; `sync --dry-run` runs no hook. So set the opt-in per CI job or per shell session in
+repositories you trust, not in your shell profile, and keep the command's own permissions
+read-only. The agent uses the user's own credentials (the
 engine reads none), and the engine ships, installs and suggests no model.
 
 | Key | Default | Meaning |
@@ -362,8 +366,11 @@ missing engine file is never replaced by a role template. Format: every line tha
 whitespace, in file order; every other line is a note for the person editing and is not sent.
 Placeholders (as in every template): `$max_picks` (the most picks the order allows), `$depth`
 (the fixed sentence of `[search] effort`, or of `choose --effort` when given), `$$` for a literal `$`; any other `$name` stays as
-written. To change the rules: `modsys templates override choose/rules.md`, then edit
-`.modsys/overrides/templates/choose/rules.md`. A template without a rule is exit 2
+written. An override without a `- $depth` rule drops the depth: `[search] effort` and
+`choose --effort` then no longer reach the chooser of the text form, which has no `search` line
+(only the JSON order's `search.effort` and `--run`'s `{effort}` / `{reasoning}` still carry it)
+— keep `$depth` in your copy. To change the rules: `modsys templates override choose/rules.md`,
+then edit `.modsys/overrides/templates/choose/rules.md`. A template without a rule is exit 2
 (`<path>: no rule in choose/rules.md (a rule is a line starting with "- ")`), an unreadable or
 non-UTF-8 one is exit 2 (`cannot read <path>: <reason>`). Only a run that builds a work order
 reads it (`choose`, including `--apply` and `--run`, and `match` / `context` / `discover --task`
@@ -503,6 +510,9 @@ A hook runs in the root with the event as JSON on stdin
 `{"proposals": [{op, module, field|doc, value, reason}], "messages": ["…"]}`; the proposals are
 validated like `modsys propose` and queued under agent `hook-<id>`. A crash, a timeout or
 garbage output fails that hook alone.
+
+A hook is a command the repository or a pack commits: it runs with your environment, the agent
+variables included — in a repository you do not trust, `sync --dry-run` runs none.
 
 ## Packs
 

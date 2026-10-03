@@ -582,8 +582,9 @@ class DocsTest(unittest.TestCase):
 
     def test_closed_reader_in_the_headless_rules(self):  # P82-AC-028
         head = DOCS.split("- **A closed stdout reader**", 1)[1].split("\n- **", 1)[0]
-        self.assertIn("closed stdout reader", head)
-        self.assertIn("ends the output silently", head)
+        head = " ".join(head.split())
+        self.assertIn("the rest of the output is dropped silently — no extra stderr line", head)
+        self.assertNotIn("a closed stdout reader ends the output", head)  # final review M-4
         self.assertIn("the verb's own exit code", head)
 
     def test_packs_sync_cell_quotes_the_note(self):  # P82-AC-028

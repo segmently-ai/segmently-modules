@@ -464,14 +464,23 @@ class DocsTest(unittest.TestCase):  # P82-AC-021
         self.assertNotIn("decide WHETHER the command runs", flat)
         self.assertIn("only with your opt-in", flat)
         self.assertIn("`--match` and `choose --run` are your own requests", flat)
+        # final review M-1: what a repository cannot do, and what its sync hooks can
+        self.assertNotIn("and it cannot make it run:", flat)
+        self.assertIn("A repository cannot choose or change the command, and it cannot make "
+                      "`match`, `context` or `discover --task` run it:", flat)
+        self.assertIn("A repository can still run commands of its own: a `[[hooks.post_sync]]` "
+                      "hook", flat)
+        hooks = " ".join(doc.split("## `[[hooks.post_sync]]`", 1)[1].split("\n## ", 1)[0].split())
+        self.assertIn("A hook is a command the repository or a pack commits: it runs with your "
+                      "environment, the agent variables included — in a repository you do not "
+                      "trust, `sync --dry-run` runs none.", hooks)
         mode_row = next(line for line in doc.splitlines() if line.startswith("| `mode` |"))
         self.assertNotIn("a contributor without the variable gets exit 2", mode_row)
         self.assertIn(OPT, mode_row)
 
     def test_cli_contract(self):
         doc = " ".join(self.text("docs/cli-contract.md").split())
-        for mode in ("<mode>",):
-            self.assertIn(note(mode).rstrip("\n").replace("<mode>", "<mode>"), doc)
+        self.assertIn(note("<mode>").rstrip("\n"), doc)
         self.assertIn(f"modsys: error: {OPT}: expected 1 or 0, got '<value>'", doc)
         self.assertIn("only when the run exits `0`", doc)
 
@@ -489,6 +498,8 @@ class DocsTest(unittest.TestCase):  # P82-AC-021
         self.assertIn("checked only when a config file sets a non-lexical mode",
                       " ".join(unreleased.split()))
         self.assertTrue(re.search(r"\[match\] mode", unreleased))
+        heads = [ln for ln in unreleased.splitlines() if ln.startswith("### ")]
+        self.assertEqual(heads, ["### Added", "### Changed", "### Fixed"])  # Keep a Changelog
 
 
 if __name__ == "__main__":

@@ -315,7 +315,10 @@ class DocsTest(unittest.TestCase):  # P82-AC-014 (the cap and --effort items)
             self.assertIn(needle, choose)
         text = self.doc("docs/cli-contract.md")
         self.assertIn("three keys (`card_keywords` is not shown)", text)
-        self.assertIn("the work order caps them at `[search] card_keywords`", text)
+        flat = " ".join(text.split())  # final review, deferred 2: one sentence, no two parentheses
+        self.assertIn("prints the cards an agent reads (`match.mode`, `match.semantic`, "
+                      "`search`), with every keyword — the work order caps them at "
+                      "`[search] card_keywords`", flat)
         self.assertIn("`choose --effort` overrides `effort` for one run",
                       self.doc("README.md"))
         self.assertIn("or of `choose --effort` when given", self.doc("docs/configuration.md"))

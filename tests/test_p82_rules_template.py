@@ -435,6 +435,11 @@ class DocsTest(unittest.TestCase):  # P82-AC-014 (the template items; 1b adds th
         for needle in ("choose/rules.md", 'starts with\n`- `', "is not sent", "`$max_picks`",
                        "`$depth`", "`$$`", "modsys templates override choose/rules.md"):
             self.assertIn(needle, text)
+        flat = " ".join(text.split())  # final review M-3: an override without `$depth`
+        self.assertIn("An override without a `- $depth` rule drops the depth: `[search] effort` "
+                      "and `choose --effort` then no longer reach the chooser of the text form",
+                      flat)
+        self.assertIn("keep `$depth` in your copy", flat)
 
     def test_cli_contract_documents_the_template(self):
         text = self.doc("docs/cli-contract.md")
