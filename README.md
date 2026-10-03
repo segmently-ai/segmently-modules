@@ -495,9 +495,10 @@ file or stdin). The command is read ONLY from your environment, as a JSON array 
 shell (`{claude_model}`, `{codex_model}`, `{effort}` and `{reasoning}` are filled in from
 `[search]`; `choose --effort` overrides `effort` for one run); the work order arrives on stdin (compact JSON) and as the file `$MODSYS_WORK_ORDER`,
 the answer's JSON Schema is the file `$MODSYS_SCHEMA`. A repository cannot choose or change the
-command, but its `[match] mode` decides whether `match`, `context` and `discover --task` call it,
-on card text the repository wrote: if you work in repositories you do not trust, set the variable
-per CI job or per shell session, not in your shell profile, and keep the command's own
+command, and its `[match] mode` runs it for `match`, `context` and `discover --task` only when you
+opt in with `MODSYS_AGENT_ALLOW_REPO_MODE=1` (without it the run is lexical, with a stderr note;
+`--match` and `choose --run` are your own requests): set the opt-in per CI job or per shell
+session in repositories you trust, not in your shell profile, and keep the command's own
 permissions read-only. Two examples (check the flags against your agent's `--help`; they are
 examples, not a recommendation; `codex exec` outside a git repository also needs
 `--skip-git-repo-check`):

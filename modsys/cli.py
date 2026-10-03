@@ -9,7 +9,7 @@ from modsys import (adopt_cmd, agents_md_cmd, catalog_cmd, choose_cmd, ci_cmd, c
                     migrate_cmd, next_cmd, packs_cmd, pipeline, proposals_cmd, query,
                     registry_cmd, roles_cmd, schema_cmd, setup_cmd, sync_cmd,
                     sync_instructions_cmd, templates_cmd)
-from modsys.output import EXIT_INTERRUPTED, EXIT_USAGE, UsageError
+from modsys.output import EXIT_INTERRUPTED, EXIT_OK, EXIT_USAGE, UsageError, clear_notes, flush_notes
 
 COMMANDS: list = [init_cmd, schema_cmd, match, query, lint, registry_cmd, index_cmd,
                   proposals_cmd, hooks_cmd, sync_cmd, create_cmd, migrate_cmd, pipeline,
@@ -38,8 +38,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    clear_notes()
     try:
-        return args.func(args)
+        code = args.func(args)
+        if code == EXIT_OK:  # deferred notes (D6) only for a run that succeeded, after stdout
+            flush_notes()
+        return code
     except UsageError as e:
         print(f"modsys: error: {e}", file=sys.stderr)
         return EXIT_USAGE

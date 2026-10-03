@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- A `[match] mode` of `semantic` or `hybrid` from a config file now runs the agent command only with
+  `MODSYS_AGENT_ALLOW_REPO_MODE=1` in the user's environment; without it `match`, `context` and
+  `discover --task` run lexically (stdout identical to `--match lexical`) and print one stderr
+  line `modsys: note: …` after a successful run. `--match`, `choose --run` and `catalog` need no
+  opt-in; any value other than `1` / `0` / empty is exit 2.
+
 ### Added
 
 - `[search] card_keywords` (default 10, an integer >= 0) caps the keywords of each card in the

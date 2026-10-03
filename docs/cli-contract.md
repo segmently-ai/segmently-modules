@@ -158,6 +158,14 @@ mode without a row print `no matches (the agent chose no module; try rephrasing 
   gains `semantic` next to `keyword` / `diff` / `path`, and it gains `confidence` when the agent
   listed it — no `reason` and no `rrf`. A lexical run
   has none of `mode`, `notes`, `confidence`, `reason`, `rrf`.
+- **A mode from a config file needs the user's opt-in:** with a non-lexical `[match] mode` and no
+  `--match`, the run is lexical unless `MODSYS_AGENT_ALLOW_REPO_MODE=1` (`0`, empty and unset are
+  off; any other value is exit `2`, nothing on stdout, stderr
+  `modsys: error: MODSYS_AGENT_ALLOW_REPO_MODE: expected 1 or 0, got '<value>'`, at most 40 characters of the value). Off: stdout (text and JSON) is byte-identical to `--match lexical`
+  and stderr carries exactly one line, printed after stdout and only when the run exits `0`:
+  `modsys: note: [match] mode "<mode>" is set in a config file; it runs your agent command only with MODSYS_AGENT_ALLOW_REPO_MODE=1 (or pass --match <mode>) — ran lexical`.
+  `modsys: note:` is a stderr-only prefix; a refused run keeps its single `modsys: error:` line.
+  `--match`, `choose --run` and `catalog` need no opt-in and never read it.
 - **`semantic` without an agent command:** exit `2`, nothing on stdout, stderr
   `modsys: error: semantic matching needs your agent: set MODSYS_AGENT_COMMAND (a JSON array); in Claude Code / Codex the skills do it with modsys choose`.
 - **`hybrid` without one:** exit `0`, the lexical rows, and the note `semantic part skipped: no agent command configured` (text: a line after the rows; JSON: `notes`).

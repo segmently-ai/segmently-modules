@@ -82,7 +82,7 @@ Module routing used by `match`, `context` and `discover --task`: keyword routing
 | `negative_weight` | `-5` | score per matched `negative_keywords` phrase |
 | `min_score` | `3` | rows below this are dropped |
 | `top` | `8` | at most this many rows (`--top` overrides) |
-| `mode` | `"lexical"` | `"lexical"`, `"semantic"` or `"hybrid"` (`--match` overrides); `semantic` and `hybrid` ask the user's own agent command (`MODSYS_AGENT_COMMAND`, below): `semantic` without one is refused (exit 2), `hybrid` without one runs lexically with a note; any other value is exit 2 naming the key. It applies to every `match`, `context` and `discover --task` run in the repository, a plain CLI call included: with `semantic`, a contributor without the variable gets exit 2 from each of them. Every keyword call of the shipped skills, of the `agents-md` block and of a skill `packs new` scaffolds passes `--match lexical`, so none of those refuses (the skills still read the key to pick their own mode) |
+| `mode` | `"lexical"` | `"lexical"`, `"semantic"` or `"hybrid"` (`--match` overrides); `semantic` and `hybrid` ask the user's own agent command (`MODSYS_AGENT_COMMAND`, below): `semantic` without one is refused (exit 2), `hybrid` without one runs lexically with a note; any other value is exit 2 naming the key. A mode from a config file (team, personal or pack) takes effect for `match`, `context` and `discover --task` only when the user opts in with `MODSYS_AGENT_ALLOW_REPO_MODE=1` (below); without it the run is lexical, its stdout byte-identical to `--match lexical`, with one stderr note. `--match` is the user's own choice and needs no opt-in. Every keyword call of the shipped skills, of the `agents-md` block and of a skill `packs new` scaffolds passes `--match lexical` (the skills still read the key to pick their own mode) |
 
 `lexical` (the default) is the keyword routing described below and changes nothing in any output.
 `semantic` takes the rows from the user's own agent alone; `hybrid` fuses the keyword rows and the
@@ -124,16 +124,21 @@ Why an environment variable and not a config file: a command in a file the repos
 (a team config, or a pack someone installs) would let a commit put an agent command on every
 contributor's machine. So the command is read ONLY from the process environment of the user who
 runs modsys; an `[agent]` table in any config file is refused (exit 2 naming the file), whatever
-file it is in. A repository cannot choose or change the command. It can decide WHETHER the command
-runs: its `[match] mode` makes `match`, `context` and `discover --task` call it, on card text the
-repository wrote (prompt injection, and one agent call per run). So if you work in repositories
-you do not trust, set the variable per CI job or per shell session, not in your shell profile, and
-keep the command's own permissions read-only. The agent uses the user's own credentials (the
+file it is in. A repository cannot choose or change the command, and it cannot make it run: a `[match] mode`
+from any config file (team, personal or pack) runs the agent command only with your opt-in,
+`MODSYS_AGENT_ALLOW_REPO_MODE=1` in your environment (card text the repository wrote would reach
+your agent: prompt injection, and one agent call per run). Without it the run is lexical and says
+so in one stderr line (`modsys: note: [match] mode "hybrid" is set in a config file; it runs your
+agent command only with MODSYS_AGENT_ALLOW_REPO_MODE=1 (or pass --match hybrid) — ran lexical`);
+`--match` and `choose --run` are your own requests and need no opt-in. So set the opt-in per CI
+job or per shell session in repositories you trust, not in your shell profile, and keep the
+command's own permissions read-only. The agent uses the user's own credentials (the
 engine reads none), and the engine ships, installs and suggests no model.
 
 | Key | Default | Meaning |
 |---|---|---|
 | `MODSYS_AGENT_COMMAND` | unset | the argv list of the agent command, a JSON array of strings, read ONLY from this environment variable (`catalog` reports `match.semantic` true only for a valid one outside an agent run; a malformed value, like a bad `MODSYS_AGENT_TIMEOUT`, is exit 2 in `catalog` too); items may use `{claude_model}`, `{codex_model}`, `{effort}` and `{reasoning}` (`quick` → `low`, `standard` → `medium`, `deep` → `high`), `{{` / `}}` are literal braces; run without a shell. An `[agent]` table in any config file (team, personal or a pack) is refused (exit 2 naming the file): a repository could commit it. Inside an agent run (`MODSYS_WORK_ORDER` set) the command is unavailable: `semantic` and `choose --run` are refused, `hybrid` runs lexically with a note |
+| `MODSYS_AGENT_ALLOW_REPO_MODE` | unset | environment only (never a config file): `1` lets a `[match] mode` from a config file run your agent command; unset, empty or `0` = off (the run is lexical, with one stderr note, and `MODSYS_AGENT_COMMAND` / `MODSYS_AGENT_TIMEOUT` are not read); anything else (`true`, ` 1 `) is exit 2 `MODSYS_AGENT_ALLOW_REPO_MODE: expected 1 or 0, got '<value>'` (at most 40 characters shown). Validated only when a config file sets a non-lexical mode and no `--match` is given; `catalog` and `choose` never read it |
 | `MODSYS_AGENT_TIMEOUT` | `300` | seconds: an integer from 1 to 3600 written with at most 4 digits (`0300` is accepted, `00300` is not; spaces around it are ignored); anything else is exit 2 naming the variable |
 | `[search] claude_model` | `"sonnet"` | the model the Claude Code skill's subagent uses: a Claude Code subagent model alias (`sonnet`, `opus`, `haiku`) — the subagent takes no full model id; a full model id works only where your agent command passes the value to `claude -p --model`; 1–100 characters of letters, digits and `. _ : / @ + -`, starting with a letter or digit (the value becomes an item of your agent command) |
 | `[search] codex_model` | `"gpt-5.6-luna"` | the model `codex exec -m` uses; same rule |

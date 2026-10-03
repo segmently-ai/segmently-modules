@@ -5,10 +5,13 @@ module resolves the mode (the `--match` flag wins over `[match] mode`, which win
 (`modsys.agent`) with the work order of `modsys choose`, and fuses the rankings (reciprocal rank
 fusion, k = 60). A lexical run never reaches the agent and changes no byte. The engine holds no
 model and no network code: the agent is a command the user configured."""
+import os
+
 from modsys import agent
 from modsys.config import MATCH_MODES
-from modsys.output import UsageError
+from modsys.output import UsageError, defer_note
 
+ENV_ALLOW_REPO_MODE = "MODSYS_AGENT_ALLOW_REPO_MODE"
 NO_AGENT = ("semantic matching needs your agent: set MODSYS_AGENT_COMMAND (a JSON array); "
             "in Claude Code / Codex the skills do it with modsys choose")
 NO_AGENT_NOTE = "semantic part skipped: no agent command configured"
@@ -34,15 +37,35 @@ def agent_configured(config: dict) -> bool:
     return agent.settings(config) is not None
 
 
+def repo_mode_allowed() -> bool:
+    """`MODSYS_AGENT_ALLOW_REPO_MODE` (D6): `1` = the user lets a `[match] mode` from a config
+    file run their agent command; unset, empty or `0` = no; anything else is refused. Read only
+    when a config file sets a non-lexical mode."""
+    raw = os.environ.get(ENV_ALLOW_REPO_MODE, "")
+    if raw in ("", "0"):
+        return False
+    if raw == "1":
+        return True
+    raise UsageError(f"{ENV_ALLOW_REPO_MODE}: expected 1 or 0, got {raw[:40]!r}")
+
+
 def effective_mode(flag: str | None, config: dict) -> str:
     return flag or configured_mode(config)
 
 
 def resolve(ws, flag: str | None) -> tuple[str, list[str]]:
     """(mode, notes) for one run. `semantic` without an agent command is refused (exit 2);
-    `hybrid` without one runs lexically and says so in `notes`."""
+    `hybrid` without one runs lexically and says so in `notes`. A non-lexical `[match] mode`
+    without the flag runs only with the user's opt-in (D6): otherwise the run is lexical, the
+    agent variables are not read, and one stderr note is deferred (`output.defer_note`)."""
     mode = effective_mode(flag, ws.config)
-    if mode == "lexical" or agent_configured(ws.config):
+    if mode == "lexical":
+        return mode, []
+    if not flag and not repo_mode_allowed():  # a mode from a config file needs the opt-in (D6)
+        defer_note(f'[match] mode "{mode}" is set in a config file; it runs your agent command '
+                   f'only with {ENV_ALLOW_REPO_MODE}=1 (or pass --match {mode}) — ran lexical')
+        return "lexical", []
+    if agent_configured(ws.config):
         return mode, []
     if agent.nested():
         if mode == "semantic":

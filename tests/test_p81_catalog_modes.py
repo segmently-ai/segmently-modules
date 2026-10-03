@@ -131,6 +131,7 @@ class ModeResolutionTest(Repo):
                         self.assertEqual((code, err), (0, ""))
 
     def test_flag_beats_config_beats_default(self):  # P81-AC-022
+        os.environ["MODSYS_AGENT_ALLOW_REPO_MODE"] = "1"  # D6: a config mode runs only opted in
         for cfg in (None, *MODES):
             for flag in (None, *MODES):
                 self.config("" if cfg is None else f'[match]\nmode = "{cfg}"\n')
@@ -150,6 +151,7 @@ class ModeResolutionTest(Repo):
                         self.assertEqual(data["mode"], effective)
 
     def test_hybrid_and_semantic_by_config_for_context_and_discover(self):  # P81-AC-022
+        os.environ["MODSYS_AGENT_ALLOW_REPO_MODE"] = "1"  # D6: a config mode runs only opted in
         self.config('[match]\nmode = "hybrid"\n')
         for argv in (("context", "--task", TASK), ("discover", "--task", TASK)):
             _, env, _ = run_json(*argv, *self.R)
@@ -208,6 +210,7 @@ class LexicalIdenticalTest(Repo):
 
 class NoAgentTest(Repo):
     def test_semantic_refuses(self):  # P81-AC-024
+        os.environ["MODSYS_AGENT_ALLOW_REPO_MODE"] = "1"  # D6: a config mode runs only opted in
         for cfg_mode in (False, True):
             if cfg_mode:
                 self.config('[match]\nmode = "semantic"\n')
