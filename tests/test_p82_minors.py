@@ -68,26 +68,26 @@ class Spawn(AgentRepo, unittest.TestCase):
             stderr = err_w
         else:
             stderr = subprocess.PIPE
-        proc = subprocess.Popen(cmd, stdout=stdout, stderr=stderr, stdin=subprocess.DEVNULL,
-                                env=env or self.env, cwd=cwd or str(ENGINE))
-        if state == "B":
-            os.close(out_w)
-        if err_closed:
-            os.close(err_w)
-        got = b""
-        try:
-            if state == "A":
-                got = proc.stdout.read(prefix)
-                proc.stdout.close()
-                err = proc.stderr.read() if not err_closed else b""
-                proc.wait(timeout=TIMEOUT)
-            else:
-                got, err = proc.communicate(timeout=TIMEOUT)
-                got, err = got or b"", err or b""
-        finally:
-            if proc.poll() is None:
-                proc.kill()
-                proc.wait()
+        with subprocess.Popen(cmd, stdout=stdout, stderr=stderr, stdin=subprocess.DEVNULL,
+                              env=env or self.env, cwd=cwd or str(ENGINE)) as proc:
+            if state == "B":
+                os.close(out_w)
+            if err_closed:
+                os.close(err_w)
+            got = b""
+            try:
+                if state == "A":
+                    got = proc.stdout.read(prefix)
+                    proc.stdout.close()
+                    err = proc.stderr.read() if not err_closed else b""
+                    proc.wait(timeout=TIMEOUT)
+                else:
+                    got, err = proc.communicate(timeout=TIMEOUT)
+                    got, err = got or b"", err or b""
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait()
         return proc.returncode, got, err.decode("utf-8", "replace")
 
     def quiet(self, err):
@@ -294,6 +294,7 @@ class RefusalAndEntryPointTest(Spawn):
             env=env, stdout=out_w, stderr=subprocess.PIPE, cwd=ENGINE,
             preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
         os.close(out_w)
+        self.addCleanup(proc.__exit__, None, None, None)
         try:
             for _ in range(400):
                 if started.exists():
