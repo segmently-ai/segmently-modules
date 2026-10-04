@@ -372,9 +372,21 @@ class NoCrossingTest(ShelfRepo):  # P84-AC-036
     def test_clean_repository_lint_has_no_new_codes_and_ci_lists_a_planted_warning(self):
         self.config('[packs]\nbuiltin = ["core", "qa", "ui"]\n')
         self.assertEqual(self.codes("MS062", "MS068", "MS069"), [])
-        self.pack({SHELF: {"SKILL.md": skill_text(S + 1)}})
-        code, out, err = run("ci", "--base", "HEAD", *self.R)
-        self.assertNotIn("Traceback", err)
+        from tests.helpers import init_git
+        init_git(self.root)  # the clean tree: ci's lint step lists nothing of the new codes
+        code, env, err = run_json("ci", "--base", "HEAD", *self.R)
+        lint = next(st for st in env["data"]["steps"] if st["name"] == "lint")
+        self.assertEqual([f["code"] for f in lint["findings"]
+                          if f["code"] in ("MS062", "MS068", "MS069")], [])
+        self.pack({SHELF: {"SKILL.md": skill_text(S + 1)}})  # one planted crossing
+        for fail_on, expected in (("error", 0), ("warning", 1)):
+            with self.subTest(fail_on=fail_on):
+                code, env, err = run_json("ci", "--base", "HEAD", "--fail-on", fail_on, *self.R)
+                self.assertEqual((code, err), (expected, ""))
+                lint = next(st for st in env["data"]["steps"] if st["name"] == "lint")
+                self.assertEqual([(f["code"], f["severity"]) for f in lint["findings"]],
+                                 [("MS068", "warning")])
+                self.assertEqual(lint["status"], "failed" if expected else "passed")
 
 
 class DocsTest(unittest.TestCase):  # P84-AC-037
