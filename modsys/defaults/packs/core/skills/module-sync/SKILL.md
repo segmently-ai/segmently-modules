@@ -116,14 +116,14 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    modsys sync --files <path> <path> --json
    ```
 
-   Report every hook message. A failed required hook (exit 1): stop, never work around it.
+   Report every hook message. A failed required hook (exit 1): stop, never bypass it.
 
 7. Check: `modsys ci --base <base> --baseline <ci file> --json`. Its steps (`lint`, `drift`,
    `coverage`) should pass or be report-only; a `known` finding predates your edits: report it, but
    fix one the change caused (a moved or deleted path). Fix what your updates caused and rerun.
 
-8. Report per module: the docs changed, the fields and edges, the hook messages, the `ci` result,
-   the files no module owns. Ask the user to review and commit.
+8. Report per module: the docs changed, fields and edges, the hook messages and errors, the `ci`
+   result, the files no module owns. Ask the user to review and commit.
 
 ## A new role
 

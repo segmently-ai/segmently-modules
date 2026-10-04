@@ -92,7 +92,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that finds nothing) and, for a wrong value, the line that computes it; `module-sync` saves the
   gate (`modsys ci --base <base> --json`, to a file outside the repository) before it edits and
   checks its result with `ci --baseline` against that file — a finding the saved gate holds is
-  reported, one the change caused (a moved or deleted path) is fixed. The `agents-md` block and
+  reported, one the change caused (a moved or deleted path) is fixed (MS050 and MS051 are never known). The `agents-md` block and
   the skill `packs new` scaffolds write the task to a temporary file outside the repository: run
   `modsys agents-md` and `modsys packs sync` after the upgrade — `--check` reports the old block
   and stale copies until then.

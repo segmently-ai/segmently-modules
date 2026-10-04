@@ -132,7 +132,7 @@ Before it edits, `module-sync` saves the gate (`modsys ci --base "$BASE" --json`
 outside the repository) and checks its own result with
 `modsys ci --base "$BASE" --baseline <that file> --json`: a finding the saved gate already holds
 is `known` and only reported, unless the change itself caused it (a moved or deleted path) — that
-one it fixes.
+one it fixes. MS050 and MS051 are never `known`: they describe the change since the base.
 
 ## Choosing modules by meaning
 
