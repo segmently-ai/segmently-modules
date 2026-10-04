@@ -368,14 +368,15 @@ def _skill_files(source: Path) -> list[Path]:
 
 def _reference_name(match) -> str:
     """The name a `references/...` match stands for: a query (`.md?…`) or a closing `?` cut,
-    then trailing punctuation; a trailing `*` / `_` run stripped when what is left ends with
-    a file extension (emphasis). A `*`, `?` or `[` left in it makes it a pattern (`_NOT_A_NAME`)."""
+    then trailing punctuation; a trailing run of `*` / `_` and sentence punctuation (any order) is cut
+    when what is left ends with a file extension (emphasis). A `*`, `?` or `[` left in it makes it a pattern (`_NOT_A_NAME`)."""
     name = match.group(0)
-    name = _QUERY.sub(lambda m: m.group(1) or "", name).rstrip(".,;:!")
-    run = re.search(r"[*_]*\Z", name).group(0)
-    if run and re.search(r"\.[A-Za-z0-9]+\Z", name[:-len(run)]):
-        name = name[:-len(run)]  # emphasis around a file name: `**references/x.md**`
-    return name
+    name = _QUERY.sub(lambda m: m.group(1) or "", name)
+    tail = re.search(r"[*_.,;:!]*\Z", name).group(0)  # emphasis and sentence punctuation, any order
+    core = name[:len(name) - len(tail)]
+    if re.search(r"[*_]", tail) and re.search(r"\.[A-Za-z0-9]+\Z", core):
+        return core  # emphasis around a file name: `**references/x.md.**`
+    return name.rstrip(".,;:!")
 
 
 def reference_findings(ws, source: Path, prefix: str) -> list[Finding]:

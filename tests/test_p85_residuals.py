@@ -59,6 +59,16 @@ class GlobNamesTest(ReferencesTest):  # P85-AC-019 (reuses the shelf fixture and
                                  ["references/missing.md"])
                 self.assertEqual(self.probe(form.format("references/restock.md")), [])
 
+    def test_emphasis_with_sentence_punctuation_is_checked(self):  # fix round 2, N-1
+        for form in ("**{}.**", "**See {}.**", "**{}**.", "*see {}*,", "_{}_;", "**{}.**,"):
+            with self.subTest(form=form):
+                self.assertEqual(self.probe(form.format("references/missing.md")),
+                                 ["references/missing.md"])
+                self.assertEqual(self.probe(form.format("references/restock.md")), [])
+        for text in ("references/route-*.", "**references/route-*.**", "see references/[ab].*"):
+            with self.subTest(text=text):
+                self.assertEqual(self.probe(text), [])
+
     def test_emphasis_and_present_names_stay_clean(self):
         for text in ("_references/restock.md_", "__references/restock.md__",
                      "references/restock.md?plain=1", "Did you read references/restock.md?"):
