@@ -56,8 +56,10 @@ ADDED = {
         "A `child role:qa_acceptance` row with `exists: true` is a split child's own doc: "
         "refresh it the same way.",
         "A `parent baseline role:qa_acceptance` row is the parent's doc, not this module's.",
-        "Without one of those rows, run `modsys roles add qa_acceptance <module> --dry-run "
-        "--json`, which writes nothing, and read its status.",
+        # P8.5 final review I-2: the antecedent names the rows; the parent's does not count
+        "Without a `role:qa_acceptance` or `child role:qa_acceptance` row with `exists: true` "
+        "(a `parent baseline` row does not count), run `modsys roles add qa_acceptance <module> "
+        "--dry-run --json`, which writes nothing, and read its status.",
         "Status `registered` means the module's `roles/qa_acceptance.md` is on disk and the "
         "registry does not list it: that file is the doc to refresh, so read it, note the "
         "highest `AC-NNN` in it, take the refresh route and never write a new doc over it.",
@@ -72,12 +74,16 @@ ADDED = {
         "Step 5 of `qa-acceptance-baseline` — write the doc — when step 1 found no doc to "
         "refresh: no `role:qa_acceptance` row with `exists: true`, and the dry run said "
         "`created` or `missing` (when it names a doc to refresh, follow `references/refresh.md` "
-        "instead)."],
+        "instead).",
+        # P8.5 final review M-2: a `missing` doc is written where the registry points
+        "When step 1's dry run said `missing`, write the doc at the `path` it reported and skip "
+        "`registry set`: the registry lists it already."],
     "references/refresh.md": [
+        # P8.5 final review M-3: the lead names the child's own row too
         "Step 5 of `qa-acceptance-baseline` — write the doc — when step 1 names the doc to "
-        "refresh (a `role:qa_acceptance` row with `exists: true`, or the doc its "
-        "dry run reported as `registered` or `exists`) and you noted its highest `AC-NNN` (when step 1 "
-        "names no doc to refresh, follow `references/create.md` instead).",
+        "refresh (a `role:qa_acceptance` or `child role:qa_acceptance` row with `exists: true`, "
+        "or the doc its dry run reported as `registered` or `exists`) and you noted its highest "
+        "`AC-NNN` (when step 1 names no doc to refresh, follow `references/create.md` instead).",
         "The doc is not in the registry (step 1's dry run said `registered`): after Gate 3, "
         "run `modsys roles add qa_acceptance <module> --json`.",
         "It adds the registry entry, status `registered`, and never writes the file."],

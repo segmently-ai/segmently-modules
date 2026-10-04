@@ -59,7 +59,9 @@ If a `modsys` command exits 1 or 2, read `references/exit-codes.md`.
    the same way. A `parent baseline role:qa_acceptance` row is the parent's doc, not this
    module's.
 
-   Without one of those rows, run `modsys roles add qa_acceptance <module> --dry-run --json`,
+   Without a `role:qa_acceptance` or `child role:qa_acceptance` row with `exists: true` (a
+   `parent baseline` row does not count), run
+   `modsys roles add qa_acceptance <module> --dry-run --json`,
    which writes nothing, and read its status. Status `registered` means the module's
    `roles/qa_acceptance.md` is on disk and the registry does not list it: that file is the doc
    to refresh, so read it, note the highest `AC-NNN` in it, take the refresh route and never

@@ -380,11 +380,16 @@ class AgentFileInferenceTest(CodexRepo):  # P85-AC-022…025
                 self.assertEqual(env["data"]["agents"], ["claude", "codex"])
         self.assertEqual(skill_sync.managed_agents(self.root), [])  # default: never from files
 
-    def test_a_run_without_codex_never_opens_codex(self):  # AC-024
-        (self.root / ".codex").mkdir()
-        with mock.patch.object(skill_sync, "_marked_agent_file") as probe:
-            self.bare("--check", "--agent", "claude")
+    def test_named_agents_without_codex_never_open_codex(self):  # AC-024, final review M-5
+        (self.agents_dir() / "module-scout-agent.toml").write_bytes(self.marked())
+        with mock.patch.object(skill_sync, "_marked_agent_file") as probe, \
+                mock.patch("modsys.packs_cmd.plan_agent_files") as plan:
+            self.bare("--check", "--agent", "claude")  # named by the flag
+            self.config(PLUGIN + 'agents = ["claude"]\n')  # named by `[packs] agents`
+            self.assertEqual(self.bare("--check")["agents"], ["claude"])
+            self.assertEqual(self.skill_items(), [])  # `next` reads the same agents
             probe.assert_not_called()
+            plan.assert_not_called()
 
     def test_a_real_process_and_the_tree_stays(self):  # AC-027
         for n in NAMES:
@@ -421,6 +426,33 @@ class DocsTest(unittest.TestCase):  # P85-AC-026, AC-020
         import modsys.packs_cmd as pc
         self.assertIn(".codex/agents/", pc.__doc__)
         self.assertIn(".codex/agents/", nc.skill_copies.__doc__)
+
+    def test_the_codex_claims_name_the_bare_plugin_run(self):  # final review M-5
+        stale = ("a sync without `codex` never opens `.codex/`",
+                 "Without `codex` nothing under `.codex/` is read or written",
+                 "`.codex/` is never read for another agent",
+                 "With no agent named, a bare `packs sync` and `next` also read `.codex/agents/`:",
+                 "when no agent is named and no skill copy holds a marker")
+        claim = ('a bare run under `builtin_delivery = "plugin"` reads `.codex/agents/` only to '
+                 'infer codex')
+        named = "names its agents without"
+        files = ("docs/skills.md", "CHANGELOG.md", "docs/configuration.md",
+                 "modsys/skill_sync.py", "modsys/packs_cmd.py", "modsys/next_cmd.py")
+        texts = {rel: " ".join(re.sub(r"\n\s*# ", "\n", self.doc(rel)).split()) for rel in files}
+        for rel, text in texts.items():
+            with self.subTest(file=rel):
+                self.assertEqual([s for s in stale if s in text], [])
+        for rel in ("docs/skills.md", "CHANGELOG.md", "modsys/skill_sync.py",
+                    "modsys/packs_cmd.py"):
+            with self.subTest(file=rel):
+                self.assertEqual(texts[rel].count(claim), 1)
+                self.assertEqual(texts[rel].count(named), 1)
+        row = texts["docs/configuration.md"].split("| `agents` | unset |", 1)[1].split(" | ", 1)[0]
+        self.assertLess(row.index('under `builtin_delivery = "plugin"`'),
+                        row.index("a bare `packs sync` and `next`"))
+        import modsys.next_cmd as nc
+        self.assertIn("no `.agents/skills` copy holds a marker", " ".join(
+            nc.skill_copies.__doc__.split()))
 
     def test_ms062_rows_say_a_glob_is_a_pattern(self):
         for rel in ("docs/configuration.md", "docs/writing-a-pack.md"):

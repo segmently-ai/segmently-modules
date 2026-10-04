@@ -101,7 +101,9 @@ A change without a task starts at step 4.
    The code column holds the files the change edits or adds: the line that computes or sets the
    value, the files to edit, the tests to add or change. Files read only as evidence go on one
    line right under the table, ahead of the lists that follow it; start that line with
-   "read for evidence:". They never go in the code column.
+   "read for evidence:". They never go in the code column. A kept pick whose change edits no file
+   says "none" there (step 5). The JSON is `discover`'s own result: when you write it, name the
+   kept picks it lists as `reference` or not at all.
 
 ## Exit codes
 

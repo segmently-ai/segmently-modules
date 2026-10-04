@@ -130,7 +130,7 @@ def skill_copies(ws) -> list[tuple]:
     rules), named by state — and, when it syncs for codex, the agent files in `.codex/agents`
     it finds so (under `builtin_delivery = "plugin"` they can be all it writes): one item. Under
     that delivery a `.codex/agents/` holding a marked agent file means codex when no agent is
-    named and no skill copy holds a marker (`managed_agents`)."""
+    named and no `.agents/skills` copy holds a marker (`managed_agents`)."""
     if not ((ws.config.get("packs") or {}).get("agents")
             or managed_agents(ws.root, builtin_delivery(ws.config) == "plugin")):
         raise Skip(NO_AGENT)

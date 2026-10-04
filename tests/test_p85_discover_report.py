@@ -66,17 +66,23 @@ NOT_KEPT = (
     "   This keep-or-drop is only for the `reference` modules step 2 did not keep; a kept pick stays\n"
     "   as step 5 says. Read a kept pick's docs too: when the result gives it no `docs_to_read`, read\n"
     "   the `read` paths of `modsys show <pick> --json`.")
-CODE_COLUMN = (
+CODE_COLUMN = (  # + the final review's M-1 (a kept pick's "none") and M-4 (the JSON) sentences
     "   The code column holds the files the change edits or adds: the line that computes or sets the\n"
     "   value, the files to edit, the tests to add or change. Files read only as evidence go on one\n"
     "   line right under the table, ahead of the lists that follow it; start that line with\n"
-    "   \"read for evidence:\". They never go in the code column.")
+    "   \"read for evidence:\". They never go in the code column. A kept pick whose change edits no file\n"
+    "   says \"none\" there (step 5). The JSON is `discover`'s own result: when you write it, name the\n"
+    "   kept picks it lists as `reference` or not at all.")
+NONE_CELL = "A kept pick whose change edits no file says \"none\" there (step 5)."
+JSON_PICKS = ("The JSON is `discover`'s own result: when you write it, name the kept picks it lists "
+              "as `reference` or not at all.")
 ADDED = {"5. Read the result.": KEPT_PICK, "6. Read the `modify`": NOT_KEPT,
          "7. Report the touch-set": CODE_COLUMN}
 
 # Nothing else of the skill moves (P85-AC-004): sha256[:16] at bdc9f9b. Task 3 (D3) rewrites the
-# hand-off step of the three SKILL.md files after this task: it moves the first pin, nothing else.
-UNMOVED = {"module-discover/SKILL.md": "d9475e32c057fcba",
+# hand-off step of the three SKILL.md files after this task: it moves the first pin, nothing else;
+# so does the final review's I-1 (the fallback sentence leads with its condition).
+UNMOVED = {"module-discover/SKILL.md": "4f2d7994fbc5da78",
            "module-scout/references/procedure.md": "a0739ad4036f896a",
            "module-research/references/procedure.md": "aeaece498d1517ec",
            "module-sync/SKILL.md": "e95d0484c87ccf99"}
@@ -260,6 +266,18 @@ class CodeColumnTest(unittest.TestCase):  # P85-AC-002
                 self.assertEqual(self.step7.count(phrase), 1)
         self.assertTrue(self.step7.endswith(flat(CODE_COLUMN) + " "), self.step7[-200:])
 
+    def test_a_kept_pick_without_a_file_and_the_json(self):  # final review M-1, M-4
+        for sentence in (NONE_CELL, JSON_PICKS):
+            with self.subTest(sentence=sentence[:30]):
+                self.assertEqual(flat(self.text).count(sentence), 1)
+                self.assertEqual(self.step7.count(sentence), 1)
+        # step 7's "every `modify` row with its code" meets its exception in the same step, after
+        # the code column's rule; the JSON sentence follows the old "JSON on request" one
+        self.assertLess(self.step7.index("They never go in the code column."),
+                        self.step7.index(NONE_CELL))
+        self.assertLess(self.step7.index("JSON on request: write the `discover` result's `data`"),
+                        self.step7.index(JSON_PICKS))
+
 
 class EveryOldRuleTest(unittest.TestCase):  # P85-AC-003
     def setUp(self):
@@ -283,7 +301,7 @@ class EveryOldRuleTest(unittest.TestCase):  # P85-AC-003
         added = [s for s in all_sentences(self.text) if h12(s) not in BASE_SENTENCES]
         listed = [s for p in ADDED.values() for s in sentences(p)]
         self.assertEqual(added, listed)
-        self.assertEqual(len(added), 13)
+        self.assertEqual(len(added), 15)  # 13 + the final review's M-1 and M-4
         for start, paragraph in ADDED.items():  # each in its own step
             with self.subTest(step=start):
                 self.assertTrue(span(self.text, start, "## Exit codes").startswith(start))

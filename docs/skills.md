@@ -228,13 +228,14 @@ written over. Nothing is written or removed through a symlinked or non-directory
 none (`core` disabled, a repository `core` without the wrapped skills, or `--remove`), only an
 agent file with the marker behind a symlinked `.codex/agents` is one — it cannot be removed
 through the link — and otherwise that directory is left alone, with no agent rows. Nothing else
-under `.codex/` is read or changed, and a sync without `codex` never opens `.codex/`. An ejected
-skill's agent file follows the ejected copy's `references/procedure.md`. Claude Code with
-`builtin_delivery = "repo"` has no agent — only the plugin ships them — so there the skills fall
-back to running their steps in your conversation. Codex is told to spawn the `module-<x>-agent` custom agent and to run the
-steps itself only when no such agent exists. Known limit: Codex picks a skill by its
-description, so a bare "task confirmed" may make it implement the task; ask for the touch-set
-to get the hand-off. `modsys next` names an agent file that is
+under `.codex/` is read or changed. A run that names its agents without `codex` never opens
+`.codex/`; a bare run under `builtin_delivery = "plugin"` reads `.codex/agents/` only to infer
+codex. An ejected skill's agent file follows the ejected copy's `references/procedure.md`. Claude
+Code with `builtin_delivery = "repo"` has no agent — only the plugin ships them — so there the
+skills fall back to running their steps in your conversation. Codex is told to spawn the
+`module-<x>-agent` custom agent and to run the steps itself only when no such agent exists. Known
+limit: Codex picks a skill by its description, so a bare "task confirmed" may make it implement
+the task; ask for the touch-set to get the hand-off. `modsys next` names an agent file that is
 not in sync, as it names a stale skill copy.
 
 Also in these skills: `module-discover` goes from the candidates to the code

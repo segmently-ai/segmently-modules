@@ -9,10 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- The wrapped skills `module-discover`, `module-scout` and `module-research` name each platform's
-  agent in their one step: Claude Code the `modsys:module-<x>-agent` agent, Codex spawns the
-  `module-<x>-agent` custom agent (`.codex/agents/`); `references/procedure.md` is read only when no
-  such agent exists.
 - Lint **MS068** (warning): a pack skill's `SKILL.md`, or one `references/*.md` file, is longer than
   `[budgets] skill_split_signal` (default 9000 characters); **MS069** (warning): a pack's `SKILL.md`
   files together are longer than `[budgets] pack_split_signal` (default 53600; `references/` and
@@ -48,9 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--remove --agent codex`; a locally edited or foreign file is a conflict, and nothing is
   written or removed through a symlinked or non-directory `.codex/agents` (all three files are
   conflicts while the agents are wanted; when none is, only a file with the marker behind a
-  symlink is one). Without `codex` nothing under `.codex/` is read or written. `modsys next` names
-  the agent files that are not in sync in its `skills` item (under `builtin_delivery = "plugin"`
-  they can be all `packs sync` writes), and `packs sync` notes the ones git ignores.
+  symlink is one). A run that names its agents without `codex` never opens `.codex/`; a bare run
+  under `builtin_delivery = "plugin"` reads `.codex/agents/` only to infer codex. `modsys next`
+  names the agent files that are not in sync in its `skills` item (under
+  `builtin_delivery = "plugin"` they can be all `packs sync` writes), and `packs sync` notes the
+  ones git ignores.
 - The `modsys` plugin ships the read-only subagent `module-chooser` (`modsys:module-chooser`; tools
   Read, Grep, Glob; `model: sonnet` only for a call without a model): the build copies the tracked
   files directly in `modsys/defaults/agents/` into the plugin's `agents/`; the manifests are
@@ -122,6 +120,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reaches the skill whole, appended as an `ARGUMENTS:` line. Each procedure holds one line for a
   read-only sandbox: the task through `modsys choose --task-file -` from a quoted heredoc, the
   order read from stdout.
+- The wrapped skills `module-discover`, `module-scout` and `module-research` name each platform's
+  agent in their one step: Claude Code the `modsys:module-<x>-agent` agent, Codex spawns the
+  `module-<x>-agent` custom agent (`.codex/agents/`); `references/procedure.md` is read only when no
+  such agent exists.
 - `module-discover`'s procedure (the body of `module-discover-agent` on both platforms) keeps each
   module it verified at step 2, a kept pick, in the report even when `discover --files` gives its
   files to another module or to none: `modify` when the task changes its behaviour, with the note
@@ -129,7 +131,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only with a stated reason. The code column, a kept pick's included, holds the files to change —
   the line that computes or sets the value, the files to edit, the tests to add or change — or
   "none", never an empty cell; files read only as evidence go on one "read for evidence:" line
-  right under the table. Every sentence of the procedure is kept.
+  right under the table. When it writes the JSON, it names the kept picks that the JSON lists as
+  `reference` or not at all. Every sentence of the procedure is kept.
 - `tools/release.py` step 3 runs each `tests/test_*.py` module in its own process, `--jobs N` at
   a time (1–32, default `min(4, CPU count)`), the `test_release*` modules first; the step line is
   `Ran <N> tests in <M> modules (<J> jobs), OK …`, a failure names the failing modules, and
@@ -183,7 +186,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A bare `packs sync` and `next` under `builtin_delivery = "plugin"` infer codex from a `.codex/agents/`
   that holds a marked agent file (no skill copy needs a marker), so a stale agent file shows in `next`;
   `setup`'s agent choice and `"repo"` delivery are unchanged.
-
 - With stderr closed at start (`modsys … 2>&-`) no line meant for stderr reaches stdout: the run
   puts the null device on fd 2 itself, so a refusal leaves stdout empty, no file the run opens
   becomes fd 2 and a child that inherits stderr writes to the null device.

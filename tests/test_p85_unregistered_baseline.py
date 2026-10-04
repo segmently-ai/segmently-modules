@@ -12,6 +12,7 @@ from pathlib import Path
 from modsys.config import builtin_packs_root
 from tests.helpers import SPLIT_FIXTURE, copy_fixture, init_git, mutate_registry, run
 from tests.test_builtin_skills import commands, section, skill_files, uses
+from tests.test_p84_wrapped_skills import entries, unreleased_sections
 
 ENGINE = Path(__file__).resolve().parents[1]
 BASELINE = builtin_packs_root() / "qa/skills/qa-acceptance-baseline"
@@ -227,6 +228,46 @@ class SkillTextTest(unittest.TestCase):  # P85-AC-009, AC-010, AC-013 (the pins)
             self.assertIn(needle, line)
         self.assertTrue(uses(commands(self.step1), ("roles", "add", "--dry-run")))
 
+    def test_the_dry_run_condition_names_the_rows(self):  # final review I-2 (F31, split child)
+        line = flat(self.step1)
+        self.assertEqual(line.count(
+            "Without a `role:qa_acceptance` or `child role:qa_acceptance` row with `exists: true` "
+            "(a `parent baseline` row does not count), run `modsys roles add qa_acceptance "
+            "<module> --dry-run --json`, which writes nothing, and read its status."), 1)
+        self.assertEqual(line.count("a `parent baseline` row does not count"), 1)
+        self.assertNotIn("Without one of those rows", line)
+
+    def test_create_writes_a_missing_doc_at_the_registered_path(self):  # final review M-2
+        create = flat(self.files["references/create.md"])
+        sentence = ("When step 1's dry run said `missing`, write the doc at the `path` it reported "
+                    "and skip `registry set`: the registry lists it already.")
+        self.assertEqual(create.count(sentence), 1)
+        self.assertLess(create.index(sentence),
+                        create.index("save it next to the module's other role docs"))
+        # the dry run reports that `path`: the registered one, wherever it points
+        with tempfile.TemporaryDirectory() as tmp:
+            root = copy_fixture(tmp)
+            (root / ".modsys").mkdir(exist_ok=True)
+            (root / ".modsys/config.toml").write_text(CONFIG, encoding="utf-8")
+            where = "modules/catalog/docs/baseline.md"
+            mutate_registry(root, lambda d: d["modules"]["catalog"]["context_files"]
+                            .setdefault("roles", {}).update(qa_acceptance=where))
+            code, out, err = run("roles", "add", "qa_acceptance", "catalog", "--dry-run",
+                                 "--json", "--root", str(root))
+            self.assertEqual((code, err), (0, ""))
+            row = json.loads(out)["data"]["results"][0]
+            self.assertEqual((row["status"], row["path"]), ("missing", where))
+            self.assertFalse((root / where).exists())
+
+    def test_refresh_names_the_childs_own_row(self):  # final review M-3
+        refresh = flat(self.files["references/refresh.md"])
+        lead = refresh.split("1. ", 1)[0]
+        self.assertIn("(a `role:qa_acceptance` or `child role:qa_acceptance` row with "
+                      "`exists: true`, or the doc its dry run reported as `registered` or "
+                      "`exists`)", lead)
+        self.assertTrue(all(len(line) <= 100 for line in
+                            self.files["references/refresh.md"].splitlines()))
+
     def test_the_scope_keeps_its_sentence_and_adds_one(self):
         scope = flat(section(self.skill, "## Scope"))
         self.assertIn("Writes: the module's `qa_acceptance` doc, and its entry in the module's "
@@ -259,3 +300,17 @@ class SkillTextTest(unittest.TestCase):  # P85-AC-009, AC-010, AC-013 (the pins)
                        "written before Gate 3 of the last block."):
             self.assertEqual(flat_skill.count(needle), 1)
         self.assertEqual(self.skill.count("$scenario"), 1)
+
+
+class ChangelogTest(unittest.TestCase):  # SI-P85-8 (final review M-8): Task 2's one entry
+    ENTRY = ("`qa-acceptance-baseline`: a `roles/qa_acceptance.md` on disk that the registry does "
+             "not list is the doc to refresh.")
+
+    def test_one_changed_entry(self):
+        log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
+        found = [(head, entry) for head, body in unreleased_sections(log).items()
+                 for entry in entries(body) if self.ENTRY in entry]
+        self.assertEqual([head for head, _ in found], ["Changed"])
+        for needle in ("`roles add qa_acceptance <module> --dry-run --json`", "after Gate 3",
+                       "never writes a new doc over it"):
+            self.assertIn(needle, found[0][1])

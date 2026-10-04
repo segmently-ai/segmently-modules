@@ -386,7 +386,9 @@ def sync(ws, agents: list[str] | None, check: bool, dry_run: bool,
     try:
         sources = None if remove else skill_sources(ws)
         plans = plan_remove(ws, chosen) if remove else plan_sync(ws, chosen, plugin, sources)
-        # codex only: `.codex/` is never read for another agent (P8.4 D3)
+        # codex only (P8.4 D3): a run that names its agents without codex never opens `.codex/`;
+        # a bare run under `builtin_delivery = "plugin"` reads `.codex/agents/` only to infer
+        # codex (`managed_agents`, above)
         agent_plans = plan_agent_files(ws, sources, remove) if "codex" in chosen else None
     except OSError as e:  # planning only reads: an unreadable agent copy stops the run
         raise UsageError(f"cannot read {ws.rel(e.filename or ws.root)}: "

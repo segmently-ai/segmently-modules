@@ -102,6 +102,7 @@ class ThinSkillTest(unittest.TestCase):  # P84-AC-011
                 steps = flat(sections(skill(name), "Steps"))
                 self.assertTrue(steps.startswith("1. "), steps)
                 self.assertEqual(re.findall(r"(?:^| )(\d+)\. ", steps), ["1"])
+                # final review M-9: the labels and the mid-sentence phrases keep their case
                 for phrase in ("hand the user's task verbatim, with what the user settled in "
                                "this conversation", "what the user settled in this conversation "
                                "(files, constraints, the depth)",
@@ -109,11 +110,15 @@ class ThinSkillTest(unittest.TestCase):  # P84-AC-011
                                "Claude Code: the `modsys:" + name + "-agent` agent",
                                "Codex: spawn the `" + name + "-agent` custom agent "
                                "(`.codex/agents/`)",
-                               "read `references/procedure.md` and follow it only when no such "
-                               "agent exists",
-                               "a request that also says \"change nothing\" is still a hand-off",
                                "the agent is read-only"):
+                    self.assertEqual(steps.count(phrase), 1, phrase)
+                # a sentence's first word may change its case; final review I-1: the condition
+                # leads, the imperative follows it
+                for phrase in ("only when no such agent exists, read `references/procedure.md` "
+                               "and follow it",
+                               "a request that also says \"change nothing\" is still a hand-off"):
                     self.assertEqual(steps.lower().count(phrase.lower()), 1, phrase)
+                self.assertNotIn("Read `references/procedure.md` and follow it only", steps)
                 self.assertNotIn("without that agent, read", steps)  # SI-P85-9
                 self.assertNotIn("``", steps)  # no empty code span where a placeholder was
 
@@ -285,6 +290,82 @@ class InvocationDocsTest(unittest.TestCase):  # fix wave I-1: how the task reach
             self.assertNotIn(gone, unreleased)
         self.assertIn("`argument-hint: \"[task]\"`", unreleased)
         self.assertIn("ends with the skill's Scope and Gates", unreleased)
+
+
+# P85-AC-018, SI-P85-8 (final review M-8): what docs/skills.md says of the Codex hand-off, and
+# Task 3's changelog entry (final review M-6: in `### Changed`, beside the thin-skills entry)
+CODEX_DOCS = ("spawn the `module-<x>-agent` custom agent", "only when no such agent exists",
+              "Known limit", "a bare \"task confirmed\" may make it implement the task",
+              "ask for the touch-set to get the hand-off")
+T3_ENTRY = "Codex spawns the `module-<x>-agent` custom agent (`.codex/agents/`)"
+THIN_ENTRY = "`module-discover`, `module-scout` and `module-research` are thin:"
+
+
+def handoff_doc_problems(doc: str) -> list[str]:
+    """Each `CODEX_DOCS` phrase that the "**The skills' agents.**" paragraph of docs/skills.md
+    does not hold exactly once, or that the doc holds elsewhere too."""
+    paras = [p for p in doc.split("\n\n") if p.startswith("**The skills' agents.**")]
+    if len(paras) != 1:
+        return [f"{len(paras)} agents paragraphs"]
+    para, whole = flat(paras[0]), flat(doc)
+    return [n for n in CODEX_DOCS if para.count(n) != 1 or whole.count(n) != 1]
+
+
+def unreleased_sections(log: str) -> dict[str, str]:
+    """The `### ` sections of `[Unreleased]`, heading -> body."""
+    text = log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+    parts = re.split(r"^### (.+)\n", text, flags=re.M)
+    return dict(zip(parts[1::2], parts[2::2]))
+
+
+def entries(body: str) -> list[str]:
+    """The flat entries of one changelog section."""
+    return [flat(e) for e in re.split(r"^- ", body, flags=re.M)[1:]]
+
+
+def changelog_problems(log: str) -> list[str]:
+    """A blank line inside a section's list of `[Unreleased]`; Task 3's entry not there exactly
+    once, or not in `### Changed` right after the thin-skills entry."""
+    sections = unreleased_sections(log)
+    out = [f"### {head}: a blank line splits the list" for head, body in sections.items()
+           if "\n\n" in body.strip()]
+    found = [(head, i) for head, body in sections.items()
+             for i, entry in enumerate(entries(body)) if T3_ENTRY in entry]
+    if len(found) != 1:
+        return out + [f"Task 3's entry {len(found)} times"]
+    thin = [i for i, entry in enumerate(entries(sections.get("Changed", "")))
+            if entry.startswith(THIN_ENTRY)]
+    if found[0][0] != "Changed" or thin != [found[0][1] - 1]:
+        out.append(f"Task 3's entry in ### {found[0][0]}, not after the thin-skills entry")
+    return out
+
+
+class HandOffDocsTest(unittest.TestCase):  # P85-AC-018, SI-P85-8; final review M-6, M-8
+    def test_docs_skills_says_the_hand_off_and_the_limit_once(self):
+        doc = (ENGINE / "docs/skills.md").read_text(encoding="utf-8")
+        self.assertEqual(handoff_doc_problems(doc), [])
+
+    def test_the_changelog_entry_sits_with_the_thin_skills_entry(self):
+        log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertEqual(changelog_problems(log), [])
+        entry = next(e for e in entries(unreleased_sections(log)["Changed"]) if T3_ENTRY in e)
+        self.assertIn("`references/procedure.md` is read only when no such agent exists", entry)
+
+    def test_the_checks_can_fail(self):
+        doc = (ENGINE / "docs/skills.md").read_text(encoding="utf-8")
+        self.assertEqual(handoff_doc_problems(re.sub(r"Known\s+limit: ", "", doc, count=1)),
+                         ["Known limit"])
+        self.assertEqual(handoff_doc_problems(doc + "\nKnown limit.\n"), ["Known limit"])
+        log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
+        entry = log.index("\n- The wrapped skills `module-discover`, `module-scout`")
+        end = log.index("\n- ", entry + 1)
+        moved = log[:entry] + log[end:]  # Task 3's entry back at the head of `### Added`
+        moved = moved.replace("\n### Added\n\n", "\n### Added\n" + log[entry:end] + "\n", 1)
+        self.assertEqual(changelog_problems(moved),
+                         ["Task 3's entry in ### Added, not after the thin-skills entry"])
+        fixed = log.index("\n### Fixed\n")
+        split = log[:fixed] + log[fixed:].replace("\n- ", "\n\n- ", 2)
+        self.assertEqual(changelog_problems(split), ["### Fixed: a blank line splits the list"])
 
 
 class FallbackRunsTest(unittest.TestCase):  # P84-AC-016 (discover: `test_p81_skill_text`)

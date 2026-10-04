@@ -39,8 +39,9 @@ _BACKTICK = re.compile(r"`([^`]+)`")
 # a file a skill names (SI-P84-6): an anchor `#`, a table cell's `|` and an em or en dash end
 # it; so does a `?` that follows the extension (`.md?plain=1`) or ends the name (a question mark),
 # a trailing run of `*` / `_` is Markdown emphasis when what is left ends with an extension
-# (`**references/x.md**`, `_see references/x.md_`). A name that still holds `*`, `?` or `[` is a pattern (SI-P85-10): not a file,
-# not checked (`references/route-*`, `references/x?.md`, `references/[ab].md`).
+# (`**references/x.md**`, `_see references/x.md_`). A name that still holds `*`, `?` or `[` is
+# a pattern (SI-P85-10): not a file, not checked (`references/route-*`, `references/x?.md`,
+# `references/[ab].md`).
 _REFERENCE = re.compile(r"references/[^\s`'\")\]>|#\u2014\u2013]+")
 _NOT_A_NAME = re.compile(r"[<*?\[{$…]")  # a placeholder or a glob in prose names no file
 _QUERY = re.compile(r"(\.[A-Za-z0-9]+)\?.*\Z|\?+\Z")
@@ -368,8 +369,9 @@ def _skill_files(source: Path) -> list[Path]:
 
 def _reference_name(match) -> str:
     """The name a `references/...` match stands for: a query (`.md?…`) or a closing `?` cut,
-    then trailing punctuation; a trailing run of `*` / `_` and sentence punctuation (any order) is cut
-    when what is left ends with a file extension (emphasis). A `*`, `?` or `[` left in it makes it a pattern (`_NOT_A_NAME`)."""
+    then trailing punctuation; a trailing run of `*` / `_` and sentence punctuation (any order)
+    is cut when what is left ends with a file extension (emphasis). A `*`, `?` or `[` left in it
+    makes it a pattern (`_NOT_A_NAME`)."""
     name = match.group(0)
     name = _QUERY.sub(lambda m: m.group(1) or "", name)
     tail = re.search(r"[*_.,;:!]*\Z", name).group(0)  # emphasis and sentence punctuation, any order

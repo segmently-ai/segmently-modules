@@ -36,7 +36,9 @@ while the repository wants the agents, all three are a `conflict`; when it wants
 read-only look behind a symlink makes each agent file there with a marker line a `conflict` (it
 cannot be removed through the symlink), and nothing else gives a row. A skill whose source is
 not loadable keeps its agent file as it is (the skill's own row reports it); a file without a
-marker is never removed; nothing else under `.codex/` is read or written."""
+marker is never removed; nothing else under `.codex/` is read or written. A run that names its
+agents without codex never opens `.codex/`; a bare run under `builtin_delivery = "plugin"`
+reads `.codex/agents/` only to infer codex (`managed_agents`)."""
 import contextlib
 import hashlib
 import json
