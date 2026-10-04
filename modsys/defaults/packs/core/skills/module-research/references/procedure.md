@@ -68,3 +68,15 @@ Pin the question in one sentence.
 `0` ok · `1` from `lint` = findings at or above the fail level (a valid result: read them) · `1`
 from `show` = a pointer stub · `2` = a usage or config error: read stderr, fix the command or
 report it.
+
+## Scope
+
+Read-only: modsys read verbs, docs, code; it writes only temporary files outside the repository,
+never edits a file — gaps are reported, not fixed — and never commits.
+
+If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
+
+## Gates
+
+No gates — read-only: it reports and stops. It asks only when the question is too broad to answer
+with evidence (then it proposes a narrower one).

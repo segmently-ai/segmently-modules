@@ -17,15 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every pack; plain `lint` only. The engine's budget test fails on a shipped crossing that is not
   recorded in `SPLIT_DECISIONS`; the fixed `SKILL_MAX` / `CORE_MAX` are gone.
 - Lint **MS062** (error) also reports a `references/<file>` that a skill's `SKILL.md` or one of its
-  `references/*.md` files names and that does not exist or lies outside the skill directory (plain
-  `lint` only; `packs sync` and `eject` are unchanged). `argument-hint` and `arguments` in a skill's
-  front matter raise nothing.
+  `references/*.md` files names and that does not exist or lies outside the skill directory (a
+  link's `#section` or `?query`, a table cell's `|`, an em or en dash and Markdown emphasis around
+  the name are not part of it; plain `lint` only; `packs sync` and `eject` are unchanged).
+  `argument-hint` and `arguments` in a skill's front matter raise nothing.
 - The core skill `module-roles` (13 built-in skills, core 10): a new role's doc added to every
   existing module — declare the role when it is undeclared, `roles add ROLE --all --dry-run`, `roles
   add ROLE --all`, fill each doc, `lint`, `next`; it also starts from a `next` item that names
-  `roles add`. The scenario moved word for word out of `module-sync`, which keeps everything else;
-  its keyword rule now says to add a keyword only when no keyword or the description covers the
-  concept yet, and never one per task.
+  `roles add`. The scenario moved word for word out of `module-sync`, which keeps everything else.
 - `modsys ci --baseline FILE|-` takes the `--json` output of an earlier `ci` run and marks each
   finding of the `lint` and `drift` steps `known` (same code, module, path and message, digits in the
   message ignored; MS050 / MS051 never known): a step fails only on findings that are not known, the
@@ -45,19 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--remove --agent codex`; a locally edited or foreign file is a conflict, and nothing is
   written or removed through a symlinked or non-directory `.codex/agents` (all three files are
   conflicts while the agents are wanted; when none is, only a file with the marker behind a
-  symlink is one). Without `codex` nothing under `.codex/` is read or written.
-- `module-discover`, `module-scout` and `module-research` are thin: their `SKILL.md` keeps the
-  description, When to use / not, Scope and Gates and one step that hands the task (`$task`) to the
-  skill's agent (`module-<x>-agent`; Claude Code `modsys:module-<x>-agent`) and gives its report as
-  the skill's; the steps and exit codes live in `references/procedure.md`, which the agent runs
-  (without that agent the skill says to read it). Front matter gains `argument-hint: "[task]"` and
-  `arguments: task`. Changed in the procedures: `module-discover` step 3 searches code files
-  first (tests, fixtures and plans last) with `git grep -n -e <term> -- <path> …` (no shell glob),
-  takes the files whose `via` holds more than `docs`, searches a picked child's or a docs-only
-  module's parent for the task's terms, and looks for where a wrong value is computed and set, not
-  only where it is read; step 7 lists every doc `discover` returns under `docs_to_update`, the
-  role docs too. Each procedure holds one line for a read-only sandbox: the task through
-  `modsys choose --task-file -` from a quoted heredoc, the order read from stdout.
+  symlink is one). Without `codex` nothing under `.codex/` is read or written. `modsys next` names
+  the agent files that are not in sync in its `skills` item (under `builtin_delivery = "plugin"`
+  they can be all `packs sync` writes), and `packs sync` notes the ones git ignores.
 - The `modsys` plugin ships the read-only subagent `module-chooser` (`modsys:module-chooser`; tools
   Read, Grep, Glob; `model: sonnet` only for a call without a model): the build copies the tracked
   files directly in `modsys/defaults/agents/` into the plugin's `agents/`; the manifests are
@@ -94,8 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without one runs lexically with a note; a failing agent (exit, timeout, bad answer) is exit 2.
 - `module-scout`, `module-discover`, `module-research` and `module-sync` choose modules by meaning
   through `modsys choose` (hybrid by default); `module-discover` goes from the candidates to the
-  code; `module-sync` picks the child and adds a keyword only for a new feature, command or
-  concept, never a code identifier.
+  code; `module-sync` picks the child.
 - A split module's child without its own role doc is `inherited` in `roles list`; `next` does not
   ask for it and `roles add --all` does not create it.
 - `children` (child, description, doc) on a split parent's `modify` row in `discover` and
@@ -116,6 +104,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of the request; the exit codes and the unknown-role stop moved to `references/exit-codes.md`,
   read when a command exits 1 or 2. Every sentence of the skill is kept. The other built-in skills
   serve one scenario each and are unchanged.
+- `module-discover`, `module-scout` and `module-research` are thin: their `SKILL.md` keeps the
+  description, When to use / not, Scope and Gates and one step that hands the user's task verbatim
+  to the skill's agent (`module-<x>-agent`; Claude Code `modsys:module-<x>-agent`) and gives its
+  report as the skill's; the steps and exit codes live in `references/procedure.md`, which the
+  agent runs (without that agent the skill says to read it) and which ends with the skill's Scope
+  and Gates, so the agent keeps what it may write and when it asks. Front matter gains
+  `argument-hint: "[task]"` and no `arguments:` key: in Claude Code `/module-discover <task>`
+  reaches the skill whole, appended as an `ARGUMENTS:` line. Each procedure holds one line for a
+  read-only sandbox: the task through `modsys choose --task-file -` from a quoted heredoc, the
+  order read from stdout.
 - `tools/release.py` step 3 runs each `tests/test_*.py` module in its own process, `--jobs N` at
   a time (1–32, default `min(4, CPU count)`), the `test_release*` modules first; the step line is
   `Ran <N> tests in <M> modules (<J> jobs), OK …`, a failure names the failing modules, and
@@ -139,11 +137,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `codex exec … --sandbox read-only --output-schema <schema file> - < <order file>`; elsewhere
   they answer the order themselves. The user's depth goes to `choose --effort`. `module-discover`
   says that `--files` takes the paths as separate arguments.
-- The core skills: `module-sync` adds a keyword only for a new feature, command or concept later
-  tasks will name, never a code identifier; `module-discover` searches the candidates' own code
-  for the task's terms (`git grep -n -e <term> -- <paths>`, the rest of the repository only when
-  that finds nothing) and, for a wrong value, the line that computes it; `module-sync` saves the
-  gate (`modsys ci --base <base> --json`, to a file outside the repository) before it edits and
+- The core skills: `module-sync` adds a keyword only for a new feature, command or concept that
+  later tasks will name and that no keyword or the description covers yet — never a code
+  identifier, never one per task; `module-discover` searches the candidates' own code for the
+  task's terms, source files first and tests, fixtures and plans last, with
+  `git grep -n -e <term> -- <paths>` (no shell glob; the rest of the repository only when that
+  finds nothing), takes a module's code as the files whose `via` holds more than `docs`, searches
+  a picked child's or a docs-only module's parent for those terms, looks for where a wrong value
+  is computed and set, not only where it is read, and lists every doc `discover` returns under
+  `docs_to_update` in its report, the role docs too; `module-sync` saves the gate (`modsys ci --base <base> --json`, to a file outside the repository) before it edits and
   checks its result with `ci --baseline` against that file — a finding the saved gate holds is
   reported, one the change caused (a moved or deleted path) is fixed (MS050 and MS051 are never known). The `agents-md` block and
   the skill `packs new` scaffolds write the task to a temporary file outside the repository: run
@@ -215,8 +217,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for repositories you do not trust); `[search] claude_model` is a Claude Code subagent alias.
 - The tests no longer depend on the engine's version or on where `gh` lives.
 - CI runs on pull requests too, with Node 24 actions.
-- Token-budget tests keep the shipped skills, their descriptions and the `context` / `show`
-  output within set sizes.
+- Token-budget tests keep the shipped skills' descriptions within a set total and the `context` /
+  `show` output within set lengths; skills, route files and packs stay within their split signals
+  unless a decision is recorded.
 
 ## [0.1.0] - 2026-10-01
 

@@ -18,8 +18,9 @@ description: Adds a new role's doc to every existing module. Declares the role w
 
 ## Scope
 
-Writes: one `roles/<role>.md` doc per registered module and child (never over an existing doc), and
-the role's declaration in the team config when it is undeclared. It never edits a `*.legacy.md`
+Writes: one `roles/<role>.md` doc per registered module (a split module's children inherit the
+parent's: `roles add --all` writes none for them; never over an existing doc), and the role's
+declaration in the team config when it is undeclared. It never edits a `*.legacy.md`
 file, never edits code, never commits; ask the user to review and commit. Temporary files go
 outside the repository.
 

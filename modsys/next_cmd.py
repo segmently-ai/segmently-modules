@@ -9,7 +9,8 @@ The kinds, in rank order (D4):
   lint-error    one per plain-lint error: `modsys lint`; a registered role doc missing on disk
                 (MS004) `modsys roles add ROLE TARGET --recreate` (SI-P61-7)
   skills        one for the copies `packs sync --check` finds stale, missing, to remove or in
-                conflict — agents resolved as a bare `packs sync` resolves them (SI-P61-5)
+                conflict — agents resolved as a bare `packs sync` resolves them (SI-P61-5) —
+                and the Codex agent files in `.codex/agents` it finds so (P8.4)
   agents-md     one per instruction file at the root (CLAUDE.md, AGENTS.md, GEMINI.md,
                 .github/copilot-instructions.md) that holds a modsys block differing from its
                 render (SI-P61-4)
@@ -46,6 +47,7 @@ from modsys.proposals import pending
 from modsys.registry import as_list
 from modsys.roles_cmd import all_targets, role_rows
 from modsys.skill_sync import managed_agents
+from modsys.skills import CODEX_AGENTS
 from modsys.workspace import Workspace, find_root
 
 INSTRUCTION_FILES = ("CLAUDE.md", "AGENTS.md", "GEMINI.md", ".github/copilot-instructions.md")
@@ -113,21 +115,29 @@ def lint_errors(ws, findings: list) -> list[tuple]:
     return out
 
 
+def _by_state(rows: list[dict], key: str) -> list[str]:
+    """`<state> <name>, …` per `packs sync` status that is not in sync, in COPY_STATES order."""
+    parts = []
+    for status, label in COPY_STATES:
+        names = sorted({r[key] for r in rows if r["status"] == status})
+        if names:
+            parts.append(f"{label} {', '.join(names)}")
+    return parts
+
+
 def skill_copies(ws) -> list[tuple]:
     """The copies a bare `packs sync --check` finds not in sync (its agents, its delivery
-    rules), named by state."""
+    rules), named by state — and, when it syncs for codex, the agent files in `.codex/agents`
+    it finds so (under `builtin_delivery = "plugin"` they can be all it writes): one item."""
     if not ((ws.config.get("packs") or {}).get("agents") or managed_agents(ws.root)):
         raise Skip(NO_AGENT)
     data = packs_sync(ws, None, check=True, dry_run=False)
-    parts = []
-    for status, label in COPY_STATES:
-        names = sorted({r["skill"] for r in data["skills"] if r["status"] == status})
-        if names:
-            parts.append(f"{label} {', '.join(names)}")
-    if not parts:
-        return []
-    return [("skills", f"skill copies not in sync ({', '.join(data['agents'])}): "
-                       f"{'; '.join(parts)}", "modsys packs sync")]
+    parts = _by_state(data["skills"], "skill")
+    files = _by_state(data.get("agent_files") or [], "name")
+    summary = ([f"skill copies not in sync ({', '.join(data['agents'])}): {'; '.join(parts)}"]
+               if parts else [])
+    summary += [f"agent files not in sync ({CODEX_AGENTS}): {'; '.join(files)}"] if files else []
+    return [("skills", "; ".join(summary), "modsys packs sync")] if summary else []
 
 
 def _holds_block(path: Path) -> bool:

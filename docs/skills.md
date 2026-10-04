@@ -75,11 +75,15 @@ plugin: they get the built-in skills only with `"repo"` delivery (`packs sync` s
 `module-discover`, `module-scout` and `module-research` hand their work to a shipped agent
 (`module-discover-agent`, `module-scout-agent`, `module-research-agent`) so that the many reads
 stay out of the conversation; the steps live once, in each skill's `references/procedure.md`,
-which the agent runs. The `modsys` plugin ships the three agents for Claude Code
+which the agent runs and which ends with the skill's Scope and Gates (what it may write, when it
+asks). The `modsys` plugin ships the three agents for Claude Code
 (`modsys:module-<x>-agent`) and `packs sync` writes them for Codex (`.codex/agents/`). With
 `builtin_delivery = "repo"` Claude Code has no such agent — `packs sync` writes none for it — so the
 three skills say to read `references/procedure.md` and run it in the user's own conversation, which
-costs the context the agent would have spent.
+costs the context the agent would have spent. In Claude Code the task can follow the skill's name,
+`/module-discover <task>`, and reaches the skill whole: the three skills have no `arguments:` key
+and no placeholder, so Claude Code appends the text as an `ARGUMENTS:` line (in Codex the
+request's words carry it).
 
 ## Other agents
 
@@ -227,7 +231,8 @@ through the link — and otherwise that directory is left alone, with no agent r
 under `.codex/` is read or changed, and a sync without `codex` never opens `.codex/`. An ejected
 skill's agent file follows the ejected copy's `references/procedure.md`. Claude Code with
 `builtin_delivery = "repo"` has no agent — only the plugin ships them — so there the skills fall
-back to running their steps in your conversation.
+back to running their steps in your conversation. `modsys next` names an agent file that is
+not in sync, as it names a stale skill copy.
 
 Also in these skills: `module-discover` goes from the candidates to the code
 (`code-map files`, then `discover --files … --task-file …`) and reads the `children` list of a

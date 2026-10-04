@@ -35,6 +35,7 @@ SECURITY = ('\n[roles.security]\norder = 50\nstandard = true\n'
 CORE_SKILLS = ["module-adopt", "module-create", "module-discover", "module-init", "module-lint",
                "module-research", "module-roles", "module-scout", "module-split", "module-sync"]
 NOT_SET_UP = "modsys is not set up here: no config, no registry"
+AGENT_NAMES = ["module-discover-agent", "module-research-agent", "module-scout-agent"]
 
 
 def write(path: Path, text: str) -> None:
@@ -641,6 +642,68 @@ class EdgesTest(unittest.TestCase):  # P61-AC-029, SI-P61-4, SI-P61-5, SI-P61-7,
              "modsys packs sync")])
         must("packs", "sync", "--root", str(root))
         self.assertEqual([i for i in nxt(root)["items"] if i["kind"] == "skills"], [])
+
+    def skills_items(self, root: Path) -> list[tuple]:
+        return rows({"items": [i for i in nxt(root)["items"] if i["kind"] == "skills"]})
+
+    def test_codex_agent_files_under_plugin_delivery(self):  # final review: next and agent_files
+        root = copy_fixture(self.tmp)
+        R = ("--root", str(root))
+        write(root / ".modsys/config.toml", '[packs]\nbuiltin = ["core"]\nagents = ["codex"]\n'
+                                            'builtin_delivery = "plugin"\n')
+        agents = ", ".join(AGENT_NAMES)
+        self.assertEqual(self.skills_items(root), [  # the agent files are all packs sync writes
+            ("skills", f"agent files not in sync (.codex/agents): missing {agents}",
+             "modsys packs sync")])
+        self.assertEqual(run("packs", "sync", "--check", *R)[0], 1)  # the same verdict
+        must("packs", "sync", *R)
+        self.assertEqual(self.skills_items(root), [])
+        self.assertEqual(run("packs", "sync", "--check", *R)[0], 0)
+        agent_dir = root / ".codex/agents"
+        scout = agent_dir / "module-scout-agent.toml"
+        scout.write_text(scout.read_text(encoding="utf-8") + "# ours\n", encoding="utf-8")
+        discover = agent_dir / "module-discover-agent.toml"  # an intact but stale marker
+        head, rest = discover.read_text(encoding="utf-8").split("\n", 1)
+        marker = json.loads(head.split(": ", 1)[1])
+        discover.write_text("# modsys-managed: " + json.dumps({**marker, "version": "0.0.1"})
+                            + "\n" + rest, encoding="utf-8")
+        self.assertEqual(self.skills_items(root), [
+            ("skills", "agent files not in sync (.codex/agents): stale module-discover-agent; "
+                       "in conflict module-scout-agent", "modsys packs sync")])
+        self.assertEqual(run("packs", "sync", "--check", *R)[0], 1)
+        scout.unlink()
+        write(root / ".modsys/config.toml", '[packs]\nagents = ["codex"]\n'
+                                            'builtin_delivery = "plugin"\n')  # core disabled
+        self.assertEqual(self.skills_items(root), [
+            ("skills", "agent files not in sync (.codex/agents): to remove "
+                       "module-discover-agent, module-research-agent", "modsys packs sync")])
+
+    def test_skill_copies_and_agent_files_in_one_item(self):
+        root = copy_fixture(self.tmp)
+        R = ("--root", str(root))
+        write(root / ".modsys/config.toml", '[packs]\nbuiltin = ["core"]\n'
+                                            'agents = ["claude", "codex"]\n')
+        must("packs", "sync", *R)
+        self.assertEqual(self.skills_items(root), [])  # everything in sync: next is unchanged
+        (root / ".codex/agents/module-research-agent.toml").unlink()
+        shutil.rmtree(root / ".claude/skills/module-lint")
+        self.assertEqual(self.skills_items(root), [
+            ("skills", "skill copies not in sync (claude, codex): missing module-lint; agent "
+                       "files not in sync (.codex/agents): missing module-research-agent",
+             "modsys packs sync")])
+        must("packs", "sync", *R)
+        self.assertEqual(self.skills_items(root), [])
+
+    def test_a_codex_repository_in_sync_has_nothing_to_do(self):
+        root = copy_fixture(self.tmp)
+        R = ("--root", str(root))
+        write(root / ".modsys/config.toml", '[packs]\nbuiltin = ["core"]\nagents = ["codex"]\n')
+        for argv in (("packs", "sync"), ("agents-md", "--target", "AGENTS.md"),
+                     *(("roles", "add", role, "--all") for role in ("qa", "po", "architect"))):
+            must(*argv, *R)
+        self.assertTrue((root / ".codex/agents/module-scout-agent.toml").is_file())
+        init_git(root)
+        self.assertEqual(run("next", *R), (0, f"modsys {VERSION}\nnothing to do\n", ""))
 
     def test_instruction_files_that_hold_a_block(self):  # SI-P61-4
         root = copy_fixture(self.tmp)

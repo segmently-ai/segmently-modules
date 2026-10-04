@@ -2,7 +2,6 @@
 name: module-research
 description: Answers one question about one or more modules in depth, from their docs and their code, read-only. Reads every role doc, the module's links in both directions, the code files modsys maps to it and its lint findings, then writes a brief with file:line evidence that names every place where the docs and the code disagree. Use for "how does X really work", "is the doc of X still true", "explain module X in depth", or before a risky change to X.
 argument-hint: "[task]"
-arguments: task
 ---
 
 # module-research
@@ -28,7 +27,7 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
 ## Steps
 
-1. Delegate: hand the user's task verbatim (`$task`), with what the user settled in this
+1. Delegate: hand the user's task verbatim, with what the user settled in this
    conversation (files, constraints, the depth), to the `module-research-agent` agent (Claude Code:
    `modsys:module-research-agent`) and give its report as yours; without that agent, read
    `references/procedure.md` and follow it.

@@ -545,8 +545,8 @@ modsys agents-md --target CLAUDE.md --target AGENTS.md   # one managed block tel
 
 `packs sync --check` and `agents-md --check` are the CI lines; `modsys eject <skill>` takes a
 skill over (the pack never overwrites it again) and `modsys templates list` shows where every doc
-template comes from. The walkthrough, `pack.toml` reference, conflicts and the lint codes
-MS060–MS065: [docs/writing-a-pack.md](docs/writing-a-pack.md).
+template comes from. The walkthrough, `pack.toml` reference, conflicts and the pack lint codes
+(MS060–MS065, MS068 and MS069): [docs/writing-a-pack.md](docs/writing-a-pack.md).
 
 ## Reference
 

@@ -331,6 +331,40 @@ class ReferencesTest(ShelfRepo):  # P84-AC-029
         self.config('[packs]\nbuiltin = ["core", "qa", "ui"]\n')
         self.assertEqual(self.ms062(), [])
 
+    # final review I-3: ordinary Markdown around a name is not part of it
+    PRESENT = {"references/restock.md": "# restock\n\n## steps\n"}
+
+    def missing_names(self):
+        return [f[3].split(" names ", 1)[1].split(", which", 1)[0] for f in self.ms062()]
+
+    def test_an_anchor_or_a_query_ends_the_name(self):
+        self.refs(skill_md="\nSee [steps](references/restock.md#steps), references/restock.md?plain=1"
+                           " and [gone](references/missing.md#steps).\n", files=self.PRESENT)
+        self.assertEqual(self.missing_names(), ["references/missing.md"])
+
+    def test_a_table_cell_italics_and_dashes_end_the_name(self):
+        for probe in ("| step |references/restock.md| file |", "| references/restock.md | x |",
+                      "_references/restock.md_", "__references/restock.md__",
+                      "references/restock.md\u2014it holds the steps",
+                      "references/restock.md\u2013it holds the steps"):
+            with self.subTest(probe=probe):
+                self.refs(skill_md=f"\n{probe}\n", files=self.PRESENT)
+                self.assertEqual(self.ms062(), [])
+
+    def test_a_bold_name_is_checked(self):
+        self.refs(skill_md="\nRead **references/restock.md**, then **references/missing-bold.md**."
+                           "\n", files=self.PRESENT)
+        self.assertEqual(self.missing_names(), ["references/missing-bold.md"])
+
+    def test_ci_passes_a_pack_that_links_a_section(self):
+        from tests.helpers import init_git
+        self.refs(skill_md="\nSee [steps](references/restock.md#steps).\n", files=self.PRESENT)
+        init_git(self.root)
+        code, env, err = run_json("ci", "--base", "HEAD", "--fail-on", "error", *self.R)
+        self.assertEqual((code, err), (0, ""))
+        lint = next(st for st in env["data"]["steps"] if st["name"] == "lint")
+        self.assertEqual([f for f in lint["findings"] if f["code"] == "MS062"], [])
+
 
 class ArgumentKeysTest(ShelfRepo):  # P84-AC-028
     HINTS = ('argument-hint: "[scenario]"', "argument-hint: '[scenario]'",

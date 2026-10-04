@@ -36,8 +36,10 @@ from modsys.workspace import Workspace
 SEVERITY_RANK = {"info": 0, "warning": 1, "error": 2}
 FAIL_ON = {"error": 2, "warning": 1, "never": 99}
 _BACKTICK = re.compile(r"`([^`]+)`")
-_REFERENCE = re.compile(r"references/[^\s`'\")\]>]+")  # a file a skill names (SI-P84-6)
-_NOT_A_NAME = re.compile(r"[<*{$?…]")  # a placeholder or a glob in prose names no file
+# a file a skill names (SI-P84-6): an anchor or a query (`#`, `?`) ends it, and so do a table
+# cell's `|` and an em or en dash; Markdown emphasis around it (`*`, `_`) is stripped
+_REFERENCE = re.compile(r"references/[^\s`'\")\]>|#?\u2014\u2013]+")
+_NOT_A_NAME = re.compile(r"[<*{$…]")  # a placeholder or a glob in prose names no file
 # the top-level keys of a pack.toml besides its meta keys: every config section the engine reads
 PACK_SECTIONS = ("paths", "registry", "budgets", "match", "lint", "create", "coverage", "ci",
                  "packs", "roles", "fields", "code_map", "hooks", "schema_version")
@@ -372,7 +374,7 @@ def reference_findings(ws, source: Path, prefix: str) -> list[Finding]:
         label = file.relative_to(source).as_posix()
         seen: set[str] = set()
         for match in _REFERENCE.finditer(text):
-            name = match.group(0).rstrip(".,;:!")
+            name = match.group(0).rstrip(".,;:!*_")
             if name in seen or name.endswith("/") or _NOT_A_NAME.search(name):
                 continue
             seen.add(name)

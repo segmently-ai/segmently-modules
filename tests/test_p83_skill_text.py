@@ -234,18 +234,20 @@ class ReleaseNotesTest(unittest.TestCase):  # final review I-3
         log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
         return log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
 
-    def test_the_keyword_line_states_the_d1_rule(self):
+    def test_the_keyword_line_states_the_d1_rule(self):  # P8.4 fix wave M-1: once, final words
         flat = " ".join(self.unreleased().split())
         self.assertNotIn("a keyword only for a new public name", flat)
-        self.assertIn("`module-sync` picks the child and adds a keyword only for a new feature, "
-                      "command or concept, never a code identifier.", flat)
+        self.assertEqual(flat.count("adds a keyword only"), 1)
+        self.assertIn("`module-sync` adds a keyword only for a new feature, command or concept "
+                      "that later tasks will name and that no keyword or the description covers "
+                      "yet — never a code identifier, never one per task;", flat)
 
     def test_one_changed_entry_names_t2(self):
         changed = self.unreleased().split("### Changed", 1)[1].split("### Fixed", 1)[0]
         entries = [" ".join(e.split()) for e in changed.split("\n- ")]
         mine = [e for e in entries if "`ci --baseline`" in e and "never a code identifier" in e]
         self.assertEqual(len(mine), 1, entries)
-        for needle in ("`git grep -n -e <term> -- <paths>`", "the line that computes",
+        for needle in ("`git grep -n -e <term> -- <paths>`", "where a wrong value is computed",
                        "saves the gate", "a temporary file outside the repository", "`packs new`"):
             self.assertIn(needle, mine[0])
         self.assertTrue(mine[0].endswith(

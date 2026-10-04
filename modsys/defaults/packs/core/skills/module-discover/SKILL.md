@@ -2,7 +2,6 @@
 name: module-discover
 description: Maps a confirmed task, or a change on a branch, to the modules it touches before planning or review, read-only. Runs modsys discover to list each module as modify or reference with the docs to read and to update, lists the code files of every module to modify, and names the files that belong to no module. Can save the result as JSON at a path the user gives. Use when the user asks which modules or files a task will touch, says "do discovery", after a plan is agreed, or when a pipeline needs the touch-set of a change.
 argument-hint: "[task]"
-arguments: task
 ---
 
 # module-discover
@@ -27,7 +26,7 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
 ## Steps
 
-1. Delegate: hand the user's task verbatim (`$task`), with what the user settled in this
+1. Delegate: hand the user's task verbatim, with what the user settled in this
    conversation (files, constraints, the depth), to the `module-discover-agent` agent (Claude Code:
    `modsys:module-discover-agent`) and give its report as yours; without that agent, read
    `references/procedure.md` and follow it.

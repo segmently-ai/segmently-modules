@@ -54,6 +54,8 @@ GOLDEN = [
      {"pack", "dir", "files", "dry_run"}),
     (("packs", "sync", "--agent", "claude", "--dry-run"),
      {"agents", "check", "dry_run", "skills", "summary", "failed", "notes"}),  # P6 D2: notes
+    (("packs", "sync", "--agent", "codex", "--dry-run"),  # P8.4 D3: codex adds agent_files
+     {"agents", "check", "dry_run", "skills", "agent_files", "summary", "failed", "notes"}),
     (("packs", "new", "team2", "--skill", "notes"), {"pack", "dir", "files", "dry_run"}),
     (("eject", "notes", "--dry-run"), {"skill", "pack", "version", "dir", "files", "dry_run"}),
     (("eject", "notes"), {"skill", "pack", "version", "dir", "files", "dry_run"}),
@@ -88,6 +90,53 @@ class CliContractTest(unittest.TestCase):
                         self.assertIsInstance(env["data"], list)
                     else:
                         self.assertEqual(set(env["data"]), keys)
+
+    def test_the_agent_file_rows_are_as_documented(self):  # final review I-4
+        row = next(line for line in DOC.read_text(encoding="utf-8").splitlines()
+                   if line.startswith("| `packs new"))
+        sync = row.split(" · sync ", 1)[1]
+        shape = re.search(r"`\{agents, check, dry_run, skills: \[[^\]]*\], agent_files\?: "
+                          r"\[\{([a-z_, ]+)\}\], summary: \{[a-z_, ]+\}, failed\}`", sync)
+        self.assertIsNotNone(shape, sync[:400])
+        documented = shape.group(1).split(", ")
+        rows_text = sync.split("`agent_files` is there only when", 1)[1].split("`notes` =", 1)[0]
+        statuses = re.findall(r"(?:^|· )`([a-z]+)`", rows_text.split("`status`: ", 1)[1])
+        self.assertEqual(statuses, ["created", "unchanged", "updated", "removed", "conflict"])
+        for needle in ("`agent_files` is there only when the agents include `codex`",
+                       "Exit 1 when a row of `skills` or `agent_files` is `conflict` or "
+                       "`invalid`", "unless every row of both lists is `unchanged`",
+                       "`; agent files: <n> created, <n> updated, <n> unchanged, <n> removed, "
+                       "<n> conflict`"):
+            self.assertIn(needle, sync)
+        setup = next(line for line in DOC.read_text(encoding="utf-8").splitlines()
+                     if line.startswith("| `setup"))
+        self.assertIn("its skill copies and agent files fold into one status", setup)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = copy_fixture(tmp)
+            (root / ".modsys/config.toml").write_text('[packs]\nbuiltin = ["core"]\n',
+                                                      encoding="utf-8")
+            code, env, err = run_json("packs", "sync", "--agent", "codex", "--dry-run",
+                                      "--root", str(root))
+            self.assertEqual((code, err), (0, ""))
+            self.assertEqual(list(env["data"]), ["agents", "check", "dry_run", "skills",
+                                                 "agent_files", "summary", "failed", "notes"])
+            rows = env["data"]["agent_files"]
+            self.assertEqual(len(rows), 3)
+            for r in rows:
+                self.assertEqual(list(r), documented)
+                self.assertEqual((r["agent"], r["status"]), ("codex", "created"))
+            self.assertEqual(run_json("packs", "sync", "--agent", "codex", "--root",
+                                      str(root))[0], 0)
+            edited = root / rows[0]["path"]
+            edited.write_text(edited.read_text(encoding="utf-8") + "# ours\n", encoding="utf-8")
+            for argv in ((), ("--check",)):  # every skill row unchanged, one agent file not
+                with self.subTest(argv=argv):
+                    code, env, _ = run_json("packs", "sync", *argv, "--agent", "codex",
+                                            "--root", str(root))
+                    self.assertEqual((code, env["data"]["failed"]), (1, True))
+                    self.assertEqual({r["status"] for r in env["data"]["skills"]}, {"unchanged"})
+                    self.assertEqual([r["status"] for r in env["data"]["agent_files"]],
+                                     ["conflict", "unchanged", "unchanged"])
 
     def test_the_init_actions(self):  # P5A-AC-029, P5A-AC-042: on a repository without modules
         keys = {"map": {"action", "root", "files", "preflight", "proposal", "candidates",

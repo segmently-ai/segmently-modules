@@ -87,3 +87,15 @@ A change without a task starts at step 4.
 
 `0` ok · `2` = a usage or config error: read stderr, fix the input or report it; never retry the
 same command.
+
+## Scope
+
+Read-only: modsys read verbs, docs, code search. It writes only temporary files outside the
+repository and, at a path the user names, the JSON result; it never edits docs or code and never
+commits.
+
+If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
+
+## Gates
+
+No gates — read-only: it reports and stops. It asks only for a missing input or a JSON file's path.

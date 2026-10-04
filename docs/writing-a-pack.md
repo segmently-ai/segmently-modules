@@ -218,6 +218,6 @@ when not, its scope and its gates, plus a **Route** block at the head of its ste
 scenario — what the user wants, then `references/<scenario>.md` ("read it, then follow it").
 Each scenario's steps live in that file; steps every scenario shares stay inline. Every
 `references/` file a skill names must exist inside the skill directory — lint MS062 checks the
-names in `SKILL.md` and in each route file (one level of chaining), and `packs sync` copies the
-whole skill directory. `argument-hint` and `arguments` in the front matter are accepted in any
-YAML form.
+names in `SKILL.md` and in each route file (one level of chaining; a link's `#section` or
+`?query` is not part of the name), and `packs sync` copies the whole skill directory.
+`argument-hint` and `arguments` in the front matter are accepted in any YAML form.

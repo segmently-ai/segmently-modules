@@ -276,6 +276,7 @@ def readme(name: str, skills: list[str], agents: list[str] = ()) -> str:
     """The plugin's README: what it holds and one install line per agent; `<owner>/<publish
     repo>` and `<owner>/<repo>` are placeholders (no repository slug before the public release)."""
     spec = PLUGINS[name]
+    generated: list[str] = []
     listed = ", ".join(f"`{s}`" for s in skills)
     what = (f"The `{spec['pack']}` pack of modsys as a plugin: {listed}.")
     if name == CORE:
@@ -295,7 +296,10 @@ def readme(name: str, skills: list[str], agents: list[str] = ()) -> str:
                  f"then `codex plugin add {name}@modsys`. Codex puts no plugin command on "
                  "PATH, so install the CLI first, at the plugin's version: `uv tool install "
                  "git+ssh://git@github.com/<owner>/<repo>.git@v<version>` (or `pipx install "
-                 "git+ssh://git@github.com/<owner>/<repo>.git@v<version>`).\n")
+                 "git+ssh://git@github.com/<owner>/<repo>.git@v<version>`)."
+                 + (" Codex reads no plugin agents: `modsys setup` and `modsys packs sync "
+                    "--agent codex` write the three skills' agents to `.codex/agents/` in the "
+                    "repository." if generated else "") + "\n")
     else:
         what += (" It needs the `modsys` plugin (the modsys command line and the core skills).")
         needs = ("- Codex: `codex plugin marketplace add <owner>/<publish repo> --ref stable`, "
@@ -320,7 +324,10 @@ def readme(name: str, skills: list[str], agents: list[str] = ()) -> str:
               "`builtin_delivery = \"plugin\"` under `[packs]` in `.modsys/config.toml`: `modsys "
               "packs sync` then copies none of them and removes the copies it made (with the "
               "default `\"repo\"` delivery and the plugin, an agent sees each built-in skill "
-              "twice). Cursor, Gemini CLI and Copilot need `\"repo\"` (the default).\n")
+              "twice)"
+            + ("; it still writes Codex's three agent files in `.codex/agents/`" if generated
+               else "")
+            + ". Cursor, Gemini CLI and Copilot need `\"repo\"` (the default).\n")
 
 
 def write(path: Path, data: bytes, mode: int) -> None:

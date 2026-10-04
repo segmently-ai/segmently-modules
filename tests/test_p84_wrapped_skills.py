@@ -1,9 +1,12 @@
 """P8.4 task 2, the three wrapped skills (D3, D4, D6): `module-discover`, `module-scout` and
-`module-research` keep the description, When to use / not, Scope and Gates, take `argument-hint`
-and `arguments: task`, and hand the task to their shipped agent in one step; the steps and the
-exit codes moved word for word into `references/procedure.md` (which the agent runs), with the
-D6 texts in discover's step 3 and step 7 (P84-AC-011 to 016, 027, 030). The text of the shared
-choose step is pinned by `test_p81_skill_text`; the skill-eval graders by `test_skill_evals`."""
+`module-research` keep the description, When to use / not, Scope and Gates, take
+`argument-hint` (no `arguments:` key and no placeholder: the fix wave's ruling on the final
+review's I-1 — Claude Code appends the whole invocation text as an `ARGUMENTS:` line), and hand
+the task to their shipped agent in one step; the steps and the exit codes moved word for word
+into `references/procedure.md` (which the agent runs), with the D6 texts in discover's step 3 and
+step 7, and the procedure ends with the skill's Scope and Gates (I-2) so the agent gets them
+(P84-AC-011 to 016, 027, 030). The text of the shared choose step is pinned by
+`test_p81_skill_text`; the skill-eval graders by `test_skill_evals`."""
 import hashlib
 import io
 import json
@@ -12,11 +15,12 @@ import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys.config import builtin_packs_root
+from modsys.config import builtin_packs_root, core_defaults
 from modsys.skills import front_matter
 from tests.helpers import SPLIT_FIXTURE, copy_fixture, init_git, run, run_json
 from tests.test_builtin_skills import argv, commands, section
@@ -25,7 +29,8 @@ from tests.test_p81_skill_text import flat
 ENGINE = Path(__file__).resolve().parents[1]
 CORE = builtin_packs_root() / "core" / "skills"
 WRAPPED = ("module-discover", "module-scout", "module-research")
-SKILL_MAX = 9000
+# MS068's default split signal, read from the engine (D5: a signal, never a literal cap here)
+SPLIT_SIGNAL = core_defaults()["budgets"]["skill_split_signal"]
 # What the three skills were before this task: the sha256 prefix of each kept section, the length
 # of SKILL.md and of its `## Steps`, and the hash of each sentence of `## Steps` + `## Exit codes`
 # (a sentence ends at . ! ? not after a digit; the text is whitespace-normalized).
@@ -55,6 +60,14 @@ def sections(text: str, name: str) -> str:
     return section("\n" + text, name if name.startswith("## ") else "## " + name)
 
 
+def raw_section(text: str, heading: str) -> str:
+    """The bytes of a `## ` section, its heading line included, up to the next `## ` heading
+    (or the end of the text)."""
+    start = text.index(f"\n## {heading}\n") + 1
+    end = text.find("\n## ", start)
+    return text[start:] if end < 0 else text[start:end + 1]
+
+
 def sandbox_free(text: str) -> str:
     """The procedure without its one read-only-sandbox paragraph (a lead-in and a fenced block)."""
     return re.sub(r"   If a temporary file cannot be written.*?\n   ```\n", "", text, flags=re.S)
@@ -68,14 +81,14 @@ class ThinSkillTest(unittest.TestCase):  # P84-AC-011
                     self.assertEqual(h(sections(skill(name), heading)), digest, heading)
                 self.assertEqual(skill(name).count("`modsys` plugin for Claude Code"), 1)  # install line
 
-    def test_front_matter_adds_exactly_two_keys(self):
+    def test_front_matter_adds_exactly_the_hint(self):  # fix wave I-1: no `arguments:` key
         for name in WRAPPED:
             with self.subTest(skill=name):
                 text = skill(name)
-                self.assertEqual(list(front_matter(text)),
-                                 ["name", "description", "argument-hint", "arguments"])
+                self.assertEqual(list(front_matter(text)), ["name", "description", "argument-hint"])
                 head = text.split("\n---\n", 1)[0]
-                self.assertTrue(head.endswith('\nargument-hint: "[task]"\narguments: task'))
+                self.assertTrue(head.endswith('\nargument-hint: "[task]"'))
+                self.assertNotIn("\narguments:", head)
 
     def test_no_exit_codes_and_no_command(self):
         for name in WRAPPED:
@@ -89,13 +102,14 @@ class ThinSkillTest(unittest.TestCase):  # P84-AC-011
                 steps = flat(sections(skill(name), "Steps"))
                 self.assertTrue(steps.startswith("1. "), steps)
                 self.assertEqual(re.findall(r"(?:^| )(\d+)\. ", steps), ["1"])
-                for phrase in ("hand the user's task verbatim", "`$task`",
-                               "what the user settled in this conversation "
+                for phrase in ("hand the user's task verbatim, with what the user settled in "
+                               "this conversation", "what the user settled in this conversation "
                                "(files, constraints, the depth)",
                                f"`{name}-agent`", f"`modsys:{name}-agent`",
                                "give its report as yours",
                                "without that agent, read `references/procedure.md` and follow it"):
                     self.assertEqual(steps.count(phrase), 1, phrase)
+                self.assertNotIn("``", steps)  # no empty code span where a placeholder was
 
     def test_each_skill_shrank_by_its_steps(self):
         for name in WRAPPED:
@@ -104,10 +118,10 @@ class ThinSkillTest(unittest.TestCase):  # P84-AC-011
                 self.assertLessEqual(len(skill(name)), before["len"] - before["steps"] + 600)
                 self.assertLess(len(skill(name)), before["len"])
 
-    def test_the_only_placeholder_is_task(self):  # P84-AC-027, SI-P84-12
+    def test_no_placeholder_at_all(self):  # P84-AC-027, SI-P84-12 as the fix wave amends them
         for name in WRAPPED:
             with self.subTest(skill=name):
-                self.assertEqual(re.findall(r"\$[A-Za-z0-9{]\w*", skill(name)), ["$task"])
+                self.assertEqual(re.findall(r"\$[A-Za-z0-9{]\w*", skill(name)), [])
                 self.assertNotIn("$ARGUMENTS", skill(name))
 
 
@@ -140,9 +154,21 @@ class ProcedureTest(unittest.TestCase):  # P84-AC-012
             with self.subTest(skill=name):
                 text = procedure(name)
                 self.assertTrue(text.startswith("## Steps\n"))
-                self.assertEqual(re.findall(r"^## .*$", text, re.M), ["## Steps", "## Exit codes"])
+                self.assertEqual(re.findall(r"^## .*$", text, re.M),
+                                 ["## Steps", "## Exit codes", "## Scope", "## Gates"])
                 self.assertLessEqual(len(text.splitlines()), 250)
-                self.assertLessEqual(len(text), SKILL_MAX)
+                self.assertLessEqual(len(text), SPLIT_SIGNAL)
+
+    def test_the_procedure_ends_with_the_skills_scope_and_gates(self):  # fix wave I-2
+        for name in WRAPPED:
+            with self.subTest(skill=name):
+                text, own = procedure(name), skill(name)
+                for heading in ("Scope", "Gates"):
+                    self.assertEqual(raw_section(text, heading), raw_section(own, heading),
+                                     heading)
+                self.assertTrue(text.endswith(raw_section(text, "Scope")
+                                              + raw_section(text, "Gates")))
+                self.assertIn("never commit", flat(raw_section(text, "Scope")))
 
     def test_self_contained_and_no_placeholder(self):  # SI-P84-10, SI-P84-12
         others = {"SKILL.md", "references/", "procedure.md"}
@@ -237,6 +263,24 @@ class SandboxLineTest(unittest.TestCase):  # P84-AC-015
         self.assertTrue(out.startswith(f"Task:\n{self.TASK}\n"))
 
 
+class InvocationDocsTest(unittest.TestCase):  # fix wave I-1: how the task reaches the skill
+    def test_docs_skills_says_how_the_task_is_passed(self):
+        text = flat((ENGINE / "docs/skills.md").read_text(encoding="utf-8"))
+        part = text.split("`module-discover`, `module-scout` and `module-research` hand", 1)[1]
+        part = part.split(" ## ", 1)[0]
+        for needle in ("`/module-discover <task>`", "an `ARGUMENTS:` line",
+                       "no `arguments:` key and no placeholder"):
+            self.assertEqual(part.count(needle), 1, needle)
+
+    def test_the_changelog_drops_the_old_form(self):
+        log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
+        unreleased = flat(log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0])
+        for gone in ("`$task`", "`arguments: task`"):
+            self.assertNotIn(gone, unreleased)
+        self.assertIn("`argument-hint: \"[task]\"`", unreleased)
+        self.assertIn("ends with the skill's Scope and Gates", unreleased)
+
+
 class FallbackRunsTest(unittest.TestCase):  # P84-AC-016 (discover: `test_p81_skill_text`)
     TASK = "refund a returned book"
 
@@ -306,6 +350,17 @@ class ReferencesTravelTest(unittest.TestCase):  # P84-AC-030 (the wrapped skills
                                      (CORE / name / "SKILL.md").read_bytes())  # keys kept
         self.assertEqual(run("packs", "sync", "--check", "--agent", "claude", "--agent", "codex",
                              *self.R)[0], 0)
+
+    def test_the_codex_agents_carry_the_scope_and_the_gates(self):  # fix wave I-2
+        code, env, err = run_json("packs", "sync", "--agent", "codex", *self.R)
+        self.assertEqual((code, err), (0, ""))
+        for name in WRAPPED:
+            with self.subTest(skill=name):
+                agent = self.root / ".codex/agents" / f"{name}-agent.toml"
+                body = tomllib.loads(agent.read_text(encoding="utf-8"))["developer_instructions"]
+                self.assertEqual(body, procedure(name))
+                for heading in ("Scope", "Gates"):
+                    self.assertIn(raw_section(skill(name), heading), body)
 
     def test_an_edited_procedure_in_a_copy_is_a_conflict(self):
         run_json("packs", "sync", "--agent", "claude", *self.R)

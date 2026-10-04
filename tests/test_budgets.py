@@ -4,6 +4,7 @@ description). A skill, a route file or a pack above its split signal (D5, owner 
 decomposition decision, never a cap: route it, split it, or record the discussion with the owner
 in SPLIT_DECISIONS — a shipped skill is never trimmed to fit a number."""
 
+import ast
 import json
 import re
 import shutil
@@ -69,6 +70,27 @@ def crossings(root: Path | None = None) -> dict[str, str]:
             elif f["code"] == "MS068":
                 label = f["message"].split(":")[0]
                 found[f"{owner[label.split('/')[0]]}/{label}"] = f["message"]
+    return found
+
+
+ENGINE = Path(__file__).resolve().parents[1]
+CAPS = ("SKILL_MAX", "CORE_MAX")  # the fixed caps D5 removed: no module defines one again
+
+
+def cap_definitions(paths, base: Path = ENGINE) -> list[str]:
+    """`<file>:<line> <name>` (the file relative to `base`) for every module-level assignment
+    of a name in CAPS (plain, annotated or augmented, a tuple target too) in the Python files
+    `paths`."""
+    found = []
+    for path in sorted(paths):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in tree.body:
+            targets = (node.targets if isinstance(node, ast.Assign)
+                       else [node.target] if isinstance(node, (ast.AnnAssign, ast.AugAssign))
+                       else [])
+            names = [n.id for t in targets for n in ast.walk(t) if isinstance(n, ast.Name)]
+            found += [f"{path.relative_to(base).as_posix()}:{node.lineno} {name}"
+                      for name in names if name in CAPS]
     return found
 
 
@@ -147,10 +169,22 @@ class ShippedSkillsTest(unittest.TestCase):
     def test_no_shipped_skill_route_or_pack_crosses_a_split_signal_unrecorded(self):
         self.assertEqual(split_problems(crossings(), SPLIT_DECISIONS), [])
 
-    def test_the_caps_are_gone(self):
-        import sys
-        self.assertFalse(hasattr(sys.modules[__name__], "SKILL_MAX"))
-        self.assertFalse(hasattr(sys.modules[__name__], "CORE_MAX"))
+    def test_the_caps_are_gone(self):  # final review M-2: every test and engine module
+        sources = [*(ENGINE / "tests").rglob("*.py"), *(ENGINE / "modsys").rglob("*.py")]
+        self.assertGreater(len(sources), 100)
+        self.assertEqual(cap_definitions(sources), [])
+
+    def test_the_cap_scan_finds_a_planted_cap(self):
+        with tempfile.TemporaryDirectory() as tmp:  # never inside the engine's own tests/
+            planted = Path(tmp) / "tests" / "test_planted.py"
+            planted.parent.mkdir()
+            planted.write_text("import os\nSKILL_MAX = 9000\nCORE_MAX: int = 1\n"
+                               "LIMIT, SKILL_MAX = 1, 2\ndef f():\n    CORE_MAX = 1\n",
+                               encoding="utf-8")
+            self.assertEqual(cap_definitions([planted], Path(tmp)),
+                             ["tests/test_planted.py:2 SKILL_MAX",
+                              "tests/test_planted.py:3 CORE_MAX",
+                              "tests/test_planted.py:4 SKILL_MAX"])
 
     def test_the_descriptions_are_within_their_total(self):
         total = 0

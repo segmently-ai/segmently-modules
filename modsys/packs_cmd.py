@@ -30,8 +30,8 @@ from modsys.skill_sync import (AGENT_BAD_MARKER, AGENT_NOT_MANAGED, AGENT_STATUS
                                STATUSES, agent_row, apply_agent_file, apply_plan, conflict_kind,
                                managed_agents, plan_agent_files, plan_remove, plan_sync, row,
                                skill_sources, sync_command)
-from modsys.skills import (AGENT_DIRS, NAME_RULE, PROCEDURE, declared_skills, ejected_dir,
-                           is_ejected, pack_skills, read_front_matter, skill_id_ok)
+from modsys.skills import (AGENT_DIRS, CODEX_AGENTS, NAME_RULE, PROCEDURE, declared_skills,
+                           ejected_dir, is_ejected, pack_skills, read_front_matter, skill_id_ok)
 from modsys.workspace import Workspace
 
 ACTIONS = ("new", "list", "sync")
@@ -232,12 +232,14 @@ def _names(words: list[str]) -> str:
     return ", ".join(words)
 
 
-def sync_notes(ws, chosen: list[str], plugin: bool, rows: list[dict]) -> list[str]:
+def sync_notes(ws, chosen: list[str], plugin: bool, rows: list[dict],
+               agent_rows: list[dict] = ()) -> list[str]:
     """The `note:` lines of a `packs sync` run (`data.notes`): under `builtin_delivery =
     "plugin"`, the plugins that provide the enabled built-in packs' skills and the chosen
     agents no plugin exists for; Copilot's duplicates (it reads both directories) when `claude`
     syncs together with an agent of `.agents/skills` — under `"plugin"` only when a copy stays
-    in both (a row that is not `removed`): the built-in skills are in neither there."""
+    in both (a row that is not `removed`): the built-in skills are in neither there; the copies
+    and the Codex agent files (`agent_rows`) git ignores."""
     notes = []
     provided = [p["id"] for p in discover_packs(ws.config_dir) if p["builtin"]] if plugin else []
     if provided:
@@ -257,6 +259,7 @@ def sync_notes(ws, chosen: list[str], plugin: bool, rows: list[dict]) -> list[st
                      "each skill twice — where Copilot works, sync only one of the two "
                      "directories (Copilot reads either)")
     notes.extend(_ignored_copies_notes(ws.root, rows))
+    notes.extend(_ignored_agent_files_note(ws.root, agent_rows))
     return notes
 
 
@@ -282,6 +285,22 @@ def _ignored_copies_notes(root: Path, rows: list[dict]) -> list[str]:
                          f"({_names(names)}) — they are written but will not be committed; "
                          f"take them out of .gitignore to share them with the team")
     return notes
+
+
+def _ignored_agent_files_note(root: Path, agent_rows: list[dict]) -> list[str]:
+    """One note when git ignores some of the Codex agent files the run wrote or would write
+    (rows `created`, `updated`, `unchanged`), probed by their paths in one `git check-ignore`;
+    only the ignored ones are named, in row order."""
+    files = {r["path"]: r["name"] for r in agent_rows if r["status"] in COPY_STATUSES}
+    if not files:
+        return []
+    ignored = _git_ignored(root, list(files))
+    names = [name for path, name in files.items() if path in ignored]
+    if not names:
+        return []
+    return [f"git ignores {len(names)} of the {len(files)} agent files in {CODEX_AGENTS} "
+            f"({_names(names)}) — they are written but will not be committed; take them out "
+            f"of .gitignore to share them with the team"]
 
 
 def _git_ignored(root: Path, rels: list[str]) -> set[str]:
@@ -394,7 +413,7 @@ def sync(ws, agents: list[str] | None, check: bool, dry_run: bool,
     failed = (any(s != "unchanged" for s in every) if check
               else any(s in ("conflict", "invalid") for s in every))
     if not remove:
-        notes = sync_notes(ws, chosen, plugin, rows)
+        notes = sync_notes(ws, chosen, plugin, rows, agent_rows or [])
     else:  # only when a copy went (or would go): the other readers lose it too
         notes = remove_notes(ws, chosen, dry_run) if summary["removed"] else []
     return {"agents": chosen, "check": check, "dry_run": dry_run, "skills": rows,
