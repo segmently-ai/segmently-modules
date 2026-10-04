@@ -69,18 +69,22 @@ A change without a task starts at step 4.
 
    A module step 2 kept is a verified pick: it stays in the report even when step 4's `discover`
    gives its files to another module or to none. Its `usage` in the report is set by the task,
-   not by `discover`'s `usage`. It is `modify` when the task changes its behaviour, with the files
-   step 3 found for it and a note in its why: "code in `<owner>`" (the module `discover` gives
-   them to) or "outside every module". When the task only reads it, it stays a `reference` with
-   its why. Drop a kept pick only with a stated reason, listed with the dropped modules; never
-   drop one silently. A run that starts at step 4 has no kept picks.
+   not by `discover`'s `usage`. It is `modify` when the task changes its behaviour, with a note in
+   its why: "code in `<owner>`" (the module `discover` gives its files to) or
+   "outside every module". Its code column holds the files from step 3 that the change edits or
+   adds, even when the same file also stands in `<owner>`'s row; files read only as evidence go
+   on step 7's evidence line. When the change edits no file for it, its code cell says "none",
+   never empty. When the task only reads it, it stays a `reference` with its why. Drop a kept
+   pick only with a stated reason, listed with the dropped modules; never drop one silently. A
+   run that starts at step 4 has no kept picks.
 
 6. Read the `modify` modules' `docs_to_read` for the rules the task must respect; keep a
    `reference` module only when its main doc helps (a component to reuse, a rule), drop the rest
    and say why.
 
    This keep-or-drop is only for the `reference` modules step 2 did not keep; a kept pick stays
-   as step 5 says.
+   as step 5 says. Read a kept pick's docs too: when the result gives it no `docs_to_read`, read
+   the `read` paths of `modsys show <pick> --json`.
 
 7. Report the touch-set, every `modify` row with its code at file:line:
 
@@ -96,8 +100,8 @@ A change without a task starts at step 4.
 
    The code column holds the files the change edits or adds: the line that computes or sets the
    value, the files to edit, the tests to add or change. Files read only as evidence go on one
-   line under the table; start that line with "read for evidence:". They never go in the code
-   column.
+   line right under the table, ahead of the lists that follow it; start that line with
+   "read for evidence:". They never go in the code column.
 
 ## Exit codes
 

@@ -49,33 +49,28 @@ STEPS_1_TO_4 = "1ca42456f91f6526"
 CLOSING = {"Exit codes": "563ed072ebec701a", "Scope": "b5d02fbb705d432b",
            "Gates": "5472d61f2d94d059"}
 
-# What Task 1 adds, byte for byte: one paragraph at the end of steps 5, 6 and 7 each.
+# What Task 1 adds, byte for byte: one paragraph at the end of steps 5, 6 and 7 each (fix round 1:
+# a kept pick's code column follows step 7's rule; its docs are read; the evidence line's place).
 KEPT_PICK = (
-    "   A module step 2 kept is a verified pick: it stays in the report even when step 4's "
-    "`discover`\n"
-    "   gives its files to another module or to none. Its `usage` in the report is set by the "
-    "task,\n"
-    "   not by `discover`'s `usage`. It is `modify` when the task changes its behaviour, with the "
-    "files\n"
-    "   step 3 found for it and a note in its why: \"code in `<owner>`\" (the module `discover` "
-    "gives\n"
-    "   them to) or \"outside every module\". When the task only reads it, it stays a `reference` "
-    "with\n"
-    "   its why. Drop a kept pick only with a stated reason, listed with the dropped modules; "
-    "never\n"
-    "   drop one silently. A run that starts at step 4 has no kept picks.")
+    "   A module step 2 kept is a verified pick: it stays in the report even when step 4's `discover`\n"
+    "   gives its files to another module or to none. Its `usage` in the report is set by the task,\n"
+    "   not by `discover`'s `usage`. It is `modify` when the task changes its behaviour, with a note in\n"
+    "   its why: \"code in `<owner>`\" (the module `discover` gives its files to) or\n"
+    "   \"outside every module\". Its code column holds the files from step 3 that the change edits or\n"
+    "   adds, even when the same file also stands in `<owner>`'s row; files read only as evidence go\n"
+    "   on step 7's evidence line. When the change edits no file for it, its code cell says \"none\",\n"
+    "   never empty. When the task only reads it, it stays a `reference` with its why. Drop a kept\n"
+    "   pick only with a stated reason, listed with the dropped modules; never drop one silently. A\n"
+    "   run that starts at step 4 has no kept picks.")
 NOT_KEPT = (
-    "   This keep-or-drop is only for the `reference` modules step 2 did not keep; a kept pick "
-    "stays\n"
-    "   as step 5 says.")
+    "   This keep-or-drop is only for the `reference` modules step 2 did not keep; a kept pick stays\n"
+    "   as step 5 says. Read a kept pick's docs too: when the result gives it no `docs_to_read`, read\n"
+    "   the `read` paths of `modsys show <pick> --json`.")
 CODE_COLUMN = (
-    "   The code column holds the files the change edits or adds: the line that computes or sets "
-    "the\n"
-    "   value, the files to edit, the tests to add or change. Files read only as evidence go on "
-    "one\n"
-    "   line under the table; start that line with \"read for evidence:\". They never go in the "
-    "code\n"
-    "   column.")
+    "   The code column holds the files the change edits or adds: the line that computes or sets the\n"
+    "   value, the files to edit, the tests to add or change. Files read only as evidence go on one\n"
+    "   line right under the table, ahead of the lists that follow it; start that line with\n"
+    "   \"read for evidence:\". They never go in the code column.")
 ADDED = {"5. Read the result.": KEPT_PICK, "6. Read the `modify`": NOT_KEPT,
          "7. Report the touch-set": CODE_COLUMN}
 
@@ -145,15 +140,25 @@ class KeptPickTest(unittest.TestCase):  # P85-AC-001, P85-AC-006 (the text half)
             "usage set by the task (SI-P85-1)": "Its `usage` in the report is set by the task, "
                                                 "not by `discover`'s `usage`.",
             "rows 1-3: modify": "It is `modify` when the task changes its behaviour",
-            "the files found for it": "with the files step 3 found for it",
-            "row 2: another module": "\"code in `<owner>`\" (the module `discover` gives them to)",
+            "the note, in its why": "with a note in its why:",
+            "row 2: another module": "\"code in `<owner>`\" (the module `discover` gives its files "
+                                     "to)",
             "row 3: no module": "or \"outside every module\".",
+            "its code: step 7's rule (I-1)": "Its code column holds the files from step 3 that the "
+                                             "change edits or adds, even when the same file also "
+                                             "stands in `<owner>`'s row;",
+            "its evidence (I-1)": "files read only as evidence go on step 7's evidence line.",
+            "no file to edit (I-1)": "When the change edits no file for it, its code cell says "
+                                     "\"none\", never empty.",
             "row 4: read only": "When the task only reads it, it stays a `reference` with its why.",
             "row 5: dropped": "Drop a kept pick only with a stated reason, listed with the "
                               "dropped modules; never drop one silently.",
             "row 6: --from-diff": "A run that starts at step 4 has no kept picks.",
             "row 6: step 6 (SI-P85-1)": "This keep-or-drop is only for the `reference` modules "
                                         "step 2 did not keep; a kept pick stays as step 5 says.",
+            "its docs (review M-1)": "Read a kept pick's docs too: when the result gives it no "
+                                     "`docs_to_read`, read the `read` paths of `modsys show <pick> "
+                                     "--json`.",
         }
         for row, phrase in rows.items():
             with self.subTest(row=row):
@@ -171,6 +176,20 @@ class KeptPickTest(unittest.TestCase):  # P85-AC-001, P85-AC-006 (the text half)
         self.assertEqual(self.steps.count("the files outside every module"), 1)
         # both t0 cases (P85-AC-006): the files went to another module, or to none
         self.assertIn("to another module or to none", self.line)
+
+    def test_no_other_drop_and_the_note_in_its_why(self):  # review M-3
+        drops = [s for s in sentences(span(self.text, "5. Read the result.",
+                                           "7. Report the touch-set")) if "drop" in s.lower()]
+        self.assertEqual(drops, [
+            "Drop a kept pick only with a stated reason, listed with the dropped modules; never "
+            "drop one silently.",
+            "6. Read the `modify` modules' `docs_to_read` for the rules the task must respect; "
+            "keep a `reference` module only when its main doc helps (a component to reuse, a "
+            "rule), drop the rest and say why.",  # bdc9f9b's, scoped by the next one
+            "This keep-or-drop is only for the `reference` modules step 2 did not keep; a kept "
+            "pick stays as step 5 says."])
+        self.assertEqual(self.steps.count("in its why"), 1)
+        self.assertEqual(self.line.count("in its why"), 1)
 
     def test_step_6_keeps_its_rule_for_the_others(self):
         step6 = span(self.text, "6. Read the `modify`", "7. Report the touch-set")
@@ -208,10 +227,26 @@ class CodeColumnTest(unittest.TestCase):  # P85-AC-002
 
     def test_one_evidence_line_under_the_table(self):
         self.assertEqual(self.text.count("read for evidence"), 1)
-        self.assertEqual(self.step7.count("Files read only as evidence go on one line under the "
-                                          "table; start that line with \"read for evidence:\". "
-                                          "They never go in the code column."), 1)
+        self.assertEqual(self.step7.count("Files read only as evidence go on one line right under "
+                                          "the table, ahead of the lists that follow it; start "
+                                          "that line with \"read for evidence:\". They never go "
+                                          "in the code column."), 1)
         self.assertLess(self.step7.index("|---|"), self.step7.index("read for evidence"))
+        # review M-2: before the lists that follow the table, which the old step 7 names
+        self.assertIn("|---|---|---|---|---|---| then the files outside every module", self.step7)
+
+    def test_the_kept_pick_follows_the_same_rule(self):  # fix round 1, I-1
+        text = procedure()  # the shipped paragraphs, not this module's copies of them
+        kept = span(text, "A module step 2 kept", "6. Read the `modify`")
+        column = span(text, "The code column holds", "## Exit codes")
+        for part in (kept, column):  # edits or adds -> code column; read only -> evidence line
+            with self.subTest(part=part[:40]):
+                self.assertEqual(part.count("the change edits or adds"), 1)
+                self.assertEqual(part.count("read only as evidence go on"), 1)
+        self.assertIn("files read only as evidence go on step 7's evidence line", kept)
+        self.assertIn("Files read only as evidence go on one line right under the table", column)
+        self.assertNotIn("found for it and", kept)  # the round-1 wording that disagreed
+        self.assertNotIn("read for evidence", kept)  # the phrase lives once, in step 7
 
     def test_the_old_step_7_stays(self):
         self.assertEqual(self.text.count(
@@ -248,7 +283,7 @@ class EveryOldRuleTest(unittest.TestCase):  # P85-AC-003
         added = [s for s in all_sentences(self.text) if h12(s) not in BASE_SENTENCES]
         listed = [s for p in ADDED.values() for s in sentences(p)]
         self.assertEqual(added, listed)
-        self.assertEqual(len(added), 10)
+        self.assertEqual(len(added), 13)
         for start, paragraph in ADDED.items():  # each in its own step
             with self.subTest(step=start):
                 self.assertTrue(span(self.text, start, "## Exit codes").startswith(start))
