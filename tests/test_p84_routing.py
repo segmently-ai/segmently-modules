@@ -51,24 +51,31 @@ ADDED = {
         "**refresh** — the module changed and its baseline must catch up (\"refresh\", "
         "\"update\" it — new, changed or retired behaviour) → `references/refresh.md`",
         IF_LINE,
-        # P8.5 D2 (SI-P85-3, SI-P85-6): the unregistered doc is detected at step 1
-        "No `role:qa_acceptance` row (a `parent baseline` row is the parent's doc, not this "
-        "module's): run `modsys roles add qa_acceptance <module> --dry-run --json`, which "
-        "writes nothing.",
+        # P8.5 D2 (SI-P85-3, SI-P85-6, fix round I-2): the labels and the dry run's statuses
+        "A `child role:qa_acceptance` row with `exists: true` is a split child's own doc: "
+        "refresh it the same way.",
+        "A `parent baseline role:qa_acceptance` row is the parent's doc, not this module's.",
+        "Without one of those rows, run `modsys roles add qa_acceptance <module> --dry-run "
+        "--json`, which writes nothing, and read its status.",
         "Status `registered` means the module's `roles/qa_acceptance.md` is on disk and the "
-        "registry does not list it: that file is the doc to refresh, so take the refresh route "
-        "and never write a new doc over it.",
+        "registry does not list it: that file is the doc to refresh, so read it, note the "
+        "highest `AC-NNN` in it, take the refresh route and never write a new doc over it.",
+        "Status `exists` means the registry lists a doc that is on disk: refresh it, so read it "
+        "and note the highest `AC-NNN` in it.",
         "Status `created` means there is no doc: take the create route.",
+        "Status `missing` means the registry lists a path with no file: the create route "
+        "writes the doc at that path and adds no second registry entry.",
         "Follow the scenario's file (the Route above)."],
     # P8.5 D2 (SI-P85-4): both lead sentences key on "the doc to refresh step 1 names"
     "references/create.md": [
         "Step 5 of `qa-acceptance-baseline` — write the doc — when step 1 found no doc to "
         "refresh: no `role:qa_acceptance` row with `exists: true`, and the dry run said "
-        "`created` (when it names a doc to refresh, follow `references/refresh.md` instead)."],
+        "`created` or `missing` (when it names a doc to refresh, follow `references/refresh.md` "
+        "instead)."],
     "references/refresh.md": [
         "Step 5 of `qa-acceptance-baseline` — write the doc — when step 1 names the doc to "
-        "refresh (a `role:qa_acceptance` row with `exists: true`, or the unregistered doc its "
-        "dry run reported as `registered`) and you noted its highest `AC-NNN` (when step 1 "
+        "refresh (a `role:qa_acceptance` row with `exists: true`, or the doc its "
+        "dry run reported as `registered` or `exists`) and you noted its highest `AC-NNN` (when step 1 "
         "names no doc to refresh, follow `references/create.md` instead).",
         "The doc is not in the registry (step 1's dry run said `registered`): after Gate 3, "
         "run `modsys roles add qa_acceptance <module> --json`.",

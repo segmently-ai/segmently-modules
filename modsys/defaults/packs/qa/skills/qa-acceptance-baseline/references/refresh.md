@@ -1,8 +1,8 @@
 # refresh: a module whose baseline must catch up
 
 Step 5 of `qa-acceptance-baseline` — write the doc — when step 1 names the doc to refresh (a
-`role:qa_acceptance` row with `exists: true`, or the unregistered doc its dry run reported as
-`registered`) and you noted its highest `AC-NNN` (when step 1 names no doc to refresh, follow
+`role:qa_acceptance` row with `exists: true`, or the doc its dry run reported as
+`registered` or `exists`) and you noted its highest `AC-NNN` (when step 1 names no doc to refresh, follow
 `references/create.md` instead).
 
 1. Ids, when refreshing: an unchanged criterion keeps its id and text; a changed one keeps its

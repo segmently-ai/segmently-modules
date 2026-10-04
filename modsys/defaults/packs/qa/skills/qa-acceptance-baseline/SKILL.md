@@ -27,8 +27,8 @@ never change, so task-level criteria (`qa-acceptance`) and tests can point at th
 
 Writes: the module's `qa_acceptance` doc, and its entry in the module's registry
 `context_files` when the doc is new. The entry is also written for a doc that is on disk and that
-the registry does not list, and a new doc is never written over it. It never edits code or another doc, never edits a
-`*.legacy.md` file, and never commits.
+the registry does not list, and a new doc is never written over it. It never edits code or
+another doc, never edits a `*.legacy.md` file, and never commits.
 
 If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
 
@@ -55,11 +55,18 @@ If a `modsys` command exits 1 or 2, read `references/exit-codes.md`.
    A `role:qa_acceptance` row with `exists: true` is the doc to refresh; read it and note the
    highest `AC-NNN` in it.
 
-   No `role:qa_acceptance` row (a `parent baseline` row is the parent's doc, not this
-   module's): run `modsys roles add qa_acceptance <module> --dry-run --json`, which writes
-   nothing. Status `registered` means the module's `roles/qa_acceptance.md` is on disk and the
-   registry does not list it: that file is the doc to refresh, so take the refresh route and
-   never write a new doc over it. Status `created` means there is no doc: take the create route.
+   A `child role:qa_acceptance` row with `exists: true` is a split child's own doc: refresh it
+   the same way. A `parent baseline role:qa_acceptance` row is the parent's doc, not this
+   module's.
+
+   Without one of those rows, run `modsys roles add qa_acceptance <module> --dry-run --json`,
+   which writes nothing, and read its status. Status `registered` means the module's
+   `roles/qa_acceptance.md` is on disk and the registry does not list it: that file is the doc
+   to refresh, so read it, note the highest `AC-NNN` in it, take the refresh route and never
+   write a new doc over it. Status `exists` means the registry lists a doc that is on disk:
+   refresh it, so read it and note the highest `AC-NNN` in it. Status `created` means there is
+   no doc: take the create route. Status `missing` means the registry lists a path with no
+   file: the create route writes the doc at that path and adds no second registry entry.
 
 2. Read every doc of the module fully and skim its code files for the interfaces the docs name
    (entry points, commands, messages, limits).

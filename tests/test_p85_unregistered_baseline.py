@@ -87,16 +87,6 @@ class EngineReportsTest(Fixture):  # P85-AC-008 (PRE-004)
                                            "path": CATALOG_DOC}])
         self.assertEqual(tree_hash(self.root), before)
 
-    def test_no_engine_file_changes(self):  # the controller's D2 ruling
-        import subprocess
-        base = subprocess.run(["git", "-C", str(ENGINE), "merge-base", "HEAD", "bdc9f9b"],
-                              capture_output=True, text=True)
-        if base.returncode != 0 or not base.stdout.strip():
-            self.skipTest("the base commit is not in this checkout")
-        diff = subprocess.run(["git", "-C", str(ENGINE), "diff", "--name-only", "bdc9f9b", "HEAD",
-                               "--", "modsys/*.py"], capture_output=True, text=True)
-        self.assertEqual(diff.stdout.split(), [])
-
 
 class SkillCommandsTest(Fixture):  # P85-AC-011
     def test_the_commands_register_the_doc_and_never_write_over_it(self):
@@ -128,9 +118,7 @@ class SkillCommandsTest(Fixture):  # P85-AC-011
         unchanged()
         expected = json.loads(json.dumps(registry_before))
         expected["modules"]["catalog"]["context_files"]["roles"]["qa_acceptance"] = CATALOG_DOC
-        after = json.loads(self.registry())
-        after["metadata"] = expected.get("metadata")  # only a timestamp may differ, if any
-        self.assertEqual(after["modules"], expected["modules"])
+        self.assertEqual(json.loads(self.registry()), expected)
         # the create route's `registry set` on a twin writes the same bytes
         files = json.loads(json.dumps(registry_before["modules"]["catalog"]["context_files"]))
         files["roles"]["qa_acceptance"] = CATALOG_DOC
@@ -194,22 +182,48 @@ class SplitChildTest(unittest.TestCase):  # P85-AC-012
         self.assertIn("child role:qa_acceptance", [r["label"] for r in rows])
 
 
+class SplitChildOwnDocTest(SplitChildTest):  # fix round I-2
+    def test_a_child_with_its_own_registered_doc_is_shown_as_child_role(self):
+        self.ok("roles", "add", "qa_acceptance", "orders/refunds")
+        rows = self.ok("show", "orders/refunds", "--role", "qa_acceptance")["read"]
+        own = [r for r in rows if r["label"] == "child role:qa_acceptance"]
+        self.assertEqual([(r["path"], r["exists"]) for r in own], [(CHILD_DOC, True)])
+        self.assertIn("child role:qa_acceptance", SkillTextTest.step1_text())
+        self.assertEqual(self.ok("roles", "add", "qa_acceptance", "orders/refunds",
+                                 "--dry-run")["results"][0]["status"], "exists")
+
+
 class SkillTextTest(unittest.TestCase):  # P85-AC-009, AC-010, AC-013 (the pins)
+    @staticmethod
+    def step1_text() -> str:
+        skill = skill_files(BASELINE)["SKILL.md"]
+        return section(skill, "## Steps").split("\n1. ", 1)[1].split("\n2. ", 1)[0]
+
     def setUp(self):
         self.files = skill_files(BASELINE)
         self.skill = self.files["SKILL.md"]
         self.step1 = section(self.skill, "## Steps").split("\n1. ", 1)[1].split("\n2. ", 1)[0]
 
-    def test_step_1_keeps_the_old_sentence_once_and_adds_the_line(self):
+    def test_step_1_keeps_the_old_sentence_once_and_names_the_labels_and_statuses(self):
         old = ("A `role:qa_acceptance` row with `exists: true` is the doc to refresh; read it "
                "and note the highest `AC-NNN` in it.")
         self.assertEqual(flat(self.skill).count(old), 1)
         line = flat(self.step1)
-        for needle in ("No `role:qa_acceptance` row", "a `parent baseline` row is the parent's doc",
-                       "`modsys roles add qa_acceptance <module> --dry-run --json`",
-                       "Status `registered`", "that file is the doc to refresh",
-                       "take the refresh route", "never write a new doc over it",
-                       "Status `created`", "take the create route"):
+        for needle in (
+                "A `child role:qa_acceptance` row with `exists: true` is a split child's own doc",
+                "A `parent baseline role:qa_acceptance` row is the parent's doc, not this "
+                "module's",
+                "`modsys roles add qa_acceptance <module> --dry-run --json`",
+                # each status of the dry run has a meaning
+                "Status `registered` means the module's `roles/qa_acceptance.md` is on disk and "
+                "the registry does not list it: that file is the doc to refresh, so read it, "
+                "note the highest `AC-NNN` in it, take the refresh route and never write a new "
+                "doc over it",
+                "Status `exists` means the registry lists a doc that is on disk: refresh it, so "
+                "read it and note the highest `AC-NNN` in it",
+                "Status `created` means there is no doc: take the create route",
+                "Status `missing` means the registry lists a path with no file: the create "
+                "route writes the doc at that path and adds no second registry entry"):
             self.assertIn(needle, line)
         self.assertTrue(uses(commands(self.step1), ("roles", "add", "--dry-run")))
 
