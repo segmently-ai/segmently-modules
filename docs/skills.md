@@ -208,12 +208,16 @@ session's own sandbox. They are managed files, like the skill copies: the first 
 `# modsys-managed:` marker (pack, skill, version and the SHA-256 of the rest),
 `packs sync --check` reports one that is stale, `data.agent_files` lists them in `--json`, and a
 skill that no enabled pack declares any more (or `packs sync --remove --agent codex`) takes its
-file away. A locally edited file, a file without the marker and a symlinked or non-directory
-`.codex/agents` are conflicts that are never written over or through, and nothing else under
-`.codex/` is read or changed; a sync without `codex` never opens `.codex/`. An ejected skill's agent file follows the
-ejected copy's `references/procedure.md`. Claude Code with `builtin_delivery = "repo"` has no
-agent — only the plugin ships them — so there the skills fall back to running their steps in your
-conversation.
+file away. A locally edited file and a file without the marker are conflicts that are never
+written over. Nothing is written or removed through a symlinked or non-directory
+`.codex/agents`: while the repository wants the agents, all three are conflicts; when it wants
+none (`core` disabled, a repository `core` without the wrapped skills, or `--remove`), only an
+agent file with the marker behind a symlinked `.codex/agents` is one — it cannot be removed
+through the link — and otherwise that directory is left alone, with no agent rows. Nothing else
+under `.codex/` is read or changed, and a sync without `codex` never opens `.codex/`. An ejected
+skill's agent file follows the ejected copy's `references/procedure.md`. Claude Code with
+`builtin_delivery = "repo"` has no agent — only the plugin ships them — so there the skills fall
+back to running their steps in your conversation.
 
 Also in these skills: `module-discover` goes from the candidates to the code
 (`code-map files`, then `discover --files … --task-file …`) and reads the `children` list of a

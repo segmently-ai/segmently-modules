@@ -500,6 +500,9 @@ def agent_hint(ws, r) -> str:
         return (f"restore its first line (git checkout -- {here}) or "
                 + ("delete the file" if reason != AGENT_BAD_MARKER
                    else "move the file away, then sync again"))
+    if reason.startswith(".codex") and " cannot remove " in reason:  # a file behind a symlink
+        return ("delete that file where the symlink points, or make .codex/agents a plain "
+                "directory, then sync again")
     if reason.startswith(".codex"):
         return "make .codex/agents a plain directory, then sync again"
     other = re.fullmatch(r"managed for pack '(.*)', skill '(.*)'", reason)

@@ -30,10 +30,12 @@ when ejected), under either delivery — each a managed file whose first line is
 whole (temp file + rename). Their statuses (`plan_agent_files`): `created`, `unchanged` (the
 bytes equal what would be written), `updated` (marker intact, content or marker stale),
 `removed` (a managed file whose skill no longer has a procedure: deleted), `conflict` (no
-marker, a damaged one, another skill's, a local edit, a symlink or directory at the path, or a
-symlinked or non-directory `.codex/agents`: all three, wanted or not — nothing is written through
-it). A skill whose source
-is not loadable keeps its agent file as it is (the skill's own row reports it); a file without a
+marker, a damaged one, another skill's, a local edit, a symlink or directory at the path). A
+symlinked or non-directory `.codex/agents` (or `.codex`) is never written or removed through:
+while the repository wants the agents, all three are a `conflict`; when it wants none, a
+read-only look behind a symlink makes each agent file there with a marker line a `conflict` (it
+cannot be removed through the symlink), and nothing else gives a row. A skill whose source is
+not loadable keeps its agent file as it is (the skill's own row reports it); a file without a
 marker is never removed; nothing else under `.codex/` is read or written."""
 import contextlib
 import hashlib
@@ -535,18 +537,39 @@ def read_agent_marker(data: bytes) -> tuple[str, dict | None, bytes]:
     return "ok", marker, rest
 
 
-def codex_dir_problem(root: Path) -> str | None:
-    """Why `.codex/agents` cannot hold the agent files: it, or `.codex`, is a symlink or not a
-    directory (nothing is written through a symlink)."""
+def codex_dir_problem(root: Path) -> tuple[str, bool] | None:
+    """(the path, is it a symlink) when `.codex/agents`, or `.codex`, cannot hold the agent
+    files: it is a symlink or not a directory — nothing is written or removed through it."""
     path = root
     for part in CODEX_AGENTS.split("/"):
         path = path / part
         rel = path.relative_to(root).as_posix()
         if path.is_symlink():
-            return f"{rel} is a symlink — packs sync writes nothing through it"
+            return rel, True
         if os.path.lexists(path) and not path.is_dir():
-            return f"{rel} is not a directory"
+            return rel, False
     return None
+
+
+def _behind_symlink(base: Path, rel: str) -> list[AgentPlan]:
+    """No agent wanted and `rel` (`.codex/agents` or `.codex`) a symlink: a read-only look
+    behind it. Each agent file there whose first line is a modsys marker line (a damaged one
+    too) is a `conflict` — packs sync would remove it, but never through a symlink; a file
+    without one is not ours and gives no row."""
+    plans = []
+    for name in sorted(SKILL_AGENTS):
+        path = base / f"{name}.toml"
+        if not os.path.lexists(path) or path.is_symlink() or not path.is_file():
+            continue
+        kind, marker, _ = read_agent_marker(path.read_bytes())
+        if kind == "none":
+            continue
+        who = ((marker["pack"], marker["skill"], marker.get("version")) if kind == "ok"
+               else (None, SKILL_AGENTS[name]["skill"], None))
+        plans.append(AgentPlan(name, path, "conflict", *who,
+                               reason=f"{rel} is a symlink — packs sync cannot remove "
+                                      f"{path.name} through it"))
+    return plans
 
 
 def agent_procedures(ws, sources: dict[str, Source]) -> tuple[dict[str, tuple], set[str]]:
@@ -622,17 +645,26 @@ def plan_agent_files(ws, sources: dict[str, Source] | None, remove: bool = False
                      ) -> list[AgentPlan]:
     """Every Codex agent file's plan, by name: the agents to write (`agent_procedures` of the
     `sources` the skill copies come from) and the managed files nobody wants any more —
-    `remove` (`packs sync --remove --agent codex`): every managed file. A symlinked or
-    non-directory `.codex/agents` makes all three files a `conflict`, wanted or not (P84-AC-007:
-    nothing is read, written or removed through it)."""
+    `remove` (`packs sync --remove --agent codex`): every managed file. When `.codex/agents`
+    (or `.codex`) is a symlink or not a directory, nothing is written or removed through it
+    (P84-AC-007, amended): while the repository wants the agents (one to write, or one held by
+    its skill's problem) all three files are a `conflict`; when it wants none (core disabled, a
+    repository `core` without the wrapped skills, `remove`) only a marked file behind a
+    symlink is one (`_behind_symlink`) — a regular file has nothing behind it."""
     base = ws.root / CODEX_AGENTS
     wanted, held = ({}, set()) if remove else agent_procedures(ws, sources or {})
     problem = codex_dir_problem(ws.root)
+    if problem and not (wanted or held):
+        rel, link = problem
+        return _behind_symlink(base, rel) if link else []
     if problem:
+        rel, link = problem
+        reason = (f"{rel} is a symlink — packs sync writes nothing through it" if link
+                  else f"{rel} is not a directory")
         return [AgentPlan(name, base / f"{name}.toml", "conflict",
                           *((wanted[name][0].pack, wanted[name][0].skill,
                              wanted[name][0].version) if name in wanted
-                            else (None, SKILL_AGENTS[name]["skill"], None)), reason=problem)
+                            else (None, SKILL_AGENTS[name]["skill"], None)), reason=reason)
                 for name in sorted(SKILL_AGENTS)]
     plans = []
     for name in sorted(SKILL_AGENTS):

@@ -36,8 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whenever the agents they sync for include `codex`, under either delivery: managed files whose
   first line is a `# modsys-managed:` marker, listed in `data.agent_files` (after `data.skills`;
   `data.summary` still counts the skills), checked by `--check`, removed with their skill or by
-  `--remove --agent codex`; a locally edited or foreign file and a symlinked or non-directory
-  `.codex/agents` are conflicts. Without `codex` nothing under `.codex/` is read or written.
+  `--remove --agent codex`; a locally edited or foreign file is a conflict, and nothing is
+  written or removed through a symlinked or non-directory `.codex/agents` (all three files are
+  conflicts while the agents are wanted; when none is, only a file with the marker behind a
+  symlink is one). Without `codex` nothing under `.codex/` is read or written.
 - The `modsys` plugin ships the read-only subagent `module-chooser` (`modsys:module-chooser`; tools
   Read, Grep, Glob; `model: sonnet` only for a call without a model): the build copies the tracked
   files directly in `modsys/defaults/agents/` into the plugin's `agents/`; the manifests are
