@@ -142,7 +142,8 @@ class BuildTest(unittest.TestCase):  # P82-AC-030, 031
         proc = run_tool(eng, "build_plugins", "--out", str(out))
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(sorted(p.name for p in (out / "modsys/agents").iterdir()),
-                         ["extra.md", "module-chooser.md"])
+                         ["extra.md", "module-chooser.md", "module-discover-agent.md",
+                          "module-research-agent.md", "module-scout-agent.md"])  # P8.4 D3
         self.assertFalse((out / "modsys/runtime/modsys/defaults/agents/local.md").exists())
         # the count grows by the shipped agent file and its runtime copy
         self.assertEqual(self.count(proc.stdout, "modsys"),
@@ -172,8 +173,8 @@ class DocsTest(unittest.TestCase):  # P82-AC-033
         for needle in ("`modsys:module-chooser`", "Read, Grep, Glob", "model: <search.claude_model>",
                        "`model: sonnet`", "only a call without a model",
                        "modsys templates override choose/rules.md",
-                       "replaces the agent file in the plugin cache", "Codex ignores `agents/`",
-                       'builtin_delivery = "repo"'):
+                       "replaces the agent file in the plugin cache",
+                       'builtin_delivery = "repo"'):  # "Codex ignores `agents/`": P84-AC-010
             self.assertIn(needle, text)
 
     def test_readme_and_changelog(self):

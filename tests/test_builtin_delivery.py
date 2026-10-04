@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import modsys
 from tests.helpers import copy_fixture, init_git, run, run_json
 
 CORE = ["module-adopt", "module-create", "module-discover", "module-init", "module-lint",
@@ -293,15 +294,24 @@ class PluginTextsTest(DeliveryRepo):  # final review M-14, M-15 (T-9)
     def test_nothing_to_copy_says_where_the_skills_come_from(self):
         shutil.rmtree(self.root / ".modsys/packs/team")
         self.config('"plugin"')
-        code, out, err = run("packs", "sync", *AGENTS, *self.R)
+        note = (f'note: builtin_delivery = "plugin": the built-in skills come from {PLUGINS} — '
+                'packs sync copies none of them')  # and no Copilot note: nothing is in two places
+        code, out, err = run("packs", "sync", "--agent", "claude", *self.R)
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(out.splitlines(), [
             'nothing to copy: the built-in skills come from the modsys plugins '
             '(builtin_delivery = "plugin"); a repository pack\'s skills are copied (add one: '
-            'modsys packs new ID --skill NAME)',
-            f'note: builtin_delivery = "plugin": the built-in skills come from {PLUGINS} — '
-            'packs sync copies none of them',  # and no Copilot note: nothing is in two places
+            'modsys packs new ID --skill NAME)', note,
             "packs sync: 0 created, 0 updated, 0 unchanged, 0 removed, 0 conflict, 0 invalid"])
+        # with codex the agent files are the rows (P8.4 D3: written under either delivery)
+        code, out, err = run("packs", "sync", *AGENTS, *self.R)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(out.splitlines(), [
+            f"created    codex   .codex/agents/{name}.toml  (core {modsys.__version__})"
+            for name in ("module-discover-agent", "module-research-agent", "module-scout-agent")
+        ] + [note, "packs sync: 0 created, 0 updated, 0 unchanged, 0 removed, 0 conflict, "
+                   "0 invalid; agent files: 3 created, 0 updated, 0 unchanged, 0 removed, "
+                   "0 conflict"])
 
 
 class TransitionsTest(DeliveryRepo):  # P6-AC-026

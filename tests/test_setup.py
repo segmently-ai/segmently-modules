@@ -149,7 +149,7 @@ class EmptyRepositoryTest(unittest.TestCase):  # P61-AC-016, P61-AC-017, P61-AC-
         flags = ("--agent", "claude", "--agent", "codex")
         self.assertEqual(run("setup", *flags, *self.R), (0, "\n".join([
             "init        created      .modsys/config.toml, modules/registry.json, .gitignore",
-            "packs sync  created      18 skill copies",
+            "packs sync  created      18 skill copies, 3 agent files",  # codex's (P8.4 D3)
             COPILOT,
             "agents-md   created      CLAUDE.md, AGENTS.md",
             "agents      claude, codex",
@@ -157,7 +157,7 @@ class EmptyRepositoryTest(unittest.TestCase):  # P61-AC-016, P61-AC-017, P61-AC-
         before = snap(self.root)
         self.assertEqual(run("setup", *flags, *self.R), (0, "\n".join([
             "init        exists       .modsys/config.toml, modules/registry.json, .gitignore",
-            "packs sync  unchanged    18 skill copies",
+            "packs sync  unchanged    18 skill copies, 3 agent files",
             COPILOT,
             "agents-md   unchanged    CLAUDE.md, AGENTS.md",
             "agents      claude, codex",
@@ -194,7 +194,7 @@ class EmptyRepositoryTest(unittest.TestCase):  # P61-AC-016, P61-AC-017, P61-AC-
         self.assertEqual(snap(self.root), before)
         self.assertEqual(run("setup", "--dry-run", *self.R), (0, "\n".join([
             "init        would create .modsys/config.toml, modules/registry.json, .gitignore",
-            "packs sync  would create 18 skill copies",
+            "packs sync  would create 18 skill copies, 3 agent files",
             COPILOT,
             "agents-md   would create CLAUDE.md, AGENTS.md",
             "agents      claude, codex",
@@ -341,7 +341,11 @@ class BlockTargetsTest(unittest.TestCase):  # final review M-2: the files that h
         self.assertEqual(snap(self.root), before)
         data = setup_json(self.root)
         self.assertEqual((data["agents"], data["targets"]), (["codex"], ["GEMINI.md"]))
-        self.assertEqual(statuses(data), ["exists", "unchanged", "updated"])
+        # the inferred codex (a marker in .agents/skills) gets its agent files (P84-AC-008)
+        self.assertEqual(statuses(data), ["exists", "created", "updated"])
+        self.assertEqual({r["status"] for r in detail(data, "packs sync")["skills"]},
+                         {"unchanged"})
+        self.assertEqual(len(detail(data, "packs sync")["agent_files"]), 3)
         self.assertEqual((self.root / "GEMINI.md").read_text(encoding="utf-8"), block(self.root))
         for absent in ("AGENTS.md", "CLAUDE.md"):
             self.assertFalse((self.root / absent).exists(), absent)

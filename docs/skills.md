@@ -32,7 +32,7 @@ Then copy the skills where the agents read them, tell the agents about them, and
 modsys packs list                                          # core, qa, ui … built-in
 modsys packs sync --agent claude --agent codex             # 12 skills × 2 agents: created
 modsys agents-md --target CLAUDE.md --target AGENTS.md     # the managed block lists the skills
-git add .claude/skills .agents/skills CLAUDE.md AGENTS.md
+git add .claude/skills .agents/skills .codex/agents CLAUDE.md AGENTS.md
 ```
 
 `modsys packs sync --check --agent claude --agent codex` in CI fails when a copy is stale. An
@@ -192,8 +192,28 @@ is thin; the rules it follows are in the work order. The agent reads the whole w
 context: on a registry of about 170 modules (an 80 KB order) a call costs about 55k tokens with the
 plugin's agent and about 47k with `codex exec` (measured 2026-10-03). To change how modules are chosen, use
 `modsys templates override choose/rules.md`, not the agent file: every plugin update replaces the
-agent file in the plugin cache. Codex ignores `agents/`, and Claude Code with `builtin_delivery =
-"repo"` (no plugin skills) uses the skills' fallback.
+agent file in the plugin cache.
+
+**The skills' agents.** In all, the `modsys` plugin ships four agents: `module-chooser` above,
+and `module-discover-agent`, `module-scout-agent` and `module-research-agent`
+(`modsys:module-discover-agent`, …; tools Read, Grep, Glob, Bash, Agent; `model: sonnet`). The
+plugin build generates each of the three from its skill's `references/procedure.md` — the
+procedure is the agent's whole body, after its front matter — so a read-heavy skill can run in
+the agent's own context and hand back only its report. Codex gets the same three agents from
+`modsys packs sync` and `modsys setup`, whenever the agents they sync for include `codex` (under
+either delivery: a plugin cannot place them): `.codex/agents/module-discover-agent.toml`,
+`module-scout-agent.toml` and `module-research-agent.toml`, each with `name`, `description` and
+`developer_instructions` (the procedure) and no `sandbox_mode`, so the agent runs in the
+session's own sandbox. They are managed files, like the skill copies: the first line is a
+`# modsys-managed:` marker (pack, skill, version and the SHA-256 of the rest),
+`packs sync --check` reports one that is stale, `data.agent_files` lists them in `--json`, and a
+skill that no enabled pack declares any more (or `packs sync --remove --agent codex`) takes its
+file away. A locally edited file, a file without the marker and a symlinked or non-directory
+`.codex/agents` are conflicts that are never written over or through, and nothing else under
+`.codex/` is read or changed; a sync without `codex` never opens `.codex/`. An ejected skill's agent file follows the
+ejected copy's `references/procedure.md`. Claude Code with `builtin_delivery = "repo"` has no
+agent — only the plugin ships them — so there the skills fall back to running their steps in your
+conversation.
 
 Also in these skills: `module-discover` goes from the candidates to the code
 (`code-map files`, then `discover --files … --task-file …`) and reads the `children` list of a

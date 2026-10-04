@@ -20,8 +20,22 @@ sha256}} is written LAST: after an interrupted update, a file that already equal
 not a local edit, so the next run resumes; a first write (`created`) that fails or is interrupted
 removes the directory it made, so the next run creates the skill again. Directories without a
 marker are never read beyond the existence check; a symlink inside a destination is never
-written through."""
+written through.
+
+For `codex` (P8.4 D3) it also writes the agents of the agent table (`SKILL_AGENTS`) as
+`<root>/.codex/agents/<name>.toml` — `name`, `description` and `developer_instructions` = the
+skill's `references/procedure.md` from the source the skill copies come from (an ejected copy's
+when ejected), under either delivery — each a managed file whose first line is the marker
+`# modsys-managed: {schema, pack, skill, version, sha256 of the bytes after that line}`, written
+whole (temp file + rename). Their statuses (`plan_agent_files`): `created`, `unchanged` (the
+bytes equal what would be written), `updated` (marker intact, content or marker stale),
+`removed` (a managed file whose skill no longer has a procedure: deleted), `conflict` (no
+marker, a damaged one, another skill's, a local edit, a symlink or directory at the path, or a
+symlinked or non-directory `.codex/agents` — nothing is written through it). A skill whose source
+is not loadable keeps its agent file as it is (the skill's own row reports it); a file without a
+marker is never removed; nothing else under `.codex/` is read or written."""
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -31,9 +45,10 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from modsys.skills import (AGENT_DIRS, DEFAULT_AGENTS, EJECTED, MANAGED, ejected_copies,
-                           ejected_symlinks, pack_skills, read_ejected, sha256_file, source_hashes,
-                           source_problem)
+from modsys.output import UsageError
+from modsys.skills import (AGENT_DIRS, CODEX_AGENTS, DEFAULT_AGENTS, EJECTED, MANAGED, PROCEDURE,
+                           SKILL_AGENTS, ejected_copies, ejected_symlinks, pack_skills,
+                           read_ejected, sha256_file, source_hashes, source_problem)
 
 MANAGED_SCHEMA = "modsys.managed/1"
 STATUSES = ("created", "updated", "unchanged", "removed", "conflict", "invalid")
@@ -381,11 +396,13 @@ def managed_agents(root: Path) -> list[str]:
     return out
 
 
-def plan_sync(ws, agents: list[str], plugin: bool = False) -> list[Plan]:
+def plan_sync(ws, agents: list[str], plugin: bool = False,
+              sources: dict[str, Source] | None = None) -> list[Plan]:
     """Every (agent, skill) plan, agents in the given order, skills by id; an agent whose
     directory is the same real directory as an earlier agent's repeats that agent's plans
-    with `same_as` (applied once). `plugin`: `builtin_delivery = "plugin"` (`plugin_sources`)."""
-    sources = skill_sources(ws)
+    with `same_as` (applied once). `plugin`: `builtin_delivery = "plugin"` (`plugin_sources`).
+    `sources`: `skill_sources(ws)` when the caller already has them."""
+    sources = skill_sources(ws) if sources is None else sources
     if plugin:
         sources = plugin_sources(ws, sources)
     plans, seen = [], {}
@@ -436,3 +453,219 @@ def row(ws, plan: Plan) -> dict:
     if plan.same_as:
         out["same_as"] = plan.same_as
     return out
+
+
+# --- the Codex agent files (P8.4 D3) -------------------------------------------------------------
+
+AGENT_STATUSES = ("created", "updated", "unchanged", "removed", "conflict")
+AGENT_MARKER = "# modsys-managed: "  # the first line of every agent file packs sync manages
+AGENT_NOT_MANAGED = "not managed by modsys (its first line is no modsys-managed marker)"
+AGENT_BAD_MARKER = "its modsys-managed first line is not a valid marker"
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+@dataclass
+class AgentPlan:
+    """The decided status of one Codex agent file and the bytes a write puts there."""
+    name: str
+    path: Path
+    status: str
+    pack: str | None = None
+    skill: str | None = None
+    version: str | None = None
+    reason: str | None = None
+    data: bytes | None = None  # created / updated: the whole file
+
+
+def toml_string(text: str, multiline: bool = False) -> str:
+    """`text` as a TOML basic string that `tomllib` reads back exactly: a backslash, a control
+    character (tab and, multi-line, newline aside) and a quote are escaped — in a multi-line
+    string only a quote that another quote follows, or the last character, so three never
+    meet. A multi-line string opens with three double quotes and a newline (TOML drops a
+    newline right after them)."""
+    out = []
+    for i, ch in enumerate(text):
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == '"':
+            escape = not multiline or i + 1 == len(text) or text[i + 1] == '"'
+            out.append('\\"' if escape else '"')
+        elif ch == "\t" or (ch == "\n" and multiline):
+            out.append(ch)
+        elif ch in "\n\r":
+            out.append("\\n" if ch == "\n" else "\\r")
+        elif ord(ch) < 0x20 or ch == "\x7f":
+            out.append(f"\\u{ord(ch):04x}")
+        else:
+            out.append(ch)
+    body = "".join(out)
+    return f'"""\n{body}"""' if multiline else f'"{body}"'
+
+
+def codex_agent(name: str, procedure: str, pack: str | None, skill: str,
+                version: str | None) -> bytes:
+    """The bytes of `.codex/agents/<name>.toml`: the marker line, then `name`, `description`
+    (the agent table's) and `developer_instructions` (`procedure`, exactly)."""
+    body = (f"name = {toml_string(name)}\n"
+            f"description = {toml_string(SKILL_AGENTS[name]['description'])}\n"
+            f"developer_instructions = {toml_string(procedure, multiline=True)}\n"
+            ).encode("utf-8")
+    marker = {"schema": MANAGED_SCHEMA, "pack": pack, "skill": skill, "version": version,
+              "sha256": hashlib.sha256(body).hexdigest()}
+    return (AGENT_MARKER + json.dumps(marker) + "\n").encode("utf-8") + body
+
+
+def read_agent_marker(data: bytes) -> tuple[str, dict | None, bytes]:
+    """(`none` | `bad` | `ok`, the marker, the bytes after its line) of an agent file's bytes:
+    `none` when the first line is not a modsys-managed marker line at all."""
+    line, _, rest = data.partition(b"\n")
+    if not line.startswith(AGENT_MARKER.rstrip().encode()):
+        return "none", None, rest
+    try:
+        marker = json.loads(line[len(AGENT_MARKER.rstrip()):].decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return "bad", None, rest
+    if (not isinstance(marker, dict) or marker.get("schema") != MANAGED_SCHEMA
+            or not isinstance(marker.get("pack"), str) or not isinstance(marker.get("skill"), str)
+            or not isinstance(marker.get("version"), (str, type(None)))
+            or not isinstance(marker.get("sha256"), str)
+            or not _SHA256.fullmatch(marker["sha256"])):
+        return "bad", None, rest
+    return "ok", marker, rest
+
+
+def codex_dir_problem(root: Path) -> str | None:
+    """Why `.codex/agents` cannot hold the agent files: it, or `.codex`, is a symlink or not a
+    directory (nothing is written through a symlink)."""
+    path = root
+    for part in CODEX_AGENTS.split("/"):
+        path = path / part
+        rel = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            return f"{rel} is a symlink — packs sync writes nothing through it"
+        if os.path.lexists(path) and not path.is_dir():
+            return f"{rel} is not a directory"
+    return None
+
+
+def agent_procedures(ws, sources: dict[str, Source]) -> tuple[dict[str, tuple], set[str]]:
+    """({agent: (its skill's source, the procedure text)} of the agents to write, the agents
+    whose skill's source is not loadable — their files stay as they are). A skill no pack
+    declares, or one without a procedure, has no agent. A procedure that cannot be read, or
+    is not UTF-8, is exit 2."""
+    wanted, held = {}, set()
+    for name, spec in sorted(SKILL_AGENTS.items()):
+        src = sources.get(spec["skill"])
+        if src is None:
+            continue
+        if src.problem or src.blocked:
+            held.add(name)
+            continue
+        if PROCEDURE not in src.files:
+            continue
+        path = src.dir / PROCEDURE
+        try:
+            wanted[name] = (src, path.read_bytes().decode("utf-8"))
+        except UnicodeDecodeError:
+            raise UsageError(f"cannot read {ws.rel(path)}: not valid UTF-8") from None
+    return wanted, held
+
+
+def _plan_agent(path: Path, name: str, src: Source, procedure: str) -> AgentPlan:
+    data = codex_agent(name, procedure, src.pack, src.skill, src.version)
+    plan = AgentPlan(name, path, "created", src.pack, src.skill, src.version, data=data)
+    if not os.path.lexists(path):
+        return plan
+    plan.status, plan.data = "conflict", None
+    if path.is_symlink() or not path.is_file():
+        plan.reason = ("the destination is a symlink" if path.is_symlink()
+                       else "the destination is not a file")
+        return plan
+    old = path.read_bytes()
+    if old == data:
+        plan.status = "unchanged"
+        return plan
+    kind, marker, rest = read_agent_marker(old)
+    if kind == "none":
+        plan.reason = AGENT_NOT_MANAGED
+    elif kind == "bad":
+        plan.reason = AGENT_BAD_MARKER
+    elif (marker["pack"], marker["skill"]) != (src.pack, src.skill):
+        plan.reason = f"managed for pack '{marker['pack']}', skill '{marker['skill']}'"
+    elif (hashlib.sha256(rest).hexdigest() != marker["sha256"]
+          and rest != data.partition(b"\n")[2]):
+        plan.reason = f"{path.name} (locally edited)"
+    else:
+        plan.status, plan.data = "updated", data
+    return plan
+
+
+def _plan_agent_orphan(path: Path, name: str) -> AgentPlan | None:
+    """`removed` (or `conflict`) for a managed agent file nobody wants; None for no file, or one
+    without a marker line (never ours to remove)."""
+    if not os.path.lexists(path) or path.is_symlink() or not path.is_file():
+        return None
+    kind, marker, rest = read_agent_marker(path.read_bytes())
+    if kind == "none":
+        return None
+    if kind == "bad":
+        return AgentPlan(name, path, "conflict", skill=SKILL_AGENTS[name]["skill"],
+                         reason=f"{AGENT_BAD_MARKER} (not removed)")
+    plan = AgentPlan(name, path, "removed", marker["pack"], marker["skill"], marker.get("version"))
+    if hashlib.sha256(rest).hexdigest() != marker["sha256"]:
+        plan.status, plan.reason = "conflict", f"{path.name} (locally edited; not removed)"
+    return plan
+
+
+def plan_agent_files(ws, sources: dict[str, Source] | None, remove: bool = False
+                     ) -> list[AgentPlan]:
+    """Every Codex agent file's plan, by name: the agents to write (`agent_procedures` of the
+    `sources` the skill copies come from) and the managed files nobody wants any more —
+    `remove` (`packs sync --remove --agent codex`): every managed file. A symlinked or
+    non-directory `.codex/agents` makes every row a `conflict` (the agents to write; with
+    `remove`, all of the table)."""
+    base = ws.root / CODEX_AGENTS
+    wanted, held = ({}, set()) if remove else agent_procedures(ws, sources or {})
+    problem = codex_dir_problem(ws.root)
+    if problem:
+        return [AgentPlan(name, base / f"{name}.toml", "conflict",
+                          *((wanted[name][0].pack, wanted[name][0].skill,
+                             wanted[name][0].version) if name in wanted
+                            else (None, SKILL_AGENTS[name]["skill"], None)), reason=problem)
+                for name in sorted(SKILL_AGENTS if remove else wanted)]
+    plans = []
+    for name in sorted(SKILL_AGENTS):
+        path = base / f"{name}.toml"
+        if name in wanted:
+            plans.append(_plan_agent(path, name, *wanted[name]))
+        elif name not in held and (orphan := _plan_agent_orphan(path, name)):
+            plans.append(orphan)
+    return plans
+
+
+def apply_agent_file(plan: AgentPlan) -> None:
+    """Write (whole: a temp file renamed over it, mode 0644) or delete one agent file; the
+    parent directories are made as needed."""
+    if plan.status == "removed":
+        plan.path.unlink()
+        return
+    if plan.status not in ("created", "updated"):
+        return
+    plan.path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=plan.path.parent, prefix=f".{plan.path.name}.",
+                               suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(plan.data)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, plan.path)
+    except BaseException:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(tmp)
+        raise
+
+
+def agent_row(ws, plan: AgentPlan) -> dict:
+    return {"agent": "codex", "name": plan.name, "path": ws.rel(plan.path),
+            "status": plan.status, "pack": plan.pack, "skill": plan.skill,
+            "version": plan.version, "reason": plan.reason}

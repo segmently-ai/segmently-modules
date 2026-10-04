@@ -31,6 +31,30 @@ MANAGED = ".modsys-managed"  # the marker `packs sync` writes into every skill i
 EJECTED = ".modsys-ejected"  # the record `modsys eject` writes into an ejected copy
 EJECTED_SCHEMA = "modsys.ejected/1"
 NOT_COPIED = {MANAGED, EJECTED, ".DS_Store"}  # never part of a skill's files
+# The agents generated from a skill's procedure (P8.4 D3): the one table that the plugin build
+# (`tools/build_plugins.py`: the `modsys` plugin's `agents/<name>.md`, Claude Code) and `packs
+# sync` (`.codex/agents/<name>.toml`, Codex) read — agent name -> the skill whose `PROCEDURE` is
+# the agent's whole body, and the agent's one-sentence description. Plain literals: the build
+# reads them from this file without importing the engine.
+SKILL_AGENTS = {
+    "module-discover-agent": {
+        "skill": "module-discover",
+        "description": "Maps a confirmed task, a branch or changed files to the modules, docs and "
+                       "code files they touch through the modsys CLI, read-only, and reports the "
+                       "touch-set with file:line evidence."},
+    "module-research-agent": {
+        "skill": "module-research",
+        "description": "Answers one question about one or more modules in depth from their docs "
+                       "and code through the modsys CLI, read-only, with file:line evidence and "
+                       "every place where the two disagree."},
+    "module-scout-agent": {
+        "skill": "module-scout",
+        "description": "Reads the modules a task under discussion names or implies through the "
+                       "modsys CLI, read-only, and reports a short brief of what each owns, its "
+                       "rules and its linked modules."},
+}
+PROCEDURE = "references/procedure.md"  # in the skill directory: the procedure an agent runs
+CODEX_AGENTS = ".codex/agents"  # where `packs sync` writes the agents for Codex
 _KEY = re.compile(r"^([A-Za-z_][\w.-]*)[ \t]*:(?:[ \t]+(.*))?$")
 _BLOCK = re.compile(r"^([|>])(?:[1-9]?[+-]?|[+-][1-9])$")  # block scalar indicator
 _COMMENT = re.compile(r"[ \t]+#.*$")

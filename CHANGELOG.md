@@ -24,9 +24,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   finding of the `lint` and `drift` steps `known` (same code, module, path and message, digits in the
   message ignored; MS050 / MS051 never known): a step fails only on findings that are not known, the
   two summaries gain `known`, `data` gains `baseline`, and the text marks known findings.
+- The `modsys` plugin ships three more agents, `module-discover-agent`, `module-scout-agent` and
+  `module-research-agent` (tools Read, Grep, Glob, Bash, Agent; `model: sonnet`): the build
+  generates each from the `references/procedure.md` of `module-discover`, `module-scout` and
+  `module-research` (new: today's steps of each skill), named and described by one engine table;
+  a procedure that is missing or untracked, or a tracked agent file of the same name, stops the
+  build (exit 2). The build ships only the files directly in `modsys/defaults/agents/` besides
+  them (a subdirectory never ships).
+- `modsys packs sync` and `modsys setup` write the same three agents for Codex as
+  `.codex/agents/<name>.toml` (`name`, `description`, `developer_instructions` = the procedure)
+  whenever the agents they sync for include `codex`, under either delivery: managed files whose
+  first line is a `# modsys-managed:` marker, listed in `data.agent_files` (after `data.skills`;
+  `data.summary` still counts the skills), checked by `--check`, removed with their skill or by
+  `--remove --agent codex`; a locally edited or foreign file and a symlinked or non-directory
+  `.codex/agents` are conflicts. Without `codex` nothing under `.codex/` is read or written.
 - The `modsys` plugin ships the read-only subagent `module-chooser` (`modsys:module-chooser`; tools
-  Read, Grep, Glob; `model: sonnet` only for a call without a model): the build copies every tracked
-  file of `modsys/defaults/agents/` into the plugin's `agents/`; the manifests are unchanged.
+  Read, Grep, Glob; `model: sonnet` only for a call without a model): the build copies the tracked
+  files directly in `modsys/defaults/agents/` into the plugin's `agents/`; the manifests are
+  unchanged.
 - `[search] card_keywords` (default 10, an integer >= 0) caps the keywords of each card in the
   `modsys choose` work order (also `--run` and semantic / hybrid matching); `catalog` keeps every
   keyword, and `catalog_digest` covers the capped cards.

@@ -5,7 +5,8 @@ Three existing steps run in-process, in order — each writes exactly what its o
               config, the empty registry and the .gitignore lines
   packs sync  `modsys packs sync` for the agents: `--agent`, else `[packs] agents`, else the
               agents whose skill directories hold copies an earlier sync made (a marker in
-              `.agents/skills` means codex), else claude and codex
+              `.agents/skills` means codex), else claude and codex — for codex also the agent
+              files in `.codex/agents/`
   agents-md   `modsys agents-md` for the targets: `--target`, else the instruction files at
               the root that already hold a modsys block (CLAUDE.md, AGENTS.md, GEMINI.md,
               .github/copilot-instructions.md — the files `next` checks), else CLAUDE.md when
@@ -15,7 +16,8 @@ Three existing steps run in-process, in order — each writes exactly what its o
 Each step reports one status — `created` (a new file or copy), `updated` (only existing ones
 changed: init appended `.gitignore` lines), `unchanged`, `exists` (init: nothing was missing),
 `skipped` (packs sync: no skill to copy), `conflict` / `invalid` (packs sync left a copy
-unwritten) — and its own `--json` data as `detail`. A second run writes nothing. `--dry-run`
+unwritten; its skill copies and agent files fold into one status) — and its own `--json` data
+as `detail`. A second run writes nothing. `--dry-run`
 writes nothing; when init would create the config, it plans the later steps against that config:
 a scratch config dir outside the repository holding that config.toml beside the real config
 dir's packs, overrides and config.user.toml. A step that refuses (exit 2) stops setup at once,
@@ -36,8 +38,8 @@ from modsys.config import builtin_delivery
 from modsys.init_cmd import init_root, plan_init, starter
 from modsys.next_cmd import block_files
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
-from modsys.packs_cmd import _hint, sync as packs_sync
-from modsys.skill_sync import STATUSES, managed_agents
+from modsys.packs_cmd import _hint, agent_hint, sync as packs_sync
+from modsys.skill_sync import AGENT_STATUSES, STATUSES, managed_agents
 from modsys.skills import AGENT_DIRS, DEFAULT_AGENTS
 from modsys.workspace import Workspace, find_root
 
@@ -53,7 +55,8 @@ def register(sub, common) -> None:
                             "copies, the agents-md block (idempotent)",
                        description="Runs three steps in order: init (whatever is missing of "
                                    "the starter config, the empty registry and the .gitignore "
-                                   "lines), packs sync for the agents "
+                                   "lines), packs sync for the agents (for codex also the "
+                                   "agent files in .codex/agents/) "
                                    "and agents-md for the instruction files. Agents: --agent, "
                                    "else [packs] agents, else the agents whose skill "
                                    "directories already hold copies packs sync made, else "
@@ -171,7 +174,8 @@ def _fold(statuses: list[str]) -> str:
 
 
 def sync_status(data: dict) -> str:
-    rows = [r["status"] for r in data["skills"]]
+    """packs sync's status: its skill copies and its agent files (codex) together."""
+    rows = [r["status"] for r in data["skills"] + data.get("agent_files", [])]
     for finding in FINDINGS:
         if finding in rows:
             return finding
@@ -237,6 +241,10 @@ def _copies(n: int) -> str:
     return f"{n} skill cop{'y' if n == 1 else 'ies'}"
 
 
+def _agent_files(n: int) -> str:
+    return f"{n} agent file{'' if n == 1 else 's'}"
+
+
 def _items(rows: list[dict], status: str) -> str:
     """Paths, each with its own status when it is not the step's."""
     out = []
@@ -252,11 +260,21 @@ def _summary(s: dict, ws) -> str:
         return _items(d["files"], s["status"])
     if s["step"] == "agents-md":
         return _items(d["targets"], s["status"])
-    if not d["skills"]:  # under builtin_delivery = "plugin" a note names the plugins
+    agents = d.get("agent_files") or []  # codex only
+    if not d["skills"] and not agents:  # under builtin_delivery = "plugin" a note names them
         return ("nothing to copy" if builtin_delivery(ws.config) == "plugin"
                 else "no pack skills (add one: modsys packs new ID --skill NAME)")
-    counts = [f"{d['summary'][k]} {k}" for k in STATUSES if d["summary"][k]]
-    return _copies(len(d["skills"])) + (f" ({', '.join(counts)})" if len(counts) > 1 else "")
+    parts = []
+    if d["skills"]:
+        counts = [f"{d['summary'][k]} {k}" for k in STATUSES if d["summary"][k]]
+        parts.append(_copies(len(d["skills"]))
+                     + (f" ({', '.join(counts)})" if len(counts) > 1 else ""))
+    if agents:
+        counts = [f"{n} {k}" for k in AGENT_STATUSES
+                  if (n := sum(r["status"] == k for r in agents))]
+        parts.append(_agent_files(len(agents))
+                     + (f" ({', '.join(counts)})" if len(counts) > 1 else ""))
+    return ", ".join(parts)
 
 
 def _render(d, ws) -> None:
@@ -270,6 +288,11 @@ def _render(d, ws) -> None:
                 print(f"  {r['status']:<9} {r['agent']:<7} {r['dir']}")
                 hint = _hint(ws, r)
                 print(f"    {r['reason']}" + (f" — {hint}" if hint else ""))
+        for r in s["detail"].get("agent_files", []):
+            if r["status"] in FINDINGS:
+                print(f"  {r['status']:<9} {r['agent']:<7} {r['path']}")
+                hint = agent_hint(ws, r)
+                print(f"    {r['reason']}" + (f" — {hint}" if hint else ""))
         for note in s["detail"]["notes"]:
             print(f"  note: {note}")
     print(f"{'agents':<11} {', '.join(d['agents'])}")
@@ -279,5 +302,7 @@ def _render(d, ws) -> None:
     for s in d["steps"]:
         if s["status"] in FINDINGS:
             n = sum(s["detail"]["summary"][k] for k in FINDINGS)
-            print(f"setup: {s['step']} left {_copies(n)} unwritten — resolve "
-                  f"{'it' if n == 1 else 'them'} as shown above, then run modsys setup again")
+            m = sum(r["status"] in FINDINGS for r in s["detail"].get("agent_files", []))
+            left = " and ".join(([_copies(n)] if n else []) + ([_agent_files(m)] if m else []))
+            print(f"setup: {s['step']} left {left} unwritten — resolve "
+                  f"{'it' if n + m == 1 else 'them'} as shown above, then run modsys setup again")

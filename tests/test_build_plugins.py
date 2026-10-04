@@ -15,6 +15,7 @@ import unittest
 from pathlib import Path
 
 from modsys.config import BUILTIN_PLUGINS
+from modsys.skills import SKILL_AGENTS
 from tests.helpers import engine_version, git
 from tests.plugin_helpers import (CLAUDE, ENGINE, NO_CLAUDE, claude_env, copy_engine, load_tool,
                                   run_tool, tree)
@@ -66,6 +67,7 @@ class LayoutTest(BuilderRepo):  # P6-AC-008
                     want += ["bin/modsys"] + [f"runtime/{rel}" for rel in self.tracked()]
                     want += [f"agents/{rel.rsplit('/', 1)[1]}" for rel in self.tracked()
                              if rel.startswith("modsys/defaults/agents/")]
+                    want += [f"agents/{agent}.md" for agent in SKILL_AGENTS]  # P8.4 D3
                 self.assertEqual(files, sorted(want))
         self.assertIn("skills/module-lint/references/lint-codes.md",
                       [p.relative_to(self.out / "modsys").as_posix()

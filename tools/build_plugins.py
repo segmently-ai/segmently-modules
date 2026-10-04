@@ -4,8 +4,13 @@
 
 writes three plugin directories into --out (default `dist/plugins` of this engine tree):
   modsys     the `core` pack's skills, `bin/modsys` (tools/launcher.sh, mode 0755) and
-             `runtime/modsys/` (the tracked files of `modsys/`, byte for byte) and `agents/` (every tracked
-             file of `modsys/defaults/agents/`, mode 0644: the `module-chooser` subagent)
+             `runtime/modsys/` (the tracked files of `modsys/`, byte for byte) and `agents/`, mode
+             0644: every tracked file directly in `modsys/defaults/agents/` (the `module-chooser`
+             subagent; a subdirectory never ships) and one agent per row of the engine's agent
+             table (`SKILL_AGENTS` in `modsys/skills.py`, read without importing the engine): its
+             front matter, a blank line, then the bytes of its skill's `references/procedure.md`
+             — a tracked file; a missing or untracked procedure, or a tracked agent file of the
+             same name, is a refusal
   modsys-ui  the `ui` pack's skills;  modsys-qa  the `qa` pack's skills
 each with `.claude-plugin/plugin.json` (Claude Code), `plugin.json` (Agent Plugins, read by
 Codex), `.codex-plugin/plugin.json` (Codex's compatibility manifest) and a README.md, every
@@ -22,6 +27,7 @@ was — and does not create it. --out is refused when `<out>/<plugin>` is this e
 holds it, or exists and is not a build of that plugin: the builder replaces only its own output.
 Exit 0 built · 2 a refusal (stdout empty, stderr `build_plugins.py: error: …`) · 130 Ctrl-C."""
 import argparse
+import ast
 import json
 import os
 import re
@@ -56,6 +62,10 @@ PLUGINS = {
                                  "before the code, and a module's acceptance baseline"},
 }
 CORE = "modsys"  # the plugin with the CLI; the others depend on it (Claude Code)
+AGENTS_DIR = "modsys/defaults/agents/"  # its direct children ship in the core plugin's agents/
+AGENT_TABLE = "modsys/skills.py"  # SKILL_AGENTS and PROCEDURE: the engine's one agent table
+AGENT_TOOLS = "Read, Grep, Glob, Bash, Agent"  # the generated agents' tools (Claude Code)
+AGENT_MODEL = "sonnet"
 MANIFESTS = (".claude-plugin/plugin.json", "plugin.json", ".codex-plugin/plugin.json")
 NOT_SHIPPED = {".DS_Store", ".modsys-managed", ".modsys-ejected"}
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
@@ -177,6 +187,65 @@ def pack_skills(engine: Path, pack: str) -> dict[str, str]:
             for sid, spec in sorted(skills.items())}
 
 
+def agent_table(engine: Path) -> tuple[dict, str]:
+    """(SKILL_AGENTS, PROCEDURE) of the engine tree's `modsys/skills.py` — its literal
+    assignments, read with `ast` (the engine is never imported)."""
+    try:
+        tree = ast.parse(read(engine, AGENT_TABLE), AGENT_TABLE)
+    except SyntaxError as e:
+        raise BuildError(f"cannot read {AGENT_TABLE}: {e}") from None
+    found = {}
+    for node in tree.body:
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id in ("SKILL_AGENTS", "PROCEDURE")):
+            try:
+                found[node.targets[0].id] = ast.literal_eval(node.value)
+            except ValueError:
+                raise BuildError(f"{AGENT_TABLE}: {node.targets[0].id} is not a literal") from None
+    table, procedure = found.get("SKILL_AGENTS"), found.get("PROCEDURE")
+    if not (isinstance(table, dict) and isinstance(procedure, str) and all(
+            isinstance(spec, dict) and isinstance(spec.get("skill"), str)
+            and isinstance(spec.get("description"), str) for spec in table.values())):
+        raise BuildError(f"{AGENT_TABLE}: SKILL_AGENTS (agent -> skill, description) and "
+                         f"PROCEDURE are expected")
+    return table, procedure
+
+
+def agent_header(name: str, description: str) -> bytes:
+    """A generated agent's front matter and the blank line before its procedure."""
+    return (f"---\nname: {name}\ndescription: {description}\ntools: {AGENT_TOOLS}\n"
+            f"model: {AGENT_MODEL}\n---\n\n").encode("utf-8")
+
+
+def agent_files(engine: Path, files: dict[str, int]) -> dict[str, bytes]:
+    """{file name in the core plugin's `agents/`: bytes}: every tracked file directly in
+    `modsys/defaults/agents/` (one in a subdirectory never ships), then one generated agent per
+    row of the agent table — a refusal when its skill is not in the core pack, its procedure is
+    not a tracked file, or a tracked agent file has its name."""
+    out, source = {}, {}
+    for rel in sorted(files):
+        name = rel[len(AGENTS_DIR):]
+        if rel.startswith(AGENTS_DIR) and "/" not in name:
+            out[name], source[name] = read(engine, rel), rel
+    table, procedure = agent_table(engine)
+    skills = pack_skills(engine, PLUGINS[CORE]["pack"])
+    for agent, spec in sorted(table.items()):
+        if spec["skill"] not in skills:
+            raise BuildError(f"agent {agent}: the {PLUGINS[CORE]['pack']} pack declares no skill "
+                             f"{spec['skill']} (the agent table in {AGENT_TABLE} names it)")
+        rel = f"{skills[spec['skill']]}/{procedure}"
+        if rel not in files:
+            raise BuildError(f"agent {agent}: {rel} is missing or untracked — the agent is "
+                             f"generated from it: commit it")
+        name = f"{agent}.md"
+        if name in out:
+            raise BuildError(f"{source[name]} collides with the agent {agent} generated from "
+                             f"{rel} — rename or remove {source[name]}")
+        out[name] = agent_header(agent, spec["description"]) + read(engine, rel)
+    return out
+
+
 def license_of(engine: Path) -> str | None:
     """`[project] license` of pyproject.toml when it is a plain string (absent today)."""
     try:
@@ -203,7 +272,7 @@ def manifests(name: str, version: str, spdx: str | None = None) -> dict[str, dic
             ".codex-plugin/plugin.json": {**shared, "skills": "./skills/"}}
 
 
-def readme(name: str, skills: list[str]) -> str:
+def readme(name: str, skills: list[str], agents: list[str] = ()) -> str:
     """The plugin's README: what it holds and one install line per agent; `<owner>/<publish
     repo>` and `<owner>/<repo>` are placeholders (no repository slug before the public release)."""
     spec = PLUGINS[name]
@@ -216,6 +285,12 @@ def readme(name: str, skills: list[str]) -> str:
                  "`module-chooser` agent (`modsys:module-chooser`, Claude Code) that the skills "
                  "hand a `modsys choose` work order; every plugin update replaces it, so change "
                  "how modules are chosen with `modsys templates override choose/rules.md`.")
+        generated = sorted(a[:-3] for a in agents if a != "module-chooser.md")
+        if generated:
+            what += (" It also ships the agents "
+                     + ", ".join(f"`{a}`" for a in generated[:-1]) + f" and `{generated[-1]}`"
+                     + " (`modsys:<name>`): each one is its skill's `references/procedure.md`, "
+                       "run in the agent's own context.")
         needs = ("- Codex: `codex plugin marketplace add <owner>/<publish repo> --ref stable`, "
                  f"then `codex plugin add {name}@modsys`. Codex puts no plugin command on "
                  "PATH, so install the CLI first, at the plugin's version: `uv tool install "
@@ -265,8 +340,9 @@ def read(engine: Path, rel: str) -> bytes:
 
 
 def build_one(engine: Path, files: dict[str, int], name: str, version: str,
-              spdx: str | None, dest: Path) -> int:
-    """Write plugin `name` into `dest`; the number of files written."""
+              spdx: str | None, dest: Path, agents: dict[str, bytes]) -> int:
+    """Write plugin `name` into `dest` (`agents`: the core plugin's `agents/`, `agent_files`);
+    the number of files written."""
     skills = pack_skills(engine, PLUGINS[name]["pack"])
     count = 0
     for sid, src in skills.items():
@@ -288,14 +364,14 @@ def build_one(engine: Path, files: dict[str, int], name: str, version: str,
         for rel in sorted(files):
             write(dest / "runtime" / rel, read(engine, rel), files[rel])
         count += 1 + len(files)
-        agents = "modsys/defaults/agents/"  # Claude Code finds a plugin's agents/ itself
-        for rel in sorted(p for p in files if p.startswith(agents)):
-            write(dest / "agents" / rel[len(agents):], read(engine, rel), 0o644)
+        for file_name, data in sorted(agents.items()):  # Claude Code finds agents/ itself
+            write(dest / "agents" / file_name, data, 0o644)
             count += 1
     for rel, value in manifests(name, version, spdx).items():
         write(dest / rel, (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode(),
               0o644)
-    write(dest / "README.md", readme(name, list(skills)).encode(), 0o644)
+    write(dest / "README.md", readme(name, list(skills), list(agents) if name == CORE else [])
+          .encode(), 0o644)
     for d in [dest, *(p for p in dest.rglob("*") if p.is_dir())]:
         os.chmod(d, 0o755)
     return count + len(MANIFESTS) + 1
@@ -436,6 +512,7 @@ def build(engine: Path, out: Path, version: str | None = None) -> dict:
                          f"(e.g. 0.2.0, 0.2.0-dev.habcdef12)")
     version = version or engine_version(engine)
     files = tracked(engine)
+    agents = agent_files(engine, files)
     spdx = license_of(engine)
     if not (engine / "tools/launcher.sh").is_file():
         raise BuildError("tools/launcher.sh is missing")
@@ -451,7 +528,7 @@ def build(engine: Path, out: Path, version: str | None = None) -> dict:
         counts = {}
         for name in PLUGINS:
             counts[name] = build_one(engine, files, name, version, spdx,
-                                     staging / "new" / name)
+                                     staging / "new" / name, agents)
             if os.environ.get(INTERRUPT_AFTER) == name:
                 raise KeyboardInterrupt
         swap(out, staging)  # --out's plugin directories are touched only now
