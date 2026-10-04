@@ -382,11 +382,36 @@ def apply_plan(plan: Plan) -> None:
         _prune(plan.dest, plan.delete, True)
 
 
-def managed_agents(root: Path) -> list[str]:
+def _marked_agent_file(root: Path) -> bool:
+    """Does `.codex/agents` (a plain directory, or a symlink to one) hold a regular, non-symlink
+    file directly in it whose first line `read_agent_marker` reads as `ok`? Reads only."""
+    base = root / CODEX_AGENTS
+    try:
+        names = sorted(os.listdir(base))
+    except OSError:
+        return False
+    for name in names:
+        path = base / name
+        try:
+            if path.is_symlink() or not path.is_file():
+                continue
+            with path.open("rb") as fh:
+                first = fh.readline()
+        except OSError:
+            continue
+        if read_agent_marker(first)[0] == "ok":
+            return True
+    return False
+
+
+def managed_agents(root: Path, agent_files: bool = False) -> list[str]:
     """The agents whose skill directory already holds a skill `packs sync` manages (a valid
     marker proves an earlier sync), in the engine's order — `packs sync` uses them when neither
     `--agent` nor `[packs] agents` names any. A directory several agents read counts once, for
-    the first of them: a marker in `.agents/skills` means `codex`."""
+    the first of them: a marker in `.agents/skills` means `codex`. `agent_files` (the caller's
+    `builtin_delivery = "plugin"`: the plugin delivers the skills, so no skill copy may carry a
+    marker): a `.codex/agents/` holding a marked agent file (`read_agent_marker` reads `ok`)
+    also means `codex`, once. Bare `packs sync` and `next` pass it; `setup` never does."""
     out, seen = [], set()
     for agent, rel in AGENT_DIRS.items():
         if rel in seen:
@@ -395,6 +420,8 @@ def managed_agents(root: Path) -> list[str]:
         base = root / rel
         if base.is_dir() and any(d.is_dir() and not d.is_symlink() and read_marker(d)
                                  for d in sorted(base.iterdir())):
+            out.append(agent)
+        elif agent_files and agent == "codex" and _marked_agent_file(root):
             out.append(agent)
     return out
 

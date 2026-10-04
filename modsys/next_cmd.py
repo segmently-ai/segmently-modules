@@ -37,7 +37,7 @@ from shlex import quote
 from modsys import __version__
 from modsys.agents_md_cmd import _BEGIN, END, _bare, _lines, agents_md
 from modsys.changes import changed_files, commit_ref, git, map_files, repo_files, work_tree_error
-from modsys.config import enabled_roles
+from modsys.config import builtin_delivery, enabled_roles
 from modsys.coverage_cmd import coverage_report
 from modsys.init_cmd import init_root
 from modsys.lint import drift_report, lint_registry
@@ -128,8 +128,11 @@ def _by_state(rows: list[dict], key: str) -> list[str]:
 def skill_copies(ws) -> list[tuple]:
     """The copies a bare `packs sync --check` finds not in sync (its agents, its delivery
     rules), named by state — and, when it syncs for codex, the agent files in `.codex/agents`
-    it finds so (under `builtin_delivery = "plugin"` they can be all it writes): one item."""
-    if not ((ws.config.get("packs") or {}).get("agents") or managed_agents(ws.root)):
+    it finds so (under `builtin_delivery = "plugin"` they can be all it writes): one item. Under
+    that delivery a `.codex/agents/` holding a marked agent file means codex when no agent is
+    named and no skill copy holds a marker (`managed_agents`)."""
+    if not ((ws.config.get("packs") or {}).get("agents")
+            or managed_agents(ws.root, builtin_delivery(ws.config) == "plugin")):
         raise Skip(NO_AGENT)
     data = packs_sync(ws, None, check=True, dry_run=False)
     parts = _by_state(data["skills"], "skill")

@@ -12,10 +12,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys.config import builtin_packs_root
+from modsys.config import builtin_packs_root, core_defaults
 from modsys.skills import file_hashes, front_matter, read_front_matter, sha256_file
 from tests.helpers import copy_fixture, run_json
 from tests.plugin_helpers import copy_engine, run_tool
+from tests.test_budgets import SPLIT_DECISIONS
 from tests.test_builtin_skills import (PACK_SKILLS, command_guard, commands, route, route_files,
                                        section, skill_dirs, skill_files, uses)
 
@@ -33,7 +34,7 @@ LEAD = ("the scenario named by the invocation (`$scenario`) when one is given, e
         "user's words", "read it, then follow it")
 IF_LINE = "If a `modsys` command exits 1 or 2, read `references/exit-codes.md`."
 STEP_5 = "Write the doc. Follow the scenario's file (the Route above)."
-SPLIT_SIGNAL = 9_000  # MS068's default `[budgets] skill_split_signal` (Task 5)
+SPLIT_SIGNAL = core_defaults()["budgets"]["skill_split_signal"]  # MS068's default, read from the engine
 DESCRIPTION_SHA = "2a0efce95123748f"  # sha256[:16] of the description: unchanged
 REPLACED: list[str] = []  # old sentences a Route line replaces: none, every one moved
 # the sentences that are new, per file: the Route, the "if" line, step 5's pointer and each
@@ -345,7 +346,8 @@ class RouteShapeTest(unittest.TestCase):  # P84-AC-025 (the routed row)
         for name, text in self.files.items():
             with self.subTest(file=name):
                 self.assertLessEqual(len(text.splitlines()), 250)
-                self.assertLessEqual(len(text), SPLIT_SIGNAL)
+                if f"qa/{BASELINE_ID}/{Path(name).stem}" not in SPLIT_DECISIONS:  # SI-P85-11
+                    self.assertLessEqual(len(text), SPLIT_SIGNAL)
 
 
 class SingleScenarioTest(unittest.TestCase):  # P84-AC-025 (the single row), SI-P84-11

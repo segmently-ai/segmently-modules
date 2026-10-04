@@ -197,7 +197,7 @@ carry module `*`, so `lint --changed` never shows them:
 |---|---|---|
 | MS060 | warning | an unknown key in `pack.toml` (top level, `[roles.<name>]`, `[skills.<id>]`) — e.g. a typo like `standrad`, or `budget` / `consumed_by`, which are not role keys |
 | MS061 | error | a role's `template` does not exist in the pack, or points outside it |
-| MS062 | error | a pack skill or an ejected copy agents cannot load (path, symlink, `SKILL.md` front matter), or a `references/` file its `SKILL.md` or a route file names that does not exist or is outside the skill |
+| MS062 | error | a pack skill or an ejected copy agents cannot load (path, symlink, `SKILL.md` front matter), or a `references/` file its `SKILL.md` or a route file names that does not exist or is outside the skill (a name holding `*`, `?` or `[` is a pattern and is not checked) |
 | MS063 | warning / info | an ejected skill is behind its pack, or no pack declares it any more |
 | MS064 | warning | `reads_roles` names a role no layer configures, or a disabled one |
 | MS065 | warning | another pack with a higher precedence declares the same skill id |
@@ -219,5 +219,5 @@ scenario — what the user wants, then `references/<scenario>.md` ("read it, the
 Each scenario's steps live in that file; steps every scenario shares stay inline. Every
 `references/` file a skill names must exist inside the skill directory — lint MS062 checks the
 names in `SKILL.md` and in each route file (one level of chaining; a link's `#section` or
-`?query` is not part of the name), and `packs sync` copies the whole skill directory.
+`?query` is not part of the name; a name holding `*`, `?` or `[` is a pattern and is not checked), and `packs sync` copies the whole skill directory.
 `argument-hint` and `arguments` in the front matter are accepted in any YAML form.

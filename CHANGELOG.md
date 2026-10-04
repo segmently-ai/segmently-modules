@@ -177,6 +177,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Lint **MS062**: a `references/` name holding `*`, `?` or `[` is a pattern, not a file, and is no longer
+  reported (`references/route-*`, `references/x?.md`, `references/[ab].md`); a `?` after the extension or
+  closing the name still ends it, so a real missing file is still reported.
+- A bare `packs sync` and `next` under `builtin_delivery = "plugin"` infer codex from a `.codex/agents/`
+  that holds a marked agent file (no skill copy needs a marker), so a stale agent file shows in `next`;
+  `setup`'s agent choice and `"repo"` delivery are unchanged.
+
 - With stderr closed at start (`modsys … 2>&-`) no line meant for stderr reaches stdout: the run
   puts the null device on fd 2 itself, so a refusal leaves stdout empty, no file the run opens
   becomes fd 2 and a child that inherits stderr writes to the null device.

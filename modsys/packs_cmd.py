@@ -10,7 +10,8 @@ skills.
         copy every pack skill into the agents' skill directories (`skill_sync`) and, for codex,
         write the agents of the agent table into `.codex/agents/`; agents = the flags, else
         `[packs] agents`, else the agents whose directories already hold managed skills (an
-        earlier sync); `--remove` (with `--agent`) deletes the copies instead"""
+        earlier sync; under `builtin_delivery = "plugin"` also codex when `.codex/agents/` holds
+        a marked agent file); `--remove` (with `--agent`) deletes the copies instead"""
 import functools
 import os
 import re
@@ -374,8 +375,9 @@ def sync(ws, agents: list[str] | None, check: bool, dry_run: bool,
     if remove:
         chosen = remove_scope(ws, agents, check)
     else:
-        chosen = list(dict.fromkeys(agents or (ws.config.get("packs") or {}).get("agents")
-                                    or managed_agents(ws.root)))
+        chosen = list(dict.fromkeys(
+            agents or (ws.config.get("packs") or {}).get("agents")
+            or managed_agents(ws.root, builtin_delivery(ws.config) == "plugin")))
     if not chosen:
         *first, last = AGENT_DIRS
         raise UsageError(f"choose --agent {', '.join(first)} or {last} (repeatable), or set "
