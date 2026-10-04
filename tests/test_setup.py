@@ -20,7 +20,7 @@ from tests.helpers import copy_fixture, init_git, run
 VERSION = modsys.__version__
 STEPS = ["init", "packs sync", "agents-md"]
 CORE_SKILLS = ["module-adopt", "module-create", "module-discover", "module-init", "module-lint",
-               "module-research", "module-scout", "module-split", "module-sync"]
+               "module-research", "module-roles", "module-scout", "module-split", "module-sync"]
 EMPTY_REGISTRY = '{\n  "modules": {}\n}\n'
 IGNORE_LINES = ["modules/registry.json.lock", ".modsys/proposals/", ".modsys/init/",
                 ".modsys/config.user.toml"]
@@ -149,7 +149,7 @@ class EmptyRepositoryTest(unittest.TestCase):  # P61-AC-016, P61-AC-017, P61-AC-
         flags = ("--agent", "claude", "--agent", "codex")
         self.assertEqual(run("setup", *flags, *self.R), (0, "\n".join([
             "init        created      .modsys/config.toml, modules/registry.json, .gitignore",
-            "packs sync  created      18 skill copies, 3 agent files",  # codex's (P8.4 D3)
+            "packs sync  created      20 skill copies, 3 agent files",  # codex's (P8.4 D3)
             COPILOT,
             "agents-md   created      CLAUDE.md, AGENTS.md",
             "agents      claude, codex",
@@ -157,7 +157,7 @@ class EmptyRepositoryTest(unittest.TestCase):  # P61-AC-016, P61-AC-017, P61-AC-
         before = snap(self.root)
         self.assertEqual(run("setup", *flags, *self.R), (0, "\n".join([
             "init        exists       .modsys/config.toml, modules/registry.json, .gitignore",
-            "packs sync  unchanged    18 skill copies, 3 agent files",
+            "packs sync  unchanged    20 skill copies, 3 agent files",
             COPILOT,
             "agents-md   unchanged    CLAUDE.md, AGENTS.md",
             "agents      claude, codex",
@@ -194,7 +194,7 @@ class EmptyRepositoryTest(unittest.TestCase):  # P61-AC-016, P61-AC-017, P61-AC-
         self.assertEqual(snap(self.root), before)
         self.assertEqual(run("setup", "--dry-run", *self.R), (0, "\n".join([
             "init        would create .modsys/config.toml, modules/registry.json, .gitignore",
-            "packs sync  would create 18 skill copies, 3 agent files",
+            "packs sync  would create 20 skill copies, 3 agent files",
             COPILOT,
             "agents-md   would create CLAUDE.md, AGENTS.md",
             "agents      claude, codex",
@@ -392,7 +392,7 @@ class TeamFilesTest(unittest.TestCase):  # P61-AC-030
         self.assertEqual((code, err), (1, ""))
         self.assertEqual(out, "\n".join([
             "init        created      .modsys/config.toml, modules/registry.json, .gitignore",
-            "packs sync  conflict     9 skill copies (8 created, 1 conflict)",
+            "packs sync  conflict     10 skill copies (9 created, 1 conflict)",
             "  conflict  claude  .claude/skills/module-sync",
             "    not managed by modsys (no .modsys-managed) — a skill written by hand: move or "
             "rename it, then sync again",
@@ -405,7 +405,7 @@ class TeamFilesTest(unittest.TestCase):  # P61-AC-030
         self.assertEqual((code, err), (1, ""))
         self.assertEqual(out.splitlines()[:2], [
             "init        exists       .modsys/config.toml, modules/registry.json, .gitignore",
-            "packs sync  conflict     9 skill copies (8 unchanged, 1 conflict)"])
+            "packs sync  conflict     10 skill copies (9 unchanged, 1 conflict)"])
         self.assertIn("agents-md   unchanged    CLAUDE.md", out.splitlines())
         self.assertEqual(snap(self.root / ".claude/skills/module-sync"), self.hand)
 

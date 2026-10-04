@@ -1,4 +1,4 @@
-"""The shipped built-in packs through the engine (D1, D5): their rows in `packs list`, all twelve
+"""The shipped built-in packs through the engine (D1, D5): their rows in `packs list`, all thirteen
 skills through `packs sync` / `eject` / MS063 / `agents-md`, the `ui` / `qa` role templates in
 `create`, a clean lint, enable / disable transitions and a team skill with a core id."""
 import json
@@ -13,8 +13,9 @@ from modsys.config import builtin_packs_root
 from modsys.skills import file_hashes, read_front_matter
 from tests.helpers import copy_fixture, init_git, run, run_json
 
-CORE = ["module-scout", "module-discover", "module-research", "module-sync", "module-create",
-        "module-split", "module-lint", "module-init", "module-adopt"]  # P5B-AC-030 (D7): 7 -> 9
+CORE = ["module-scout", "module-discover", "module-research", "module-sync", "module-roles",
+        "module-create", "module-split", "module-lint", "module-init",
+        "module-adopt"]  # P5B-AC-030 (D7): 7 -> 9; P8.4 D2: + module-roles
 PACKS = {"core": CORE, "qa": ["qa-acceptance", "qa-acceptance-baseline"],
          "ui": ["designer-review"]}
 SKILLS = {sid: pack for pack, ids in PACKS.items() for sid in ids}
@@ -60,10 +61,10 @@ class ShippedRowsTest(ShippedPacks):  # P4B-AC-006 (content)
 
 
 class ShippedMachineryTest(ShippedPacks):  # P4B-AC-008
-    def test_sync_all_ten_skills_to_both_agents(self):  # twelve since P5b D7 (P5B-AC-030)
+    def test_sync_all_thirteen_skills_to_both_agents(self):  # thirteen since P8.4 D2
         self.enable("core", "ui", "qa")
         rows = self.sync("claude", "codex")
-        self.assertEqual(len(rows), 24)
+        self.assertEqual(len(rows), 26)
         self.assertEqual({r[2] for r in rows}, {"created"})
         for sid, pack in SKILLS.items():
             for agent_dir in (".claude/skills", ".agents/skills"):
@@ -75,12 +76,12 @@ class ShippedMachineryTest(ShippedPacks):  # P4B-AC-008
                                  file_hashes(self.engine / pack / "skills" / sid))
         data = self.ok("packs", "sync", "--check", "--agent", "claude", "--agent", "codex")
         self.assertEqual({r["status"] for r in data["skills"]}, {"unchanged"})
-        self.assertEqual(len(data["skills"]), 24)
+        self.assertEqual(len(data["skills"]), 26)
 
     def test_the_core_pack_alone(self):  # P5B-AC-030
         self.enable("core")
         rows = self.sync("claude", "codex")
-        self.assertEqual((len(rows), {r[2] for r in rows}), (18, {"created"}))
+        self.assertEqual((len(rows), {r[2] for r in rows}), (20, {"created"}))
         self.assertEqual(sorted({r[1] for r in rows}), sorted(CORE))
 
     def test_eject_and_an_engine_upgrade(self):
@@ -183,12 +184,12 @@ class RoleTemplatesTest(ShippedPacks):  # P4B-AC-016
 class TransitionsTest(ShippedPacks):  # P4B-AC-028
     def test_enable_disable_and_a_local_edit(self):
         self.enable("core")
-        self.assertEqual([s for _, _, s in self.sync()], ["created"] * 9)  # P5b D7: 7 -> 9
+        self.assertEqual([s for _, _, s in self.sync()], ["created"] * 10)  # P5b D7: 7 -> 9; P8.4 D2: 10
         self.enable()
-        self.assertEqual([s for _, _, s in self.sync()], ["removed"] * 9)
+        self.assertEqual([s for _, _, s in self.sync()], ["removed"] * 10)
         self.assertFalse((self.root / ".claude/skills/module-scout").exists())
         self.enable("core")
-        self.assertEqual([s for _, _, s in self.sync()], ["created"] * 9)
+        self.assertEqual([s for _, _, s in self.sync()], ["created"] * 10)
         edited = self.root / ".claude/skills/module-lint/SKILL.md"
         edited.write_text(edited.read_text() + "\nLocal note.\n")
         self.enable()
@@ -196,7 +197,7 @@ class TransitionsTest(ShippedPacks):  # P4B-AC-028
         self.assertEqual({r["skill"]: (r["status"], r["reason"]) for r in data["skills"]
                           if r["status"] != "removed"},
                          {"module-lint": ("conflict", "SKILL.md (locally edited; not removed)")})
-        self.assertEqual(sum(r["status"] == "removed" for r in data["skills"]), 8)
+        self.assertEqual(sum(r["status"] == "removed" for r in data["skills"]), 9)
 
     def test_dropping_one_pack(self):
         self.enable("core", "ui")
@@ -232,7 +233,7 @@ class TeamSkillWithACoreIdTest(ShippedPacks):  # P4B-AC-029
         rows = self.sync(code=1)
         self.assertEqual([(s, st) for _, s, st in rows if st != "created"],
                          [("module-scout", "conflict")])
-        self.assertEqual(len(rows), 9)  # P5b D7
+        self.assertEqual(len(rows), 10)  # P5b D7; P8.4 D2
         out = run("packs", "sync", "--agent", "claude", *self.R)[1]
         self.assertIn("a skill written by hand: move or rename it, then sync again", out)
 

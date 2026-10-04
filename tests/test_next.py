@@ -33,7 +33,7 @@ KW = [a for k in ("review", "rating", "stars", "comment", "moderation") for a in
 SECURITY = ('\n[roles.security]\norder = 50\nstandard = true\n'
             'description = "Threats, secrets and permissions the module touches"\n')
 CORE_SKILLS = ["module-adopt", "module-create", "module-discover", "module-init", "module-lint",
-               "module-research", "module-scout", "module-split", "module-sync"]
+               "module-research", "module-roles", "module-scout", "module-split", "module-sync"]
 NOT_SET_UP = "modsys is not set up here: no config, no registry"
 
 

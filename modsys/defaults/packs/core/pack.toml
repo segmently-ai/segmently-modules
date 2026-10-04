@@ -17,6 +17,9 @@ path = "skills/module-research"
 [skills.module-sync]
 path = "skills/module-sync"
 
+[skills.module-roles]
+path = "skills/module-roles"
+
 [skills.module-create]
 path = "skills/module-create"
 

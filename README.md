@@ -473,6 +473,7 @@ modsys packs sync --agent claude --agent codex   # .claude/skills/module-*/ and 
 - `module-discover` — the touch-set of a confirmed task or a branch: modules, docs, code files;
 - `module-research` — one question answered in depth from docs and code, with the gaps;
 - `module-sync` — after the work: docs, keywords and links brought in line, `ci` green;
+- `module-roles` — a new role's doc added to every existing module, confirmed by a dry run;
 - `module-create` — a new module or child, confirmed by a dry run;
 - `module-split` — an oversized module split into children, confirmed before any write;
 - `module-lint` — the gate explained and its safe findings fixed;

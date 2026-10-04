@@ -16,6 +16,7 @@ description: Brings module docs and registry fields in line with finished work. 
 - The work needs a new module: use `module-create` first.
 - A module doc grew too long (lint MS030 / MS031): use `module-split`.
 - Only lint findings need fixing: use `module-lint`.
+- A role is new, and the existing modules lack its doc: use `module-roles`.
 
 ## Scope
 
@@ -94,9 +95,10 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    modsys registry append <module> related_modules '{"module": "<other>", "relation": "<relation>", "description": "<why>"}' --json
    ```
 
-   - `keywords`: most changes add none — add one only for a new feature, command or concept later
-     tasks will name, never a code identifier (class, function, file or variable: code search finds
-     those). Keywords only grow; a split parent keeps all of them — never remove one from it.
+   - `keywords`: most changes add none. Add one only for a new feature, command or concept that
+     people will name in later tasks and that no keyword or the description covers yet — never a
+     code identifier (a class, function, file or variable name: code search finds those), never
+     one per task. Keywords only grow; a split parent keeps all of them — never remove one from it.
    - `related_modules`: when the change made this module rely on another (or share a contract), add
      the edge after checking `related`; an unknown relation is refused with the allowed ones.
    - A refused write (exit 2) names the rule it broke: fix the value, never force it.
@@ -124,24 +126,6 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
 8. Report per module: the docs changed, fields and edges, the hook messages and errors, the `ci`
    result, the files no module owns. Ask the user to review and commit.
-
-## A new role
-
-When the team (or a newer modsys) adds a role, the existing modules lack its doc.
-
-If `modsys roles list --json` does not list the role, declare it first: a [roles.ROLE] table with
-order, standard = true (every module gets the doc) and a one-line description in the team config,
-.modsys/config.toml, or in a pack the team owns — ask the user what the role is for when unclear.
-Then continue with step 1.
-
-1. `modsys roles add ROLE --all --dry-run` — show the user the docs it would create or register and
-   the registered ones missing on disk.
-2. `modsys roles add ROLE --all --json` — writes them, never over an existing doc; `--recreate`
-   only for a registered doc whose file is gone.
-3. Fill each new doc with what that role needs for that module, from its code and docs — one module
-   at a time, never inventing components.
-4. `modsys lint --json` — fix what the new docs caused.
-5. `modsys next --json` — report what is left.
 
 ## Gates
 

@@ -485,7 +485,7 @@ class SyncTest(unittest.TestCase):  # P81-AC-042 (F10, F13, F15)
         "The text: a summary of the change with its identifiers",
         "joins the modules to update, with the docs the search listed",  # review M-6
         "modsys registry append <module> keywords",
-        "add one only for a new feature, command or concept later tasks will name",  # P83-AC-010
+        "Add one only for a new feature, command or concept that people will name in later tasks",  # P84-AC-020
         "never a code identifier",
     ]
 

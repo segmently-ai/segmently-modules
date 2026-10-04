@@ -11,7 +11,7 @@ edit module docs and registry fields, then ask you to review and commit.
 
 | Pack | Adds | Skills |
 |---|---|---|
-| `core` | — | `module-scout`, `module-discover`, `module-research`, `module-sync`, `module-create`, `module-split`, `module-lint`, `module-init`, `module-adopt` |
+| `core` | — | `module-scout`, `module-discover`, `module-research`, `module-sync`, `module-roles`, `module-create`, `module-split`, `module-lint`, `module-init`, `module-adopt` |
 | `ui` | the `designer` role (`roles/designer.md`) | `designer-review` |
 | `qa` | the `qa_acceptance` role (`roles/qa_acceptance.md`) | `qa-acceptance`, `qa-acceptance-baseline` |
 
@@ -30,7 +30,7 @@ Then copy the skills where the agents read them, tell the agents about them, and
 
 ```bash
 modsys packs list                                          # core, qa, ui … built-in
-modsys packs sync --agent claude --agent codex             # 12 skills × 2 agents: created
+modsys packs sync --agent claude --agent codex             # 13 skills × 2 agents: created
 modsys agents-md --target CLAUDE.md --target AGENTS.md     # the managed block lists the skills
 git add .claude/skills .agents/skills .codex/agents CLAUDE.md AGENTS.md
 ```
@@ -107,6 +107,7 @@ lists the agent (the next `packs sync` copies its skills again).
 | `module-discover` | a task is confirmed, or a branch needs review: its modules, docs to read and update, code files | read-only | `catalog`, `choose`, `discover`, `code-map files` |
 | `module-research` | one question about a module needs a deep answer with file:line evidence and doc/code gaps | read-only | `catalog`, `choose`, `show --all-roles`, `related`, `code-map files`, `lint` |
 | `module-sync` | work is done: bring the touched modules' docs, keywords and links in line, run the sync hooks, check `ci` | writes docs and registry fields | `sync-instructions`, `catalog`, `choose`, `registry`, `propose`, `sync`, `ci` |
+| `module-roles` | a role is new and the existing modules lack its doc: declares the role when it is undeclared, shows a dry run, writes one doc per module, fills each from that module's code and docs, then `lint` and `next` | writes the role's docs (never over an existing one) | `roles list`, `roles add`, `lint`, `next` |
 | `module-create` | a new module or child: gathers the answers, shows a dry run, waits for a yes, fills the docs | writes the new module | `create --dry-run`, `create`, `code-map add`, `lint` |
 | `module-split` | a module doc is over budget (MS030 / MS031): proposes children, stops for confirmation, moves sections verbatim | writes the children and the parent index | `show`, `create --parent`, `code-map add`, `lint` |
 | `module-lint` | the gate fails: explains each finding, fixes the safe ones, leaves decisions to you | writes safe fixes | `ci`, `lint`, `registry` |
@@ -114,8 +115,8 @@ lists the agent (the next `packs sync` copies its skills again).
 | `module-adopt` | a registry and docs another tool wrote: infers the config, explains each inference, writes it, shows lint by code, then asks what it cannot guess, fixes nothing (hands that to `module-lint`) | writes the config `adopt` infers | `adopt --dry-run`, `adopt`, `lint` |
 
 A typical task: `module-scout` while it is discussed, `module-discover` once it is agreed,
-the work, then `module-sync`; `module-create`, `module-split` and `module-lint` when the
-registry itself needs work; `module-init` or `module-adopt` once, to start. The writers never edit a frozen `*.legacy.md` file. `module-sync`
+the work, then `module-sync`; `module-roles` when a role is new, `module-create`,
+`module-split` and `module-lint` when the registry itself needs work; `module-init` or `module-adopt` once, to start. The writers never edit a frozen `*.legacy.md` file. `module-sync`
 decides on its own and asks only in four cases (an update that fits two children equally, new
 work that may be a new module or a child, a change that contradicts a doc claim nobody
 confirmed, text whose only home is a frozen file); `module-create` and `module-split` stop for a
@@ -231,8 +232,8 @@ back to running their steps in your conversation.
 Also in these skills: `module-discover` goes from the candidates to the code
 (`code-map files`, then `discover --files … --task-file …`) and reads the `children` list of a
 split parent to pick the child the change is in; `module-sync` updates that child's doc (which
-clears the parent's MS050) and adds a keyword only for a new feature, command or concept, never a
-code identifier.
+clears the parent's MS050) and adds a keyword only for a new feature, command or concept that no
+keyword or the description covers yet, never a code identifier and never one per task.
 
 ## The ui and qa packs
 

@@ -17,9 +17,10 @@ ENGINE = Path(__file__).resolve().parents[1]
 CORE = builtin_packs_root() / "core" / "skills"
 
 KEYWORDS = (
-    "- `keywords`: most changes add none — add one only for a new feature, command or concept later\n"
-    "  tasks will name, never a code identifier (class, function, file or variable: code search finds\n"
-    "  those). Keywords only grow; a split parent keeps all of them — never remove one from it.\n")
+    "- `keywords`: most changes add none. Add one only for a new feature, command or concept that\n"
+    "  people will name in later tasks and that no keyword or the description covers yet — never a\n"
+    "  code identifier (a class, function, file or variable name: code search finds those), never\n"
+    "  one per task. Keywords only grow; a split parent keeps all of them — never remove one from it.\n")
 KEYWORDS = "".join("   " + ln for ln in KEYWORDS.splitlines(True))  # nested in step 5's list
 CODE_STEP = (  # P84-AC-013: D2 in full, F27, F28 (SI-P84-18 as amended); a wrapped skill's
     # steps live in its procedure

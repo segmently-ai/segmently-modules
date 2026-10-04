@@ -40,6 +40,11 @@ CORE: dict[str, tuple[str, list[tuple[str, ...]], list[str]]] = {
                      "never remove one from it",
                      "git ls-files --others --exclude-standard",  # fix wave M4
                      "Skip this step when step 5 ran"]),  # fix wave M5
+    "module-roles": ("writer", [("roles", "list"), ("roles", "add", "--dry-run"), ("roles", "add"),
+                                ("lint",), ("next",)],  # P84-AC-017 (D2)
+                     ["Autonomous by default", "what the role is for when unclear",
+                      "never inventing components", "continue with step 1",
+                      "the role is declared already — start at step 1"]),
     "module-create": ("writer", [("create", "--dry-run"), ("create",), ("code-map", "add"),
                                  ("lint",)],
                       ["Wait for an explicit yes", "at least five", "Never invent components"]),
@@ -266,12 +271,12 @@ class InstallLineTest(SkillRules):  # P6-AC-019 (D6, SI-4)
         "module-discover": "fa2b6d6ba50b01fd", "module-init": "b64769f4c169e5b0",
         "module-lint": "bc2538a0a39d1da0", "module-research": "2c773e1a29f3fd6d",
         "module-scout": "83221c73a41cb280", "module-split": "25b942d14038d7dd",
-        "module-sync": "18cbb93e3e8533c2", "qa-acceptance-baseline": "2a0efce95123748f",
+        "module-sync": "18cbb93e3e8533c2", "module-roles": "4984dd28497824bb", "qa-acceptance-baseline": "2a0efce95123748f",
         "qa-acceptance": "283ee6d99570ba9f", "designer-review": "83a63b52f3a24d79"}
 
     def test_every_body_holds_the_one_line(self):
         skills = self.all_skills()
-        self.assertEqual(len(skills), 12)
+        self.assertEqual(len(skills), 13)
         for sid, (_, directory) in skills.items():
             with self.subTest(skill=sid):
                 text = (directory / "SKILL.md").read_text("utf-8")

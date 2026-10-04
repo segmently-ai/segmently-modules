@@ -15,6 +15,7 @@ from tests.helpers import copy_fixture, init_git, run
 
 ROOT = Path(__file__).resolve().parent.parent
 SYNC = builtin_packs_root() / "core" / "skills" / "module-sync" / "SKILL.md"
+ROLES = builtin_packs_root() / "core" / "skills" / "module-roles" / "SKILL.md"
 
 # The module-sync front matter as the previous release shipped it: it must not change (a new
 # trigger would move the skill's routing).
@@ -34,18 +35,23 @@ def doc(name: str) -> str:
 
 
 class ModuleSyncRoleSectionTest(unittest.TestCase):
-    """P61-AC-025"""
+    """P61-AC-025; since P8.4 D2 (P84-AC-018) the scenario lives in `module-roles`' Steps and
+    `module-sync` keeps its front matter and no `## A new role` section."""
 
     def setUp(self):
-        self.text = SYNC.read_bytes().decode("utf-8")
+        self.sync = SYNC.read_bytes().decode("utf-8")
+        self.text = ROLES.read_bytes().decode("utf-8")
 
     def test_front_matter_is_unchanged(self):
-        head, _, _ = self.text[4:].partition("\n---\n")
+        head, _, _ = self.sync[4:].partition("\n---\n")
         self.assertEqual(head, f"name: {SYNC_NAME}\ndescription: {SYNC_DESCRIPTION}")
 
+    def test_module_sync_has_no_role_section(self):
+        self.assertNotIn("## A new role", self.sync)
+
     def section(self):
-        self.assertEqual(self.text.count("\n## A new role\n"), 1)
-        return self.text.split("\n## A new role\n", 1)[1].split("\n## ", 1)[0]
+        self.assertEqual(self.text.count("\n## Steps\n"), 1)
+        return self.text.split("\n## Steps\n", 1)[1].split("\n## ", 1)[0]
 
     def test_the_section_has_the_five_steps_in_order(self):
         steps = re.findall(r"^(\d)\. (.*)", self.section(), re.M)

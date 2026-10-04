@@ -1,4 +1,4 @@
-"""The skill eval suite (D7): 14 `claude plugin eval` cases under evals/skills/ with documented
+"""The skill eval suite (D7): 15 `claude plugin eval` cases under evals/skills/ with documented
 front matter and grader types, the graders every kind of case needs, and `run.py --dry-run`,
 which assembles the plugin (byte-equal skills, a scaffold per case, a modsys launcher) and prints
 the command without running `claude`. The seeded workspace itself is built and checked here."""
@@ -31,7 +31,8 @@ GRADER_TYPES = {"regex", "tool_used", "tool_order", "file_exists", "llm", "basel
 PRIMARY = {"module-scout": "show", "module-discover": "discover", "module-research": "show",
            "module-sync": "sync-instructions", "module-create": "create", "module-split": "show",
            "module-lint": "(ci|lint)", "designer-review": "discover",
-           "qa-acceptance": "discover", "qa-acceptance-baseline": "show"}
+           "qa-acceptance": "discover", "qa-acceptance-baseline": "show",
+           "module-roles": "roles"}
 WRAPPED = ("module-discover", "module-scout", "module-research")
 WRITERS = ("module-sync", "module-create", "module-split")
 
@@ -50,13 +51,13 @@ def case_name(case: Path) -> str:
 
 
 class SuiteShapeTest(unittest.TestCase):  # P4B-AC-019
-    def test_fourteen_cases(self):
+    def test_fifteen_cases(self):
         expected = ({f"{s}/trigger" for s in P4B_SKILLS} | {f"{s}/outcome" for s in WRITERS}
                     | {"negative/unrelated"})
         self.assertEqual(set(cases()), expected)
-        self.assertEqual(len(expected), 14)
+        self.assertEqual(len(expected), 15)
         names = [case_name(c) for c in cases().values()]
-        self.assertEqual(len(set(names)), 14)
+        self.assertEqual(len(set(names)), 15)
 
     def test_front_matter_case_yaml_and_grader_types(self):
         for rel, case in cases().items():

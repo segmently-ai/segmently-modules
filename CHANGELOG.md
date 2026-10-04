@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `references/*.md` files names and that does not exist or lies outside the skill directory (plain
   `lint` only; `packs sync` and `eject` are unchanged). `argument-hint` and `arguments` in a skill's
   front matter raise nothing.
+- The core skill `module-roles` (13 built-in skills, core 10): a new role's doc added to every
+  existing module — declare the role when it is undeclared, `roles add ROLE --all --dry-run`, `roles
+  add ROLE --all`, fill each doc, `lint`, `next`; it also starts from a `next` item that names
+  `roles add`. The scenario moved word for word out of `module-sync`, which keeps everything else;
+  its keyword rule now says to add a keyword only when no keyword or the description covers the
+  concept yet, and never one per task.
 - `modsys ci --baseline FILE|-` takes the `--json` output of an earlier `ci` run and marks each
   finding of the `lint` and `drift` steps `known` (same code, module, path and message, digits in the
   message ignored; MS050 / MS051 never known): a step fails only on findings that are not known, the
