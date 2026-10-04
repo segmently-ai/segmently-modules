@@ -22,6 +22,8 @@ module_doc_hard_stop = 1000
 role_doc_max = 600
 keywords_soft = 40
 keyword_shared_warn = 4
+skill_split_signal = 9000
+pack_split_signal = 53600
 
 [match]
 keyword_weight = 3

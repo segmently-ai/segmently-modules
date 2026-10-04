@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Lint **MS068** (warning): a pack skill's `SKILL.md`, or one `references/*.md` file, is longer than
+  `[budgets] skill_split_signal` (default 9000 characters); **MS069** (warning): a pack's `SKILL.md`
+  files together are longer than `[budgets] pack_split_signal` (default 53600; `references/` and
+  ejected copies are not counted). Size is a decomposition signal — route, split, or discuss —
+  never a cap. Both keys are integers >= 1 in any layer (else exit 2 naming the key) and apply to
+  every pack; plain `lint` only. The engine's budget test fails on a shipped crossing that is not
+  recorded in `SPLIT_DECISIONS`; the fixed `SKILL_MAX` / `CORE_MAX` are gone.
+- Lint **MS062** (error) also reports a `references/<file>` that a skill's `SKILL.md` or one of its
+  `references/*.md` files names and that does not exist or lies outside the skill directory (plain
+  `lint` only; `packs sync` and `eject` are unchanged). `argument-hint` and `arguments` in a skill's
+  front matter raise nothing.
 - `modsys ci --baseline FILE|-` takes the `--json` output of an earlier `ci` run and marks each
   finding of the `lint` and `drift` steps `known` (same code, module, path and message, digits in the
   message ignored; MS050 / MS051 never known): a step fails only on findings that are not known, the

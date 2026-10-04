@@ -5,7 +5,10 @@ route one file to two different modules · MS060-MS062, MS064, MS065 pack checks
 pack.toml keys, role templates, skills agents cannot load, skills reading unconfigured roles,
 shadowed skill ids) · MS063 ejected skills behind their pack · MS066 a repository pack that
 replaces a built-in pack (info) · MS067 a managed copy of a built-in skill while
-`builtin_delivery = "plugin"` (info) ·
+`builtin_delivery = "plugin"` (info) · MS062 also: a `references/` file a skill names that does not
+exist or lies outside the skill · MS068 a `SKILL.md` or `references/*.md` file over `[budgets]
+skill_split_signal` · MS069 a pack's `SKILL.md` files together over `pack_split_signal` (both
+warnings, plain `lint` only: a size is a decomposition signal, never a cap) ·
 with --changed: MS050 code changed but no doc of its module · MS051 frozen legacy snapshot
 modified or deleted (report narrowed to the changed modules)."""
 import os
@@ -33,6 +36,8 @@ from modsys.workspace import Workspace
 SEVERITY_RANK = {"info": 0, "warning": 1, "error": 2}
 FAIL_ON = {"error": 2, "warning": 1, "never": 99}
 _BACKTICK = re.compile(r"`([^`]+)`")
+_REFERENCE = re.compile(r"references/[^\s`'\")\]>]+")  # a file a skill names (SI-P84-6)
+_NOT_A_NAME = re.compile(r"[<*{$?…]")  # a placeholder or a glob in prose names no file
 # the top-level keys of a pack.toml besides its meta keys: every config section the engine reads
 PACK_SECTIONS = ("paths", "registry", "budgets", "match", "lint", "create", "coverage", "ci",
                  "packs", "roles", "fields", "code_map", "hooks", "schema_version")
@@ -279,6 +284,9 @@ def pack_findings(ws) -> list[Finding]:
                      ws.rel(skill.source))
             out.append(Finding("MS062", "error", "*", f"skill '{skill.id}' of pack "
                                f"'{skill.pack}' is not loadable by agents: {problem}", where))
+        else:
+            out += reference_findings(ws, skill.source, f"skill '{skill.id}' of pack "
+                                      f"'{skill.pack}': ")
         for role in skill.reads_roles:
             if role not in enabled:
                 why = "is disabled" if role in configured else "no layer configures"
@@ -306,6 +314,8 @@ def pack_findings(ws) -> list[Finding]:
                                f"loadable by agents: {problem}",
                                ws.rel(copy / "SKILL.md") if problem.startswith("SKILL.md")
                                else where))
+        else:
+            out += reference_findings(ws, copy, f"ejected skill '{sid}' ({where}): ")
         if sid not in skills:
             out.append(Finding("MS063", "info", "*", f"ejected skill '{sid}': pack "
                                f"'{record['pack']}' no longer declares it; the ejected copy is "
@@ -326,6 +336,96 @@ def pack_findings(ws) -> list[Finding]:
                                where))
     if builtin_delivery(ws.config) == "plugin":
         out += plugin_copies(ws, {sid for sid, s in skills.items() if s.builtin})
+    return out + split_findings(ws)
+
+
+def _text(path: Path) -> str | None:
+    """A regular file's decoded text; None for a symlink, an unreadable or a non-UTF-8 file."""
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        return path.read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _skill_files(source: Path) -> list[Path]:
+    """`SKILL.md` and every `*.md` directly in `references/` (the files lint measures and
+    scans; nested directories and other files are not)."""
+    refs = source / "references"
+    try:
+        names = sorted(refs.glob("*.md")) if refs.is_dir() and not refs.is_symlink() else []
+    except OSError:
+        names = []
+    return [source / "SKILL.md"] + names
+
+
+def reference_findings(ws, source: Path, prefix: str) -> list[Finding]:
+    """MS062 (error): a `references/...` name in `SKILL.md` or in a `references/*.md` file
+    (one level of chaining) whose file does not exist or lies outside the skill directory —
+    lint only; `packs sync` and `eject` do not look at names. `prefix` opens the message."""
+    out: list[Finding] = []
+    for file in _skill_files(source):
+        text = _text(file)
+        if text is None:
+            continue
+        label = file.relative_to(source).as_posix()
+        seen: set[str] = set()
+        for match in _REFERENCE.finditer(text):
+            name = match.group(0).rstrip(".,;:!")
+            if name in seen or name.endswith("/") or _NOT_A_NAME.search(name):
+                continue
+            seen.add(name)
+            target = source / name
+            if not inside(target, source):
+                why = "which is outside the skill directory"
+            elif not os.path.lexists(target):
+                why = "which does not exist"
+            else:
+                continue
+            out.append(Finding("MS062", "error", "*", f"{prefix}{label} names {name}, {why}",
+                               ws.rel(file)))
+    return out
+
+
+def split_findings(ws) -> list[Finding]:
+    """MS068 / MS069 (warnings, D5): size as a decomposition signal. MS068: `SKILL.md` or a
+    `references/*.md` file of a pack's skill (or of an ejected copy) over `[budgets]
+    skill_split_signal`; MS069: a pack's `SKILL.md` files together over `pack_split_signal`
+    (references and ejected copies are not counted)."""
+    budgets = ws.config["budgets"]
+    skill_max, pack_max = budgets["skill_split_signal"], budgets["pack_split_signal"]
+    out: list[Finding] = []
+
+    def measure_skill(sid: str, source: Path) -> int:
+        """Warn per file over the signal; return the `SKILL.md` length (0 when unmeasured)."""
+        skill_md = 0
+        for file in _skill_files(source):
+            text = _text(file)
+            if text is None:
+                continue
+            is_skill = file.parent == source
+            if is_skill:
+                skill_md = len(text)
+            if len(text) > skill_max:
+                label = sid if is_skill else f"{sid}/{file.stem}"
+                out.append(Finding("MS068", "warning", "*", f"{label}: {len(text)} characters "
+                                   f"> skill split signal {skill_max} — route its scenarios "
+                                   f"or split the skill", ws.rel(file)))
+        return skill_md
+
+    for pack in discover_packs(ws.config_dir):
+        total = 0
+        for sid, spec in as_dict(pack["data"].get("skills")).items():
+            source = pack["path"].parent / spec["path"]
+            if inside(source, pack["path"].parent) and source.is_dir():
+                total += measure_skill(sid, source)
+        if total > pack_max:
+            out.append(Finding("MS069", "warning", "*", f"pack '{pack['id']}': {total} "
+                               f"characters of skills > pack split signal {pack_max} — route, "
+                               f"split a skill out, or split the pack", ws.rel(pack["path"])))
+    for sid, copy in ejected_copies(ws.config_dir).items():
+        measure_skill(sid, copy)
     return out
 
 

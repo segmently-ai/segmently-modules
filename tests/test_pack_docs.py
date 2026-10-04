@@ -54,7 +54,7 @@ class PackDocsTest(unittest.TestCase):  # P4A-AC-022
                                (ENGINE / "docs/configuration.md").read_text(encoding="utf-8"),
                                re.M))
         self.assertEqual(sorted(rows), ["MS060", "MS061", "MS062", "MS063", "MS064", "MS065",
-                                        "MS066", "MS067"])  # P5a D0a (M8), P6 D2
+                                        "MS066", "MS067", "MS068", "MS069"])  # P5a D0a (M8), P6 D2, P8.4 D5
         self.assertTrue(all("(plain `lint` only)" in text for text in rows.values()), rows)
 
     def test_writing_a_pack_walks_through_in_order(self):

@@ -1,20 +1,32 @@
 """Token budgets (D7): what every session pays for. Sizes are characters (`len` of the decoded
-text), so they are deterministic. A bound is never loosened to make a test pass: shrink the
-skill, or take the decision again."""
+text), so they are deterministic. The descriptions are a hard budget (every session pays every
+description). A skill, a route file or a pack above its split signal (D5, owner 2026-10-04) is a
+decomposition decision, never a cap: route it, split it, or record the discussion with the owner
+in SPLIT_DECISIONS — a shipped skill is never trimmed to fit a number."""
 
+import json
+import re
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from modsys.config import BUILTIN_PACKS, builtin_packs_root
 from modsys.skills import read_front_matter
 from tests.helpers import copy_fixture, run
 
-SKILL_MAX = 9_000       # each shipped SKILL.md
-CORE_MAX = 53_600       # the core pack's nine SKILL.md together (raised from 53_200: P8.3 D1–D3, ruled)
 # P8.2 (2026-10-03): the decision taken again for the shipped choice agent and the Codex path
 DESCRIPTIONS_MAX = 6_600  # the shipped skills' `description` values together
 SKILL_COUNT = 12        # core 9 + qa 2 + ui 1
+
+# A shipped crossing of `skill_split_signal` / `pack_split_signal` (lint MS068 / MS069) that the
+# owner discussed and kept. Keys: "<pack>/<skill>", "<pack>/<skill>/<file stem>", "pack <pack>".
+# A value: "discussed with the owner YYYY-MM-DD: keep|route|split ..., because <why>". P8.4 ships
+# none (SI-P84-4); an entry whose crossing is gone is stale and fails the test.
+SPLIT_DECISIONS: dict[str, str] = {}
+DECISION = re.compile(r"^discussed with the owner (\d{4}-\d{2}-\d{2}): (keep|route|split)\b.*, "
+                      r"because \S.*$", re.DOTALL)
 
 # Measured on the bookshop fixture (characters of stdout; `<root>` is the copied fixture):
 #   modsys context --task "add a payment retry to the checkout" --role developer --json --root <root>
@@ -26,36 +38,105 @@ SHOW_MAX = int(SHOW_MEASURED * 1.2)
 TASK = "add a payment retry to the checkout"
 
 
-def size_problem(name: str, text: str, limit: int = SKILL_MAX) -> str | None:
-    """None when `text` fits in `limit` characters, else a message naming the file and both
-    numbers."""
-    n = len(text)
-    return None if n <= limit else f"{name}: {n} characters, over the {limit} limit"
-
-
-def shipped_skills() -> dict[str, tuple[str, Path]]:
-    """{`<pack>/<dir>`: (pack, SKILL.md path)} for every skill of every built-in pack."""
+def shipped_skills(root: Path | None = None) -> dict[str, tuple[str, Path]]:
+    """{`<pack>/<dir>`: (pack, SKILL.md path)} for every skill of every built-in pack (under
+    `root`: a copy of the packs a test changed)."""
     out = {}
     for pack in BUILTIN_PACKS:
-        for path in sorted((builtin_packs_root() / pack / "skills").glob("*/SKILL.md")):
+        for path in sorted(((root or builtin_packs_root()) / pack / "skills").glob("*/SKILL.md")):
             out[f"{pack}/{path.parent.name}"] = (pack, path)
     return out
 
 
-def text_of(path: Path) -> str:
-    return path.read_bytes().decode("utf-8")
+def crossings(root: Path | None = None) -> dict[str, str]:
+    """{decision key: lint message} for every MS068 / MS069 finding of `lint` with all three
+    built-in packs enabled (`root`: where the packs are read from — a test seam)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = copy_fixture(tmp)
+        (repo / ".modsys").mkdir(exist_ok=True)
+        (repo / ".modsys" / "config.toml").write_text('[packs]\nbuiltin = ["core", "qa", "ui"]\n',
+                                                      encoding="utf-8")
+        with mock.patch("modsys.config.builtin_packs_root",
+                        return_value=root or builtin_packs_root()):
+            code, out, err = run("lint", "--fail-on", "never", "--json", "--root", str(repo))
+        assert (code, err) == (0, ""), err
+        skills = shipped_skills(root)
+        owner = {key.split("/")[1]: key.split("/")[0] for key in skills}
+        found = {}
+        for f in json.loads(out)["data"]["findings"]:
+            if f["code"] == "MS069":
+                found["pack " + f["message"].split("'")[1]] = f["message"]
+            elif f["code"] == "MS068":
+                label = f["message"].split(":")[0]
+                found[f"{owner[label.split('/')[0]]}/{label}"] = f["message"]
+    return found
 
 
-class BoundCheckTest(unittest.TestCase):
-    def test_exactly_at_the_bound_passes(self):
-        self.assertIsNone(size_problem("core/x/SKILL.md", "a" * 9_000))
+def split_problems(found: dict[str, str], decisions: dict[str, str]) -> list[str]:
+    """What the engine test fails on: a crossing without a recorded decision, a recorded
+    decision that is malformed, or a decision whose crossing is gone."""
+    problems = [f"{key}: {message} — decompose it, or record the owner's decision in "
+                f"SPLIT_DECISIONS" for key, message in found.items() if key not in decisions]
+    problems += [f"{key}: the recorded decision is not 'discussed with the owner YYYY-MM-DD: "
+                 f"keep|route|split ..., because ...': {value!r}"
+                 for key, value in decisions.items() if not DECISION.match(value)]
+    problems += [f"{key}: remove the stale decision (it no longer crosses)"
+                 for key in decisions if key not in found]
+    return problems
 
-    def test_one_over_the_bound_fails_naming_the_file_and_both_numbers(self):
-        msg = size_problem("core/x/SKILL.md", "a" * 9_001)
-        self.assertIsNotNone(msg)
-        self.assertIn("core/x/SKILL.md", msg)
-        self.assertIn("9001", msg)
-        self.assertIn("9000", msg)
+
+class SplitDecisionsTest(unittest.TestCase):
+    """The crossing rules, proven on a copy of the packs with one skill grown past the signal."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name) / "packs"
+        shutil.copytree(builtin_packs_root(), self.root)
+        self.key = "core/module-lint"
+        skills = self.root / "core" / "skills"
+        md = skills / "module-lint" / "SKILL.md"
+        text = md.read_text(encoding="utf-8")
+        md.write_text(text + "x" * (9_001 - len(text)), encoding="utf-8")  # S + 1 characters
+        sync = skills / "module-sync" / "SKILL.md"  # keep the core total under its signal
+        sync.write_text(sync.read_text(encoding="utf-8")[:2_000], encoding="utf-8")
+
+    def test_a_crossing_without_a_decision_fails_naming_the_skill_and_both_numbers(self):
+        problems = split_problems(crossings(self.root), {})
+        self.assertEqual(len(problems), 1)
+        self.assertIn(self.key, problems[0])
+        self.assertIn("9001 characters > skill split signal 9000", problems[0])
+
+    def test_a_recorded_decision_passes(self):
+        decisions = {self.key: "discussed with the owner 2026-10-04: keep, because one scenario"}
+        self.assertEqual(split_problems(crossings(self.root), decisions), [])
+
+    def test_a_decision_without_a_valid_date_or_choice_fails(self):
+        for value in ("keep, because one scenario",
+                      "discussed with the owner 2026-10: keep, because x",
+                      "discussed with the owner 2026-10-04: trim, because x",
+                      "discussed with the owner 2026-10-04: keep"):
+            with self.subTest(value=value):
+                problems = split_problems(crossings(self.root), {self.key: value})
+                self.assertEqual(len(problems), 1)
+                self.assertIn(self.key, problems[0])
+
+    def test_a_decision_for_a_skill_that_no_longer_crosses_is_stale(self):
+        decisions = {"core/module-scout": "discussed with the owner 2026-10-04: keep, because x"}
+        problems = split_problems({}, decisions)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("remove the stale decision", problems[0])
+
+    def test_a_route_file_and_a_pack_are_keyed_by_stem_and_pack(self):
+        refs = self.root / "core" / "skills" / "module-lint" / "references"
+        (refs / "big.md").write_text("y" * 9_001, encoding="utf-8")
+        found = crossings(self.root)
+        self.assertIn("core/module-lint/big", found)
+        self.assertNotIn("pack core", found)  # a route file is never part of the pack total
+        pack = self.root / "qa" / "skills"
+        grown = next(pack.glob("*/SKILL.md"))
+        grown.write_text(grown.read_text(encoding="utf-8") + "z" * 60_000, encoding="utf-8")
+        self.assertIn("pack qa", crossings(self.root))
 
 
 class ShippedSkillsTest(unittest.TestCase):
@@ -63,15 +144,13 @@ class ShippedSkillsTest(unittest.TestCase):
         self.assertEqual(len(shipped_skills()), SKILL_COUNT,
                          "a skill was added or removed: update SKILL_COUNT and review the budgets")
 
-    def test_every_skill_is_within_its_bound(self):
-        problems = [p for name, (_, path) in shipped_skills().items()
-                    if (p := size_problem(name, text_of(path)))]
-        self.assertEqual(problems, [])
+    def test_no_shipped_skill_route_or_pack_crosses_a_split_signal_unrecorded(self):
+        self.assertEqual(split_problems(crossings(), SPLIT_DECISIONS), [])
 
-    def test_the_core_pack_is_within_its_total(self):
-        core = {n: len(text_of(p)) for n, (pack, p) in shipped_skills().items() if pack == "core"}
-        self.assertEqual(len(core), 9)
-        self.assertLessEqual(sum(core.values()), CORE_MAX, f"core total over {CORE_MAX}: {core}")
+    def test_the_caps_are_gone(self):
+        import sys
+        self.assertFalse(hasattr(sys.modules[__name__], "SKILL_MAX"))
+        self.assertFalse(hasattr(sys.modules[__name__], "CORE_MAX"))
 
     def test_the_descriptions_are_within_their_total(self):
         total = 0

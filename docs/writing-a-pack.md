@@ -197,7 +197,27 @@ carry module `*`, so `lint --changed` never shows them:
 |---|---|---|
 | MS060 | warning | an unknown key in `pack.toml` (top level, `[roles.<name>]`, `[skills.<id>]`) — e.g. a typo like `standrad`, or `budget` / `consumed_by`, which are not role keys |
 | MS061 | error | a role's `template` does not exist in the pack, or points outside it |
-| MS062 | error | a pack skill or an ejected copy agents cannot load (path, symlink, `SKILL.md` front matter) |
+| MS062 | error | a pack skill or an ejected copy agents cannot load (path, symlink, `SKILL.md` front matter), or a `references/` file its `SKILL.md` or a route file names that does not exist or is outside the skill |
 | MS063 | warning / info | an ejected skill is behind its pack, or no pack declares it any more |
 | MS064 | warning | `reads_roles` names a role no layer configures, or a disabled one |
 | MS065 | warning | another pack with a higher precedence declares the same skill id |
+| MS068 | warning | a skill's `SKILL.md`, or one `references/*.md` file, is over `[budgets] skill_split_signal` (9000 characters) — route its scenarios or split the skill |
+| MS069 | warning | a pack's `SKILL.md` files together are over `[budgets] pack_split_signal` (53600 characters; `references/` is not counted) — route, split a skill out, or split the pack |
+
+## Size is a decomposition signal
+
+A skill, a route file or a pack above its signal (MS068, MS069) is not a cap to squeeze under:
+it means one skill, or one of its routes, carries too many decisions. Decompose it — route its
+scenarios into `references/` files, split a skill out, or split the pack (the technique of
+`module-split` for module docs) — or discuss it and keep it on purpose. Never trim a useful rule
+to fit a number. The thresholds are team-configurable `[budgets]` keys
+([configuration.md](configuration.md)) and apply to every pack.
+
+A skill with more than one scenario keeps in `SKILL.md` the front matter, when to use it and
+when not, its scope and its gates, plus a **Route** block at the head of its steps: one line per
+scenario — what the user wants, then `references/<scenario>.md` ("read it, then follow it").
+Each scenario's steps live in that file; steps every scenario shares stay inline. Every
+`references/` file a skill names must exist inside the skill directory — lint MS062 checks the
+names in `SKILL.md` and in each route file (one level of chaining), and `packs sync` copies the
+whole skill directory. `argument-hint` and `arguments` in the front matter are accepted in any
+YAML form.

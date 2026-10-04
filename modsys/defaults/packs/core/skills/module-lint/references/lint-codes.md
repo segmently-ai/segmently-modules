@@ -32,9 +32,11 @@ Every code the `lint` and `ci` verbs report. **Safe** = a mechanical fix the ski
 | MS053 | two routing rules send one file to two modules (`*`) | Ask which rule wins (`exclusive = true`) or narrow a glob |
 | MS060 | an unknown key in a pack's `pack.toml` (`*`) | Ask the pack's owner (usually a typo) |
 | MS061 | a pack role's template is missing or outside the pack (`*`) | Ask the pack's owner |
-| MS062 | a pack skill agents cannot load (`*`) | Ask the pack's owner; the message says what is wrong |
+| MS062 | a pack skill agents cannot load, or a `references/` file it names that is missing (`*`) | Ask the pack's owner; the message says what is wrong |
 | MS063 | an ejected skill is behind its pack (its files changed since the eject, or a repository pack's version did), a pack file it cannot read, a symlink at the ejected path (warning: in the way), or no pack declares it (`*`) | Ask: review `modsys eject <skill> --diff --json`, take what the team wants into the copy by hand, then `modsys eject <skill> --rebase --json` records the pack's current state and clears it (the copy's files stay as they are). Or delete the copy and run `packs sync` (the pack's version returns). A symlink at the ejected path: ask, then remove it (`modsys eject <skill> --json` then makes a real copy) |
 | MS064 | a skill reads a role that is not configured or disabled (`*`) | Ask the pack's owner |
 | MS065 | two packs declare one skill id; one is shadowed (`*`) | Ask: rename one of the skills |
 | MS066 | a repository pack takes a built-in pack's id and replaces that pack (`*`, info) | Nothing to fix when the team owns that pack on purpose; otherwise ask to rename the repository pack |
 | MS067 | a copy of a built-in skill in an agent directory while the plugin provides it (`builtin_delivery = "plugin"`, `*`, info) | Safe: the sync the finding names (`modsys packs sync --json`, with `--agent <agent>` when `[packs] agents` leaves that directory out) removes an unedited copy; an edited copy or an ejected skill's copy stays a conflict — ask |
+| MS068 | a skill's `SKILL.md` or one `references/` file is over the skill split signal (`*`, warning) | Ask: a decomposition decision — route its scenarios, split the skill, or keep it on purpose; never trim rules to fit |
+| MS069 | a pack's `SKILL.md` files together are over the pack split signal (`*`, warning) | Ask: route, split a skill out, or split the pack |
