@@ -27,9 +27,11 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 ## Steps
 
 1. Delegate: hand the user's task verbatim, with what the user settled in this
-   conversation (files, constraints, the depth), to the `module-discover-agent` agent (Claude Code:
-   `modsys:module-discover-agent`) and give its report as yours; without that agent, read
-   `references/procedure.md` and follow it.
+   conversation (files, constraints, the depth), to your platform's agent and give its report as
+   yours. Claude Code: the `modsys:module-discover-agent` agent. Codex: spawn the
+   `module-discover-agent` custom agent (`.codex/agents/`). Read `references/procedure.md` and follow
+   it only when no such agent exists. A request that also says "change nothing" is still a
+   hand-off: the agent is read-only.
 
 ## Gates
 

@@ -231,7 +231,10 @@ through the link — and otherwise that directory is left alone, with no agent r
 under `.codex/` is read or changed, and a sync without `codex` never opens `.codex/`. An ejected
 skill's agent file follows the ejected copy's `references/procedure.md`. Claude Code with
 `builtin_delivery = "repo"` has no agent — only the plugin ships them — so there the skills fall
-back to running their steps in your conversation. `modsys next` names an agent file that is
+back to running their steps in your conversation. Codex is told to spawn the `module-<x>-agent` custom agent and to run the
+steps itself only when no such agent exists. Known limit: Codex picks a skill by its
+description, so a bare "task confirmed" may make it implement the task; ask for the touch-set
+to get the hand-off. `modsys next` names an agent file that is
 not in sync, as it names a stale skill copy.
 
 Also in these skills: `module-discover` goes from the candidates to the code

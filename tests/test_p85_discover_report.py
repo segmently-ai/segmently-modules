@@ -76,7 +76,7 @@ ADDED = {"5. Read the result.": KEPT_PICK, "6. Read the `modify`": NOT_KEPT,
 
 # Nothing else of the skill moves (P85-AC-004): sha256[:16] at bdc9f9b. Task 3 (D3) rewrites the
 # hand-off step of the three SKILL.md files after this task: it moves the first pin, nothing else.
-UNMOVED = {"module-discover/SKILL.md": "9652fa87f06c7e38",
+UNMOVED = {"module-discover/SKILL.md": "d9475e32c057fcba",
            "module-scout/references/procedure.md": "a0739ad4036f896a",
            "module-research/references/procedure.md": "aeaece498d1517ec",
            "module-sync/SKILL.md": "e95d0484c87ccf99"}

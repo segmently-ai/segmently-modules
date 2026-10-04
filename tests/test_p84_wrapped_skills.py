@@ -105,10 +105,16 @@ class ThinSkillTest(unittest.TestCase):  # P84-AC-011
                 for phrase in ("hand the user's task verbatim, with what the user settled in "
                                "this conversation", "what the user settled in this conversation "
                                "(files, constraints, the depth)",
-                               f"`{name}-agent`", f"`modsys:{name}-agent`",
                                "give its report as yours",
-                               "without that agent, read `references/procedure.md` and follow it"):
-                    self.assertEqual(steps.count(phrase), 1, phrase)
+                               "Claude Code: the `modsys:" + name + "-agent` agent",
+                               "Codex: spawn the `" + name + "-agent` custom agent "
+                               "(`.codex/agents/`)",
+                               "read `references/procedure.md` and follow it only when no such "
+                               "agent exists",
+                               "a request that also says \"change nothing\" is still a hand-off",
+                               "the agent is read-only"):
+                    self.assertEqual(steps.lower().count(phrase.lower()), 1, phrase)
+                self.assertNotIn("without that agent, read", steps)  # SI-P85-9
                 self.assertNotIn("``", steps)  # no empty code span where a placeholder was
 
     def test_each_skill_shrank_by_its_steps(self):
@@ -348,6 +354,8 @@ class ReferencesTravelTest(unittest.TestCase):  # P84-AC-030 (the wrapped skills
                                      hashlib.sha256(copy.read_bytes()).hexdigest())
                     self.assertEqual((dest / "SKILL.md").read_bytes(),
                                      (CORE / name / "SKILL.md").read_bytes())  # keys kept
+                    self.assertIn(f"Codex: spawn the\n   `{name}-agent` custom agent",
+                                  (dest / "SKILL.md").read_text(encoding="utf-8"))  # P85-AC-017
         self.assertEqual(run("packs", "sync", "--check", "--agent", "claude", "--agent", "codex",
                              *self.R)[0], 0)
 

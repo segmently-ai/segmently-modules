@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The wrapped skills `module-discover`, `module-scout` and `module-research` name each platform's
+  agent in their one step: Claude Code the `modsys:module-<x>-agent` agent, Codex spawns the
+  `module-<x>-agent` custom agent (`.codex/agents/`); `references/procedure.md` is read only when no
+  such agent exists.
 - Lint **MS068** (warning): a pack skill's `SKILL.md`, or one `references/*.md` file, is longer than
   `[budgets] skill_split_signal` (default 9000 characters); **MS069** (warning): a pack's `SKILL.md`
   files together are longer than `[budgets] pack_split_signal` (default 53600; `references/` and
