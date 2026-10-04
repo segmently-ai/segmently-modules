@@ -23,6 +23,7 @@ from tests.helpers import copy_fixture, init_git, run, run_json
 V = modsys.__version__
 ENGINE = Path(__file__).resolve().parents[1]
 CORE = builtin_packs_root() / "core" / "skills"
+CORE_N = len(list(CORE.glob("*/SKILL.md")))  # the core pack's skills, as shipped
 NAMES = ["module-discover-agent", "module-research-agent", "module-scout-agent"]
 SKILL_OF = {"module-discover-agent": "module-discover", "module-research-agent": "module-research",
             "module-scout-agent": "module-scout"}
@@ -289,7 +290,7 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
         self.assertEqual(self.rows(data), [(n, "unchanged") for n in NAMES])
         self.assertEqual(snap(self.root), before)
         self.assertEqual(self.text("--check")[-1],
-                         f"packs sync --check: 0 created, 0 updated, 9 unchanged, 0 removed, "
+                         f"packs sync --check: 0 created, 0 updated, {CORE_N} unchanged, 0 removed, "
                          f"0 conflict, 0 invalid; agent files: 0 created, 0 updated, 3 unchanged, "
                          f"0 removed, 0 conflict: in sync")
 
@@ -342,7 +343,7 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
                                        "and sync again, or keep the change: modsys eject "
                                        "module-scout, edit .modsys/overrides/skills/module-scout/"
                                        "references/procedure.md, then packs sync")
-        self.assertEqual(lines[-1], f"packs sync: 0 created, 0 updated, 9 unchanged, 0 removed, "
+        self.assertEqual(lines[-1], f"packs sync: 0 created, 0 updated, {CORE_N} unchanged, 0 removed, "
                                     f"0 conflict, 0 invalid; agent files: 0 created, 0 updated, "
                                     f"2 unchanged, 0 removed, 1 conflict")
 
@@ -776,7 +777,7 @@ class OutputShapeTest(CodexRepo):  # P84-AC-009, P84-AC-038
         self.assertFalse((self.root / ".codex").exists())  # --dry-run writes nothing
         data = self.sync(agents=("claude", "codex"))
         self.assertEqual(sum(data["summary"].values()), len(data["skills"]))  # skills only
-        self.assertEqual(data["summary"]["created"], 18)
+        self.assertEqual(data["summary"]["created"], 2 * CORE_N)
 
     def test_check_and_failed_count_both_lists(self):
         self.sync()
@@ -795,28 +796,28 @@ class OutputShapeTest(CodexRepo):  # P84-AC-009, P84-AC-038
         lines = self.text("--dry-run")
         rows = [f"created    codex   .codex/agents/{n}.toml  (core {V})" for n in NAMES]
         self.assertEqual(lines[-4:], rows + [
-            f"packs sync: 9 created, 0 updated, 0 unchanged, 0 removed, 0 conflict, 0 invalid; "
+            f"packs sync: {CORE_N} created, 0 updated, 0 unchanged, 0 removed, 0 conflict, 0 invalid; "
             f"agent files: 3 created, {COUNTS}  (dry run: nothing written)"])
-        self.assertTrue(lines[8].startswith("created    codex   .agents/skills/module-sync"))
+        self.assertTrue(lines[CORE_N - 1].startswith("created    codex   .agents/skills/module-sync"))
         lines = self.text()
         self.assertEqual(lines[-4:], rows + [
-            f"packs sync: 9 created, 0 updated, 0 unchanged, 0 removed, 0 conflict, 0 invalid; "
+            f"packs sync: {CORE_N} created, 0 updated, 0 unchanged, 0 removed, 0 conflict, 0 invalid; "
             f"agent files: 3 created, {COUNTS}"])
         lines = self.text(agents=("claude", "codex"))
-        self.assertEqual(lines[18:21], [r.replace("created  ", "unchanged") for r in rows])
-        self.assertTrue(lines[21].startswith("note: GitHub Copilot reads both"))
+        self.assertEqual(lines[2 * CORE_N:2 * CORE_N + 3], [r.replace("created  ", "unchanged") for r in rows])
+        self.assertTrue(lines[2 * CORE_N + 3].startswith("note: GitHub Copilot reads both"))
 
     def test_setup_text_and_status(self):
         got, out, err = run("setup", "--agent", "codex", *self.R)
         self.assertEqual((got, err), (0, ""))
-        self.assertIn("packs sync  created      9 skill copies, 3 agent files", out.splitlines())
+        self.assertIn(f"packs sync  created      {CORE_N} skill copies, 3 agent files", out.splitlines())
         got, out, err = run("setup", "--agent", "codex", *self.R)
-        self.assertIn("packs sync  unchanged    9 skill copies, 3 agent files", out.splitlines())
+        self.assertIn(f"packs sync  unchanged    {CORE_N} skill copies, 3 agent files", out.splitlines())
         self.agent_file("module-scout-agent").unlink()
         got, env, err = run_json("setup", "--agent", "codex", *self.R)
         self.assertEqual(env["data"]["steps"][1]["status"], "created")  # folded with the rows
         got, out, err = run("setup", "--agent", "codex", *self.R)
-        self.assertIn("packs sync  unchanged    9 skill copies, 3 agent files", out.splitlines())
+        self.assertIn(f"packs sync  unchanged    {CORE_N} skill copies, 3 agent files", out.splitlines())
         path = self.agent_file("module-scout-agent")
         path.write_bytes(path.read_bytes() + b"# mine\n")
         got, env, err = run_json("setup", "--agent", "codex", *self.R)
@@ -824,7 +825,7 @@ class OutputShapeTest(CodexRepo):  # P84-AC-009, P84-AC-038
         got, out, err = run("setup", "--agent", "codex", *self.R)
         lines = out.splitlines()
         self.assertEqual(got, 1)
-        self.assertIn("packs sync  conflict     9 skill copies, 3 agent files (2 unchanged, "
+        self.assertIn(f"packs sync  conflict     {CORE_N} skill copies, 3 agent files (2 unchanged, "
                       "1 conflict)", lines)
         self.assertIn("  conflict  codex   .codex/agents/module-scout-agent.toml", lines)
         self.assertEqual(lines[-1], "setup: packs sync left 1 agent file unwritten — resolve it "
