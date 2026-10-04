@@ -521,7 +521,7 @@ class DocsTest(unittest.TestCase):  # P85-AC-007
         entries = [flat(e) for e in re.split(r"\n- ", unreleased) if "read for evidence" in e]
         self.assertEqual(len(entries), 1)
         for phrase in ("`module-discover`", "kept pick", "files to change", "read for evidence",
-                       "code in `<owner>`", "outside every module", "Every sentence"):
+                       "the module that holds its files", "outside every module", "Every sentence"):
             self.assertIn(phrase, entries[0])
 
 
