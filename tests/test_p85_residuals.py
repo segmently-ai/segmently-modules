@@ -52,6 +52,13 @@ class GlobNamesTest(ReferencesTest):  # P85-AC-019 (reuses the shelf fixture and
             with self.subTest(text=text):
                 self.assertEqual(self.probe(text), [want])
 
+    def test_emphasis_around_a_file_name_is_checked(self):  # fix round 1, M-1
+        for form in ("**{}**", "_see {}_", "*see {}*", "__{}__"):
+            with self.subTest(form=form):
+                self.assertEqual(self.probe(form.format("references/missing.md")),
+                                 ["references/missing.md"])
+                self.assertEqual(self.probe(form.format("references/restock.md")), [])
+
     def test_emphasis_and_present_names_stay_clean(self):
         for text in ("_references/restock.md_", "__references/restock.md__",
                      "references/restock.md?plain=1", "Did you read references/restock.md?"):
@@ -110,10 +117,34 @@ class SplitSignalReadTest(unittest.TestCase):  # P85-AC-021
                               cwd=ENGINE)
         self.assertEqual((proc.returncode, proc.stdout.strip()), (0, "1"), proc.stderr)
 
-    def test_a_recorded_decision_exempts_a_route_file(self):
-        text = (ENGINE / self.FILES[0]).read_text(encoding="utf-8")
-        self.assertIn("SPLIT_DECISIONS", text)
-        self.assertIn("SPLIT_DECISIONS", (ENGINE / self.FILES[1]).read_text(encoding="utf-8"))
+    def test_a_recorded_decision_exempts_exactly_its_file(self):  # fix round 1, I-1
+        from tests import test_p83_skill_text as p83
+        from tests import test_p84_routing as p84
+        from tests.test_budgets import SPLIT_DECISIONS, decision_key
+        files = {"SKILL.md": "x" * 10, "references/create.md": "y" * 10}
+        self.assertEqual(p84.oversize(files, 5), ["SKILL.md", "references/create.md"])
+        self.assertEqual(p84.oversize(files, 10), [])
+        for key, exempt in (("qa/qa-acceptance-baseline", "SKILL.md"),
+                            ("qa/qa-acceptance-baseline/create", "references/create.md")):
+            with mock.patch.dict(SPLIT_DECISIONS, {key: "x"}):
+                self.assertEqual(p84.oversize(files, 5), [n for n in files if n != exempt])
+        for wrong in ("qa/qa-acceptance-baseline/SKILL", "qa/qa-acceptance-baseline/create.md",
+                      "core/qa-acceptance-baseline"):
+            with mock.patch.dict(SPLIT_DECISIONS, {wrong: "x"}):
+                self.assertEqual(p84.oversize(files, 5), list(files))
+        self.assertEqual(decision_key("core", "module-sync"), "core/module-sync")
+        self.assertEqual(p83.over_bound(("module-sync",), 1), ["module-sync"])
+        with mock.patch.dict(SPLIT_DECISIONS, {"core/module-sync": "x"}):
+            self.assertEqual(p83.over_bound(("module-sync", "module-discover"), 1),
+                             ["module-discover"])
+        with mock.patch.dict(SPLIT_DECISIONS, {"core/module-sync/SKILL": "x"}):
+            self.assertEqual(p83.over_bound(("module-sync",), 1), ["module-sync"])
+
+    def test_the_budget_test_records_through_the_same_helper(self):
+        text = (ENGINE / "tests/test_budgets.py").read_text(encoding="utf-8")
+        self.assertIn("decision_key(", text.split("def crossings", 1)[1])
+
+    def test_the_split_signals_stay(self):
         self.assertIn("S, P = 9000, 53600",
                       (ENGINE / "tests/test_split_signals.py").read_text(encoding="utf-8"))
 
@@ -172,6 +203,28 @@ class AgentFileInferenceTest(CodexRepo):  # P85-AC-022…025
                 self.refused()
                 self.assertEqual(self.skill_items(), [])
                 self.assertEqual(self.no_agent_skips(), [NO_AGENT])
+
+    def test_a_non_directory_agents_directory_infers_nothing(self):  # fix round 1, M-2
+        def agents_file():
+            (self.root / ".codex").mkdir()
+            (self.root / ".codex/agents").write_bytes(self.marked())
+
+        def codex_file():
+            (self.root / ".codex").write_bytes(self.marked())
+        for label, plant in (("agents is a file", agents_file), ("codex is a file", codex_file)):
+            with self.subTest(case=label):
+                if (self.root / ".codex").is_dir():
+                    shutil.rmtree(self.root / ".codex")
+                elif (self.root / ".codex").exists():
+                    (self.root / ".codex").unlink()
+                plant()
+                self.refused()
+                self.assertEqual(self.skill_items(), [])
+                self.assertEqual(self.no_agent_skips(), [NO_AGENT])
+                got, env, err = run_json("packs", "sync", "--agent", "codex", *self.R)
+                self.assertEqual((got, err), (1, ""))
+                self.assertEqual([r["status"] for r in env["data"]["agent_files"]],
+                                 ["conflict"] * 3)
 
     def test_one_or_three_marked_files_infer_codex_like_agent_codex(self):
         for files in (["module-scout-agent"], NAMES):

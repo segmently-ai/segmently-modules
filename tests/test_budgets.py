@@ -49,6 +49,12 @@ def shipped_skills(root: Path | None = None) -> dict[str, tuple[str, Path]]:
     return out
 
 
+def decision_key(pack: str, skill: str, name: str = "SKILL.md") -> str:
+    """The `SPLIT_DECISIONS` key of a skill file: `<pack>/<skill>` for its `SKILL.md`,
+    `<pack>/<skill>/<stem>` for a `references/<stem>.md` file (what `crossings()` records)."""
+    return f"{pack}/{skill}" if name == "SKILL.md" else f"{pack}/{skill}/{Path(name).stem}"
+
+
 def crossings(root: Path | None = None) -> dict[str, str]:
     """{decision key: lint message} for every MS068 / MS069 finding of `lint` with all three
     built-in packs enabled (`root`: where the packs are read from — a test seam)."""
@@ -69,7 +75,9 @@ def crossings(root: Path | None = None) -> dict[str, str]:
                 found["pack " + f["message"].split("'")[1]] = f["message"]
             elif f["code"] == "MS068":
                 label = f["message"].split(":")[0]
-                found[f"{owner[label.split('/')[0]]}/{label}"] = f["message"]
+                sid, _, stem = label.partition("/")
+                found[decision_key(owner[sid], sid, f"{stem}.md" if stem else "SKILL.md")] = \
+                    f["message"]
     return found
 
 

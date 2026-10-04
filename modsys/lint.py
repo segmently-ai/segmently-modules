@@ -38,8 +38,8 @@ FAIL_ON = {"error": 2, "warning": 1, "never": 99}
 _BACKTICK = re.compile(r"`([^`]+)`")
 # a file a skill names (SI-P84-6): an anchor `#`, a table cell's `|` and an em or en dash end
 # it; so does a `?` that follows the extension (`.md?plain=1`) or ends the name (a question mark),
-# a trailing run of `*` / `_` is Markdown emphasis only when the same run stands right before
-# `references/`. A name that still holds `*`, `?` or `[` is a pattern (SI-P85-10): not a file,
+# a trailing run of `*` / `_` is Markdown emphasis when what is left ends with an extension
+# (`**references/x.md**`, `_see references/x.md_`). A name that still holds `*`, `?` or `[` is a pattern (SI-P85-10): not a file,
 # not checked (`references/route-*`, `references/x?.md`, `references/[ab].md`).
 _REFERENCE = re.compile(r"references/[^\s`'\")\]>|#\u2014\u2013]+")
 _NOT_A_NAME = re.compile(r"[<*?\[{$…]")  # a placeholder or a glob in prose names no file
@@ -366,16 +366,15 @@ def _skill_files(source: Path) -> list[Path]:
     return [source / "SKILL.md"] + names
 
 
-def _reference_name(text: str, match) -> str:
+def _reference_name(match) -> str:
     """The name a `references/...` match stands for: a query (`.md?…`) or a closing `?` cut,
-    then trailing punctuation; a trailing `*` / `_` run stripped only when the same run opens
-    the name (emphasis). A `*`, `?` or `[` left in it makes it a pattern (`_NOT_A_NAME`)."""
+    then trailing punctuation; a trailing `*` / `_` run stripped when what is left ends with
+    a file extension (emphasis). A `*`, `?` or `[` left in it makes it a pattern (`_NOT_A_NAME`)."""
     name = match.group(0)
-    opening = re.search(r"[*_]*\Z", text[:match.start()]).group(0)
     name = _QUERY.sub(lambda m: m.group(1) or "", name).rstrip(".,;:!")
     run = re.search(r"[*_]*\Z", name).group(0)
-    if run and run == opening:
-        name = name[:-len(run)].rstrip(".,;:!")
+    if run and re.search(r"\.[A-Za-z0-9]+\Z", name[:-len(run)]):
+        name = name[:-len(run)]  # emphasis around a file name: `**references/x.md**`
     return name
 
 
@@ -391,7 +390,7 @@ def reference_findings(ws, source: Path, prefix: str) -> list[Finding]:
         label = file.relative_to(source).as_posix()
         seen: set[str] = set()
         for match in _REFERENCE.finditer(text):
-            name = _reference_name(text, match)
+            name = _reference_name(match)
             if name in seen or name.endswith("/") or _NOT_A_NAME.search(name):
                 continue
             seen.add(name)

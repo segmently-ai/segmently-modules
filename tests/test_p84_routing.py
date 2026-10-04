@@ -16,7 +16,7 @@ from modsys.config import builtin_packs_root, core_defaults
 from modsys.skills import file_hashes, front_matter, read_front_matter, sha256_file
 from tests.helpers import copy_fixture, run_json
 from tests.plugin_helpers import copy_engine, run_tool
-from tests.test_budgets import SPLIT_DECISIONS
+from tests.test_budgets import SPLIT_DECISIONS, decision_key
 from tests.test_builtin_skills import (PACK_SKILLS, command_guard, commands, route, route_files,
                                        section, skill_dirs, skill_files, uses)
 
@@ -346,8 +346,13 @@ class RouteShapeTest(unittest.TestCase):  # P84-AC-025 (the routed row)
         for name, text in self.files.items():
             with self.subTest(file=name):
                 self.assertLessEqual(len(text.splitlines()), 250)
-                if f"qa/{BASELINE_ID}/{Path(name).stem}" not in SPLIT_DECISIONS:  # SI-P85-11
-                    self.assertLessEqual(len(text), SPLIT_SIGNAL)
+        self.assertEqual(oversize(self.files, SPLIT_SIGNAL), [])
+
+
+def oversize(files: dict, signal: int) -> list[str]:
+    """The baseline skill's files over `signal` that `SPLIT_DECISIONS` does not record (SI-P85-11)."""
+    return [name for name, text in files.items()
+            if len(text) > signal and decision_key("qa", BASELINE_ID, name) not in SPLIT_DECISIONS]
 
 
 class SingleScenarioTest(unittest.TestCase):  # P84-AC-025 (the single row), SI-P84-11

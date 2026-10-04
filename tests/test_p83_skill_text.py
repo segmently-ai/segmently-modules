@@ -12,7 +12,7 @@ from pathlib import Path
 
 from modsys.config import builtin_packs_root, core_defaults
 from tests.helpers import copy_fixture, run, run_json
-from tests.test_budgets import SPLIT_DECISIONS
+from tests.test_budgets import SPLIT_DECISIONS, decision_key
 
 ENGINE = Path(__file__).resolve().parents[1]
 CORE = builtin_packs_root() / "core" / "skills"
@@ -140,12 +140,16 @@ class TemporaryFileTest(unittest.TestCase):  # P83-AC-014
             self.assertEqual(run_json("agents-md", "--target", "CLAUDE.md", "--check", *R)[0], 0)
 
 
+def over_bound(names, bound: int) -> list[str]:
+    """The core skills over `bound` that `SPLIT_DECISIONS` does not record (SI-P85-11)."""
+    return [n for n in names
+            if len(skill(n)) > bound and decision_key("core", n) not in SPLIT_DECISIONS]
+
+
 class BudgetTest(unittest.TestCase):  # P83-AC-015
     def test_the_two_rewritten_skills_are_within_the_skill_bound(self):  # review M-3: a name
-        bound = core_defaults()["budgets"]["skill_split_signal"]
-        for name in ("module-sync", "module-discover"):
-            if f"core/{name}" not in SPLIT_DECISIONS:  # SI-P85-11
-                self.assertLessEqual(len(skill(name)), bound)
+        self.assertEqual(over_bound(("module-sync", "module-discover"),
+                                    core_defaults()["budgets"]["skill_split_signal"]), [])
 
 
 class SavedGateEndToEndTest(unittest.TestCase):  # P83-AC-012 (the two commands, run in order)
