@@ -1,6 +1,8 @@
 ---
 name: qa-acceptance-baseline
 description: Creates or refreshes a module's acceptance baseline, the qa_acceptance role doc that says what must never break, as P0, P1 and P2 criteria with stable AC-NNN ids in Given, When, Then form. Reads every doc and the code of the module through modsys, confirms its understanding, the requirements and the criteria with the user block by block, continues from the highest existing id and never renumbers. Use when the user asks for a module's acceptance baseline, regression criteria, or to refresh them after the module changed.
+argument-hint: "[scenario]"
+arguments: scenario
 ---
 
 # qa-acceptance-baseline
@@ -31,6 +33,16 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
 ## Steps
 
+**Route.** Take the scenario named by the invocation (`$scenario`) when one is given, else by
+the user's words, and its file below: read it, then follow it — its steps are step 5.
+
+- **create** — the module has no acceptance baseline yet ("write", "create", "start" one)
+  → `references/create.md`
+- **refresh** — the module changed and its baseline must catch up ("refresh", "update" it —
+  new, changed or retired behaviour) → `references/refresh.md`
+
+If a `modsys` command exits 1 or 2, read `references/exit-codes.md`.
+
 1. Load the module.
 
    ```bash
@@ -39,9 +51,8 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    modsys code-map files <module> --json
    ```
 
-   Exit 2 "unknown role 'qa_acceptance'": the `qa` pack is not enabled — tell the user
-   (`[packs] builtin` in the team config) and stop. A `role:qa_acceptance` row with
-   `exists: true` is the doc to refresh; read it and note the highest `AC-NNN` in it.
+   A `role:qa_acceptance` row with `exists: true` is the doc to refresh; read it and note the
+   highest `AC-NNN` in it.
 
 2. Read every doc of the module fully and skim its code files for the interfaces the docs name
    (entry points, commands, messages, limits).
@@ -61,28 +72,9 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
    For a large module, batch the criteria of several blocks into one Gate 3; never skip Gate 2.
 
-5. Ids, when refreshing: an unchanged criterion keeps its id and text; a changed one keeps its
-   id and is edited in place; a new one takes the next id after the highest existing
-   `AC-NNN` — continue the numbering, never renumber and never reuse an id; a criterion that
-   no longer applies moves to the "Retired" section with its id and the reason.
+5. Write the doc. Follow the scenario's file (the Route above).
 
-6. Write the doc.
-
-   - It exists: edit it in place, section by section (P0, P1, P2, Retired).
-   - It does not: start from the file of the `roles/qa_acceptance.md` row of
-     `modsys templates list --json`, fill it, save it next to the module's other role docs,
-     and add it to the module's `context_files`:
-
-     ```bash
-     modsys registry set <module> context_files '<the object with roles.qa_acceptance added>' --dry-run
-     modsys registry set <module> context_files '<the object with roles.qa_acceptance added>' --json
-     ```
-
-     Build the object from `show --all-roles`: `universal` is the universal row, each
-     `role:<role>` row is `roles.<role>`; add `roles.qa_acceptance`. Check the dry run's diff
-     changes nothing else.
-
-7. Check it.
+6. Check it.
 
    ```bash
    modsys lint --json
@@ -96,8 +88,3 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
 Three, never skipped: Gate 1 (understanding), Gate 2 (each block's requirements), Gate 3 (the
 criteria, per block or per batch). Nothing is written before Gate 3 of the last block.
-
-## Exit codes
-
-`0` ok · `1` from `lint` = findings: fix the ones the new doc caused · `2` = a usage or config
-error, or a refused write: read stderr (an unknown role means the `qa` pack is not enabled).

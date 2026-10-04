@@ -256,6 +256,22 @@ modsys create reviews --non-interactive --tag ui --tag qa \
 modsys templates list   # roles/designer.md  role-template:ui  …/defaults/packs/ui/roles/designer.md
 ```
 
+## Skills with more than one scenario
+
+A skill that serves more than one request keeps a **Route** at the head of its steps: one line
+per scenario, naming the file under `references/` that holds that scenario's steps. The agent
+reads only the file of its scenario; the steps every scenario shares stay in `SKILL.md`. In
+Claude Code the scenario can follow the skill's name — `/qa-acceptance-baseline refresh` — since
+such a skill declares `argument-hint: "[scenario]"` and `arguments: scenario`; without it, and in
+every other agent, the words of the request pick the line. A failed command's handling and the
+exit codes sit behind an "if" line in their own file (`references/exit-codes.md`), read only when
+a command fails.
+
+Today `qa-acceptance-baseline` routes `create` and `refresh`: a module without a baseline, and
+one whose baseline must catch up after a change. The other skills serve one request each and
+keep their steps inline. `packs sync`, `eject` and the plugins carry `references/` with the
+skill, like every other file of it.
+
 ## Keeping them current
 
 A built-in pack has no version of its own: its version is the engine's (`modsys --version`).

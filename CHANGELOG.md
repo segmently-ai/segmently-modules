@@ -109,6 +109,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `qa-acceptance-baseline` routes its two scenarios: a Route at the head of its steps sends
+  `create` (a module without a baseline) to `references/create.md` and `refresh` (a baseline that
+  must catch up after a change) to `references/refresh.md`, picked by the word after the skill's
+  name in Claude Code (`argument-hint: "[scenario]"`, `arguments: scenario`) or else by the words
+  of the request; the exit codes and the unknown-role stop moved to `references/exit-codes.md`,
+  read when a command exits 1 or 2. Every sentence of the skill is kept. The other built-in skills
+  serve one scenario each and are unchanged.
 - `tools/release.py` step 3 runs each `tests/test_*.py` module in its own process, `--jobs N` at
   a time (1–32, default `min(4, CPU count)`), the `test_release*` modules first; the step line is
   `Ran <N> tests in <M> modules (<J> jobs), OK …`, a failure names the failing modules, and

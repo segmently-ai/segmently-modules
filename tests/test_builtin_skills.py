@@ -143,6 +143,23 @@ def section(text: str, heading: str) -> str:
     return part[1].split("\n## ", 1)[0] if len(part) == 2 else ""
 
 
+def route(text: str) -> list[tuple[str, list[str]]]:
+    """The Route block of a skill's `SKILL.md` (P8.4 D1): the `- **<scenario>** … →
+    `references/<file>`` items of `## Steps` before step 1, each item up to its first blank
+    line, as [(scenario, [the files it names])]; [] for a skill with one scenario."""
+    head = section(text, "## Steps").split("\n1. ", 1)[0]
+    items = [chunk.split("\n\n", 1)[0] for chunk in re.split(r"\n(?=- )", head)]
+    return [(m.group(1), re.findall(r"`(references/[^`\s]+)`", item))
+            for item in items if (m := re.match(r"- \*\*([a-z0-9-]+)\*\*", item))]
+
+
+def route_files(directory: Path) -> dict[str, str]:
+    """{name: text} of the files a skill's Route names: its scenarios' steps (P8.4 D1)."""
+    text = (directory / "SKILL.md").read_text("utf-8")
+    return {name: (directory / name).read_text("utf-8")
+            for _, names in route(text) for name in names if (directory / name).is_file()}
+
+
 def commands(text: str) -> list[str]:
     """Every `modsys …` command of a text: fenced-block lines (continuations joined) and inline
     code spans."""
@@ -414,7 +431,9 @@ class ContractTest(SkillRules):  # P4B-AC-015, P4B-AC-016
         for sid, (pack, scope, verbs, says) in rows.items():
             directory = builtin_packs_root() / pack / "skills" / sid
             text = "\n".join(skill_files(directory).values())
-            steps = section((directory / "SKILL.md").read_text("utf-8"), "## Steps")
+            # a routed skill's verbs may live in a route file (P84-AC-026)
+            steps = "\n".join([section((directory / "SKILL.md").read_text("utf-8"), "## Steps"),
+                               *route_files(directory).values()])
             if (directory / "references/procedure.md").is_file():  # a wrapped skill (P8.4 D3):
                 # its verbs live in the procedure the agent runs
                 steps += section("\n" + (directory / "references/procedure.md").read_text("utf-8"),
@@ -429,6 +448,31 @@ class ContractTest(SkillRules):  # P4B-AC-015, P4B-AC-016
                                          for c in commands(text)))
                 flat = " ".join(text.split())
                 self.assertEqual([p for p in says if p not in flat], [])
+
+    def test_a_verb_in_a_route_file_counts_and_one_in_a_rare_branch_does_not(self):  # P84-AC-026
+        with tempfile.TemporaryDirectory() as tmp:
+            skill = Path(tmp)
+            (skill / "references").mkdir()
+            (skill / "SKILL.md").write_text(
+                "---\nname: stock-check\ndescription: Checks the shelves.\n---\n\n## Steps\n\n"
+                "**Route.** Pick one.\n\n- **restock** — more copies of a book\n"
+                "  → `references/restock.md`\n- **count** — how many are left →\n"
+                "  `references/count.md`\n\nIf a `modsys` command exits 1 or 2, read "
+                "`references/exit-codes.md`.\n\n1. Look at the shelf.\n\n## Gates\n\nNone.\n",
+                encoding="utf-8")
+            (skill / "references/restock.md").write_text("```bash\nmodsys lint --json\n```\n")
+            (skill / "references/count.md").write_text("Count them.\n")
+            (skill / "references/exit-codes.md").write_text("Run `modsys ci --json`.\n")
+            text = (skill / "SKILL.md").read_text("utf-8")
+            self.assertEqual(route(text), [("restock", ["references/restock.md"]),
+                                           ("count", ["references/count.md"])])
+            self.assertEqual(sorted(route_files(skill)), ["references/count.md",
+                                                          "references/restock.md"])
+            steps = "\n".join([section(text, "## Steps"), *route_files(skill).values()])
+            self.assertTrue(uses(commands(steps), ("lint",)))
+            self.assertFalse(uses(commands(steps), ("ci",)))
+        self.assertEqual(route("# x\n\n## Steps\n\n1. One scenario: `references/x.md`.\n\n"
+                               "## Gates\n"), [])
 
 
 class LintCodesReferenceTest(unittest.TestCase):  # module-lint explains every code
