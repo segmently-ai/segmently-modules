@@ -1,3 +1,5 @@
+## Steps
+
 A change without a task starts at step 4.
 
 1. Choose the candidate modules.
@@ -24,16 +26,28 @@ A change without a task starts at step 4.
    - By keyword (`lexical`, `hybrid`): `modsys discover --task-file <file> --match lexical --json`.
    - `hybrid`: merge the lists; a module found both ways ranks first.
 
+   If a temporary file cannot be written (a read-only sandbox), pass the task through a quoted
+   heredoc and read the order from stdout instead of a file:
+
+   ```bash
+   modsys choose --task-file - <<'EOF'
+   <the task text, verbatim>
+   EOF
+   ```
+
 2. Verify each candidate by its description and the head of its main doc (a split module: its
    INDEX). Keep those the task is about and, in a split module, the child the task is in
    (`modsys show <module> --json` lists `submodules`; a pick may be one); drop the rest and say
    why.
 
-3. Go to the code: `modsys code-map files <candidate> --json`; its code is the files whose `via` is
-   not `docs` (a child without code: its parent's). Search its source files (tests and plans last)
-   for the terms of `<file>` and their code forms ("trial days" → `trialDays`): `git grep -n -e
-   <term> -- <paths>`; the rest of the repository only when that gives nothing. For a wrong value,
-   find the line that computes it. Note each code hit as file:line.
+3. Go to the code: `modsys code-map files <candidate> --json`; its code is the files whose `via`
+   holds more than `docs`. A picked child or a docs-only module has no code of its own: search its
+   parent's code paths (when it has a parent) for the task's terms and let step 4's `--files` name
+   the owner. Search its source files first — tests, fixtures and plans last — for the terms of
+   `<file>` and their code forms ("trial days" → `trialDays`):
+   `git grep -n -e <term> -- <path> …` (no shell glob); the rest of the repository only when that
+   gives nothing. For a wrong value, find where it is computed and set, not only the lines that
+   read it. Note each code hit as file:line.
 
 4. Get the touch-set.
 
@@ -65,3 +79,11 @@ A change without a task starts at step 4.
    then the files outside every module (each needs `module-create` or a `[[code_map]]` rule), the
    missing files and the dropped modules. JSON on request: write the `discover` result's `data` as
    it came to the path the user names.
+
+   The docs-to-update column holds every doc `discover` lists under `docs_to_update` — the role docs
+   too, not only `MODULE.md`.
+
+## Exit codes
+
+`0` ok · `2` = a usage or config error: read stderr, fix the input or report it; never retry the
+same command.

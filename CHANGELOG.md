@@ -40,6 +40,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written or removed through a symlinked or non-directory `.codex/agents` (all three files are
   conflicts while the agents are wanted; when none is, only a file with the marker behind a
   symlink is one). Without `codex` nothing under `.codex/` is read or written.
+- `module-discover`, `module-scout` and `module-research` are thin: their `SKILL.md` keeps the
+  description, When to use / not, Scope and Gates and one step that hands the task (`$task`) to the
+  skill's agent (`module-<x>-agent`; Claude Code `modsys:module-<x>-agent`) and gives its report as
+  the skill's; the steps and exit codes live in `references/procedure.md`, which the agent runs
+  (without that agent the skill says to read it). Front matter gains `argument-hint: "[task]"` and
+  `arguments: task`. Changed in the procedures: `module-discover` step 3 searches code files
+  first (tests, fixtures and plans last) with `git grep -n -e <term> -- <path> …` (no shell glob),
+  takes the files whose `via` holds more than `docs`, searches a picked child's or a docs-only
+  module's parent for the task's terms, and looks for where a wrong value is computed and set, not
+  only where it is read; step 7 lists every doc `discover` returns under `docs_to_update`, the
+  role docs too. Each procedure holds one line for a read-only sandbox: the task through
+  `modsys choose --task-file -` from a quoted heredoc, the order read from stdout.
 - The `modsys` plugin ships the read-only subagent `module-chooser` (`modsys:module-chooser`; tools
   Read, Grep, Glob; `model: sonnet` only for a call without a model): the build copies the tracked
   files directly in `modsys/defaults/agents/` into the plugin's `agents/`; the manifests are

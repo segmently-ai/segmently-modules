@@ -32,6 +32,7 @@ PRIMARY = {"module-scout": "show", "module-discover": "discover", "module-resear
            "module-sync": "sync-instructions", "module-create": "create", "module-split": "show",
            "module-lint": "(ci|lint)", "designer-review": "discover",
            "qa-acceptance": "discover", "qa-acceptance-baseline": "show"}
+WRAPPED = ("module-discover", "module-scout", "module-research")
 WRITERS = ("module-sync", "module-create", "module-split")
 
 
@@ -77,6 +78,14 @@ class SuiteShapeTest(unittest.TestCase):  # P4B-AC-019
                 self.assertEqual(found["skill-fired"],
                                  {"type": "tool_used", "tool": "Skill",
                                   "input_match": r'"skill"\s*:\s*"(?:[\w-]+:)?' + skill + '"'})
+                if skill in WRAPPED:  # P84-AC-023: the work runs in the shipped agent now; the
+                    # grader passes on an Agent call naming it or on the old command
+                    self.assertEqual(found["ran-modsys"]["tool"], "Bash|Agent")
+                    pattern = re.compile(found["ran-modsys"]["input_match"])
+                    self.assertTrue(pattern.search(f'{{"subagent_type": "modsys:{skill}-agent"}}'))
+                    self.assertTrue(pattern.search(f"modsys {PRIMARY[skill]} catalog --all-roles --json"))
+                    self.assertFalse(pattern.search("modsys lint --json"))
+                    continue
                 self.assertEqual(found["ran-modsys"]["tool"], "Bash")
                 self.assertTrue(found["ran-modsys"]["input_match"].startswith(
                     f"modsys {PRIMARY[skill]}"))

@@ -21,12 +21,16 @@ KEYWORDS = (
     "  tasks will name, never a code identifier (class, function, file or variable: code search finds\n"
     "  those). Keywords only grow; a split parent keeps all of them — never remove one from it.\n")
 KEYWORDS = "".join("   " + ln for ln in KEYWORDS.splitlines(True))  # nested in step 5's list
-CODE_STEP = (
-    "3. Go to the code: `modsys code-map files <candidate> --json`; its code is the files whose `via` is\n"
-    "   not `docs` (a child without code: its parent's). Search its source files (tests and plans last)\n"
-    "   for the terms of `<file>` and their code forms (\"trial days\" → `trialDays`): `git grep -n -e\n"
-    "   <term> -- <paths>`; the rest of the repository only when that gives nothing. For a wrong value,\n"
-    "   find the line that computes it. Note each code hit as file:line.\n")
+CODE_STEP = (  # P84-AC-013: D2 in full, F27, F28 (SI-P84-18 as amended); a wrapped skill's
+    # steps live in its procedure
+    "3. Go to the code: `modsys code-map files <candidate> --json`; its code is the files whose `via`\n"
+    "   holds more than `docs`. A picked child or a docs-only module has no code of its own: search its\n"
+    "   parent's code paths (when it has a parent) for the task's terms and let step 4's `--files` name\n"
+    "   the owner. Search its source files first — tests, fixtures and plans last — for the terms of\n"
+    "   `<file>` and their code forms (\"trial days\" → `trialDays`):\n"
+    "   `git grep -n -e <term> -- <path> …` (no shell glob); the rest of the repository only when that\n"
+    "   gives nothing. For a wrong value, find where it is computed and set, not only the lines that\n"
+    "   read it. Note each code hit as file:line.\n")
 STEP_1 = (
     "   Before you edit, save the gate: `modsys ci --base <base> --json > <ci file>` (outside the\n"
     "   repository; ignore its exit code).\n")
@@ -67,9 +71,10 @@ class KeywordRuleTest(unittest.TestCase):  # P83-AC-010
 
 class CodeStepTest(unittest.TestCase):  # P83-AC-011
     def test_step_3_is_exact(self):
-        text = skill("module-discover")
+        text = (CORE / "module-discover/references/procedure.md").read_text(encoding="utf-8")
         self.assertEqual(text.count(CODE_STEP), 1)
         self.assertNotIn("Grep the terms of `<file>` inside that code", text)
+        self.assertNotIn("Go to the code", skill("module-discover"))  # nothing of it stays in SKILL.md
 
     def test_no_unquoted_include_glob(self):
         for p in all_skills():

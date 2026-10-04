@@ -13,7 +13,7 @@ money: every run is a real, billed model call.
 
 | Case | Kind | Passes when |
 |---|---|---|
-| `<skill>/trigger` — one per skill (10) | trigger | the agent invoked that skill (`Skill` tool, grader `skill-fired`) and ran its primary modsys verb (`Bash`, grader `ran-modsys`) |
+| `<skill>/trigger` — one per skill (10) | trigger | the agent invoked that skill (`Skill` tool, grader `skill-fired`) and ran its primary modsys verb (`Bash`, grader `ran-modsys`); for the wrapped `module-discover`, `module-scout` and `module-research` the grader also passes on the `Agent` call that hands the work to the skill's shipped agent (`module-<x>-agent`) |
 | `module-sync/outcome` | outcome | the catalog's module doc names the new `BarcodeScanner`; `sync-instructions` ran |
 | `module-create/outcome` | outcome | `modules/wishlist/MODULE.md` was created and the registry lists `wishlist`; `create wishlist` ran |
 | `module-split/outcome` | outcome | `MODULE.legacy.md` and the `search` child's doc were created; `create … --parent` ran |

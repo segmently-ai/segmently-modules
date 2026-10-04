@@ -41,9 +41,17 @@ F20 = ("`--files` takes the paths as separate arguments (`--files a.ts b/c.ts`);
        "is one path.")
 
 
+WRAPPED = ("module-discover", "module-scout", "module-research")  # P8.4 D3: the steps live in
+# references/procedure.md, which the shipped agents run
+
+
 def text(skill: str) -> str:
-    return (builtin_packs_root() / "core/skills" / skill / "SKILL.md").read_bytes().decode(
-        "utf-8")
+    """The skill's `SKILL.md`; a wrapped skill's procedure (what its steps are now), headed by a
+    newline so that `section` finds its first heading."""
+    root = builtin_packs_root() / "core/skills" / skill
+    if skill in WRAPPED:
+        return "\n" + (root / "references/procedure.md").read_bytes().decode("utf-8")
+    return (root / "SKILL.md").read_bytes().decode("utf-8")
 
 
 def flat(s: str) -> str:
@@ -198,7 +206,7 @@ class SharedStepTest(unittest.TestCase):  # P82-AC-034…039
                 cmds = commands(section(text(skill), "## Steps"))
                 for verb in (("catalog",), ("choose", "--task-file"), ("choose", "--apply")):
                     self.assertTrue(uses(cmds, verb), verb)
-                self.assertEqual(command(skill, "modsys choose --task-file"), CLAUDE_CODE)
+                self.assertEqual(command(skill, "modsys choose --task-file <task file>"), CLAUDE_CODE)
 
     def test_the_agent_is_the_shipped_one(self):  # D4 / D5: the name the skills hand work to
         agent = (ENGINE / "modsys/defaults/agents/module-chooser.md").read_text("utf-8")
@@ -274,7 +282,7 @@ class CommandsRunTest(unittest.TestCase):  # P82-AC-036, 038, 039, 040
 
     def order(self, skill: str, *extra: str) -> tuple[str, Path]:
         """The skill's `choose` command, filled in and run; its output in `<order file>`."""
-        args, target = filled(command(skill, "modsys choose --task-file"), self.values)
+        args, target = filled(command(skill, "modsys choose --task-file <task file>"), self.values)
         out = self.cli([*args, *extra])
         Path(target).write_text(out, encoding="utf-8")
         return out, Path(target)
@@ -300,7 +308,7 @@ class CommandsRunTest(unittest.TestCase):  # P82-AC-036, 038, 039, 040
                 self.assertTrue(pick["read"])
 
     def test_codex_path_writes_the_schema_file(self):  # P82-AC-038
-        args, _ = filled(command("module-sync", "modsys choose --task-file"), self.values)
+        args, _ = filled(command("module-sync", "modsys choose --task-file <task file>"), self.values)
         envelope = json.loads(self.cli([*args, "--json"]))  # "the same with `--json`"
         (self.files / "order.json").write_text(json.dumps(envelope), encoding="utf-8")
         schema_file = self.files / "schema.json"  # "its `answer_schema` written to <schema file>"
@@ -325,7 +333,7 @@ class CommandsRunTest(unittest.TestCase):  # P82-AC-036, 038, 039, 040
 
     def test_the_users_depth(self):  # D8, SI-P82-14 ruling (b): "search deep" -> --effort deep
         default = json.loads(self.cli(["choose", "--task-file", str(self.task), "--json"]))
-        args, _ = filled(command("module-scout", "modsys choose --task-file"), self.values)
+        args, _ = filled(command("module-scout", "modsys choose --task-file <task file>"), self.values)
         deep = json.loads(self.cli([*args, "--effort", "deep", "--json"]))
         self.assertEqual(deep["data"]["search"]["effort"], "deep")
         self.assertNotEqual(deep["data"]["rules"], default["data"]["rules"])
@@ -387,10 +395,10 @@ class EveryShippedTextIsLexicalTest(unittest.TestCase):  # final review I-1 (and
                         self.assertEqual(a[a.index("--match") + 1], "lexical")
         for name in ("templates/agents-md.md", "packs/core/skills/module-create/SKILL.md",
                      "packs/qa/skills/qa-acceptance/SKILL.md",
-                     "packs/core/skills/module-discover/SKILL.md",
+                     "packs/core/skills/module-discover/references/procedure.md",
                      "packs/core/skills/module-sync/SKILL.md",
-                     "packs/core/skills/module-scout/SKILL.md",
-                     "packs/core/skills/module-research/SKILL.md",
+                     "packs/core/skills/module-scout/references/procedure.md",
+                     "packs/core/skills/module-research/references/procedure.md",
                      "packs new (2 roles): skills/api-review/SKILL.md",
                      "packs new (0 roles): skills/api-review/SKILL.md"):
             self.assertIn(name, found)  # the scan reaches what the reviews named
@@ -447,9 +455,9 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20
         "Verify each candidate",
         "the child the task is in",
         "modsys code-map files <candidate> --json",  # F6b: from the candidates to the code
-        "its code is the files whose `via` is not `docs`",  # review I-2: a doc is not code
-        "(a child without code: its parent's)",
-        "Search its source files (tests and plans last)",  # P83-AC-011 (D2)
+        "its code is the files whose `via` holds more than `docs`",  # review I-2: a doc is not code
+        "A picked child or a docs-only module has no code of its own",  # F28
+        "Search its source files first — tests, fixtures and plans last —",  # P84-AC-013 (D2)
         "the rest of the repository only when that gives nothing",
         "modsys discover --files <found files> --task-file <file> --match lexical --json",
         F20,  # P82-AC-040

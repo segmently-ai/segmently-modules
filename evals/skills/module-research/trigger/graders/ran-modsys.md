@@ -1,5 +1,5 @@
 ---
 type: tool_used
-tool: Bash
-input_match: 'modsys show[^"]*--all-roles'
+tool: Bash|Agent
+input_match: '(?:modsys show[^"]*--all-roles|module-research-agent)'
 ---

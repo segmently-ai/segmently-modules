@@ -1,3 +1,5 @@
+## Steps
+
 1. No module named? Choose the candidates.
 
    Run `modsys catalog --json`; read `match.mode` and `search`. The text: the user's topic or
@@ -24,6 +26,15 @@
 
    Keep the top 3; never widen the list on your own.
 
+   If a temporary file cannot be written (a read-only sandbox), pass the task through a quoted
+   heredoc and read the order from stdout instead of a file:
+
+   ```bash
+   modsys choose --task-file - <<'EOF'
+   <the task text, verbatim>
+   EOF
+   ```
+
 2. For each module, named or chosen: `modsys show <module> --json`.
 
    - `read[]`: the docs to open, in order; `exists: false` = a missing doc: say so.
@@ -45,3 +56,9 @@
    quoted short with their doc; the neighbours read and why, and those only named; missing docs or
    stubs; next: `module-discover` once the task is confirmed, `module-research` for a question that
    needs the code. Readable in a minute: no plan, no file list.
+
+## Exit codes
+
+`0` ok · `1` from `show` or `related` = a pointer stub · `2` = a usage or config error (no
+registry: "run modsys init"): read stderr, fix the command or report it; do not retry the same
+command.

@@ -1,3 +1,5 @@
+## Steps
+
 Pin the question in one sentence.
 
 1. No module named? Choose the candidates.
@@ -26,6 +28,15 @@ Pin the question in one sentence.
 
    Keep the top 3; never widen the list on your own.
 
+   If a temporary file cannot be written (a read-only sandbox), pass the task through a quoted
+   heredoc and read the order from stdout instead of a file:
+
+   ```bash
+   modsys choose --task-file - <<'EOF'
+   <the task text, verbatim>
+   EOF
+   ```
+
 2. Load every doc of each module: `modsys show <module> --all-roles --json`. A split module
    (`submodules`): read the parent index, then the children the question touches —
    `modsys show <module>/<child> --all-roles --json` (the parent's role docs are the child's
@@ -51,3 +62,9 @@ Pin the question in one sentence.
    gaps table (doc claim · code reality · file:line · how sure); who is affected (`reverse`) when
    it is about a change; the lint findings that matter; next: `module-sync` after a change,
    `module-lint` for findings.
+
+## Exit codes
+
+`0` ok · `1` from `lint` = findings at or above the fail level (a valid result: read them) · `1`
+from `show` = a pointer stub · `2` = a usage or config error: read stderr, fix the command or
+report it.

@@ -72,6 +72,15 @@ repository that keeps `"repo"` delivery gives the agent each built-in skill twic
 `"plugin"` there, or leave the plugin out. Cursor, Gemini CLI and GitHub Copilot have no modsys
 plugin: they get the built-in skills only with `"repo"` delivery (`packs sync` says so).
 
+`module-discover`, `module-scout` and `module-research` hand their work to a shipped agent
+(`module-discover-agent`, `module-scout-agent`, `module-research-agent`) so that the many reads
+stay out of the conversation; the steps live once, in each skill's `references/procedure.md`,
+which the agent runs. The `modsys` plugin ships the three agents for Claude Code
+(`modsys:module-<x>-agent`) and `packs sync` writes them for Codex (`.codex/agents/`). With
+`builtin_delivery = "repo"` Claude Code has no such agent — `packs sync` writes none for it — so the
+three skills say to read `references/procedure.md` and run it in the user's own conversation, which
+costs the context the agent would have spent.
+
 ## Other agents
 
 ```bash

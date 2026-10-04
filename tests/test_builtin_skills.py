@@ -342,7 +342,8 @@ class TextRulesTest(SkillRules):  # P4B-AC-014, P4B-AC-017
         for sid, (_, directory) in self.all_skills().items():
             for name, text in skill_files(directory).items():
                 for command in commands(text):
-                    if to_a_file(command):  # handed on as a file, never parsed (P8.2 D5)
+                    if to_a_file(command) or "<<'EOF'" in command:  # handed on as a file or
+                        # through a quoted heredoc, never parsed (P8.2 D5, SI-P84-8)
                         exempt.append(argv(command))
                         continue
                     with self.subTest(skill=sid, command=command):
@@ -350,8 +351,9 @@ class TextRulesTest(SkillRules):  # P4B-AC-014, P4B-AC-017
         # only the work order's text form, once in each skill that chooses modules by meaning,
         # and module-sync's saved gate (P83-AC-012: `ci --base <base> --json > <ci file>`)
         saved_gate = [["ci", "--base", "X", "--json"]]
-        self.assertEqual([e for e in exempt if e != saved_gate[0]],
-                         [["choose", "--task-file", "X"]] * (len(exempt) - 1))
+        others = [e for e in exempt if e != saved_gate[0]]
+        self.assertEqual(others.count(["choose", "--task-file", "-"]), 3)  # AC-015: one line in
+        self.assertEqual(others.count(["choose", "--task-file", "X"]), len(others) - 3)  # each
         self.assertEqual(exempt.count(saved_gate[0]), 1)
 
     def test_sections(self):
@@ -408,6 +410,10 @@ class ContractTest(SkillRules):  # P4B-AC-015, P4B-AC-016
             directory = builtin_packs_root() / pack / "skills" / sid
             text = "\n".join(skill_files(directory).values())
             steps = section((directory / "SKILL.md").read_text("utf-8"), "## Steps")
+            if (directory / "references/procedure.md").is_file():  # a wrapped skill (P8.4 D3):
+                # its verbs live in the procedure the agent runs
+                steps += section("\n" + (directory / "references/procedure.md").read_text("utf-8"),
+                                 "## Steps")
             with self.subTest(skill=sid):
                 self.assertTrue(section(text, "## Scope").strip().startswith(
                     "Read-only" if scope == "read-only" else "Writes"))
