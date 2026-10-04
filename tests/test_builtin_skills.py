@@ -98,7 +98,8 @@ PACK_SKILLS: dict[str, tuple[str, str, list[tuple[str, ...]], list[str]]] = {
                        "equivalence partitioning", "boundary value analysis",
                        "decision table", "state transition", "instead of restating it"]),
     "qa-acceptance-baseline": ("qa", "writer", [("show", "--all-roles"),
-                                                ("show", "--role", "qa_acceptance"), ("lint",)],
+                                                ("show", "--role", "qa_acceptance"), ("lint",),
+                                                ("roles", "add")],  # P8.5 D2
                                ["the next id after the highest existing `AC-NNN`",
                                 "never renumber", "P0", "P1", "P2", "Gate 1", "Gate 2",
                                 "Gate 3"]),

@@ -26,7 +26,8 @@ never change, so task-level criteria (`qa-acceptance`) and tests can point at th
 ## Scope
 
 Writes: the module's `qa_acceptance` doc, and its entry in the module's registry
-`context_files` when the doc is new. It never edits code or another doc, never edits a
+`context_files` when the doc is new. The entry is also written for a doc that is on disk and that
+the registry does not list, and a new doc is never written over it. It never edits code or another doc, never edits a
 `*.legacy.md` file, and never commits.
 
 If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
@@ -53,6 +54,12 @@ If a `modsys` command exits 1 or 2, read `references/exit-codes.md`.
 
    A `role:qa_acceptance` row with `exists: true` is the doc to refresh; read it and note the
    highest `AC-NNN` in it.
+
+   No `role:qa_acceptance` row (a `parent baseline` row is the parent's doc, not this
+   module's): run `modsys roles add qa_acceptance <module> --dry-run --json`, which writes
+   nothing. Status `registered` means the module's `roles/qa_acceptance.md` is on disk and the
+   registry does not list it: that file is the doc to refresh, so take the refresh route and
+   never write a new doc over it. Status `created` means there is no doc: take the create route.
 
 2. Read every doc of the module fully and skim its code files for the interfaces the docs name
    (entry points, commands, messages, limits).

@@ -1,8 +1,8 @@
 # create: a module with no baseline yet
 
-Step 5 of `qa-acceptance-baseline` — write the doc — when step 1 found no `role:qa_acceptance`
-row with `exists: true` (when it found one, the doc exists: follow `references/refresh.md`
-instead).
+Step 5 of `qa-acceptance-baseline` — write the doc — when step 1 found no doc to refresh: no
+`role:qa_acceptance` row with `exists: true`, and the dry run said `created` (when it names a doc
+to refresh, follow `references/refresh.md` instead).
 
 - It does not: start from the file of the `roles/qa_acceptance.md` row of
   `modsys templates list --json`, fill it, save it next to the module's other role docs,

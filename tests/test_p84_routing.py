@@ -41,6 +41,8 @@ REPLACED: list[str] = []  # old sentences a Route line replaces: none, every one
 # step 1's state contradicts the words)
 ADDED = {
     "SKILL.md": [
+        "The entry is also written for a doc that is on disk and that the registry does not "
+        "list, and a new doc is never written over it.",  # P8.5 D2 (SI-P85-5)
         "**Route.** Take the scenario named by the invocation (`$scenario`) when one is given, "
         "else by the user's words, and its file below: read it, then follow it — its steps are "
         "step 5.",
@@ -48,15 +50,29 @@ ADDED = {
         "\"start\" one) → `references/create.md`",
         "**refresh** — the module changed and its baseline must catch up (\"refresh\", "
         "\"update\" it — new, changed or retired behaviour) → `references/refresh.md`",
-        IF_LINE, "Follow the scenario's file (the Route above)."],
+        IF_LINE,
+        # P8.5 D2 (SI-P85-3, SI-P85-6): the unregistered doc is detected at step 1
+        "No `role:qa_acceptance` row (a `parent baseline` row is the parent's doc, not this "
+        "module's): run `modsys roles add qa_acceptance <module> --dry-run --json`, which "
+        "writes nothing.",
+        "Status `registered` means the module's `roles/qa_acceptance.md` is on disk and the "
+        "registry does not list it: that file is the doc to refresh, so take the refresh route "
+        "and never write a new doc over it.",
+        "Status `created` means there is no doc: take the create route.",
+        "Follow the scenario's file (the Route above)."],
+    # P8.5 D2 (SI-P85-4): both lead sentences key on "the doc to refresh step 1 names"
     "references/create.md": [
-        "Step 5 of `qa-acceptance-baseline` — write the doc — when step 1 found no "
-        "`role:qa_acceptance` row with `exists: true` (when it found one, the doc exists: follow "
-        "`references/refresh.md` instead)."],
+        "Step 5 of `qa-acceptance-baseline` — write the doc — when step 1 found no doc to "
+        "refresh: no `role:qa_acceptance` row with `exists: true`, and the dry run said "
+        "`created` (when it names a doc to refresh, follow `references/refresh.md` instead)."],
     "references/refresh.md": [
-        "Step 5 of `qa-acceptance-baseline` — write the doc — when step 1 found a "
-        "`role:qa_acceptance` row with `exists: true` and you noted its highest `AC-NNN` (when it "
-        "found none, there is no doc to refresh: follow `references/create.md` instead)."],
+        "Step 5 of `qa-acceptance-baseline` — write the doc — when step 1 names the doc to "
+        "refresh (a `role:qa_acceptance` row with `exists: true`, or the unregistered doc its "
+        "dry run reported as `registered`) and you noted its highest `AC-NNN` (when step 1 "
+        "names no doc to refresh, follow `references/create.md` instead).",
+        "The doc is not in the registry (step 1's dry run said `registered`): after Gate 3, "
+        "run `modsys roles add qa_acceptance <module> --json`.",
+        "It adds the registry entry, status `registered`, and never writes the file."],
     "references/exit-codes.md": []}
 # the body of `qa-acceptance-baseline/SKILL.md` after its front matter as shipped before the
 # Route (cc7f2f8; Task 3 left it unchanged)
@@ -311,10 +327,10 @@ class RouteShapeTest(unittest.TestCase):  # P84-AC-025 (the routed row)
 
     def test_the_cross_pointers_are_if_lines(self):  # controller ruling Q3
         create, refresh = (flat(self.files[f"references/{s}.md"]) for s in ("create", "refresh"))
-        self.assertIn("(when it found one, the doc exists: follow `references/refresh.md` "
+        self.assertIn("(when it names a doc to refresh, follow `references/refresh.md` "
                       "instead)", create)
-        self.assertIn("(when it found none, there is no doc to refresh: follow "
-                      "`references/create.md` instead)", refresh)
+        self.assertIn("(when step 1 names no doc to refresh, follow `references/create.md` "
+                      "instead)", refresh)
         self.assertEqual((create.count("references/"), refresh.count("references/")), (1, 1))
         self.assertNotIn("references/", self.files["references/exit-codes.md"])
 

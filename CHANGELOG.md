@@ -97,6 +97,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `qa-acceptance-baseline`: a `roles/qa_acceptance.md` on disk that the registry does not list is the
+  doc to refresh. Step 1 finds it with `roles add qa_acceptance <module> --dry-run --json` (status
+  `registered`); the refresh route registers it with `roles add` after Gate 3 and never writes a new
+  doc over it.
 - `qa-acceptance-baseline` routes its two scenarios: a Route at the head of its steps sends
   `create` (a module without a baseline) to `references/create.md` and `refresh` (a baseline that
   must catch up after a change) to `references/refresh.md`, picked by the word after the skill's
