@@ -108,7 +108,7 @@ lists the agent (the next `packs sync` copies its skills again).
 | Skill | Use it when | Scope | Main commands |
 |---|---|---|---|
 | `module-scout` | a task is still being discussed: a short context brief for the modules it names, or the candidates found by meaning | read-only | `catalog`, `choose`, `show`, `related`, `context` |
-| `module-discover` | a task is confirmed, or a branch needs review: its modules, docs to read and update, code files | read-only | `catalog`, `choose`, `discover`, `code-map files` |
+| `module-discover` | a task is confirmed, or a branch needs review: its modules (a kept pick stays even when its code lives in another module), docs to read and update, the code files to change | read-only | `catalog`, `choose`, `discover`, `code-map files` |
 | `module-research` | one question about a module needs a deep answer with file:line evidence and doc/code gaps | read-only | `catalog`, `choose`, `show --all-roles`, `related`, `code-map files`, `lint` |
 | `module-sync` | work is done: bring the touched modules' docs, keywords and links in line, run the sync hooks, check `ci` | writes docs and registry fields | `sync-instructions`, `catalog`, `choose`, `registry`, `propose`, `sync`, `ci` |
 | `module-roles` | a role is new and the existing modules lack its doc: declares the role when it is undeclared, shows a dry run, writes one doc per module, fills each from that module's code and docs, then `lint` and `next` | writes the role's docs (never over an existing one) | `roles list`, `roles add`, `lint`, `next` |

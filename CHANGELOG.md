@@ -114,6 +114,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reaches the skill whole, appended as an `ARGUMENTS:` line. Each procedure holds one line for a
   read-only sandbox: the task through `modsys choose --task-file -` from a quoted heredoc, the
   order read from stdout.
+- `module-discover`'s procedure (the body of `module-discover-agent` on both platforms) keeps each
+  module it verified at step 2, a kept pick, in the report even when `discover --files` gives its
+  files to another module or to none: `modify` when the task changes its behaviour, with the
+  files found for it and the note "code in `<owner>`" or "outside every module"; a kept pick is
+  dropped only with a stated reason. Its code column holds the files to change — the line that
+  computes or sets the value, the files to edit, the tests to add or change — and files read only
+  as evidence go on one "read for evidence:" line under the table. Every sentence of the
+  procedure is kept.
 - `tools/release.py` step 3 runs each `tests/test_*.py` module in its own process, `--jobs N` at
   a time (1–32, default `min(4, CPU count)`), the `test_release*` modules first; the step line is
   `Ran <N> tests in <M> modules (<J> jobs), OK …`, a failure names the failing modules, and
