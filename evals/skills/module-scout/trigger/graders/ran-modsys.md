@@ -1,5 +1,5 @@
 ---
 type: tool_used
-tool: Bash|Agent
-input_match: '(?:modsys show\b|module-scout-agent)'
+tool: Agent
+input_match: 'module-scout-agent'
 ---

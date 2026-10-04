@@ -78,13 +78,12 @@ class SuiteShapeTest(unittest.TestCase):  # P4B-AC-019
                 self.assertEqual(found["skill-fired"],
                                  {"type": "tool_used", "tool": "Skill",
                                   "input_match": r'"skill"\s*:\s*"(?:[\w-]+:)?' + skill + '"'})
-                if skill in WRAPPED:  # P84-AC-023: the work runs in the shipped agent now; the
-                    # grader passes on an Agent call naming it or on the old command
-                    self.assertEqual(found["ran-modsys"]["tool"], "Bash|Agent")
-                    pattern = re.compile(found["ran-modsys"]["input_match"])
-                    self.assertTrue(pattern.search(f'{{"subagent_type": "modsys:{skill}-agent"}}'))
-                    self.assertTrue(pattern.search(f"modsys {PRIMARY[skill]} catalog --all-roles --json"))
-                    self.assertFalse(pattern.search("modsys lint --json"))
+                if skill in WRAPPED:  # the work runs in the plugin's agent: the hand-off is
+                    # the expected path (a documented tool_used form, no alternation)
+                    self.assertEqual(found["ran-modsys"], {
+                        "type": "tool_used", "tool": "Agent", "input_match": f"{skill}-agent"})
+                    meta = front_matter((SUITE / skill / "trigger/prompt.md").read_text("utf-8"))
+                    self.assertIn("Agent", meta["allowed_tools"])
                     continue
                 self.assertEqual(found["ran-modsys"]["tool"], "Bash")
                 self.assertTrue(found["ran-modsys"]["input_match"].startswith(

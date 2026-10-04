@@ -13,11 +13,13 @@ money: every run is a real, billed model call.
 
 | Case | Kind | Passes when |
 |---|---|---|
-| `<skill>/trigger` — one per skill (10) | trigger | the agent invoked that skill (`Skill` tool, grader `skill-fired`) and ran its primary modsys verb (`Bash`, grader `ran-modsys`); for the wrapped `module-discover`, `module-scout` and `module-research` the grader also passes on the `Agent` call that hands the work to the skill's shipped agent (`module-<x>-agent`) |
+| `<skill>/trigger` — one per skill (10) | trigger | the agent invoked that skill (`Skill` tool, grader `skill-fired`) and ran its primary modsys verb (`Bash`, grader `ran-modsys`); for the wrapped `module-discover`, `module-scout` and `module-research` the grader `ran-modsys` is instead a `tool_used` on `Agent` matching `module-<x>-agent` (the hand-off to the plugin's agent) |
 | `module-sync/outcome` | outcome | the catalog's module doc names the new `BarcodeScanner`; `sync-instructions` ran |
 | `module-create/outcome` | outcome | `modules/wishlist/MODULE.md` was created and the registry lists `wishlist`; `create wishlist` ran |
 | `module-split/outcome` | outcome | `MODULE.legacy.md` and the `search` child's doc were created; `create … --parent` ran |
 | `negative/unrelated` | negative | an ISBN coding question fires no skill (`Skill` called 0 times, scored in both arms) and gets code |
+
+These three `ran-modsys` graders are first verified by the model-run evals before a stable release.
 
 Every case starts from `scaffold.sh`: a git copy of `tests/fixtures/bookshop` with
 `[packs] builtin = ["core", "ui", "qa"]` and one routing rule, committed; a case's own `seed.sh`

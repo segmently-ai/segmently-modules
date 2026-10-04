@@ -1,5 +1,5 @@
 ---
 type: tool_used
-tool: Bash|Agent
-input_match: '(?:modsys discover\b|module-discover-agent)'
+tool: Agent
+input_match: 'module-discover-agent'
 ---
