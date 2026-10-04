@@ -31,7 +31,8 @@ whole (temp file + rename). Their statuses (`plan_agent_files`): `created`, `unc
 bytes equal what would be written), `updated` (marker intact, content or marker stale),
 `removed` (a managed file whose skill no longer has a procedure: deleted), `conflict` (no
 marker, a damaged one, another skill's, a local edit, a symlink or directory at the path, or a
-symlinked or non-directory `.codex/agents` — nothing is written through it). A skill whose source
+symlinked or non-directory `.codex/agents`: all three, wanted or not — nothing is written through
+it). A skill whose source
 is not loadable keeps its agent file as it is (the skill's own row reports it); a file without a
 marker is never removed; nothing else under `.codex/` is read or written."""
 import contextlib
@@ -622,8 +623,8 @@ def plan_agent_files(ws, sources: dict[str, Source] | None, remove: bool = False
     """Every Codex agent file's plan, by name: the agents to write (`agent_procedures` of the
     `sources` the skill copies come from) and the managed files nobody wants any more —
     `remove` (`packs sync --remove --agent codex`): every managed file. A symlinked or
-    non-directory `.codex/agents` makes every row a `conflict` (the agents to write; with
-    `remove`, all of the table)."""
+    non-directory `.codex/agents` makes all three files a `conflict`, wanted or not (P84-AC-007:
+    nothing is read, written or removed through it)."""
     base = ws.root / CODEX_AGENTS
     wanted, held = ({}, set()) if remove else agent_procedures(ws, sources or {})
     problem = codex_dir_problem(ws.root)
@@ -632,7 +633,7 @@ def plan_agent_files(ws, sources: dict[str, Source] | None, remove: bool = False
                           *((wanted[name][0].pack, wanted[name][0].skill,
                              wanted[name][0].version) if name in wanted
                             else (None, SKILL_AGENTS[name]["skill"], None)), reason=problem)
-                for name in sorted(SKILL_AGENTS if remove else wanted)]
+                for name in sorted(SKILL_AGENTS)]
     plans = []
     for name in sorted(SKILL_AGENTS):
         path = base / f"{name}.toml"

@@ -5,6 +5,7 @@ byte-stable build (P84-AC-003, P84-AC-004, P84-AC-005)."""
 import json
 import os
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -14,7 +15,7 @@ from pathlib import Path
 
 from modsys import skills
 from modsys.config import builtin_packs_root
-from modsys.skills import front_matter, read_front_matter, strict_yaml_problem
+from modsys.skills import _front_matter, front_matter, read_front_matter, strict_yaml_problem
 from tests.helpers import git
 from tests.plugin_helpers import (CLAUDE, ENGINE, NO_CLAUDE, claude_env, copy_engine, load_tool,
                                   run_tool, tree)
@@ -178,7 +179,10 @@ class BuiltAgentsTest(unittest.TestCase):  # P84-AC-003
         self.assertEqual(proc.stdout, self.stdout.replace(str(self.out), str(second)))
 
     @unittest.skipUnless(CLAUDE, NO_CLAUDE)
-    def test_claude_validates_the_four_agents(self):  # P84-AC-005 (with claude on PATH)
+    def test_claude_validate_accepts_the_plugin_next_to_its_agents(self):
+        # `claude plugin validate` does not inspect agents/ (it lists no contents for them and
+        # passes a broken agent): this proves only that the plugin stays valid with agents/ in
+        # it. The agents' front matter (P84-AC-005): FrontMatterTest.
         proc = subprocess.run([CLAUDE, "plugin", "validate", "--strict", "--json",
                                str(self.out / "modsys")], capture_output=True, text=True,
                               timeout=120, env=claude_env(self.base / "claude-config"))
@@ -186,6 +190,82 @@ class BuiltAgentsTest(unittest.TestCase):  # P84-AC-003
         report = json.loads(proc.stdout)
         self.assertTrue(report["success"], report)
         self.assertEqual(report["manifest"]["errors"], [])
+
+
+FIELDS = ["name", "description", "tools", "model"]  # D3: exactly these, in this order
+
+
+def front_matter_problems(agents: Path, sources: Path) -> list[str]:
+    """Why the files in a built `agents/` would not load as agents: front matter the engine's
+    reader cannot parse, a plain value a strict YAML loader rejects, other fields than D3's, or
+    values other than the agent table's (a generated agent) or its source file's (any other)."""
+    problems = []
+    for path in sorted(agents.iterdir()):
+        text = path.read_bytes().decode("utf-8")
+        parsed = _front_matter(text)
+        if parsed is None or not text.startswith("---\n"):
+            problems.append(f"{path.name}: no front matter")
+            continue
+        meta, plain = parsed
+        if list(meta) != FIELDS:
+            problems.append(f"{path.name}: fields {list(meta)}")
+        problems += [f"{path.name}: {problem}" for key in sorted(plain)
+                     if (problem := strict_yaml_problem(key, meta[key]))]
+        if not text.split("\n---\n", 1)[-1].startswith("\n"):
+            problems.append(f"{path.name}: no blank line after the front matter")
+        name = path.name[:-3]
+        if name in skills.SKILL_AGENTS:
+            want = {"name": name, "description": skills.SKILL_AGENTS[name]["description"],
+                    "tools": TOOLS, "model": "sonnet"}
+        else:
+            want = front_matter((sources / path.name).read_bytes().decode("utf-8"))
+            if want is None or want.get("name") != name:
+                problems.append(f"{path.name}: its name is not its file name")
+        if meta != want:
+            problems.append(f"{path.name}: {meta} != {want}")
+    return problems
+
+
+class FrontMatterTest(unittest.TestCase):  # P84-AC-005: the four agents' front matter
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.base = Path(cls._tmp.name).resolve()
+        cls.engine = copy_engine(cls.base / "engine")
+        proc = run_tool(cls.engine, "build_plugins", "--out", str(cls.base / "out"))
+        assert proc.returncode == 0, proc.stderr
+        cls.agents = cls.base / "out/modsys/agents"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_every_built_agent_loads(self):
+        self.assertEqual(sorted(p.name for p in self.agents.iterdir()),
+                         ["module-chooser.md"] + [f"{n}.md" for n in NAMES])
+        self.assertEqual(front_matter_problems(self.agents, self.engine / AGENTS), [])
+
+    def test_a_broken_header_is_found(self):  # the check can fail: one header broken in a copy
+        good = f"description: {skills.SKILL_AGENTS['module-scout-agent']['description']}\n"
+        for broken in (("name: module-scout-agent\n", "name: [unclosed\n"),
+                       (good, "description: Reads: modules\n"),
+                       ("model: sonnet\n", ""),
+                       ("tools: Read, Grep, Glob, Bash, Agent\n", "tools: 42\n"),
+                       ("model: sonnet\n---\n", "model: sonnet\n"),
+                       ("model: sonnet\n", "model: sonnet\ncolor: blue\n"),
+                       ("---\n\n", "---\n")):
+            with self.subTest(broken=broken[1]):
+                copy = self.base / "broken"
+                shutil.rmtree(copy, ignore_errors=True)
+                shutil.copytree(self.agents, copy)
+                path = copy / "module-scout-agent.md"
+                text = path.read_text(encoding="utf-8")
+                self.assertIn(broken[0], text)
+                path.write_text(text.replace(broken[0], broken[1], 1), encoding="utf-8")
+                problems = front_matter_problems(copy, self.engine / AGENTS)
+                self.assertTrue(problems)
+                self.assertTrue(all(p.startswith("module-scout-agent.md: ") for p in problems),
+                                problems)
 
 
 class WhatShipsTest(unittest.TestCase):  # P84-AC-004

@@ -487,6 +487,9 @@ def agent_hint(ws, r) -> str:
         copy = f"{ws.rel(ejected_dir(ws.config_dir, r['skill']))}/{PROCEDURE}"
         keep = (f"edit {copy}" if is_ejected(ws.config_dir, r["skill"])
                 else f"modsys eject {r['skill']}, edit {copy}")
+        skill = pack_skills(ws.config_dir).get(r["skill"])
+        if skill and skill.builtin and builtin_delivery(ws.config) == "plugin":
+            keep = f'set [packs] builtin_delivery = "repo", {keep}'  # eject needs "repo"
         return (f"revert it (git checkout -- {here}) and sync again, or keep the change: {keep}, "
                 f"then packs sync")
     if reason.endswith("(locally edited; not removed)"):

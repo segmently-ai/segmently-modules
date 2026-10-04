@@ -34,7 +34,7 @@ OLD_KEYS = ["agents", "check", "dry_run", "skills", "summary", "failed", "notes"
 COUNTS = "0 updated, 0 unchanged, 0 removed, 0 conflict"
 NASTY = ('Quotes " and "" and """ and \'\'\' and \'\' inside; a backslash \\ and \\\\ and \\n '
          'and \\u0041; a line ending in a backslash \\\n\ttab, CRLF\r\nlone CR\r, NUL \x00, '
-         'BEL \x07, ESC \x1b, DEL \x7f,  , \U0001F4DA, ﻿ and a last quote "')
+         'BEL \x07, ESC \x1b, DEL \x7f, \u2028, \U0001F4DA, \ufeff and a last quote "')
 
 
 def sha(data: bytes) -> str:
@@ -436,6 +436,78 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
                                                     "0 unchanged, 0 removed, 0 conflict, "
                                                     "0 invalid")
 
+    def test_an_unusable_agents_directory_when_no_agent_is_wanted(self):  # review I-1
+        """AC-007's row "any": with `.codex/agents` a symlink or a regular file, the three agent
+        files are `conflict` (exit 1) even when no agent is wanted — core disabled, or a
+        repository `core` without the wrapped skills — and nothing behind it is removed."""
+        rows = [{"agent": "codex", "name": n, "path": f".codex/agents/{n}.toml",
+                 "status": "conflict", "pack": None, "skill": SKILL_OF[n], "version": None,
+                 "reason": None} for n in NAMES]
+        for cause in ("core disabled", "repository core without the wrapped skills"):
+            for kind in ("symlink", "file"):
+                with self.subTest(cause=cause, kind=kind):
+                    for top in (".codex", ".agents", ".modsys/packs/core"):
+                        shutil.rmtree(self.root / top, ignore_errors=True)
+                    self.config('[packs]\nbuiltin = ["core"]\n')
+                    self.sync()
+                    agents, outside = self.root / ".codex/agents", self.tmp / "outside"
+                    shutil.rmtree(outside, ignore_errors=True)
+                    if kind == "symlink":  # the managed files now live behind the symlink
+                        agents.rename(outside)
+                        os.symlink(outside, agents)
+                        reason = ".codex/agents is a symlink — packs sync writes nothing through it"
+                    else:
+                        shutil.rmtree(agents)
+                        outside.mkdir()
+                        agents.write_text("not a directory\n", encoding="utf-8")
+                        reason = ".codex/agents is not a directory"
+                    if cause == "core disabled":
+                        self.config("[packs]\nbuiltin = []\n")
+                    else:
+                        self.repo_core(skills_={"module-lint": None})
+                    want = [{**r, "reason": reason} for r in rows]
+                    there = snap(outside)
+                    self.assertEqual(self.sync("--check", code=1)["agent_files"], want)
+                    self.assertEqual(self.sync(code=1)["agent_files"], want)
+                    lines = self.text(code=1)
+                    i = lines.index("conflict   codex   .codex/agents/module-discover-agent.toml")
+                    self.assertEqual(lines[i + 1], f"  {reason} — make .codex/agents a plain "
+                                                   f"directory, then sync again")
+                    self.assertTrue(lines[-1].endswith(
+                        "; agent files: 0 created, 0 updated, 0 unchanged, 0 removed, "
+                        "3 conflict"), lines[-1])
+                    self.assertTrue(self.text("--check", code=1)[-1].endswith(
+                        "blocked — resolve the conflict / invalid rows above"))
+                    got, env, err = run_json("setup", "--agent", "codex", *self.R)
+                    self.assertEqual((got, err), (1, ""))
+                    step = env["data"]["steps"][1]
+                    self.assertEqual((step["status"], step["detail"]["agent_files"]),
+                                     ("conflict", want))
+                    got, out, err = run("setup", "--agent", "codex", *self.R)
+                    self.assertEqual(out.splitlines()[-1], "setup: packs sync left 3 agent "
+                                     "files unwritten — resolve them as shown above, then run "
+                                     "modsys setup again")
+                    self.assertEqual(snap(outside), there)  # nothing removed through it
+                    self.assertEqual(agents.is_symlink(), kind == "symlink")
+                    if kind == "symlink":
+                        self.assertEqual(sorted(p.name for p in outside.iterdir()),
+                                         [f"{n}.toml" for n in NAMES])
+                    agents.unlink()
+
+    def test_the_edit_hint_under_plugin_delivery(self):  # review M-2: eject needs "repo"
+        self.config('[packs]\nbuiltin = ["core"]\nbuiltin_delivery = "plugin"\n')
+        self.sync()
+        path = self.agent_file("module-scout-agent")
+        path.write_bytes(path.read_bytes() + b"# mine\n")
+        lines = self.text(code=1)
+        i = lines.index(f"conflict   codex   .codex/agents/module-scout-agent.toml  (core {V})")
+        self.assertEqual(lines[i + 1], "  module-scout-agent.toml (locally edited) — revert it "
+                                       "(git checkout -- .codex/agents/module-scout-agent.toml) "
+                                       "and sync again, or keep the change: set [packs] "
+                                       "builtin_delivery = \"repo\", modsys eject module-scout, "
+                                       "edit .modsys/overrides/skills/module-scout/references/"
+                                       "procedure.md, then packs sync")
+
     def test_a_symlinked_or_regular_agents_directory(self):
         outside = self.tmp / "outside"
         outside.mkdir()
@@ -701,8 +773,8 @@ class ProbeOutcomeTest(CodexRepo):  # P84-AC-002 (outcome A ruled: the keys are 
                     copy = self.root / ".agents/skills" / skill / src.relative_to(CORE / skill)
                     self.assertEqual(copy.read_bytes(), src.read_bytes(), copy)
         source = (ENGINE / "modsys/skill_sync.py").read_text(encoding="utf-8")
-        self.assertNotIn("argument-hint", source)
-        self.assertNotIn("arguments", source)
+        self.assertNotIn("argument-hint", source)  # no strip code for the two keys
+        self.assertNotIn("arguments:", source)
 
 
 class DocsTest(unittest.TestCase):  # P84-AC-010
