@@ -108,6 +108,7 @@ REFERENCE = [
      "P61-AC-020: the engine's own CHANGELOG.md", "D13", "0a4b5b716fc0b4bb"),
 ]
 # the helpers of the test classes and of the base, and the module's constants, at 758d085
+# (P8.9: SKILL names the ui pack's skill by its new directory, `designer`)
 HELPERS = [("files", "279c159e7bff31a4"), ("committed", "32c9fd83b2b6d873"),
            ("refused", "342ce0815e5c6c05"), ("failed", "8133e2db9d1dd991"),
            ("planted", "6b018d6bb95cbc27"), ("setUp", "00b616d7e6204801"),
@@ -128,7 +129,7 @@ CONSTANTS = [("ENG", "9c38b07097adda6a"), ("REL", "1434606f64af146b"),
              ("GUARD", "dad6c0ac40fe2e4c"), ("ALLOWED", "e0e1224bfffede7a"),
              ("IDENTITY", "605869b23454875e"), ("CREDENTIALS", "7cd8aac41204ceea"),
              ("MACHINE_PATHS", "0028ce936080354f"), ("STEPS", "0cfb498b38f92f86"),
-             ("SKILL", "b0d4ffbafa52167e"), ("TAGS", "7211bc9c3de1fc71"),
+             ("SKILL", "94abb1ff405089d0"), ("TAGS", "7211bc9c3de1fc71"),
              ("NO_NOTE", "735749ddc280b275"), ("NO_HEADING", "bb55fec2af3a7a9b"),
              ("NO_FILE", "3333fa2b1a7f22ed"), ("MARKER", "263d8729191cb388"),
              ("UNTRACKED", "8967b61a632eec58"), ("two_headings", "586c9d2ca7d4deb2")]

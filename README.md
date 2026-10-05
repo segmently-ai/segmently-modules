@@ -26,7 +26,7 @@ and use that one.
 ```bash
 claude plugin marketplace add <owner>/<publish repo>#stable
 claude plugin install modsys@modsys        # the core skills and `modsys` itself
-claude plugin install modsys-ui@modsys     # optional: the designer-review skill
+claude plugin install modsys-ui@modsys     # optional: the designer skill
 claude plugin install modsys-qa@modsys     # optional: the acceptance-criteria skills
 ```
 

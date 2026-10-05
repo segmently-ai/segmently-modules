@@ -56,8 +56,8 @@ PLUGINS = {
                               "create, split and lint module docs, start them from existing "
                               "code or adopt a registry — with the modsys CLI they run"},
     "modsys-ui": {"pack": "ui", "keywords": ["ui", "design-review"],
-                  "description": "The modsys designer-review skill: checks a UI change against "
-                                 "the designer docs of the modules it touches"},
+                  "description": "The modsys designer skill: prototypes, audits and reviews UI "
+                                 "work against the designer docs of the modules it touches"},
     "modsys-qa": {"pack": "qa", "keywords": ["qa", "acceptance-criteria"],
                   "description": "The modsys acceptance-criteria skills: a task's criteria "
                                  "before the code, and a module's acceptance baseline"},

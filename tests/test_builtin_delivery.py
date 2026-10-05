@@ -13,7 +13,7 @@ from tests.helpers import copy_fixture, init_git, run, run_json
 
 CORE = ["module-adopt", "module-create", "module-discover", "module-init", "module-lint",
         "module-research", "module-roles", "module-scout", "module-split", "module-sync"]
-BUILTIN = sorted(CORE + ["designer-review", "qa-acceptance", "qa-acceptance-baseline"])
+BUILTIN = sorted(CORE + ["designer", "qa-acceptance", "qa-acceptance-baseline"])
 SKILL = "---\nname: api-review\ndescription: Reviews API changes.\n---\n\n# api-review\n"
 PLUGINS = "the plugins modsys (core), modsys-qa (qa), modsys-ui (ui)"
 REFUSAL = 'builtin_delivery = "plugin" — the plugin provides this skill; eject needs "repo"'
@@ -228,13 +228,13 @@ class OneDeliveryTest(DeliveryRepo):  # P6-AC-002
         code, env, _ = run_json("packs", "list", *self.R)
         shutil.copytree(next(r["dir"] for r in env["data"] if r["id"] == "ui"), ui)
         data = self.sync(*AGENTS)
-        self.assertIn(("claude", "designer-review", "created"), self.rows(data))
+        self.assertIn(("claude", "designer", "created"), self.rows(data))
         self.assertEqual(self.plugin_notes(data), [
             'builtin_delivery = "plugin": the built-in skills come from the plugins modsys '
             '(core), modsys-qa (qa) — packs sync copies none of them'])
-        self.assertEqual(run("eject", "designer-review", *self.R)[0], 0)
+        self.assertEqual(run("eject", "designer", *self.R)[0], 0)
         run("agents-md", "--target", "CLAUDE.md", *self.R)
-        self.assertIn("- `designer-review` — ", (self.root / "CLAUDE.md").read_text())
+        self.assertIn("- `designer` — ", (self.root / "CLAUDE.md").read_text())
 
     def test_roles_and_templates_are_the_same(self):  # the Then under the table
         outputs = {}

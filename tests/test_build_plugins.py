@@ -350,9 +350,9 @@ class RefusalTest(unittest.TestCase):  # P6-AC-028, P6-AC-033
         self.assertIn("modsys/defaults/templates/roles/po.md is tracked but missing on disk",
                       self.refused())
         git(self.engine, "checkout", "--", "modsys/defaults/templates/roles/po.md")
-        link = self.engine / "modsys/defaults/packs/ui/skills/designer-review/extra.md"
+        link = self.engine / "modsys/defaults/packs/ui/skills/designer/extra.md"
         os.symlink("SKILL.md", link)
-        self.assertIn("skill designer-review: modsys/defaults/packs/ui/skills/designer-review/"
+        self.assertIn("skill designer: modsys/defaults/packs/ui/skills/designer/"
                       "extra.md is a symlink", self.refused())
         git(self.engine, "add", str(link))
         git(self.engine, "commit", "-q", "-m", "a symlink")

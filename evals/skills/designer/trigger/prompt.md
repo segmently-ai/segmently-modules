@@ -1,5 +1,5 @@
 ---
-description: A request that designer-review should handle
+description: A request that designer should handle
 tags: [trigger, ui]
 max_turns: 30
 timeout_seconds: 900

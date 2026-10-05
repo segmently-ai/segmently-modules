@@ -170,7 +170,7 @@ its own copy to edit. When `AGENTS.md` is a symlink to `CLAUDE.md`, the block is
 ## Built-in packs and reserved ids
 
 The engine ships the packs `core` (the module skills), `ui` (the `designer` role and
-`designer-review`) and `qa` (the `qa_acceptance` role, `qa-acceptance` and
+`designer`) and `qa` (the `qa_acceptance` role, `qa-acceptance` and
 `qa-acceptance-baseline`) inside its own package — what they contain and how to use them:
 [skills.md](skills.md). They are not files of the repository; the team config turns them on:
 

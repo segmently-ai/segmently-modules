@@ -26,7 +26,7 @@ until the work is done — and the work is done when every PRE and AC passes.
 - The criteria are for a whole module (what must never break), not one task: use
   `qa-acceptance-baseline`.
 - You need the modules and files the task touches, not criteria: use `module-discover`.
-- A UI change needs a design review: use `designer-review`.
+- A UI change needs mocks or a design review: use `designer`.
 
 ## Scope
 

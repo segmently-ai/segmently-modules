@@ -166,6 +166,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Matrix, per-block requirements and P0 / P1 / P2, Architecture Rule Coverage, Regression Risks,
   Specification Issues, a Dimension Coverage Matrix, a Gap Analysis, a Quality Score and Retired;
   a large module's baseline splits into an index and per-block files (`references/block.md`).
+- The `ui` pack's skill is **`designer`** (it was `designer-review`; `packs sync` removes the old
+  copy) and does the job of the original it was written from again, in three routes:
+  **prototype** — the open questions with a recommended answer, `DESIGN_BRIEF.md`, standalone HTML
+  mocks from the team's tokens (one, or variants on different axes), a checker self-check and mock
+  screenshots, then it waits for the user's approval before any code; **rework-audit** —
+  `AS_IS_AUDIT.md` with the as-is path trace against its budget, a dead-end inventory, a preserve
+  list, the mapping and a live check of the output; **review** — a tier (checker only, checklist and
+  checker, or a two-reviewer critique, which surfaces that show money, verdicts or counts always
+  get), screenshots of the running app at every size and colour scheme (without a capture tool it
+  asks the user for them; a review without them says "degraded"), thirteen categories with the
+  flow patterns FP-1…FP-11, and `DESIGN_REVIEW.md` always written with Must fix, Should fix, Could
+  improve, What works well and `PASS` or `BLOCKED: N must-fix`. The team's design settings are a
+  `[ui]` table of the team config that the skill reads (`rules`, `tokens`, `capture`, `sizes`,
+  `schemes`, `checker`, `artifacts`, default `.design`; the engine does not check it). The
+  `designer` role template gains a Surface map, numbered UX invariants with their reason, Key
+  flows, Tokens and colour schemes, and Anti-patterns. Its description names the three routes.
 - The skill-eval graders of `module-discover`, `module-scout` and `module-research` look for their
   own `modsys` command (the skills run in the conversation; their agents only on request).
 - `qa-acceptance-baseline`: a `roles/qa_acceptance.md` on disk that the registry does not list is the

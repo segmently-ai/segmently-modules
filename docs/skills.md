@@ -12,7 +12,7 @@ edit module docs and registry fields, then ask you to review and commit.
 | Pack | Adds | Skills |
 |---|---|---|
 | `core` | — | `module-scout`, `module-discover`, `module-research`, `module-sync`, `module-roles`, `module-create`, `module-split`, `module-lint`, `module-init`, `module-adopt` |
-| `ui` | the `designer` role (`roles/designer.md`) | `designer-review` |
+| `ui` | the `designer` role (`roles/designer.md`) | `designer` |
 | `qa` | the `qa_acceptance` role (`roles/qa_acceptance.md`) | `qa-acceptance`, `qa-acceptance-baseline` |
 
 ## Enable them
@@ -246,11 +246,30 @@ keyword or the description covers yet, never a code identifier and never one per
 ## The ui and qa packs
 
 - **`ui`** adds the role `designer` (`standard = false`, `applies_when = "ui"`): `modsys create
-  NAME … --tag ui` (or `--role designer`) scaffolds `roles/designer.md` with the sections UX
-  invariants, interaction states, layout and accessibility, visual patterns and an optional
-  design checker. `designer-review` checks a UI change against the designer docs of the modules
-  it touches and ends with `Result: PASS` or `Result: FAIL` — a UI task is not done while a
-  Must-fix is open. It runs a design checker only when a designer doc names one.
+  NAME … --tag ui` (or `--role designer`) scaffolds `roles/designer.md` with the sections Surface
+  map, UX invariants (numbered, each with its reason), interaction states, layout and
+  accessibility, visual patterns, Key flows, tokens and colour schemes, Anti-patterns and an
+  optional design checker. The `designer` skill designs and reviews UI work against the designer
+  docs of the modules it touches, in three routes: **prototype** (a brief and standalone HTML
+  mocks from the team's tokens, a checker self-check, then it waits for approval before any
+  code), **rework-audit** (an existing flow's path trace, dead ends, preserve list and mapping
+  before a redesign) and **review** (screenshots of the running app — required; without a capture
+  tool it asks the user for them — checked in thirteen categories with the flow patterns
+  FP-1…FP-11; `DESIGN_REVIEW.md` always written, ending `PASS` or `BLOCKED: N must-fix` — a UI
+  task is not done while a Must fix is open). Its artifacts go to `<artifacts>/<feature>/`. The
+  team names its design settings once in a `[ui]` table of `.modsys/config.toml` (or
+  `config.user.toml`), which the skill reads — the engine does not check it:
+
+  ```toml
+  [ui]
+  rules = ["docs/design/rules.md"]       # read on every run: design rules, token tables, surface kinds
+  tokens = ["src/styles/tokens.css"]     # the token values the mocks use
+  capture = "npm run screenshot --"      # how to screenshot the running app (or the browser tool to use)
+  sizes = ["1280x800", "375x812"]
+  schemes = ["light", "dark"]
+  checker = "npm run lint:design"        # a designer doc's "Design checker" replaces it for its module
+  artifacts = ".design"                  # the default
+  ```
 - **`qa`** adds the role `qa_acceptance` (`applies_when = "qa"`): the module's acceptance
   baseline, P0 / P1 / P2 criteria with stable ids `AC-NNN` in Given / When / Then form.
   `qa-acceptance` writes one task's criteria (`PRE-NNN`, `AC-NNN` with Title, Sub-task,

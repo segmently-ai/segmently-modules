@@ -289,7 +289,7 @@ class ThirteenSkillsTest(unittest.TestCase):  # P84-AC-022
             code, _, err = run("agents-md", "--target", "AGENTS.md", "--root", str(root))
             self.assertEqual((code, err), (0, ""))
             text = (root / "AGENTS.md").read_text("utf-8")
-        lines = re.findall(r"^- `(module-[a-z-]+|designer-review|qa-[a-z-]+)` — (.*)$", text, re.M)
+        lines = re.findall(r"^- `(module-[a-z-]+|designer|qa-[a-z-]+)` — (.*)$", text, re.M)
         self.assertEqual(len(lines), 13)
         first = flat(read_front_matter(ROLES)["description"]).split(". ")[0].rstrip(".") + "."
         self.assertIn(("module-roles", first), lines)

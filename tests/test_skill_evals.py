@@ -30,7 +30,7 @@ PROMPT_KEYS = {"schema_version", "name", "description", "tags", "plugins", "runs
 GRADER_TYPES = {"regex", "tool_used", "tool_order", "file_exists", "llm", "baseline"}
 PRIMARY = {"module-scout": "show", "module-discover": "discover", "module-research": "show",
            "module-sync": "sync-instructions", "module-create": "create", "module-split": "show",
-           "module-lint": "(ci|lint)", "designer-review": "discover",
+           "module-lint": "(ci|lint)", "designer": "discover",
            "qa-acceptance": "discover", "qa-acceptance-baseline": "show",
            "module-roles": "roles"}
 WRAPPED = ("module-discover", "module-scout", "module-research")  # each with an agent

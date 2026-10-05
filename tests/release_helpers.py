@@ -89,7 +89,7 @@ CREDENTIALS = {"ANTHROPIC_API_KEY": "dummy-key", "ANTHROPIC_AUTH_TOKEN": "dummy-
 MACHINE_PATHS = ("/" + "Users/", "/" + "home/")  # joined here: this file holds no such path
 STEPS = ["leak guard", "clean trees", "tests", "build", "validate", "publish repo", "commit",
          "smoke install"]
-SKILL = "modsys/defaults/packs/ui/skills/designer-review/SKILL.md"
+SKILL = "modsys/defaults/packs/ui/skills/designer/SKILL.md"
 TAGS = ["modsys--v{0}", "modsys-qa--v{0}", "modsys-ui--v{0}", "v{0}"]
 
 

@@ -30,7 +30,7 @@ OWNERS = {
         "I finished the refund changes": "module-sync",
         "The catalog MODULE.md is over the size budget": "module-split",
         "Which modules will this change": "module-discover",
-        "Review this UI change": "designer-review",
+        "Review this UI change": "designer",
         "Write acceptance criteria": "qa-acceptance",
         "How does the recommendations engine": "module-research",
         "Rename the payment gateway class": None},

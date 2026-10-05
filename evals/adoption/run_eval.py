@@ -625,7 +625,7 @@ def packs(sc: Scenario) -> None:
 
 # --- skills ------------------------------------------------------------------------------
 
-BUILTIN_SKILLS = ["designer-review", "module-adopt", "module-create", "module-discover",
+BUILTIN_SKILLS = ["designer", "module-adopt", "module-create", "module-discover",
                   "module-init", "module-lint", "module-research", "module-roles", "module-scout",
                   "module-split",
                   "module-sync", "qa-acceptance", "qa-acceptance-baseline"]

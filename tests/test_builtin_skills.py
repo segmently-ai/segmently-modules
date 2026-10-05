@@ -89,10 +89,13 @@ CORE: dict[str, tuple[str, list[tuple[str, ...]], list[str]]] = {
                       "Add each answer to the config only on the user's yes"]),
 }
 PACK_SKILLS: dict[str, tuple[str, str, list[tuple[str, ...]], list[str]]] = {
-    "designer-review": ("ui", "writer", [("discover",), ("show", "--role", "designer")],
-                        ["Must-fix", "Should-fix", "Nit", "`Result: PASS`", "`Result: FAIL",
-                         "Design checker", "a UI task is not done while a Must-fix is open",
-                         "git ls-files --others --exclude-standard"]),  # fix wave M4
+    # P8.9 (D11, owner): designer-review became `designer` — prototype, rework audit, review
+    "designer": ("ui", "writer", [("discover", "--task-file"), ("discover", "--from-diff"),
+                                  ("discover", "--files"), ("show", "--role", "designer")],
+                 ["Must fix", "Should fix", "Could improve", "What works well", "`PASS`",
+                  "`BLOCKED: N must-fix`", "Design checker",
+                  "a UI task is not done while a Must fix is open",
+                  "git ls-files --others --exclude-standard"]),  # fix wave M4
     "qa-acceptance": ("qa", "writer", [("discover", "--task-file"), ("show", "--role", "qa"),
                                        ("show", "--role", "qa_acceptance")],
                       ["`PRE-NNN`", "`AC-NNN`", "**Given**", "**When**", "**Then**",
@@ -288,12 +291,13 @@ class InstallLineTest(SkillRules):  # P6-AC-019 (D6, SI-4)
     DESCRIPTIONS = {  # sha256[:16] of each description at f1f5e46: a body edit never moves one
         # (P8.7 X3: module-sync's moved — its trigger widened to a session that revealed knowledge)
         # (P8.8, owner: qa-acceptance's delivery sentence — shown in the conversation, not a file)
+        # (P8.9, owner: designer-review renamed `designer`, its description names the three routes)
         "module-adopt": "3409f228fda67c5d", "module-create": "3d1a2d2954de0900",
         "module-discover": "fa2b6d6ba50b01fd", "module-init": "b64769f4c169e5b0",
         "module-lint": "bc2538a0a39d1da0", "module-research": "2c773e1a29f3fd6d",
         "module-scout": "83221c73a41cb280", "module-split": "25b942d14038d7dd",
         "module-sync": "c4a88fb9da93da44", "module-roles": "4984dd28497824bb", "qa-acceptance-baseline": "2a0efce95123748f",
-        "qa-acceptance": "d6b590ea3a2523eb", "designer-review": "83a63b52f3a24d79"}
+        "qa-acceptance": "d6b590ea3a2523eb", "designer": "6bd3019e180a415a"}
 
     def test_every_body_holds_the_one_line(self):
         skills = self.all_skills()

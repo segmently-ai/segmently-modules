@@ -210,8 +210,24 @@ overrides each key (`--fail-on`, `--base`, `--fail-under`).
 | Key | Default | Meaning |
 |---|---|---|
 | `agents` | unset | the agents `modsys packs sync` writes pack skills for when no `--agent` flag is given: `claude` (`.claude/skills/`), `codex`, `cursor`, `gemini`, `copilot` (all four read `.agents/skills/`, written once however many of them are listed); `codex` also gets the agents of `module-discover`, `module-scout` and `module-research` in `.codex/agents/` (`<name>.toml`, managed files — [skills.md](skills.md)); any other name is refused (exit 2 naming the file). With no agent named, under `builtin_delivery = "plugin"`, a `.codex/agents/` holding a marked agent file means codex (a regular file directly in it whose first line is a valid `# modsys-managed:` marker; a symlinked `.codex/agents` holding one infers too, so `next` shows its conflict rows; a symlinked file, a subdirectory or a non-directory does not; `setup`'s choice is unchanged). Only there do a bare `packs sync` and `next` read `.codex/agents/` to infer codex; a run that names its agents without `codex` never opens `.codex/`. Like every array, a higher layer ADDS to a lower one's list; `--agent` flags replace it. `packs sync --remove --agent A` refuses while another agent listed here reads A's directory |
-| `builtin` | `[]` | the engine's built-in packs to enable: `core` (the core agent skills), `ui` (a `designer` role and a UI review skill), `qa` (a `qa_acceptance` role and acceptance-criteria skills). Set it in `config.toml` or `config.user.toml` (the two lists add up; a repeated id counts once; a pack cannot set it); an unknown id is refused (exit 2 naming the file and the known ids). An enabled built-in pack is a pack layer below every repository pack; its version is the engine version. A repository pack with the same id (`.modsys/packs/ui/`) replaces it, enabled or not |
+| `builtin` | `[]` | the engine's built-in packs to enable: `core` (the core agent skills), `ui` (a `designer` role and the `designer` skill), `qa` (a `qa_acceptance` role and acceptance-criteria skills). Set it in `config.toml` or `config.user.toml` (the two lists add up; a repeated id counts once; a pack cannot set it); an unknown id is refused (exit 2 naming the file and the known ids). An enabled built-in pack is a pack layer below every repository pack; its version is the engine version. A repository pack with the same id (`.modsys/packs/ui/`) replaces it, enabled or not |
 | `builtin_delivery` | `"repo"` | where the agents get the enabled built-in packs' skills: `"repo"` — `modsys packs sync` copies them into the agents' skill directories — or `"plugin"` — the modsys plugins provide them (`core` → `modsys`, `ui` → `modsys-ui`, `qa` → `modsys-qa`): `packs sync` copies none of them (it still writes `codex`'s agent files in `.codex/agents/`, which no plugin can place) and removes the copies it made earlier (an edited copy is a conflict and stays), `modsys eject` of a built-in skill is refused (`eject needs "repo"`), an ejected built-in skill is a `packs sync` conflict, and plain `lint` reports each copy still there (MS067, info). The built-in packs' roles and templates and a repository pack's skills (any id) are the same under both; the `agents-md` block words the skill list's lead-in by delivery. Set it in `config.toml` or `config.user.toml` (a scalar: the user's wins); a pack cannot set it (exit 2 naming its `pack.toml`); any other value is exit 2 naming the file and `repo, plugin` |
+
+## `[ui]`
+
+Read by the `ui` pack's `designer` skill, not by the engine: the engine accepts the table (an
+unknown top-level section) and checks none of its keys. The skill reads it from `config.toml`
+and `config.user.toml` (a list in both adds up; for any other key the user file wins).
+
+| Key | Default | What it holds |
+|---|---|---|
+| `rules` | unset | the docs every run reads: the team's design rules, token tables, surface kinds (each with its tokens, sizes and colour schemes) |
+| `tokens` | unset | the files holding the token values the mocks use |
+| `capture` | unset | how to screenshot the running app: a command, or the browser tool to use; unset — the skill asks the user for the screenshots |
+| `sizes` | unset | the viewports to capture, such as `"1280x800"` |
+| `schemes` | unset | the colour schemes to capture, such as `"light"`, `"dark"` |
+| `checker` | unset | the design checker command; a designer doc's "Design checker" section replaces it for its module; unset and unnamed — no checker runs |
+| `artifacts` | `.design` | the directory of the feature folders (`<artifacts>/<feature>/`: the brief, the mocks, the audit, the review, the screenshots) |
 
 ## `[init]`
 

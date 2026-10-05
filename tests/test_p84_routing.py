@@ -30,7 +30,7 @@ WRAPPED = {"module-discover", "module-scout", "module-research"}  # D3: Task 2 p
 SINGLE = {  # one scenario: steps and `## Exit codes` inline, no keys, references as before
     "module-adopt": [], "module-init": ["references/phases.md"],
     "module-lint": ["references/lint-codes.md"],
-    "module-roles": [], "designer-review": []}
+    "module-roles": []}
 # P8.7 (X4): the writing skills keep their steps and `## Exit codes` inline, no keys, and point
 # into references/ by step — a scenario (a child, an already-split module) or a step's detail
 STEP_ROUTED = {
@@ -45,6 +45,13 @@ STEP_ROUTED = {
 STEP_ROUTED["qa-acceptance"] = [("method", ["references/method.md"]),
                                  ("techniques", ["references/techniques.md"]),
                                  ("output", ["references/output.md"])]
+# P8.9 (D11, D12): designer — one skill, its routes and their shared files named by the steps
+STEP_ROUTED["designer"] = [("prototype", ["references/prototype.md"]),
+                           ("rework-audit", ["references/rework-audit.md"]),
+                           ("review", ["references/review.md"]),
+                           ("flow-patterns", ["references/flow-patterns.md"]),
+                           ("checklist", ["references/checklist.md"]),
+                           ("artifacts", ["references/artifacts.md"])]
 STEP_ROUTED_EXTRA = {"module-sync": ["references/choose.md"]}  # named by step 4, not a route
 LEAD = ("the scenario named by the invocation (`$scenario`) when one is given, else by the "
         "user's words", "read it, then follow it")

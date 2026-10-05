@@ -17,7 +17,7 @@ CORE = ["module-scout", "module-discover", "module-research", "module-sync", "mo
         "module-create", "module-split", "module-lint", "module-init",
         "module-adopt"]  # P5B-AC-030 (D7): 7 -> 9; P8.4 D2: + module-roles
 PACKS = {"core": CORE, "qa": ["qa-acceptance", "qa-acceptance-baseline"],
-         "ui": ["designer-review"]}
+         "ui": ["designer"]}
 SKILLS = {sid: pack for pack, ids in PACKS.items() for sid in ids}
 STANDARD = ["architect.md", "developer.md", "po.md", "qa.md"]
 
@@ -204,7 +204,7 @@ class TransitionsTest(ShippedPacks):  # P4B-AC-028
         self.sync()
         self.enable("core")
         self.assertEqual({(s, st) for _, s, st in self.sync() if st != "unchanged"},
-                         {("designer-review", "removed")})
+                         {("designer", "removed")})
 
 
 class TeamSkillWithACoreIdTest(ShippedPacks):  # P4B-AC-029
