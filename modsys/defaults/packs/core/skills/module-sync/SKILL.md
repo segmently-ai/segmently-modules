@@ -49,7 +49,7 @@ The session is the primary source; the change in git confirms it and finds misse
    Before you edit, save the gate: `modsys ci --base <base> --json > <ci file>` (outside the
    repository; ignore its exit code).
 
-3. Ask modsys what to update.
+3. Ask modsys what to update — always, a session without a code change too.
 
    ```bash
    modsys sync-instructions --from-diff <base>..HEAD --json
@@ -69,11 +69,16 @@ The session is the primary source; the change in git confirms it and finds misse
    Each candidate whose docs describe the change joins the modules to update, with the docs the
    search listed.
 
-5. Print the findings and one proposal block per module (`references/report.md`), then apply
-   without waiting. Interactive mode (the user asked for it): stop after the findings, then ask
-   `ok / skip / edit` per module.
+5. Before any edit, print in your reply — the user audits the run from it
+   (`references/report.md`):
+   - **Findings**: each session item (kind · module · fact); the modules to update, why, their
+     files; files outside every module;
+   - **Proposal: <module>**, one per module: each doc's change and target; registry changes.
 
-6. Write each module's docs as `references/placement.md` says: the session's items and the
+   Then apply without waiting. Interactive mode (the user asked for it): stop after the
+   findings, then ask `ok / skip / edit` per module.
+
+6. Only after that print, write each module's docs as `references/placement.md` says: the session's items and the
    change, each in the doc its readers look in. Add what they introduced, correct what they made
    untrue, remove nothing still true. Short, factual, linked to code paths, never copied code.
 
@@ -89,11 +94,7 @@ The session is the primary source; the change in git confirms it and finds misse
      people will name in later tasks and that no keyword or the description covers yet — never a
      code identifier (a class, function, file or variable name: code search finds those), never
      one per task. Keywords only grow; a split parent keeps all of them — never remove one from it.
-   - `related_modules`: when the work made this module rely on another (or share a contract), add
-     the edge after checking `related`; an unknown relation is refused with the allowed ones.
-   - A refused write (exit 2) names the rule it broke: fix the value, never force it.
-
-   Where agents must not write the registry, queue the changes (`references/placement.md`).
+   - `related_modules`, a refused write, queued changes: `references/placement.md`.
 
 8. Run the team's sync hooks (the second form for uncommitted work). Skip this step when step 7 ran
    `sync --apply-proposals` (it ran them).
@@ -128,6 +129,5 @@ Interactive mode adds the stops of step 5.
 
 ## Exit codes
 
-`0` ok · `1` = findings, a failed `ci` step or required hook, a rejected proposal: read the result
-and act · `2` = a usage or config error or a refused write: read stderr, fix the input, run again
-once.
+`0` ok · `1` = findings, a failed `ci` step or hook, a rejected proposal: read and act · `2` = a
+usage or config error, a refused write: read stderr, fix the input, run again once.

@@ -90,7 +90,7 @@ class SavedGateTest(unittest.TestCase):  # P83-AC-012
     def test_step_1_ends_with_the_save(self):
         text = skill("module-sync")
         self.assertEqual(text.count(STEP_1), 1)
-        step1 = text.split("\n3. Ask modsys what to update.")[0]  # P8.7: the pin is step 2
+        step1 = text.split("\n3. Ask modsys what to update")[0]  # P8.7: the pin is step 2
         self.assertTrue(step1.endswith("\n\n" + STEP_1), step1[-300:])  # its own lines (review M-1)
 
     def test_step_7_is_exact(self):

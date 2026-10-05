@@ -40,7 +40,11 @@ CONTRACT = {
         "**Plan goal**", "**Decisions** — each choice made, with the alternatives rejected and why.",
         "**Discoveries**", "**Patterns**", "**Gotchas**", "**Dependencies**", "**Critical rules**",
         "homeless discovery: report it, never drop it", "sync from the change alone",
-        "Print the findings and one proposal block per module", "then apply without waiting",
+        # C5 run b (sonnet) edited before printing them: the print comes first, said twice
+        "Before any edit, print in your reply — the user audits the run from it",
+        "**Findings**: each session item (kind · module · fact)", "**Proposal: <module>**",
+        "Then apply without waiting.", "Only after that print, write each module's docs",
+        "Ask modsys what to update — always, a session without a code change too.",
         "Interactive mode (the user asked for it)", "`ok / skip / edit`",
         "never hand-edits a role doc another skill owns (it flags it)",
         "never hand-edited — flag it for that skill in the report",

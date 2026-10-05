@@ -37,8 +37,12 @@ parent's index past the signal → cross-cutting content crept in, move it to th
 past it → rebalance its parent; MS032 (a role doc past its budget) → route its excess. Each one is
 an action item in the report, never a silent trim.
 
-**Queued registry writes** (step 7, where agents must not write the registry): queue each change
-and apply them all at once — the apply also runs the sync hooks, so step 8 is skipped.
+**Registry** (step 7):
+- `related_modules`: when the work made this module rely on another (or share a contract), add
+  the edge after checking `related`; an unknown relation is refused with the allowed ones.
+- A refused write (exit 2) names the rule it broke: fix the value, never force it.
+- Where agents must not write the registry, queue each change and apply them all at once — the
+  apply also runs the sync hooks, so step 8 is skipped.
 
 ```bash
 modsys propose --module <module> --op append --field keywords --value '"<new word>"' --reason "<why>" --json
