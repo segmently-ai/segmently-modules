@@ -170,7 +170,7 @@ class AgentFileInferenceTest(CodexRepo):  # P85-AC-022…025
         return d
 
     def marked(self, name="module-scout-agent") -> bytes:
-        return skill_sync.codex_agent(name, "p", "core", name.removesuffix("-agent"), "1")
+        return skill_sync.codex_agent(name, "core", name.removesuffix("-agent"), "1")
 
     def bare(self, *argv, code=0):
         got, env, err = run_json("packs", "sync", *argv, *self.R)

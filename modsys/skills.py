@@ -31,11 +31,12 @@ MANAGED = ".modsys-managed"  # the marker `packs sync` writes into every skill i
 EJECTED = ".modsys-ejected"  # the record `modsys eject` writes into an ejected copy
 EJECTED_SCHEMA = "modsys.ejected/1"
 NOT_COPIED = {MANAGED, EJECTED, ".DS_Store"}  # never part of a skill's files
-# The agents generated from a skill's procedure (P8.4 D3): the one table that the plugin build
-# (`tools/build_plugins.py`: the `modsys` plugin's `agents/<name>.md`, Claude Code) and `packs
-# sync` (`.codex/agents/<name>.toml`, Codex) read — agent name -> the skill whose `PROCEDURE` is
-# the agent's whole body, and the agent's one-sentence description. Plain literals: the build
-# reads them from this file without importing the engine.
+# The agents that run a skill in their own context (P8.4 D3, P8.6 D1): the one table that the
+# plugin build (`tools/build_plugins.py`: the `modsys` plugin's `agents/<name>.md`, Claude Code)
+# and `packs sync` (`.codex/agents/<name>.toml`, Codex) read — agent name -> the skill it runs,
+# and the agent's one-sentence description. An agent's body only runs its skill (`AGENT_BODY`
+# and the platform's fallback line); no skill text is copied into it — the skill is the one
+# source. Plain literals: the build reads them from this file without importing the engine.
 SKILL_AGENTS = {
     "module-discover-agent": {
         "skill": "module-discover",
@@ -53,7 +54,15 @@ SKILL_AGENTS = {
                        "modsys CLI, read-only, and reports a short brief of what each owns, its "
                        "rules and its linked modules."},
 }
-PROCEDURE = "references/procedure.md"  # in the skill directory: the procedure an agent runs
+AGENT_BODY = ("Run the `{skill}` skill on the task you are handed, verbatim, with what the "
+              "caller settled (files, constraints, the depth), and return its output "
+              "unchanged: its report, or the question it asks the user.")
+# Claude Code: the front matter preloads the skill (`skills:`); the Skill tool is the fallback
+CLAUDE_FALLBACK = (" If the skill's text is not in your context, load it with the Skill tool "
+                   "(`modsys:{skill}`) first.")
+# Codex: a custom agent inherits the session's skills; reading the copy by its path is the fallback
+CODEX_FALLBACK = (" Only when that skill is not available to you, read "
+                  "`.agents/skills/{skill}/SKILL.md` and follow it.")
 CODEX_AGENTS = ".codex/agents"  # where `packs sync` writes the agents for Codex
 _KEY = re.compile(r"^([A-Za-z_][\w.-]*)[ \t]*:(?:[ \t]+(.*))?$")
 _BLOCK = re.compile(r"^([|>])(?:[1-9]?[+-]?|[+-][1-9])$")  # block scalar indicator

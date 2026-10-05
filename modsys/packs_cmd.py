@@ -31,7 +31,7 @@ from modsys.skill_sync import (AGENT_BAD_MARKER, AGENT_NOT_MANAGED, AGENT_STATUS
                                STATUSES, agent_row, apply_agent_file, apply_plan, conflict_kind,
                                managed_agents, plan_agent_files, plan_remove, plan_sync, row,
                                skill_sources, sync_command)
-from modsys.skills import (AGENT_DIRS, CODEX_AGENTS, NAME_RULE, PROCEDURE, declared_skills,
+from modsys.skills import (AGENT_DIRS, CODEX_AGENTS, NAME_RULE, declared_skills,
                            ejected_dir, is_ejected, pack_skills, read_front_matter, skill_id_ok)
 from modsys.workspace import Workspace
 
@@ -507,7 +507,7 @@ def agent_hint(ws, r) -> str:
     if r["status"] != "conflict":
         return ""
     if reason.endswith("(locally edited)"):
-        copy = f"{ws.rel(ejected_dir(ws.config_dir, r['skill']))}/{PROCEDURE}"
+        copy = f"{ws.rel(ejected_dir(ws.config_dir, r['skill']))}/SKILL.md"  # the agent runs it
         keep = (f"edit {copy}" if is_ejected(ws.config_dir, r["skill"])
                 else f"modsys eject {r['skill']}, edit {copy}")
         skill = pack_skills(ws.config_dir).get(r["skill"])

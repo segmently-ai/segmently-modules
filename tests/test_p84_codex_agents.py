@@ -42,8 +42,11 @@ def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def procedure(skill: str) -> str:
-    return (CORE / skill / "references/procedure.md").read_bytes().decode("utf-8")
+def instructions(skill: str) -> str:  # P8.6 D1: the agent runs its skill; no skill text in it
+    return (f"Run the `{skill}` skill on the task you are handed, verbatim, with what the caller "
+            f"settled (files, constraints, the depth), and return its output unchanged: its "
+            f"report, or the question it asks the user. Only when that skill is not available "
+            f"to you, read `.agents/skills/{skill}/SKILL.md` and follow it.\n")
 
 
 def marker(data: bytes) -> tuple[dict, bytes]:
@@ -113,11 +116,11 @@ class CodexRepo(unittest.TestCase):
 
     def repo_core(self, version: str = "9.0.0", skills_: dict | None = None) -> Path:
         """A repository pack `core` (it replaces the built-in one) declaring `skills_` {skill:
-        its procedure text, or None for no procedure}; default: the three wrapped skills with
-        the built-in procedures."""
+        the text of an extra `references/procedure.md`, or None for none}; default: the three
+        wrapped skills, no extra file. The agent files never read that file (P8.6 D1)."""
         pack = self.root / ".modsys/packs/core"
         shutil.rmtree(pack, ignore_errors=True)
-        wanted = skills_ if skills_ is not None else {s: procedure(s) for s in WRAPPED}
+        wanted = skills_ if skills_ is not None else {s: None for s in WRAPPED}
         text = f'id = "core"\nversion = "{version}"\n'
         for sid, proc in wanted.items():
             d = pack / "skills" / sid
@@ -164,17 +167,18 @@ class WrittenTest(CodexRepo):  # P84-AC-006
                 self.assertEqual(sorted(doc), ["description", "developer_instructions", "name"])
                 self.assertEqual(doc["name"], name)
                 self.assertEqual(doc["description"], skills.SKILL_AGENTS[name]["description"])
-                self.assertEqual(doc["developer_instructions"], procedure(SKILL_OF[name]))
+                self.assertEqual(doc["developer_instructions"], instructions(SKILL_OF[name]))
+                self.assertNotIn("## Steps", doc["developer_instructions"])  # no procedure text
                 self.assertEqual(stat.S_IMODE(self.agent_file(name).stat().st_mode), 0o644)
 
-    def test_the_exact_layout_of_a_simple_procedure(self):
+    def test_the_exact_layout(self):  # an extra procedure file in the skill is never read
         self.repo_core(skills_={"module-scout": "Read the docs.\nReport.\n"})
         self.sync()
         rest = marker(self.agent_file("module-scout-agent").read_bytes())[1]
         description = skills.SKILL_AGENTS["module-scout-agent"]["description"]
         self.assertEqual(rest.decode("utf-8"), (
             f'name = "module-scout-agent"\ndescription = "{description}"\n'
-            f'developer_instructions = """\nRead the docs.\nReport.\n"""\n'))
+            f'developer_instructions = """\n{instructions("module-scout")}"""\n'))
 
     def test_through_setup(self):
         repo = self.tmp / "fresh"
@@ -191,7 +195,7 @@ class WrittenTest(CodexRepo):  # P84-AC-006
         for name in NAMES:
             text = (repo / ".codex/agents" / f"{name}.toml").read_text(encoding="utf-8")
             self.assertEqual(tomllib.loads(text)["developer_instructions"],
-                             procedure(SKILL_OF[name]))
+                             instructions(SKILL_OF[name]))
         got, env, err = run_json("setup", "--agent", "codex", "--root", str(repo))
         self.assertEqual((got, err), (0, ""))
         self.assertEqual(env["data"]["steps"][1]["status"], "unchanged")
@@ -204,24 +208,24 @@ class WrittenTest(CodexRepo):  # P84-AC-006
         self.assertFalse((self.root / ".agents").exists())
         for name in NAMES:
             doc = tomllib.loads(self.agent_file(name).read_text(encoding="utf-8"))
-            self.assertEqual(doc["developer_instructions"], procedure(SKILL_OF[name]))
+            self.assertEqual(doc["developer_instructions"], instructions(SKILL_OF[name]))
         lines = self.text()
         self.assertEqual(lines[:3], [f"unchanged  codex   .codex/agents/{n}.toml  (core {V})"
                                      for n in NAMES])
         self.assertFalse([line for line in lines if line.startswith("nothing to copy")])
 
-    def test_an_ejected_skill_with_an_edited_procedure(self):
+    def test_an_ejected_and_edited_skill_keeps_its_agent_file(self):  # the agent runs the copy
         self.sync()
+        before = self.agent_file("module-discover-agent").read_bytes()
         code, out, err = run("eject", "module-discover", *self.R)
         self.assertEqual((code, err), (0, ""))
-        edited = self.root / ".modsys/overrides/skills/module-discover/references/procedure.md"
+        edited = self.root / ".modsys/overrides/skills/module-discover/SKILL.md"
         edited.write_bytes(edited.read_bytes() + b"\nTeam rule: name the ticket.\n")
         data = self.sync()
-        self.assertEqual(self.rows(data), [("module-discover-agent", "updated"),
-                                           ("module-research-agent", "unchanged"),
-                                           ("module-scout-agent", "unchanged")])
-        doc = tomllib.loads(self.agent_file("module-discover-agent").read_text("utf-8"))
-        self.assertEqual(doc["developer_instructions"], edited.read_bytes().decode("utf-8"))
+        self.assertEqual([r["status"] for r in data["skills"] if r["skill"] == "module-discover"],
+                         ["updated"])
+        self.assertEqual(self.rows(data), [(n, "unchanged") for n in NAMES])
+        self.assertEqual(self.agent_file("module-discover-agent").read_bytes(), before)
         self.assertEqual(data["agent_files"][0]["pack"], "core")
 
     def test_a_skill_whose_source_is_invalid_keeps_its_agent_file(self):
@@ -235,14 +239,11 @@ class WrittenTest(CodexRepo):  # P84-AC-006
         self.assertNotIn("module-scout-agent", [r["name"] for r in data["agent_files"]])
         self.assertEqual(self.agent_file("module-scout-agent").read_bytes(), before)
 
-    def test_a_procedure_that_is_not_utf8(self):
+    def test_an_extra_file_that_is_not_utf8_is_never_read(self):
         pack = self.repo_core()
+        (pack / "skills/module-scout/references").mkdir()
         (pack / "skills/module-scout/references/procedure.md").write_bytes(b"caf\xe9\n")
-        code, out, err = run("packs", "sync", "--agent", "codex", "--json", *self.R)
-        self.assertEqual((code, out), (2, ""))
-        self.assertEqual(err, "modsys: error: cannot read .modsys/packs/core/skills/module-scout/"
-                              "references/procedure.md: not valid UTF-8\n")
-        self.assertFalse((self.root / ".codex").exists())
+        self.assertEqual(self.rows(self.sync()), [(n, "created") for n in NAMES])
 
 
 class EncoderTest(CodexRepo):  # the stdlib TOML encoder (brief: quotes, backslashes, ''' and """)
@@ -259,27 +260,13 @@ class EncoderTest(CodexRepo):  # the stdlib TOML encoder (brief: quotes, backsla
                         self.assertNotIn("\n", doc[:-1])
 
     def test_a_whole_agent_file_round_trips(self):
-        for text in self.CASES:
-            with self.subTest(text=text):
-                data = skill_sync.codex_agent("module-scout-agent", text, "team", "module-scout",
-                                              "1.0.0")
+        for name, spec in skills.SKILL_AGENTS.items():
+            with self.subTest(agent=name):
+                data = skill_sync.codex_agent(name, "team", spec["skill"], "1.0.0")
                 head, rest = marker(data)
                 self.assertEqual(head["sha256"], sha(rest))
                 self.assertEqual(tomllib.loads(data.decode("utf-8"))["developer_instructions"],
-                                 text)
-
-    def test_a_synced_procedure_with_every_hard_character(self):
-        self.repo_core(skills_={"module-scout": NASTY, "module-research": "'''\n\"\"\"\n\\"})
-        data = self.sync()
-        self.assertEqual(self.rows(data), [("module-research-agent", "created"),
-                                           ("module-scout-agent", "created")])
-        for name, text in (("module-scout-agent", NASTY), ("module-research-agent",
-                                                           "'''\n\"\"\"\n\\")):
-            raw = self.agent_file(name).read_bytes()
-            self.assertEqual(tomllib.loads(raw.decode("utf-8"))["developer_instructions"], text)
-            self.assertEqual(self.agent_file(name).read_bytes(), raw)
-        self.assertEqual(self.rows(self.sync()), [("module-research-agent", "unchanged"),
-                                                  ("module-scout-agent", "unchanged")])
+                                 instructions(spec["skill"]))
 
 
 class LifecycleTest(CodexRepo):  # P84-AC-007
@@ -294,12 +281,15 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
                          f"0 conflict, 0 invalid; agent files: 0 created, 0 updated, 3 unchanged, "
                          f"0 removed, 0 conflict: in sync")
 
-    def test_the_pack_procedure_changes(self):
-        self.repo_core()
+    def test_an_agent_file_of_the_procedure_form_is_updated(self):  # P8.5 -> P8.6 (D1)
         self.sync()
-        old = self.agent_file("module-discover-agent").read_bytes()
-        proc = self.root / ".modsys/packs/core/skills/module-discover/references/procedure.md"
-        proc.write_bytes(proc.read_bytes() + b"8. One more step.\n")
+        path = self.agent_file("module-discover-agent")
+        old_body = ('name = "module-discover-agent"\ndescription = "x"\n'
+                    'developer_instructions = """\n## Steps\n\n1. Choose.\n"""\n').encode()
+        head = {"schema": "modsys.managed/1", "pack": "core", "skill": "module-discover",
+                "version": V, "sha256": sha(old_body)}
+        path.write_bytes(("# modsys-managed: " + json.dumps(head) + "\n").encode() + old_body)
+        old = path.read_bytes()
         before = snap(self.root)
         data = self.sync("--check", code=1)
         self.assertEqual(self.rows(data), [("module-discover-agent", "updated"),
@@ -313,7 +303,7 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
         new = self.agent_file("module-discover-agent").read_bytes()
         self.assertNotEqual(marker(new)[0]["sha256"], marker(old)[0]["sha256"])
         self.assertEqual(tomllib.loads(new.decode())["developer_instructions"],
-                         proc.read_bytes().decode())
+                         instructions("module-discover"))
         self.assertEqual(self.rows(self.sync("--check")), [(n, "unchanged") for n in NAMES])
 
     def test_a_version_change_alone_rewrites_the_marker(self):
@@ -342,7 +332,7 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
                                        "(git checkout -- .codex/agents/module-scout-agent.toml) "
                                        "and sync again, or keep the change: modsys eject "
                                        "module-scout, edit .modsys/overrides/skills/module-scout/"
-                                       "references/procedure.md, then packs sync")
+                                       "SKILL.md, then packs sync")
         self.assertEqual(lines[-1], f"packs sync: 0 created, 0 updated, {CORE_N} unchanged, 0 removed, "
                                     f"0 conflict, 0 invalid; agent files: 0 created, 0 updated, "
                                     f"2 unchanged, 0 removed, 1 conflict")
@@ -395,14 +385,13 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
 
     def test_a_repository_core_pack_without_the_wrapped_skill(self):
         self.sync()
-        self.repo_core(skills_={"module-scout": procedure("module-scout"),
-                                "module-discover": None})
-        data = self.sync()
-        self.assertEqual(self.rows(data), [("module-discover-agent", "removed"),
+        self.repo_core(skills_={"module-scout": None, "module-discover": None})
+        data = self.sync()  # a declared skill has its agent, procedure file or not (P8.6 D1)
+        self.assertEqual(self.rows(data), [("module-discover-agent", "updated"),
                                            ("module-research-agent", "removed"),
                                            ("module-scout-agent", "updated")])
         self.assertEqual(sorted(p.name for p in (self.root / ".codex/agents").iterdir()),
-                         ["module-scout-agent.toml"])
+                         ["module-discover-agent.toml", "module-scout-agent.toml"])
 
     def test_an_edited_file_is_not_removed(self):
         self.sync()
@@ -602,8 +591,8 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
                                        "(git checkout -- .codex/agents/module-scout-agent.toml) "
                                        "and sync again, or keep the change: set [packs] "
                                        "builtin_delivery = \"repo\", modsys eject module-scout, "
-                                       "edit .modsys/overrides/skills/module-scout/references/"
-                                       "procedure.md, then packs sync")
+                                       "edit .modsys/overrides/skills/module-scout/SKILL.md, "
+                                       "then packs sync")
 
     def test_a_symlinked_or_regular_agents_directory(self):
         outside = self.tmp / "outside"
@@ -634,7 +623,7 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
     def test_an_agent_held_by_its_skill_is_still_wanted(self):  # AC-007, amended
         """Only `module-scout` declared, and its source not loadable: its agent is held, not
         unwanted, so a symlinked `.codex/agents` stays a `conflict` for all three."""
-        pack = self.repo_core(skills_={"module-scout": procedure("module-scout")})
+        pack = self.repo_core(skills_={"module-scout": None})
         (pack / "skills/module-scout/SKILL.md").write_text("no front matter\n", encoding="utf-8")
         outside = self.tmp / "outside"
         outside.mkdir()
@@ -659,11 +648,9 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
         self.assertEqual(list((self.root / ".codex/agents").iterdir()), [])
 
     def test_an_interrupt_between_two_agent_files(self):
-        self.repo_core()
+        self.repo_core("9.0.0")
         self.sync()
-        for sid in WRAPPED:
-            proc = self.root / f".modsys/packs/core/skills/{sid}/references/procedure.md"
-            proc.write_bytes(proc.read_bytes() + b"New last line.\n")
+        self.repo_core("9.1.0")  # every agent file stale: its marker's version
         old = {n: self.agent_file(n).read_bytes() for n in NAMES}
         from modsys import packs_cmd
         real, calls = packs_cmd.apply_agent_file, []
@@ -700,8 +687,7 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
         for name in NAMES:
             head, rest = marker(self.agent_file(name).read_bytes())
             self.assertEqual(head["sha256"], sha(rest))
-            self.assertTrue(tomllib.loads(self.agent_file(name).read_text("utf-8"))[
-                "developer_instructions"].endswith("New last line.\n"))
+            self.assertEqual(head["version"], "9.1.0")
 
 
 class OnlyForCodexTest(CodexRepo):  # P84-AC-008

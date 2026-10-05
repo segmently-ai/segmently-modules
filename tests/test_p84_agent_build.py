@@ -1,5 +1,6 @@
-"""P8.4 task 1, the build part (D3): the one agent table, the wrapped skills' procedures, and the
-`modsys` plugin's three agents generated from them next to `module-chooser` — exact bytes, what
+"""P8.4 task 1, the build part (D3), and P8.6 D1: the one agent table and the `modsys` plugin's
+three agents generated from it next to `module-chooser` — each preloads its skill and only runs
+it (no skill text copied) — exact bytes, what
 ships under `agents/` (direct children of `modsys/defaults/agents/` only), the refusals, and a
 byte-stable build (P84-AC-003, P84-AC-004, P84-AC-005)."""
 import json
@@ -25,24 +26,33 @@ WRAPPED = {"module-discover-agent": "module-discover", "module-research-agent": 
            "module-scout-agent": "module-scout"}
 CORE = "modsys/defaults/packs/core/skills"
 AGENTS = "modsys/defaults/agents"
-TOOLS = "Read, Grep, Glob, Bash, Agent"
+TOOLS = "Read, Grep, Glob, Bash, Agent, Skill"
 
 
-def procedure_rel(skill: str) -> str:
-    return f"{CORE}/{skill}/references/procedure.md"
+def skill_rel(skill: str) -> str:
+    return f"{CORE}/{skill}/SKILL.md"
 
 
 def header(name: str) -> bytes:
-    """The generated agent's front matter and the blank line before its procedure."""
+    """The generated agent's front matter (its skill preloaded) and the blank line before its
+    body."""
     description = skills.SKILL_AGENTS[name]["description"]
+    skill = skills.SKILL_AGENTS[name]["skill"]
     return (f"---\nname: {name}\ndescription: {description}\ntools: {TOOLS}\nmodel: sonnet\n"
-            f"---\n\n").encode("utf-8")
+            f"skills:\n  - modsys:{skill}\n---\n\n").encode("utf-8")
+
+
+def body(skill: str) -> bytes:  # P8.6 D1: run the skill, return its output; no skill text
+    return (f"Run the `{skill}` skill on the task you are handed, verbatim, with what the caller "
+            f"settled (files, constraints, the depth), and return its output unchanged: its "
+            f"report, or the question it asks the user. If the skill's text is not in your "
+            f"context, load it with the Skill tool (`modsys:{skill}`) first.\n").encode("utf-8")
 
 
 class AgentTableTest(unittest.TestCase):  # SI-P84-10: one table, read by the builder too
     def test_the_three_names_and_their_skills(self):
         self.assertEqual({n: s["skill"] for n, s in skills.SKILL_AGENTS.items()}, WRAPPED)
-        self.assertEqual(skills.PROCEDURE, "references/procedure.md")
+        self.assertFalse(hasattr(skills, "PROCEDURE"))  # P8.6 D1: no procedure file
         for spec in skills.SKILL_AGENTS.values():
             self.assertEqual(sorted(spec), ["description", "skill"])
 
@@ -63,16 +73,15 @@ class AgentTableTest(unittest.TestCase):  # SI-P84-10: one table, read by the bu
 
     def test_the_builder_reads_the_same_table_without_importing_the_engine(self):
         builder = load_tool("build_plugins")
-        self.assertEqual(builder.agent_table(ENGINE), (skills.SKILL_AGENTS, skills.PROCEDURE))
+        self.assertEqual(builder.agent_table(ENGINE),
+                         (skills.SKILL_AGENTS, skills.AGENT_BODY + skills.CLAUDE_FALLBACK))
         self.assertNotIn("SKILL_AGENTS = {", (ENGINE / "tools/build_plugins.py").read_text())
 
-    def test_procedures_are_self_contained(self):  # SI-P84-10: no other file, no $name
-        for name, skill in WRAPPED.items():
-            path = ENGINE / procedure_rel(skill)
+    def test_the_bodies_name_only_their_skill(self):  # no other file, no $name, no path
+        for skill in WRAPPED.values():
             with self.subTest(skill=skill):
-                text = path.read_bytes().decode("utf-8")
-                self.assertTrue(text.endswith("\n") and not text.startswith("\n"))
-                self.assertNotIn("\r", text)
+                text = body(skill).decode("utf-8")
+                self.assertLess(len(text), 400)
                 self.assertIsNone(re.search(r"references/|SKILL\.md", text))
                 self.assertIsNone(re.search(r"\$(?:[A-Za-z0-9_{]|ARGUMENTS)", text))
                 self.assertIsNone(re.search(r"/U[s]ers/|[Ѐ-ӿ]", text))
@@ -106,28 +115,22 @@ class BuiltAgentsTest(unittest.TestCase):  # P84-AC-003
             self.assertFalse((self.out / name / "agents").exists(), name)
         self.assertEqual(self.stderr, "")
 
-    def test_each_generated_agent_is_its_front_matter_then_the_procedure(self):
+    def test_each_generated_agent_is_its_front_matter_then_the_wrapper(self):
         for name, skill in WRAPPED.items():
             with self.subTest(agent=name):
                 built = (self.out / "modsys/agents" / f"{name}.md").read_bytes()
-                procedure = (self.engine / procedure_rel(skill)).read_bytes()
-                self.assertEqual(built, header(name) + procedure)
+                self.assertEqual(built, header(name) + body(skill))
                 text = built.decode("utf-8")
-                self.assertEqual(text.split("\n", 6)[:6], [
+                self.assertEqual(text.split("\n", 8)[:8], [
                     "---", f"name: {name}",
                     f"description: {skills.SKILL_AGENTS[name]['description']}",
-                    f"tools: {TOOLS}", "model: sonnet", "---"])
-                self.assertEqual(front_matter(text), {
-                    "name": name, "description": skills.SKILL_AGENTS[name]["description"],
-                    "tools": TOOLS, "model": "sonnet"})
+                    f"tools: {TOOLS}", "model: sonnet", "skills:", f"  - modsys:{skill}", "---"])
 
-    def test_the_procedures_ship_in_skills_and_runtime(self):
+    def test_the_skills_ship_whole_in_skills_and_runtime(self):
         for skill in WRAPPED.values():
-            data = (self.engine / procedure_rel(skill)).read_bytes()
-            self.assertEqual((self.out / "modsys/skills" / skill / "references/procedure.md")
-                             .read_bytes(), data)
-            self.assertEqual((self.out / "modsys/runtime" / procedure_rel(skill)).read_bytes(),
-                             data)
+            data = (self.engine / skill_rel(skill)).read_bytes()
+            self.assertEqual((self.out / "modsys/skills" / skill / "SKILL.md").read_bytes(), data)
+            self.assertEqual((self.out / "modsys/runtime" / skill_rel(skill)).read_bytes(), data)
 
     def test_the_count_names_every_file(self):
         built = self.out / "modsys"
@@ -140,23 +143,20 @@ class BuiltAgentsTest(unittest.TestCase):  # P84-AC-003
         text = (self.out / "modsys/README.md").read_text(encoding="utf-8")
         for name in NAMES:
             self.assertIn(f"`{name}`", text)
-        self.assertIn("`references/procedure.md`", text)
+        self.assertIn("each one runs its skill in the agent's own context", text)
 
-    def test_one_committed_procedure_change_changes_only_its_three_files(self):
+    def test_a_committed_skill_change_leaves_the_agent(self):  # the agent names the skill only
         engine = copy_engine(self.base / "engine-edit")
-        rel = procedure_rel("module-scout")
+        rel = skill_rel("module-scout")
         path = engine / rel
         path.write_bytes(path.read_bytes() + b"\nOne more line about the brief.\n")
-        git(engine, "commit", "-q", "-am", "scout procedure")
+        git(engine, "commit", "-q", "-am", "scout skill")
         proc = run_tool(engine, "build_plugins", "--out", str(self.base / "out-edit"))
         self.assertEqual((proc.returncode, proc.stderr), (0, ""))
         before, after = tree(self.out), tree(self.base / "out-edit")
         self.assertEqual(sorted(before), sorted(after))
         self.assertEqual(sorted(k for k in before if before[k] != after[k]), [
-            "modsys/agents/module-scout-agent.md", f"modsys/runtime/{rel}",
-            "modsys/skills/module-scout/references/procedure.md"])
-        self.assertEqual(after["modsys/agents/module-scout-agent.md"][1],
-                         header("module-scout-agent") + path.read_bytes())
+            f"modsys/runtime/{rel}", "modsys/skills/module-scout/SKILL.md"])
 
     def test_the_manifests_carry_no_agent(self):
         builder = load_tool("build_plugins")
@@ -193,6 +193,7 @@ class BuiltAgentsTest(unittest.TestCase):  # P84-AC-003
 
 
 FIELDS = ["name", "description", "tools", "model"]  # D3: exactly these, in this order
+GENERATED_FIELDS = FIELDS + ["skills"]  # P8.6 D1: a generated agent preloads its skill
 
 
 def front_matter_problems(agents: Path, sources: Path) -> list[str]:
@@ -207,7 +208,7 @@ def front_matter_problems(agents: Path, sources: Path) -> list[str]:
             problems.append(f"{path.name}: no front matter")
             continue
         meta, plain = parsed
-        if list(meta) != FIELDS:
+        if list(meta) != (GENERATED_FIELDS if path.name[:-3] in skills.SKILL_AGENTS else FIELDS):
             problems.append(f"{path.name}: fields {list(meta)}")
         problems += [f"{path.name}: {problem}" for key in sorted(plain)
                      if (problem := strict_yaml_problem(key, meta[key]))]
@@ -216,7 +217,8 @@ def front_matter_problems(agents: Path, sources: Path) -> list[str]:
         name = path.name[:-3]
         if name in skills.SKILL_AGENTS:
             want = {"name": name, "description": skills.SKILL_AGENTS[name]["description"],
-                    "tools": TOOLS, "model": "sonnet"}
+                    "tools": TOOLS, "model": "sonnet",
+                    "skills": ""}  # a list: the reader keeps no items; BuiltAgentsTest pins them
         else:
             want = front_matter((sources / path.name).read_bytes().decode("utf-8"))
             if want is None or want.get("name") != name:
@@ -250,8 +252,9 @@ class FrontMatterTest(unittest.TestCase):  # P84-AC-005: the four agents' front 
         for broken in (("name: module-scout-agent\n", "name: [unclosed\n"),
                        (good, "description: Reads: modules\n"),
                        ("model: sonnet\n", ""),
-                       ("tools: Read, Grep, Glob, Bash, Agent\n", "tools: 42\n"),
-                       ("model: sonnet\n---\n", "model: sonnet\n"),
+                       ("tools: Read, Grep, Glob, Bash, Agent, Skill\n", "tools: 42\n"),
+                       ("  - modsys:module-scout\n---\n", "  - modsys:module-scout\n"),
+                       ("skills:\n  - modsys:module-scout\n", ""),
                        ("model: sonnet\n", "model: sonnet\ncolor: blue\n"),
                        ("---\n\n", "---\n")):
             with self.subTest(broken=broken[1]):
@@ -322,7 +325,7 @@ class WhatShipsTest(unittest.TestCase):  # P84-AC-004
         self.write(f"{AGENTS}/module-discover-agent.md", "---\nname: module-discover-agent\n---\n")
         self.commit(AGENTS)
         err = self.refused(f"{AGENTS}/module-discover-agent.md")
-        self.assertIn(procedure_rel("module-discover"), err)
+        self.assertIn("the skill module-discover", err)
         self.assertIn("module-discover-agent", err)
 
     def test_a_collision_on_a_fresh_out_creates_nothing(self):
@@ -331,34 +334,15 @@ class WhatShipsTest(unittest.TestCase):  # P84-AC-004
         self.refused(f"{AGENTS}/module-scout-agent.md")
         self.assertFalse(self.out.exists())
 
-    def test_a_missing_procedure(self):
-        git(self.engine, "rm", "-q", procedure_rel("module-research"))
-        git(self.engine, "commit", "-q", "-m", "no procedure")
-        self.assertEqual(self.build().returncode, 2)
-        self.out.mkdir()
-        self.refused(procedure_rel("module-research"))
-        self.assertEqual(list(self.out.iterdir()), [])
-
-    def test_an_untracked_procedure(self):
-        self.assertEqual(self.build().returncode, 0)
-        git(self.engine, "rm", "-q", "--cached", procedure_rel("module-discover"))
-        git(self.engine, "commit", "-q", "-m", "untrack the procedure")
-        self.assertTrue((self.engine / procedure_rel("module-discover")).is_file())
-        self.refused(procedure_rel("module-discover"))
-
-    def test_a_tracked_procedure_deleted_on_disk(self):
-        (self.engine / procedure_rel("module-scout")).unlink()
-        self.refused(procedure_rel("module-scout"))
-
-    def test_an_uncommitted_procedure_edit_is_built_and_named(self):
-        path = self.engine / procedure_rel("module-discover")
+    def test_an_uncommitted_skill_edit_is_named_and_leaves_the_agent(self):
+        path = self.engine / skill_rel("module-discover")
         path.write_bytes(path.read_bytes() + b"Edited.\n")
         proc = self.build()
         self.assertEqual(proc.returncode, 0)
         self.assertEqual(proc.stderr, "build_plugins.py: warning: built from a work tree with "
-                                      f"uncommitted changes: {procedure_rel('module-discover')}\n")
+                                      f"uncommitted changes: {skill_rel('module-discover')}\n")
         self.assertEqual((self.out / "modsys/agents/module-discover-agent.md").read_bytes(),
-                         header("module-discover-agent") + path.read_bytes())
+                         header("module-discover-agent") + body("module-discover"))
 
     def test_a_skill_of_the_table_the_core_pack_does_not_declare(self):
         pack = self.engine / "modsys/defaults/packs/core/pack.toml"
