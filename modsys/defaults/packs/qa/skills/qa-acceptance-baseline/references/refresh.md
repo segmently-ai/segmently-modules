@@ -1,6 +1,6 @@
 # refresh: a module whose baseline must catch up
 
-Step 5 of `qa-acceptance-baseline` — write the doc — when step 1 names the doc to refresh (a
+Step 6 of `qa-acceptance-baseline` — write the doc — when step 1 names the doc to refresh (a
 `role:qa_acceptance` or `child role:qa_acceptance` row with `exists: true`, or the doc its dry
 run reported as `registered` or `exists`) and you noted its highest `AC-NNN` (when step 1 names
 no doc to refresh, follow `references/create.md` instead).
@@ -14,4 +14,9 @@ no doc to refresh, follow `references/create.md` instead).
    `modsys roles add qa_acceptance <module> --json`. It adds the registry entry, status
    `registered`, and never writes the file.
 
-3. It exists: edit it in place, section by section (P0, P1, P2, Retired).
+3. It exists: edit it in place, block by block (its requirements and P0, P1, P2), then the
+   sections after the blocks and Retired; update the Summary and the Priority Matrix last. A
+   doc in the older layout (P0, P1, P2 and Retired at the top, no blocks) keeps every id; it
+   moves into the block layout only on the user's yes at Gate 1, else it is edited in its own
+   layout, each new or changed criterion still with REQ, Technique, Risk, Dimension and
+   Verification.

@@ -147,17 +147,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with content, names the legacy file in the index and the baselines, gives the routing table a
   Lines column and checks that it lists every child; an already-split module gets three paths —
   add a child, rebalance, report sizes (`references/already-split.md`).
+- The QA skills follow the job and the output of the originals they were written from again. Both
+  share one method (`references/method.md`, `references/techniques.md`, the same text in each
+  skill): ten test dimensions with an enforcement matrix and a minimum per dimension, risk →
+  depth, decomposition rules, criterion quality, coverage first, a self-check and a Quality Score;
+  equivalence partitioning, boundary values, decision tables, state transitions, pairwise, use
+  case and error guessing. **qa-acceptance** gives each criterion a Title, Sub-task, Technique,
+  Risk and Verification `unit | e2e | manual` (`e2e` is back), sorts the criteria into five
+  categories with Regression Safety filled from the touched modules' P0 criteria
+  (`baseline-ref: <module> AC-NNN`), writes Part A in a fixed shape (`references/output.md`) and a
+  Part B of runnable scenarios, one per `e2e` criterion, coverage first (`new`, `covered-by`,
+  `updates-existing`) in the format and against the coverage map the module's `qa` doc names; it
+  shows them in the conversation and waits for the user's OK — a file only at a path the user
+  names (its description says so). **qa-acceptance-baseline** writes the baseline by block: Gate 1
+  adds the integration and dependencies table and the dimension check, Gate 2 a `REQ-NNN` table with its sources,
+  each criterion carries REQ, Technique, Risk, Dimension and Verification, a final confirmation
+  comes before the write, and the doc (the `qa_acceptance` template) has a Summary, a Priority
+  Matrix, per-block requirements and P0 / P1 / P2, Architecture Rule Coverage, Regression Risks,
+  Specification Issues, a Dimension Coverage Matrix, a Gap Analysis, a Quality Score and Retired;
+  a large module's baseline splits into an index and per-block files (`references/block.md`).
 - The skill-eval graders of `module-discover`, `module-scout` and `module-research` look for their
   own `modsys` command (the skills run in the conversation; their agents only on request).
 - `qa-acceptance-baseline`: a `roles/qa_acceptance.md` on disk that the registry does not list is the
   doc to refresh. Step 1 finds it with `roles add qa_acceptance <module> --dry-run --json` (status
   `registered`); the refresh route registers it with `roles add` after Gate 3 and never writes a new
   doc over it.
-- `qa-acceptance-baseline` routes its two scenarios: a Route at the head of its steps sends
-  `create` (a module without a baseline) to `references/create.md` and `refresh` (a baseline that
-  must catch up after a change) to `references/refresh.md`, picked by the word after the skill's
-  name in Claude Code (`argument-hint: "[scenario]"`, `arguments: scenario`) or else by the words
-  of the request; the exit codes and the unknown-role stop moved to `references/exit-codes.md`,
+- `qa-acceptance-baseline` routes its three scenarios: a Route at the head of its steps sends
+  `create` (a module without a baseline) to `references/create.md`, `refresh` (a baseline that
+  must catch up after a change) to `references/refresh.md` and `block` (a baseline split into
+  per-block files) to `references/block.md`, picked by the words after the skill's name in Claude
+  Code (`argument-hint: "[module] [scenario] [block]"`, `arguments: module scenario block`) or else
+  by the words of the request; the exit codes and the unknown-role stop moved to `references/exit-codes.md`,
   read when a command exits 1 or 2. Every sentence of the skill is kept. The other built-in skills
   serve one scenario each and are unchanged.
 - `tools/release.py` step 3 runs each `tests/test_*.py` module in its own process, `--jobs N` at

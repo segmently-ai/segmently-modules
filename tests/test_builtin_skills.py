@@ -287,12 +287,13 @@ class InstallLineTest(SkillRules):  # P6-AC-019 (D6, SI-4)
             "runs.")
     DESCRIPTIONS = {  # sha256[:16] of each description at f1f5e46: a body edit never moves one
         # (P8.7 X3: module-sync's moved — its trigger widened to a session that revealed knowledge)
+        # (P8.8, owner: qa-acceptance's delivery sentence — shown in the conversation, not a file)
         "module-adopt": "3409f228fda67c5d", "module-create": "3d1a2d2954de0900",
         "module-discover": "fa2b6d6ba50b01fd", "module-init": "b64769f4c169e5b0",
         "module-lint": "bc2538a0a39d1da0", "module-research": "2c773e1a29f3fd6d",
         "module-scout": "83221c73a41cb280", "module-split": "25b942d14038d7dd",
         "module-sync": "c4a88fb9da93da44", "module-roles": "4984dd28497824bb", "qa-acceptance-baseline": "2a0efce95123748f",
-        "qa-acceptance": "283ee6d99570ba9f", "designer-review": "83a63b52f3a24d79"}
+        "qa-acceptance": "d6b590ea3a2523eb", "designer-review": "83a63b52f3a24d79"}
 
     def test_every_body_holds_the_one_line(self):
         skills = self.all_skills()

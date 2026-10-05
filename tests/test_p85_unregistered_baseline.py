@@ -293,7 +293,7 @@ class SkillTextTest(unittest.TestCase):  # P85-AC-009, AC-010, AC-013 (the pins)
         self.assertEqual(refresh.count("`modsys roles add qa_acceptance <module> --json`"), 1)
         self.assertIn("after Gate 3", refresh)
         self.assertLess(refresh.index("`modsys roles add"),
-                        refresh.index("It exists: edit it in place, section by section"))
+                        refresh.index("It exists: edit it in place, block by block"))
         self.assertNotIn("roles add", create)
         self.assertEqual(create.count("modsys registry set <module> context_files"), 2)
         self.assertIn("Check the dry run's diff changes nothing else.", create)
@@ -306,7 +306,7 @@ class SkillTextTest(unittest.TestCase):  # P85-AC-009, AC-010, AC-013 (the pins)
     def test_what_stays_byte_identical(self):
         flat_skill = flat(self.skill)
         for needle in ("If a `modsys` command exits 1 or 2, read `references/exit-codes.md`.",
-                       "5. Write the doc. Follow the scenario's file (the Route above).",
+                       "6. Write the doc. Follow the scenario's file (the Route above).",  # P8.8: step 5 assembles
                        "Three, never skipped: Gate 1 (understanding), Gate 2 (each block's "
                        "requirements), Gate 3 (the criteria, per block or per batch). Nothing is "
                        "written before Gate 3 of the last block."):

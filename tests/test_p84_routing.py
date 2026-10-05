@@ -24,12 +24,13 @@ ENGINE = Path(__file__).resolve().parents[1]
 BASELINE_ID = "qa-acceptance-baseline"
 BASELINE = builtin_packs_root() / "qa/skills" / BASELINE_ID
 # skill -> (its scenarios, its rare-branch files): the audit's one `route` row
-ROUTED = {BASELINE_ID: (["create", "refresh"], ["exit-codes"])}
+# P8.8 (D10): a third scenario, `block`; the shared method files are named by the steps
+ROUTED = {BASELINE_ID: (["create", "refresh", "block"], ["exit-codes", "method", "techniques"])}
 WRAPPED = {"module-discover", "module-scout", "module-research"}  # D3: Task 2 pins their keys
 SINGLE = {  # one scenario: steps and `## Exit codes` inline, no keys, references as before
     "module-adopt": [], "module-init": ["references/phases.md"],
     "module-lint": ["references/lint-codes.md"],
-    "module-roles": [], "qa-acceptance": [], "designer-review": []}
+    "module-roles": [], "designer-review": []}
 # P8.7 (X4): the writing skills keep their steps and `## Exit codes` inline, no keys, and point
 # into references/ by step — a scenario (a child, an already-split module) or a step's detail
 STEP_ROUTED = {
@@ -40,14 +41,33 @@ STEP_ROUTED = {
                       ("fill", ["references/fill.md"])],
     "module-split": [("already-split", ["references/already-split.md"]),
                      ("shapes", ["references/shapes.md"]), ("check", ["references/check.md"])]}
+# P8.8 (D8, D9): qa-acceptance points into references/ by step the same way
+STEP_ROUTED["qa-acceptance"] = [("method", ["references/method.md"]),
+                                 ("techniques", ["references/techniques.md"]),
+                                 ("output", ["references/output.md"])]
 STEP_ROUTED_EXTRA = {"module-sync": ["references/choose.md"]}  # named by step 4, not a route
 LEAD = ("the scenario named by the invocation (`$scenario`) when one is given, else by the "
         "user's words", "read it, then follow it")
 IF_LINE = "If a `modsys` command exits 1 or 2, read `references/exit-codes.md`."
-STEP_5 = "Write the doc. Follow the scenario's file (the Route above)."
+HINT_LINE, ARGUMENTS_LINE = 'argument-hint: "[module] [scenario] [block]"', "arguments: module scenario block"
+ROUTE_FILES = sorted(f"references/{n}.md" for n in ["create", "refresh", "block", "exit-codes", "method",
+                                                     "techniques"])
+STEP_6 = "Write the doc. Follow the scenario's file (the Route above)."  # step 5 until P8.8
 SPLIT_SIGNAL = core_defaults()["budgets"]["skill_split_signal"]  # MS068's default, read from the engine
 DESCRIPTION_SHA = "2a0efce95123748f"  # sha256[:16] of the description: unchanged
-REPLACED: list[str] = []  # old sentences a Route line replaces: none, every one moved
+# old sentences rewritten on purpose — P8.4 moved every one; P8.8 (D10) rewrote Gate 1's content,
+# the requirement form, the criterion fields and the in-place edit (blocks, not tiers)
+REPLACED: list[str] = [
+    "**Gate 1 — understanding.** Present: what the module does and why, its main flows, its "
+    "functional blocks with a risk each, the rules its docs state, the edge cases you found, and "
+    "anything the docs and the code disagree on.",
+    "list its requirements, each traced to a doc line or a code file — **Gate 2**: wait for the "
+    "user to confirm the list;",
+    "write its criteria: **Given** / **When** / **Then** with an observable result;",
+    "P0 for critical and high risk, P1 for medium, P2 for low;",
+    "use boundary values, decision tables and state transitions where the requirement has "
+    "limits, combinations or states — **Gate 3**: wait for the user to confirm the criteria.",
+    "It exists: edit it in place, section by section (P0, P1, P2, Retired)."]
 # the sentences that are new, per file: the Route, the "if" line, step 5's pointer and each
 # route file's lead line (the cross-pointer is an "if" line: read the other route only when
 # step 1's state contradicts the words)
@@ -57,7 +77,7 @@ ADDED = {
         "list, and a new doc is never written over it.",  # P8.5 D2 (SI-P85-5)
         "**Route.** Take the scenario named by the invocation (`$scenario`) when one is given, "
         "else by the user's words, and its file below: read it, then follow it — its steps are "
-        "step 5.",
+        "step 6.",  # step 5 until P8.8
         "**create** — the module has no acceptance baseline yet (\"write\", \"create\", "
         "\"start\" one) → `references/create.md`",
         "**refresh** — the module changed and its baseline must catch up (\"refresh\", "
@@ -82,7 +102,7 @@ ADDED = {
         "Follow the scenario's file (the Route above)."],
     # P8.5 D2 (SI-P85-4): both lead sentences key on "the doc to refresh step 1 names"
     "references/create.md": [
-        "Step 5 of `qa-acceptance-baseline` — write the doc — when step 1 found no doc to "
+        "Step 6 of `qa-acceptance-baseline` — write the doc — when step 1 found no doc to "
         "refresh: no `role:qa_acceptance` row with `exists: true`, and the dry run said "
         "`created` or `missing` (when it names a doc to refresh, follow `references/refresh.md` "
         "instead).",
@@ -91,7 +111,7 @@ ADDED = {
         "`registry set`: the registry lists it already."],
     "references/refresh.md": [
         # P8.5 final review M-3: the lead names the child's own row too
-        "Step 5 of `qa-acceptance-baseline` — write the doc — when step 1 names the doc to "
+        "Step 6 of `qa-acceptance-baseline` — write the doc — when step 1 names the doc to "
         "refresh (a `role:qa_acceptance` or `child role:qa_acceptance` row with `exists: true`, "
         "or the doc its dry run reported as `registered` or `exists`) and you noted its highest "
         "`AC-NNN` (when step 1 names no doc to refresh, follow `references/create.md` instead).",
@@ -288,13 +308,14 @@ class RouteShapeTest(unittest.TestCase):  # P84-AC-025 (the routed row)
         self.files = skill_files(BASELINE)
         self.head = section(self.text, "## Steps").split("\n1. ", 1)[0]
 
-    def test_the_front_matter_adds_the_two_keys(self):
+    def test_the_front_matter_adds_the_keys(self):  # P8.8 D10: [module] [scenario] (+ [block])
         lines = front_lines(self.text)
         self.assertEqual(lines[0], f"name: {BASELINE_ID}")
-        self.assertEqual(lines[2:], ['argument-hint: "[scenario]"', "arguments: scenario"])
+        self.assertEqual(lines[2:], [HINT_LINE, ARGUMENTS_LINE])
         meta = read_front_matter(BASELINE / "SKILL.md")
         self.assertEqual(set(meta), {"name", "description", "argument-hint", "arguments"})
-        self.assertEqual((meta["argument-hint"], meta["arguments"]), ("[scenario]", "scenario"))
+        self.assertEqual((meta["argument-hint"], meta["arguments"]),
+                         ("[module] [scenario] [block]", "module scenario block"))
         self.assertEqual(hashlib.sha256(meta["description"].encode()).hexdigest()[:16],
                          DESCRIPTION_SHA)
 
@@ -338,17 +359,18 @@ class RouteShapeTest(unittest.TestCase):  # P84-AC-025 (the routed row)
             self.assertIn(needle, exits)
             self.assertNotIn(needle, flat(self.text))
 
-    def test_the_shared_steps_stay_inline_and_step_5_defers(self):
+    def test_the_shared_steps_stay_inline_and_step_6_defers(self):  # step 5 until P8.8
         steps = section(self.text, "## Steps")
-        self.assertEqual(re.findall(r"^(\d)\. ", steps, re.M), ["1", "2", "3", "4", "5", "6"])
-        self.assertIn(f"5. {STEP_5}", flat(steps))
+        self.assertEqual(re.findall(r"^(\d)\. ", steps, re.M), ["1", "2", "3", "4", "5", "6", "7"])
+        self.assertIn(f"6. {STEP_6}", flat(steps))
         for needle in ("1. Load the module.", "**Gate 1 — understanding.**", "**Gate 2**",
-                       "**Gate 3**", "6. Check it.", "ask the user to review and commit"):
+                       "**Gate 3**", "**Final confirmation**", "7. Check it.",
+                       "ask the user to review and commit"):
             self.assertIn(needle, flat(steps))
         for scenario in ROUTED[BASELINE_ID][0]:
             text = self.files[f"references/{scenario}.md"]
             self.assertTrue(text.startswith(f"# {scenario}: "), text[:40])
-            self.assertIn("Step 5 of `qa-acceptance-baseline` — write the doc —", flat(text))
+            self.assertIn("Step 6 of `qa-acceptance-baseline` — write the doc —", flat(text))
 
     def test_the_cross_pointers_are_if_lines(self):  # controller ruling Q3
         create, refresh = (flat(self.files[f"references/{s}.md"]) for s in ("create", "refresh"))
@@ -415,19 +437,17 @@ class RoutingLosesNoRuleTest(unittest.TestCase):  # P84-AC-026
         self.assertGreater(len(units(OLD_BODY)), 40)
         self.assertEqual(lost(OLD_BODY, self.files), [])
 
-    def test_only_the_route_text_is_new(self):
-        old = set(units(OLD_BODY))
-        new = {name: [u for u in units(body(text)) if u not in old]
-               for name, text in self.files.items()}
-        self.assertEqual(new, ADDED)
+    def test_the_route_text_stays(self):  # P8.8: the new text is pinned by test_p88_qa_skills
+        for name, sentences in ADDED.items():
+            have = set(units(body(self.files[name])))
+            self.assertEqual([u for u in sentences if u not in have], [], name)
 
     def test_the_comparison_can_fail(self):
         dropped = dict(self.files)
         dropped["references/refresh.md"] = dropped["references/refresh.md"].replace(
             "never renumber and never reuse an id;", "")
         twice = dict(self.files)
-        twice["references/create.md"] += "\nIt exists: edit it in place, section by section " \
-                                         "(P0, P1, P2, Retired).\n"
+        twice["references/refresh.md"] += "\nCheck the dry run's diff changes nothing else.\n"
         self.assertEqual([p.split(" — in ")[1] for p in lost(OLD_BODY, dropped)], ["no file"])
         self.assertEqual([p.split(" — in ")[1] for p in lost(OLD_BODY, twice)],
                          ["references/create.md, references/refresh.md"])
@@ -444,17 +464,19 @@ class RoutingLosesNoRuleTest(unittest.TestCase):  # P84-AC-026
 
 
 class ArgumentKeysTest(unittest.TestCase):  # P84-AC-027, SI-P84-12
-    def test_routed_skills_declare_scenario_and_use_it_once(self):
+    def test_routed_skills_declare_scenario_and_use_it_once(self):  # + module, block (P8.8)
         dirs = skill_dirs()
         for sid in ROUTED:
             text = (dirs[sid][1] / "SKILL.md").read_text("utf-8")
             with self.subTest(skill=sid):
                 lines = front_lines(text)
-                self.assertIn('argument-hint: "[scenario]"', lines)
-                self.assertIn("arguments: scenario", lines)
-                self.assertEqual(declared(text), ["scenario"])
-                self.assertEqual(text.count("$scenario"), 1)
-                self.assertEqual(_PLACEHOLDER.findall(text), ["$scenario"])
+                self.assertIn(HINT_LINE, lines)
+                self.assertIn(ARGUMENTS_LINE, lines)
+                self.assertEqual(declared(text), ["module", "scenario", "block"])
+                for name in ("module", "scenario", "block"):
+                    self.assertEqual(text.count(f"${name}"), 1, name)
+                self.assertEqual(sorted(_PLACEHOLDER.findall(text)),
+                                 ["$block", "$module", "$scenario"])
 
     def test_single_skills_have_neither_key_nor_a_placeholder(self):
         dirs = skill_dirs()
@@ -512,8 +534,7 @@ class ReferencesCarriedTest(unittest.TestCase):  # P84-AC-030 (+ AC-002's ruled 
         return [self.root / d / BASELINE_ID for d in (".claude/skills", ".agents/skills")]
 
     def test_packs_sync_carries_every_route_to_both_agents(self):
-        self.assertEqual(self.routes, ["references/create.md", "references/exit-codes.md",
-                                       "references/refresh.md"])
+        self.assertEqual(self.routes, ROUTE_FILES)
         rows = self.sync()
         for agent in ("claude", "codex"):
             self.assertEqual(rows[(agent, BASELINE_ID)]["status"], "created")
@@ -531,7 +552,7 @@ class ReferencesCarriedTest(unittest.TestCase):  # P84-AC-030 (+ AC-002's ruled 
         self.sync()
         text = (self.root / ".agents/skills" / BASELINE_ID / "SKILL.md").read_text("utf-8")
         self.assertEqual(text, (BASELINE / "SKILL.md").read_text("utf-8"))
-        self.assertIn("arguments: scenario", front_lines(text))
+        self.assertIn(ARGUMENTS_LINE, front_lines(text))
         self.assertIn("$scenario", text)
 
     def test_eject_and_eject_diff_carry_the_routes(self):
@@ -588,8 +609,7 @@ class PluginCarriesRoutesTest(unittest.TestCase):  # P84-AC-030 (the builder)
             self.assertEqual(file_hashes(built), file_hashes(BASELINE))
             self.assertEqual(sorted(p.relative_to(built).as_posix()
                                     for p in (built / "references").iterdir()),
-                             ["references/create.md", "references/exit-codes.md",
-                              "references/refresh.md"])
+                             ROUTE_FILES)
 
 
 class RoutingDocsTest(unittest.TestCase):  # P84-AC-025 (the docs name the routed skill)
@@ -597,9 +617,10 @@ class RoutingDocsTest(unittest.TestCase):  # P84-AC-025 (the docs name the route
         text = flat((ENGINE / "docs/skills.md").read_text("utf-8"))
         part = text.split("## Skills with more than one scenario", 1)[1].split(" ## ", 1)[0]
         for needle in ("a **Route** at the head of its steps",
-                       "`/qa-acceptance-baseline refresh`",
-                       '`argument-hint: "[scenario]"` and `arguments: scenario`',
-                       "`qa-acceptance-baseline` routes `create` and `refresh`",
+                       "`/qa-acceptance-baseline <module> refresh`",
+                       '`argument-hint: "[module] [scenario] [block]"` and '
+                       '`arguments: module scenario block`',
+                       "`qa-acceptance-baseline` routes `create`, `refresh` and `block`",
                        "`references/exit-codes.md`", "keep their steps inline",
                        "`packs sync`, `eject` and the plugins carry `references/`"):
             self.assertIn(needle, part)
@@ -607,7 +628,7 @@ class RoutingDocsTest(unittest.TestCase):  # P84-AC-025 (the docs name the route
     def test_the_changelog_names_it(self):
         text = flat((ENGINE / "CHANGELOG.md").read_text("utf-8"))
         unreleased = text.split("## [Unreleased]", 1)[1].split(" ## [", 1)[0]
-        self.assertIn("`qa-acceptance-baseline` routes its two scenarios", unreleased)
+        self.assertIn("`qa-acceptance-baseline` routes its three scenarios", unreleased)
 
 
 if __name__ == "__main__":

@@ -253,9 +253,15 @@ keyword or the description covers yet, never a code identifier and never one per
   Must-fix is open. It runs a design checker only when a designer doc names one.
 - **`qa`** adds the role `qa_acceptance` (`applies_when = "qa"`): the module's acceptance
   baseline, P0 / P1 / P2 criteria with stable ids `AC-NNN` in Given / When / Then form.
-  `qa-acceptance` writes one task's criteria (`PRE-NNN`, `AC-NNN`) before code, reusing
-  baseline ids; `qa-acceptance-baseline` creates or refreshes a module's baseline, continuing
-  the highest id and never renumbering.
+  `qa-acceptance` writes one task's criteria (`PRE-NNN`, `AC-NNN` with Title, Sub-task,
+  Technique, Risk and Verification `unit | e2e | manual`) before code, reusing baseline ids, plus
+  one runnable scenario per `e2e` criterion in the format the module's `qa` doc names, and shows
+  them in the conversation (a file only at a path the user names); `qa-acceptance-baseline`
+  creates or refreshes a module's baseline block by block (`REQ-NNN` requirements, criteria
+  with REQ, Technique, Risk, Dimension and Verification), continuing the highest id and never
+  renumbering; a large baseline splits into an index and per-block files. Both share one method
+  (`references/method.md`, `references/techniques.md`): ten test dimensions, risk → depth,
+  decomposition rules, criterion quality, a self-check and a Quality Score.
 
 ```bash
 modsys create reviews --non-interactive --tag ui --tag qa \
@@ -269,15 +275,18 @@ modsys templates list   # roles/designer.md  role-template:ui  …/defaults/pack
 A skill that serves more than one request keeps a **Route** at the head of its steps: one line
 per scenario, naming the file under `references/` that holds that scenario's steps. The agent
 reads only the file of its scenario; the steps every scenario shares stay in `SKILL.md`. In
-Claude Code the scenario can follow the skill's name — `/qa-acceptance-baseline refresh` — since
-such a skill declares `argument-hint: "[scenario]"` and `arguments: scenario`; without it, and in
-every other agent, the words of the request pick the line. A failed command's handling and the
+Claude Code the scenario can follow the skill's name and its module —
+`/qa-acceptance-baseline <module> refresh` — since the skill declares
+`argument-hint: "[module] [scenario] [block]"` and `arguments: module scenario block`; without
+them, and in every other agent, the words of the request pick the line. A failed command's handling and the
 exit codes sit behind an "if" line in their own file (`references/exit-codes.md`), read only when
 a command fails.
 
-Today `qa-acceptance-baseline` routes `create` and `refresh`: a module without a baseline, and
-one whose baseline must catch up after a change. The other skills serve one request each and
-keep their steps inline. `packs sync`, `eject` and the plugins carry `references/` with the
+Today `qa-acceptance-baseline` routes `create`, `refresh` and `block`: a module without a
+baseline, one whose baseline must catch up after a change, and a baseline split into per-block
+files (an index plus one file per block; `block` names one, `<category>/<name>`). The other
+skills serve one request each and keep their steps inline; the longer ones point into
+`references/` by step. `packs sync`, `eject` and the plugins carry `references/` with the
 skill, like every other file of it.
 
 ## Keeping them current

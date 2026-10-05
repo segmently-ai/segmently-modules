@@ -1,6 +1,6 @@
 # create: a module with no baseline yet
 
-Step 5 of `qa-acceptance-baseline` — write the doc — when step 1 found no doc to refresh: no
+Step 6 of `qa-acceptance-baseline` — write the doc — when step 1 found no doc to refresh: no
 `role:qa_acceptance` row with `exists: true`, and the dry run said `created` or `missing`
 (when it names a doc to refresh, follow `references/refresh.md` instead).
 
@@ -19,3 +19,7 @@ When step 1's dry run said `missing`, write the doc at the `path` it reported an
   Build the object from `show --all-roles`: `universal` is the universal row, each
   `role:<role>` row is `roles.<role>`; add `roles.qa_acceptance`. Check the dry run's diff
   changes nothing else.
+
+Either way the template holds the doc's shape: one `## Block` section per functional block
+(its requirements table and P0 / P1 / P2 criteria, each with REQ, Technique, Risk, Dimension
+and Verification), then the sections after the blocks; keep every section and fill each.
