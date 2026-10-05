@@ -30,14 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   message ignored; MS050 / MS051 never known): a step fails only on findings that are not known, the
   two summaries gain `known`, `data` gains `baseline`, and the text marks known findings.
 - The `modsys` plugin ships three more agents, `module-discover-agent`, `module-scout-agent` and
-  `module-research-agent` (tools Read, Grep, Glob, Bash, Agent; `model: sonnet`): the build
-  generates each from the `references/procedure.md` of `module-discover`, `module-scout` and
-  `module-research` (new: today's steps of each skill), named and described by one engine table;
-  a procedure that is missing or untracked, or a tracked agent file of the same name, stops the
-  build (exit 2). The build ships only the files directly in `modsys/defaults/agents/` besides
+  `module-research-agent` (tools Read, Grep, Glob, Bash, Agent, Skill; `model: sonnet`), named and
+  described by one engine table: each preloads its skill (`skills: [modsys:module-<x>]`) and only
+  runs it on the handed task, returning the skill's output unchanged — the report, or the question
+  the skill asks; no skill text is copied into an agent. A table skill the core pack does not
+  declare, or a tracked agent file of the same name, stops the build (exit 2). The build ships only the files directly in `modsys/defaults/agents/` besides
   them (a subdirectory never ships).
 - `modsys packs sync` and `modsys setup` write the same three agents for Codex as
-  `.codex/agents/<name>.toml` (`name`, `description`, `developer_instructions` = the procedure)
+  `.codex/agents/<name>.toml` (`name`, `description`, `developer_instructions`: run the skill and
+  return its output; read `.agents/skills/module-<x>/SKILL.md` only when the skill is not available)
   whenever the agents they sync for include `codex`, under either delivery: managed files whose
   first line is a `# modsys-managed:` marker, listed in `data.agent_files` (after `data.skills`;
   `data.summary` still counts the skills), checked by `--check`, removed with their skill or by
@@ -99,6 +100,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `module-discover`, `module-scout` and `module-research` keep their steps in `SKILL.md` and
+  follow the job and the output of the originals they were written from; the shared choice of
+  candidates moves to each skill's `references/choose.md` (also `module-sync`'s). **module-discover** pulls the complete context a task needs
+  before it is planned — candidates verified by four questions (0–10, average ≥ 5, the score in the
+  report), one hop of `depends-on` / `implemented-in` / `shares-contract` links, usage `modify`,
+  `consume` or `reference`, every role doc of a `modify` / `consume` module with the extracts
+  that bear on the task (or "read, nothing for this task"), existing code touch points as
+  `file:line — symbol — why` (never the files the work will create), docs to update, risks, the
+  rejected candidates; a report template in `references/report.md` and a `discovery-results.json`
+  shape on request; a branch without a task in `references/from-diff.md`. The rule that looked for
+  where a wrong value is computed and set, and the filter that kept only the files the change
+  edits, are gone; a verified module still never drops silently. **module-scout** takes module
+  names or doc paths (a path outside the registry is read as it is), proposes candidates and
+  loads nothing when no module is named, never adds modules to the named ones, loads the
+  `depends-on` / `implemented-in` / `shares-contract` targets one hop out and only names
+  `complements` targets and reverse edges, reads a role doc only when the discussion is about that
+  role, and ends with "Suggested next reads" (`references/brief.md`). **module-research** reads a
+  stub's successor.
+- The skill-eval graders of `module-discover`, `module-scout` and `module-research` look for their
+  own `modsys` command (the skills run in the conversation; their agents only on request).
 - `qa-acceptance-baseline`: a `roles/qa_acceptance.md` on disk that the registry does not list is the
   doc to refresh. Step 1 finds it with `roles add qa_acceptance <module> --dry-run --json` (status
   `registered`); the refresh route registers it with `roles add` after Gate 3 and never writes a new
@@ -110,29 +131,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of the request; the exit codes and the unknown-role stop moved to `references/exit-codes.md`,
   read when a command exits 1 or 2. Every sentence of the skill is kept. The other built-in skills
   serve one scenario each and are unchanged.
-- `module-discover`, `module-scout` and `module-research` are thin: their `SKILL.md` keeps the
-  description, When to use / not, Scope and Gates and one step that hands the user's task verbatim
-  to the skill's agent (`module-<x>-agent`; Claude Code `modsys:module-<x>-agent`) and gives its
-  report as the skill's; the steps and exit codes live in `references/procedure.md`, which the
-  agent runs (without that agent the skill says to read it) and which ends with the skill's Scope
-  and Gates, so the agent keeps what it may write and when it asks. Front matter gains
-  `argument-hint: "[task]"` and no `arguments:` key: in Claude Code `/module-discover <task>`
-  reaches the skill whole, appended as an `ARGUMENTS:` line. Each procedure holds one line for a
-  read-only sandbox: the task through `modsys choose --task-file -` from a quoted heredoc, the
-  order read from stdout.
-- The wrapped skills `module-discover`, `module-scout` and `module-research` name each platform's
-  agent in their one step: Claude Code the `modsys:module-<x>-agent` agent, Codex spawns the
-  `module-<x>-agent` custom agent (`.codex/agents/`); `references/procedure.md` is read only when no
-  such agent exists.
-- `module-discover`'s procedure (the body of `module-discover-agent` on both platforms) keeps each
-  module it verified at step 2, a kept pick, in the report even when `discover --files` gives its
-  files to another module or to none: `modify` when the task changes its behaviour, with the note
-  "code in" the module that holds its files, or "outside every module", and its docs are read; a
-  kept pick is dropped only with a stated reason. The code column, a kept pick's included, holds the
-  files to change — the line that computes or sets the value, the files to edit, the tests to add or
-  change — or "none", never an empty cell; files read only as evidence go on one
-  "read for evidence:" line right under the table. When it writes the JSON, it names the kept picks
-  that the JSON lists as `reference` or not at all. Every sentence of the procedure is kept.
 - `tools/release.py` step 3 runs each `tests/test_*.py` module in its own process, `--jobs N` at
   a time (1–32, default `min(4, CPU count)`), the `test_release*` modules first; the step line is
   `Ran <N> tests in <M> modules (<J> jobs), OK …`, a failure names the failing modules, and
@@ -162,8 +160,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   task's terms, source files first and tests, fixtures and plans last, with
   `git grep -n -e <term> -- <paths>` (no shell glob; the rest of the repository only when that
   finds nothing), takes a module's code as the files whose `via` holds more than `docs`, searches
-  a picked child's or a docs-only module's parent for those terms, looks for where a wrong value
-  is computed and set, not only where it is read, and lists every doc `discover` returns under
+  a picked child's or a docs-only module's parent for those terms, and lists every doc `discover` returns under
   `docs_to_update` in its report, the role docs too; `module-sync` saves the gate (`modsys ci --base <base> --json`, to a file outside the repository) before it edits and
   checks its result with `ci --baseline` against that file — a finding the saved gate holds is
   reported, one the change caused (a moved or deleted path) is fixed (MS050 and MS051 are never known). The `agents-md` block and

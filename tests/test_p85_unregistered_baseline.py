@@ -12,7 +12,6 @@ from pathlib import Path
 from modsys.config import builtin_packs_root
 from tests.helpers import SPLIT_FIXTURE, copy_fixture, init_git, mutate_registry, run
 from tests.test_builtin_skills import commands, section, skill_files, uses
-from tests.test_p84_wrapped_skills import entries, unreleased_sections
 
 ENGINE = Path(__file__).resolve().parents[1]
 BASELINE = builtin_packs_root() / "qa/skills/qa-acceptance-baseline"
@@ -24,6 +23,19 @@ CHILD_DOC = "modules/orders/submodules/refunds/roles/qa_acceptance.md"
 
 def flat(text: str) -> str:
     return " ".join(text.split())
+
+
+def unreleased_sections(log: str) -> dict[str, str]:
+    """The `### ` sections of `[Unreleased]`, heading -> body (moved here from the retired P8.4
+    module in P8.6)."""
+    text = log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+    parts = re.split(r"^### (.+)\n", text, flags=re.M)
+    return dict(zip(parts[1::2], parts[2::2]))
+
+
+def entries(body: str) -> list[str]:
+    """The flat entries of one changelog section."""
+    return [flat(e) for e in re.split(r"^- ", body, flags=re.M)[1:]]
 
 
 def tree_hash(root: Path) -> str:

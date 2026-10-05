@@ -72,11 +72,13 @@ class KeywordRuleTest(unittest.TestCase):  # P83-AC-010
 
 
 class CodeStepTest(unittest.TestCase):  # P83-AC-011
-    def test_step_3_is_exact(self):
-        text = (CORE / "module-discover/references/procedure.md").read_text(encoding="utf-8")
-        self.assertEqual(text.count(CODE_STEP), 1)
+    def test_the_p83_code_step_gave_way_to_d2(self):  # P8.6 D2: touch points for planning
+        text = skill("module-discover")
+        self.assertFalse((CORE / "module-discover/references/procedure.md").exists())
+        self.assertNotIn(CODE_STEP, text)
+        self.assertNotIn("computed and set", text)  # discover is no search for a bug's cause
         self.assertNotIn("Grep the terms of `<file>` inside that code", text)
-        self.assertNotIn("Go to the code", skill("module-discover"))  # nothing of it stays in SKILL.md
+        self.assertEqual(text.count("6. **Code touch points.**"), 1)
 
     def test_no_unquoted_include_glob(self):
         for p in all_skills():

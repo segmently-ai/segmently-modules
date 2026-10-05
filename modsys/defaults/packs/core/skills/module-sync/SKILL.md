@@ -54,26 +54,7 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 3. Find the modules whose docs describe what changed (the code map misses one that only documents
    it).
 
-   Run `modsys catalog --json`; read `match.mode` and `search`. The text: a summary of the change
-   with its identifiers, as the code spells them. The mode: `hybrid` unless the user says otherwise
-   ("only lexical", "by meaning", in any language) or `match.mode` is `semantic`; a `lexical` config
-   is only the command line's default and never skips the search by meaning, which needs no setting;
-   the keyword commands always pass `--match lexical`. The user may set the model ("use opus") and
-   the depth ("search deep": `choose --effort deep`; `<reasoning>` follows it).
-
-   - By meaning (`semantic`, `hybrid`): write the text, verbatim, to `<task file>`. **Claude Code:**
-     `modsys choose --task-file <task file> > <order file>`; give `<order file>`'s path to the
-     `modsys:module-chooser` agent with `model: <search.claude_model>` (without that agent: a
-     subagent told "this file is your whole task; answer with its JSON only; change nothing"); its
-     reply is the answer. **Codex:** the same with `--json`, its `answer_schema` written to
-     `<schema file>`, then
-     `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --sandbox read-only --output-schema <schema file> - < <order file>`
-     (`low`, `medium`, `high` for `quick`, `standard`, `deep`). **Elsewhere** (no subagent, no
-     `codex exec`): answer the order yourself, every card read, by its rules. Pipe the answer to
-     `modsys choose --apply - --json`.
-   - By keyword (`lexical`, `hybrid`):
-     `modsys discover --task-file <the changed identifiers and domain terms, in English, in a file> --match lexical --json`.
-   - `hybrid`: merge the lists; a module found both ways ranks first.
+   Search as `references/choose.md` says.
 
    Each candidate whose docs describe the change joins the modules to update, with the
    docs the search listed.

@@ -28,7 +28,7 @@ ROUTED = {BASELINE_ID: (["create", "refresh"], ["exit-codes"])}
 WRAPPED = {"module-discover", "module-scout", "module-research"}  # D3: Task 2 pins their keys
 SINGLE = {  # one scenario: steps and `## Exit codes` inline, no keys, references as before
     "module-adopt": [], "module-create": [], "module-init": ["references/phases.md"],
-    "module-lint": ["references/lint-codes.md"], "module-split": [], "module-sync": [],
+    "module-lint": ["references/lint-codes.md"], "module-split": [], "module-sync": ["references/choose.md"],
     "module-roles": [], "qa-acceptance": [], "designer-review": []}
 LEAD = ("the scenario named by the invocation (`$scenario`) when one is given, else by the "
         "user's words", "read it, then follow it")

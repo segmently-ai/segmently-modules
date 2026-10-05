@@ -426,6 +426,9 @@ class TextRulesTest(SkillRules):  # P4B-AC-014, P4B-AC-017
                 self.assertIsNone(word.search(path.read_text("utf-8")))
 
 
+SHARED_SEARCH = ("module-discover", "module-scout", "module-research", "module-sync")
+
+
 class ContractTest(SkillRules):  # P4B-AC-015, P4B-AC-016
     def test_scope_and_verbs(self):
         rows = {**{s: ("core", *r) for s, r in CORE.items()}, **PACK_SKILLS}
@@ -435,10 +438,10 @@ class ContractTest(SkillRules):  # P4B-AC-015, P4B-AC-016
             # a routed skill's verbs may live in a route file (P84-AC-026)
             steps = "\n".join([section((directory / "SKILL.md").read_text("utf-8"), "## Steps"),
                                *route_files(directory).values()])
-            if (directory / "references/procedure.md").is_file():  # a wrapped skill (P8.4 D3):
-                # its verbs live in the procedure the agent runs
-                steps += section("\n" + (directory / "references/procedure.md").read_text("utf-8"),
-                                 "## Steps")
+            if sid in SHARED_SEARCH:  # P8.6: the shared candidate search and discover's
+                # change-only scenario, routed to references/ from the steps that name them (X4)
+                steps += "\n".join(p.read_text("utf-8")
+                                   for p in sorted((directory / "references").glob("*.md")))
             with self.subTest(skill=sid):
                 self.assertTrue(section(text, "## Scope").strip().startswith(
                     "Read-only" if scope == "read-only" else "Writes"))

@@ -41,17 +41,20 @@ F20 = ("`--files` takes the paths as separate arguments (`--files a.ts b/c.ts`);
        "is one path.")
 
 
-WRAPPED = ("module-discover", "module-scout", "module-research")  # P8.4 D3: the steps live in
-# references/procedure.md, which the shipped agents run
-
-
 def text(skill: str) -> str:
-    """The skill's `SKILL.md`; a wrapped skill's procedure (what its steps are now), headed by a
-    newline so that `section` finds its first heading."""
+    """The skill's `SKILL.md` as an agent reads it (P8.6 D1: the finding skills hold their steps
+    again): the shared choice of candidates, routed to `references/choose.md` (X4: the core pack's
+    size), stands indented under the step line that names that file."""
     root = builtin_packs_root() / "core/skills" / skill
-    if skill in WRAPPED:
-        return "\n" + (root / "references/procedure.md").read_bytes().decode("utf-8")
-    return (root / "SKILL.md").read_bytes().decode("utf-8")
+    body = (root / "SKILL.md").read_bytes().decode("utf-8")
+    choose = root / "references/choose.md"
+    if not choose.is_file():
+        return body
+    lines = choose.read_bytes().decode("utf-8").split("\n")[2:]  # after its title and blank line
+    inset = "\n".join(f"   {line}" if line else "" for line in lines).rstrip("\n")
+    head, sep, tail = body.partition("`references/choose.md`")
+    line_end = tail.index("\n") + 1
+    return head + sep + tail[:line_end] + "\n" + inset + "\n" + tail[line_end:]
 
 
 def flat(s: str) -> str:
@@ -348,7 +351,7 @@ class CommandsRunTest(unittest.TestCase):  # P82-AC-036, 038, 039, 040
         self.assertEqual(json.loads(self.cli(args, stdin=reply))["data"]["picks"][0]["module"],
                          "orders")
         args, _ = filled(command("module-discover", "modsys code-map files"),
-                         {"<candidate>": "orders"})
+                         {"<module>": "orders"})
         mapped = json.loads(self.cli(args))["data"]["files"]
         self.assertIn("src/orders/service.py",
                       [f["path"] for f in mapped if f["via"] != ["docs"]])
@@ -356,7 +359,7 @@ class CommandsRunTest(unittest.TestCase):  # P82-AC-036, 038, 039, 040
         keywords.write_text("refund\norder service\n", encoding="utf-8")
         found = "src/orders/service.py src/payments/gateway.py"  # separate arguments (F20)
         args, _ = filled(command("module-discover", "modsys discover --files"),
-                         {"<found files>": found, "<file>": str(keywords)})
+                         {"<touch-point files>": found, "<file>": str(keywords)})
         self.assertEqual(args[:3], ["discover", "--files", "src/orders/service.py"])
         data = json.loads(self.cli(args))["data"]
         self.assertEqual([f["path"] for f in data["files"]],
@@ -395,10 +398,10 @@ class EveryShippedTextIsLexicalTest(unittest.TestCase):  # final review I-1 (and
                         self.assertEqual(a[a.index("--match") + 1], "lexical")
         for name in ("templates/agents-md.md", "packs/core/skills/module-create/SKILL.md",
                      "packs/qa/skills/qa-acceptance/SKILL.md",
-                     "packs/core/skills/module-discover/references/procedure.md",
-                     "packs/core/skills/module-sync/SKILL.md",
-                     "packs/core/skills/module-scout/references/procedure.md",
-                     "packs/core/skills/module-research/references/procedure.md",
+                     "packs/core/skills/module-discover/SKILL.md",
+                     "packs/core/skills/module-sync/references/choose.md",
+                     "packs/core/skills/module-scout/references/choose.md",
+                     "packs/core/skills/module-research/references/choose.md",
                      "packs new (2 roles): skills/api-review/SKILL.md",
                      "packs new (0 roles): skills/api-review/SKILL.md"):
             self.assertIn(name, found)  # the scan reaches what the reviews named
@@ -441,10 +444,10 @@ class OtherKeysTest(unittest.TestCase):  # review M-9: the keys the steps read, 
 
 
 class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20)
-    ORDER = [
+    ORDER = [  # P8.6 D2: the complete context pull of the host original
         "modsys catalog --json",
         "1–3 short English queries",  # F6a: the registry's language, domain terms, identifiers
-        "(step 4 uses it too)",  # review M-4
+        "(steps 6 and 7 use it too)",  # review M-4
         "the domain terms and code identifiers",
         "The mode: `hybrid` unless",
         '"only lexical"',
@@ -452,18 +455,22 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20
         f"`{APPLY}`",
         f"{KEYWORD} `modsys discover --task-file <file> --match lexical --json`",
         HYBRID,
-        "Verify each candidate",
-        "the child the task is in",
-        "modsys code-map files <candidate> --json",  # F6b: from the candidates to the code
-        "its code is the files whose `via` holds more than `docs`",  # review I-2: a doc is not code
-        "A picked child or a docs-only module has no code of its own",  # F28
-        "Search its source files first — tests, fixtures and plans last —",  # P84-AC-013 (D2)
-        "the rest of the repository only when that gives nothing",
-        "modsys discover --files <found files> --task-file <file> --match lexical --json",
+        "Modules the user named join the list with a boost",
+        "**Verify.**", "the child the task is in",
+        "Score the rest on four questions, 0–10 each, and keep a module whose average is ≥ 5",
+        "**One hop out.**", "forward `depends-on`, `implemented-in` and `shares-contract` edges",
+        "**Usage.**", "`modify` — the task changes its code or its contracts",
+        "`consume` — the task calls its API as it is", "`reference` — the task only follows",
+        "**Docs for every role.**", "modsys show <module> --all-roles --json",
+        "read, nothing for this task",
+        "**Code touch points.**", "modsys code-map files <module> --json",
+        "the files whose `via` holds more than `docs`",  # review I-2: a doc is not code
+        "source files first, tests last; the rest of the repository only when that gives nothing",
+        "`file:line — symbol — why`", "it never guesses the files the work will create",
+        "**Owners and docs to update.**",
+        "modsys discover --files <touch-point files> --task-file <file> --match lexical --json",
         F20,  # P82-AC-040
-        "on a split parent `children` (name the one the change is in and add its `doc` to the "
-        "docs to update)",  # review M-3
-        "every `modify` row with its code at file:line",
+        "**Report**", "`references/report.md`",
     ]
 
     def test_the_steps_in_order(self):
@@ -471,10 +478,10 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20
         found = in_order(body, self.ORDER)
         self.assertEqual([p for p, i in zip(self.ORDER, found) if i < 0], [])
 
-    def test_step_4_says_how_files_are_passed(self):  # P82-AC-040 (F20)
-        step4 = between(section(text("module-discover"), "## Steps"), "4. Get the touch-set.",
-                        "5. Read the result.")
-        self.assertEqual(step4.count(F20), 1)
+    def test_step_7_says_how_files_are_passed(self):  # P82-AC-040 (F20)
+        step7 = between(section(text("module-discover"), "## Steps"),
+                        "7. **Owners and docs to update.**", "8. **Report**")
+        self.assertEqual(flat(step7).count(F20), 1)
 
 
 class SyncTest(unittest.TestCase):  # P81-AC-042 (F10, F13, F15)

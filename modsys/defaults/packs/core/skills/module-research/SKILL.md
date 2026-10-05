@@ -21,18 +21,52 @@ argument-hint: "[task]"
 ## Scope
 
 Read-only: modsys read verbs, docs, code; it writes only temporary files outside the repository,
-never edits a file — gaps are reported, not fixed — and never commits.
+never edits a file — gaps are reported, not fixed — and never commits. It runs in the user's
+conversation; a caller that wants a clean context runs it through the `module-research-agent`
+agent, which returns this skill's brief unchanged.
 
 If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
 
 ## Steps
 
-1. Delegate: hand the user's task verbatim, with what the user settled in this
-   conversation (files, constraints, the depth), to your platform's agent and give its report as
-   yours. Claude Code: the `modsys:module-research-agent` agent. Codex: spawn the
-   `module-research-agent` custom agent (`.codex/agents/`). Only when no such agent exists, read
-   `references/procedure.md` and follow it. A request that also says "change nothing" is still a
-   hand-off: the agent is read-only.
+Pin the question in one sentence.
+
+1. No module named? Choose the candidates.
+
+   Follow `references/choose.md`.
+
+2. Load every doc of each module: `modsys show <module> --all-roles --json` (a pointer stub, exit
+   1: the module was retired or merged — research its successor instead and say so). A split module
+   (`submodules`): read the parent index, then the children the question touches —
+   `modsys show <module>/<child> --all-roles --json` (the parent's role docs are the child's
+   baseline). Read the docs fully.
+
+3. Its links, both ways: `modsys related <module> --json`. `edges`: the modules it relies on;
+   `reverse`: those pointing at it, which a change would affect. Read a linked module's main doc
+   only when the question crosses into it.
+
+4. Its code: `modsys code-map files <module> --json` (`via`: the routing rule; `show` adds `code`
+   and `code_globs`). Search it for the names the docs and the question use; read what answers it.
+   Nothing routed? Say so and search by the component names its main doc lists.
+
+5. Its lint state: `modsys lint --json`. Keep the findings of the module and its children; findings
+   with module `*` only when they name it.
+
+6. Compare. For each doc statement that bears on the question — a component, a rule, a flow, a
+   limit — find the code that implements it. Record each disagreement as "the docs say X
+   (doc:line), the code does Y (file:line)", the doc statements the code does not show, and code
+   behaviour the docs never mention.
+
+7. Write the brief: the answer first, in a few sentences; file:line evidence for every claim; the
+   gaps table (doc claim · code reality · file:line · how sure); who is affected (`reverse`) when
+   it is about a change; the lint findings that matter; next: `module-sync` after a change,
+   `module-lint` for findings.
+
+## Exit codes
+
+`0` ok · `1` from `lint` = findings at or above the fail level (a valid result: read them) · `1`
+from `show` = a pointer stub · `2` = a usage or config error: read stderr, fix the command or
+report it.
 
 ## Gates
 

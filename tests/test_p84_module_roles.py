@@ -271,14 +271,17 @@ class ModuleSyncOtherwiseUnchangedTest(unittest.TestCase):  # P84-AC-021
             "grow; a split parent keeps all of them — never remove one from it.\n", OLD_KEYWORDS)
         steps = re.split(r"\n(?=\d\. )", body)
         self.assertEqual(len(steps), 9)
-        want = ["e3b0c44298fc1c14", "d2e79903bff97d60", "97f1613d07b14caf", "40a721740234bc52",
+        # step 4 (the third) changed in P8.6: the shared candidate search routed to
+        # references/choose.md (X4, the core pack's size signal) — its text moved, not changed
+        want = ["e3b0c44298fc1c14", "d2e79903bff97d60", "97f1613d07b14caf", "d1546798ad43da68",
                 "20a1f50e91b5bfee", "03123ff43483d0fc", "6a9a2d03de9f7ae5", "d1d63fbb8b51b963",
                 "df716e537892c59d"]
         self.assertEqual([sha(s) for s in steps], want)
 
     def test_no_route_no_arguments_no_references_no_agent(self):
         self.assertEqual(set(read_front_matter(SYNC)), {"name", "description"})
-        self.assertFalse((SYNC.parent / "references").exists())
+        self.assertEqual(sorted(p.name for p in (SYNC.parent / "references").iterdir()),
+                         ["choose.md"])  # P8.6: the shared candidate search, routed (X4)
         self.assertNotIn("Route", self.text)
         for path in (ENGINE / "modsys/defaults/agents").rglob("*"):
             if path.is_file():

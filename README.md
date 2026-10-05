@@ -33,8 +33,8 @@ claude plugin install modsys-qa@modsys     # optional: the acceptance-criteria s
 The `modsys` plugin also carries the read-only `module-chooser` subagent (`modsys:module-chooser`)
 that the skills hand a `modsys choose` work order; change how modules are chosen with `modsys
 templates override choose/rules.md`. It carries three more agents, `module-discover-agent`,
-`module-scout-agent` and `module-research-agent`, each its skill's procedure run in the agent's
-own context; for Codex, `modsys packs sync --agent codex` writes the same three into
+`module-scout-agent` and `module-research-agent`, each of which runs its skill in the agent's
+own context and returns the skill's output; for Codex, `modsys packs sync --agent codex` writes the same three into
 `.codex/agents/` ([docs/skills.md](docs/skills.md)).
 
 **Codex** — the plugin carries the skills; install the command line first (a Codex plugin puts

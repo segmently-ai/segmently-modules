@@ -33,7 +33,7 @@ PRIMARY = {"module-scout": "show", "module-discover": "discover", "module-resear
            "module-lint": "(ci|lint)", "designer-review": "discover",
            "qa-acceptance": "discover", "qa-acceptance-baseline": "show",
            "module-roles": "roles"}
-WRAPPED = ("module-discover", "module-scout", "module-research")
+WRAPPED = ("module-discover", "module-scout", "module-research")  # each with an agent
 WRITERS = ("module-sync", "module-create", "module-split")
 
 
@@ -79,13 +79,10 @@ class SuiteShapeTest(unittest.TestCase):  # P4B-AC-019
                 self.assertEqual(found["skill-fired"],
                                  {"type": "tool_used", "tool": "Skill",
                                   "input_match": r'"skill"\s*:\s*"(?:[\w-]+:)?' + skill + '"'})
-                if skill in WRAPPED:  # the work runs in the plugin's agent: the hand-off is
-                    # the expected path (a documented tool_used form, no alternation)
-                    self.assertEqual(found["ran-modsys"], {
-                        "type": "tool_used", "tool": "Agent", "input_match": f"{skill}-agent"})
+                if skill in WRAPPED:  # P8.6 D1: the skill runs in the conversation again; its
+                    # agent only on request, so the trigger's own modsys command is the evidence
                     meta = front_matter((SUITE / skill / "trigger/prompt.md").read_text("utf-8"))
-                    self.assertIn("Agent", meta["allowed_tools"])
-                    continue
+                    self.assertIn("Agent", meta["allowed_tools"])  # the chooser of step 1
                 self.assertEqual(found["ran-modsys"]["tool"], "Bash")
                 self.assertTrue(found["ran-modsys"]["input_match"].startswith(
                     f"modsys {PRIMARY[skill]}"))

@@ -72,15 +72,13 @@ repository that keeps `"repo"` delivery gives the agent each built-in skill twic
 `"plugin"` there, or leave the plugin out. Cursor, Gemini CLI and GitHub Copilot have no modsys
 plugin: they get the built-in skills only with `"repo"` delivery (`packs sync` says so).
 
-`module-discover`, `module-scout` and `module-research` hand their work to a shipped agent
-(`module-discover-agent`, `module-scout-agent`, `module-research-agent`) so that the many reads
-stay out of the conversation; the steps live once, in each skill's `references/procedure.md`,
-which the agent runs and which ends with the skill's Scope and Gates (what it may write, when it
-asks). The `modsys` plugin ships the three agents for Claude Code
-(`modsys:module-<x>-agent`) and `packs sync` writes them for Codex (`.codex/agents/`). With
-`builtin_delivery = "repo"` Claude Code has no such agent — `packs sync` writes none for it — so the
-three skills say to read `references/procedure.md` and run it in the user's own conversation, which
-costs the context the agent would have spent. In Claude Code the task can follow the skill's name,
+`module-discover`, `module-scout` and `module-research` run in the user's conversation, like the
+other skills: their steps are in `SKILL.md`, the shared choice of candidates and the output
+templates in `references/`. Each also has an agent (`module-discover-agent`, `module-scout-agent`,
+`module-research-agent`) for a caller that wants the reads out of its context: the agent only runs
+its skill on the handed task and returns the skill's output unchanged — the report, or the
+question the skill asks (scout's proposal of candidates). No skill text is copied into an agent.
+In Claude Code the task can follow the skill's name,
 `/module-discover <task>`, and reaches the skill whole: the three skills have no `arguments:` key
 and no placeholder, so Claude Code appends the text as an `ARGUMENTS:` line (in Codex the
 request's words carry it).
@@ -107,8 +105,8 @@ lists the agent (the next `packs sync` copies its skills again).
 
 | Skill | Use it when | Scope | Main commands |
 |---|---|---|---|
-| `module-scout` | a task is still being discussed: a short context brief for the modules it names, or the candidates found by meaning | read-only | `catalog`, `choose`, `show`, `related`, `context` |
-| `module-discover` | a task is confirmed, or a branch needs review: its modules (a kept pick stays even when its code lives in another module), docs to read and update, the code files to change | read-only | `catalog`, `choose`, `discover`, `code-map files` |
+| `module-scout` | a task is still being discussed: a short context brief for the modules it names (by name or doc path) and the modules they hard-link, or — none named — a proposal of candidates it loads only after the user says so | read-only | `catalog`, `choose`, `show`, `related`, `context` |
+| `module-discover` | a task is agreed and the plan needs its complete context, or a branch needs review: the modules (verified by four questions, one hop of links, usage modify / consume / reference), what their docs say for every role that bears on the task, the existing code touch points (`file:line — symbol — why`, never the files the work will create), docs to update; JSON on request | read-only | `catalog`, `choose`, `show --all-roles`, `related`, `discover`, `code-map files` |
 | `module-research` | one question about a module needs a deep answer with file:line evidence and doc/code gaps | read-only | `catalog`, `choose`, `show --all-roles`, `related`, `code-map files`, `lint` |
 | `module-sync` | work is done: bring the touched modules' docs, keywords and links in line, run the sync hooks, check `ci` | writes docs and registry fields | `sync-instructions`, `catalog`, `choose`, `registry`, `propose`, `sync`, `ci` |
 | `module-roles` | a role is new and the existing modules lack its doc: declares the role when it is undeclared, shows a dry run, writes one doc per module, fills each from that module's code and docs, then `lint` and `next` | writes the role's docs (never over an existing one) | `roles list`, `roles add`, `lint`, `next` |
@@ -210,14 +208,17 @@ agent file in the plugin cache.
 
 **The skills' agents.** In all, the `modsys` plugin ships four agents: `module-chooser` above,
 and `module-discover-agent`, `module-scout-agent` and `module-research-agent`
-(`modsys:module-discover-agent`, …; tools Read, Grep, Glob, Bash, Agent; `model: sonnet`). The
-plugin build generates each of the three from its skill's `references/procedure.md` — the
-procedure is the agent's whole body, after its front matter — so a read-heavy skill can run in
-the agent's own context and hand back only its report. Codex gets the same three agents from
+(`modsys:module-discover-agent`, …; tools Read, Grep, Glob, Bash, Agent, Skill; `model: sonnet`).
+The plugin build generates each of the three from the agent table: its front matter preloads its
+skill (`skills: [modsys:module-<x>]`), and its body only runs that skill on the handed task and
+returns the skill's output unchanged (if the skill's text is not in its context, it loads it with
+the Skill tool first) — so a read-heavy skill can run in the agent's own context and hand back
+only its report. Codex gets the same three agents from
 `modsys packs sync` and `modsys setup`, whenever the agents they sync for include `codex` (under
 either delivery: a plugin cannot place them): `.codex/agents/module-discover-agent.toml`,
 `module-scout-agent.toml` and `module-research-agent.toml`, each with `name`, `description` and
-`developer_instructions` (the procedure) and no `sandbox_mode`, so the agent runs in the
+`developer_instructions` (run the skill, return its output; only when the skill is not available
+to it, read `.agents/skills/module-<x>/SKILL.md` and follow it) and no `sandbox_mode`, so the agent runs in the
 session's own sandbox. They are managed files, like the skill copies: the first line is a
 `# modsys-managed:` marker (pack, skill, version and the SHA-256 of the rest),
 `packs sync --check` reports one that is stale, `data.agent_files` lists them in `--json`, and a
@@ -230,17 +231,15 @@ agent file with the marker behind a symlinked `.codex/agents` is one — it cann
 through the link — and otherwise that directory is left alone, with no agent rows. Nothing else
 under `.codex/` is read or changed. A run that names its agents without `codex` never opens
 `.codex/`; a bare run under `builtin_delivery = "plugin"` reads `.codex/agents/` only to infer
-codex. An ejected skill's agent file follows the ejected copy's `references/procedure.md`. Claude
-Code with `builtin_delivery = "repo"` has no agent — only the plugin ships them — so there the
-skills fall back to running their steps in your conversation. Codex is told to spawn the
-`module-<x>-agent` custom agent and to run the steps itself only when no such agent exists. Known
-limit: Codex picks a skill by its description, so a bare "task confirmed" may make it implement
-the task; ask for the touch-set to get the hand-off. `modsys next` names an agent file that is
+codex. An ejected skill's agent runs the ejected copy, so editing the copy never changes the
+agent file. Claude Code with `builtin_delivery = "repo"` has no agent — only the plugin ships
+them — and needs none: the skills run in the conversation. `modsys next` names an agent file that is
 not in sync, as it names a stale skill copy.
 
-Also in these skills: `module-discover` goes from the candidates to the code
-(`code-map files`, then `discover --files … --task-file …`) and reads the `children` list of a
-split parent to pick the child the change is in; `module-sync` updates that child's doc (which
+Also in these skills: `module-discover` goes from the verified modules to their docs
+(`show --all-roles`) and code (`code-map files`, then `discover --files … --task-file …` for the
+owners and the docs to update) and reads the `children` list of a split parent to pick the child
+the change is in; `module-sync` updates that child's doc (which
 clears the parent's MS050) and adds a keyword only for a new feature, command or concept that no
 keyword or the description covers yet, never a code identifier and never one per task.
 

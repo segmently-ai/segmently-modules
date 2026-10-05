@@ -885,8 +885,9 @@ class DocsTest(unittest.TestCase):  # P84-AC-010
         text = self.flat("docs/skills.md")
         for needle in ("the `modsys` plugin ships four agents",
                        "`module-discover-agent`, `module-scout-agent` and `module-research-agent`",
-                       "tools Read, Grep, Glob, Bash, Agent", "`model: sonnet`",
-                       "`references/procedure.md`",
+                       "tools Read, Grep, Glob, Bash, Agent, Skill", "`model: sonnet`",
+                       "`skills: [modsys:module-<x>]`",  # P8.6 D1: the agent only runs its skill
+                       "read `.agents/skills/module-<x>/SKILL.md` and follow it",
                        "`.codex/agents/module-discover-agent.toml`",
                        "whenever the agents they sync for include `codex`",
                        "`# modsys-managed:`", "`packs sync --check`",
@@ -898,7 +899,7 @@ class DocsTest(unittest.TestCase):  # P84-AC-010
                        "one — it cannot be removed through the link — and otherwise that "
                        "directory is left alone, with no agent rows",
                        'Claude Code with `builtin_delivery = "repo"` has no agent',
-                       "the skills fall back"):
+                       "the skills run in the conversation"):
             self.assertIn(needle, text)
         self.assertNotIn("Codex ignores `agents/`", text)
 

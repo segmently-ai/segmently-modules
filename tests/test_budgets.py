@@ -128,8 +128,9 @@ class SplitDecisionsTest(unittest.TestCase):
         md = skills / "module-lint" / "SKILL.md"
         text = md.read_text(encoding="utf-8")
         md.write_text(text + "x" * (9_001 - len(text)), encoding="utf-8")  # S + 1 characters
-        sync = skills / "module-sync" / "SKILL.md"  # keep the core total under its signal
-        sync.write_text(sync.read_text(encoding="utf-8")[:2_000], encoding="utf-8")
+        for sid in ("module-sync", "module-discover"):  # keep the core total under its signal
+            md = skills / sid / "SKILL.md"
+            md.write_text(md.read_text(encoding="utf-8")[:2_000], encoding="utf-8")
 
     def test_a_crossing_without_a_decision_fails_naming_the_skill_and_both_numbers(self):
         problems = split_problems(crossings(self.root), {})
