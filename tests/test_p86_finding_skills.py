@@ -113,7 +113,9 @@ class DiscoverContractTest(unittest.TestCase):  # D2: the host's MODE=discover c
         "`reference` — the task only follows its patterns or rules",
         # docs for every role, the extracts that bear on the task, the "nothing" line
         "modsys show <module> --all-roles --json",
-        "A `reference` module: its main doc only.",
+        "A `reference` module: its main doc only, never its role docs, even when that doc is long "
+        "or links them",  # C5 read a reference module's role docs (P8.6 F1)
+        "a rule it points to in a role doc is extracted as that pointer, unread",
         "the rules, constraints, contracts and pitfalls that will affect carrying out the plan or "
         "are presumably connected with it",
         "each with the doc's path and role",

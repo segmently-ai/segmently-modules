@@ -62,8 +62,9 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
 5. **Docs for every role.** For each `modify` or `consume` module: `modsys show <module> --all-roles --json`
    lists its main doc and every role doc (a child's role doc together with its parent's baseline);
-   read them all. A `reference` module: its main doc only. Never read `MODULE.legacy.md` or
-   `roles/*.legacy.md`. From each doc take what bears on the task — the rules, constraints,
+   read them all. A `reference` module: its main doc only, never its role docs, even when that doc
+   is long or links them; a rule it points to in a role doc is extracted as that pointer, unread.
+   Never read `MODULE.legacy.md` or `roles/*.legacy.md`. From each doc take what bears on the task — the rules, constraints,
    contracts and pitfalls that will affect carrying out the plan or are presumably connected with
    it — as short extracts, each with the doc's path and role. A doc with nothing for this task
    gets one line: "read, nothing for this task". Never a retelling of the doc.
