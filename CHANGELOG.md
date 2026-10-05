@@ -105,7 +105,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   candidates moves to each skill's `references/choose.md` (also `module-sync`'s). **module-discover** pulls the complete context a task needs
   before it is planned — candidates verified by four questions (0–10, average ≥ 5, the score in the
   report), one hop of `depends-on` / `implemented-in` / `shares-contract` links, usage `modify`,
-  `consume` or `reference`, every role doc of a `modify` / `consume` module with the extracts
+  `consume` or `reference`, every role doc of a `modify` / `consume` module (a `reference`
+  module: its main doc only, even a long one that links its role docs) with the extracts
   that bear on the task (or "read, nothing for this task"), existing code touch points as
   `file:line — symbol — why` (never the files the work will create), docs to update, risks, the
   rejected candidates; a report template in `references/report.md` and a `discovery-results.json`
@@ -114,9 +115,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   edits, are gone; a verified module still never drops silently. **module-scout** takes module
   names or doc paths (a path outside the registry is read as it is), proposes candidates and
   loads nothing when no module is named, never adds modules to the named ones, loads the
-  `depends-on` / `implemented-in` / `shares-contract` targets one hop out and only names
+  `depends-on` / `implemented-in` / `shares-contract` targets one hop out (each one, even one
+  that looks off the topic) and only names
   `complements` targets and reverse edges, reads a role doc only when the discussion is about that
-  role, and ends with "Suggested next reads" (`references/brief.md`). **module-research** reads a
+  role (one the main doc points to goes in the next reads, unread), and ends with "Suggested
+  next reads" (`references/brief.md`). **module-research** reads a
   stub's successor.
 - The skill-eval graders of `module-discover`, `module-scout` and `module-research` look for their
   own `modsys` command (the skills run in the conversation; their agents only on request).
@@ -151,8 +154,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is `semantic`: a `lexical` config no longer skips the search by meaning. In Claude Code they
   write the work order's text form to a file and hand its path to `modsys:module-chooser`; in
   Codex they run
-  `codex exec … --sandbox read-only --output-schema <schema file> - < <order file>`; elsewhere
-  they answer the order themselves. The user's depth goes to `choose --effort`. `module-discover`
+  `codex exec … --sandbox read-only --output-schema <schema file> - < <order file>`; elsewhere,
+  or when that `codex exec` fails (inside a sandbox), they answer the order themselves. The user's depth goes to `choose --effort`. `module-discover`
   says that `--files` takes the paths as separate arguments.
 - The core skills: `module-sync` adds a keyword only for a new feature, command or concept that
   later tasks will name and that no keyword or the description covers yet — never a code

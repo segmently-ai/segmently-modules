@@ -162,7 +162,7 @@ models and the depth), then:
   `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --sandbox read-only --output-schema <schema file> - < <order file>`
   answers it (`<reasoning>` is `low`, `medium` or `high` for the depth `quick`, `standard` or
   `deep`; add `--skip-git-repo-check` outside a git repository). Elsewhere (no subagent, no
-  `codex exec`) the skill answers the order itself, every card read, by its rules. Every path ends
+  `codex exec`, or it fails, as inside a sandbox) the skill answers the order itself, every card read, by its rules. Every path ends
   in `modsys choose --apply - --json`, which prints the picks with the docs to read (`--apply`
   takes the answer itself or the agent's JSON envelope, as `--run` does). How much the chooser
   reads is one of the order's rules, set by the depth (see the `choose/rules.md` template below).

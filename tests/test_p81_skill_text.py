@@ -151,7 +151,8 @@ class SharedStepTest(unittest.TestCase):  # P82-AC-034…039
         f"`{CODEX}`",
         "(`low`, `medium`, `high` for `quick`, `standard`, `deep`).",
         # P82-AC-037: the fallback elsewhere
-        "**Elsewhere** (no subagent, no `codex exec`): answer the order yourself, every card "
+        "**Elsewhere** (no subagent, no `codex exec`, or it fails, as inside a sandbox): answer "
+        "the order yourself, every card "
         "read, by its rules.",
         f"Pipe the answer to `{APPLY}`.",  # every path ends in the same --apply
         KEYWORD, HYBRID,

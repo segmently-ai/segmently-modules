@@ -15,7 +15,7 @@ and never skips the search by meaning, which needs no setting; the keyword comma
   `<schema file>`, then
   `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --sandbox read-only --output-schema <schema file> - < <order file>`
   (`low`, `medium`, `high` for `quick`, `standard`, `deep`). **Elsewhere** (no subagent, no
-  `codex exec`): answer the order yourself, every card read, by its rules. Pipe the answer to
+  `codex exec`, or it fails, as inside a sandbox): answer the order yourself, every card read, by its rules. Pipe the answer to
   `modsys choose --apply - --json`.
 - By keyword (`lexical`, `hybrid`):
   `modsys context --task-file <the domain terms and code identifiers, in English, in a file> --match lexical --json`:

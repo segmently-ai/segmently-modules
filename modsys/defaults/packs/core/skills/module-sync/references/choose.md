@@ -15,7 +15,7 @@ the depth ("search deep": `choose --effort deep`; `<reasoning>` follows it).
   `<schema file>`, then
   `codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> --sandbox read-only --output-schema <schema file> - < <order file>`
   (`low`, `medium`, `high` for `quick`, `standard`, `deep`). **Elsewhere** (no subagent, no
-  `codex exec`): answer the order yourself, every card read, by its rules. Pipe the answer to
+  `codex exec`, or it fails, as inside a sandbox): answer the order yourself, every card read, by its rules. Pipe the answer to
   `modsys choose --apply - --json`.
 - By keyword (`lexical`, `hybrid`):
   `modsys discover --task-file <the changed identifiers and domain terms, in English, in a file> --match lexical --json`.

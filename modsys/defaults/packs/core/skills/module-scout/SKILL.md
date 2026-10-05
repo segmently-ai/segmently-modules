@@ -56,11 +56,13 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    its successor instead and say so; never guess. A role doc only when the discussion is clearly
    about that role (tests → `qa`, design → `designer`, …):
    `modsys show <module> --role <role> --json` (a child's role doc comes with its parent's
-   baseline: read both).
+   baseline: read both). A role doc the main doc points to otherwise goes in Suggested next
+   reads, unread.
 
 4. **The hard-linked modules come along.** For each named module, `modsys related <module> --json`,
    one hop, forward edges only (`edges`, what this module points at):
-   - a `depends-on`, `implemented-in` or `shares-contract` target → load its main doc too (a split
+   - a `depends-on`, `implemented-in` or `shares-contract` target → read its main doc too, each
+     one, even when it looks off the topic: the edge says the module is not understood without it (a split
      target: its INDEX only; no role docs, no further hop);
    - a `complements` target and every reverse edge (`reverse`, the modules that point at it) →
      not loaded; mention it: "worth loading if the task also touches X".

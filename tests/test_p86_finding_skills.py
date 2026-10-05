@@ -203,7 +203,10 @@ class ScoutContractTest(unittest.TestCase):  # D3: the host's MODE=scout contrac
         "read its successor instead and say so",
         "A role doc only when the discussion is clearly about that role",
         "one hop, forward edges only",
-        "a `depends-on`, `implemented-in` or `shares-contract` target → load its main doc too",
+        "a `depends-on`, `implemented-in` or `shares-contract` target → read its main doc too, each "
+        "one, even when it looks off the topic: the edge says the module is not understood without "
+        "it",  # F2: two runs skipped hard edges as off-topic
+        "A role doc the main doc points to otherwise goes in Suggested next reads, unread.",  # F2
         "its INDEX only; no role docs, no further hop",
         "a `complements` target and every reverse edge",
         '"worth loading if the task also touches X"',
