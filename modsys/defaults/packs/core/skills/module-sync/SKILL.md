@@ -1,18 +1,18 @@
 ---
 name: module-sync
-description: Brings module docs and registry fields in line with finished work. Asks modsys sync-instructions which modules the change touched, which docs to update, which drift checks fail and what each field's sync hint says, then edits the docs, updates keywords and links, runs the team's sync hooks and checks the result with modsys ci. Autonomous, it asks only in four ambiguous cases and never commits. Use at the end of a task that changed module code, when the user says "sync the docs", "update the module docs", or when a CI drift check fails.
+description: Brings module docs and registry fields in line with a work session — what it decided, rejected, discovered and changed. Takes the session's knowledge first and the code change second, asks modsys sync-instructions which docs to update, prints findings and a proposal per module, edits docs, keywords and links, runs the sync hooks and checks with modsys ci. Autonomous, it asks only in four ambiguous cases and never commits. Use at the end of a session that changed module code or revealed module knowledge, when the user says "sync the session", "sync the docs", or a CI drift check fails.
 ---
 
 # module-sync
 
 ## When to use
 
-- A task changed module code and is done, the gate reports drift (MS050), or the user asks to
-  sync the module docs.
+- A session changed module code or revealed module knowledge (a decision, a gotcha, a rule found
+  while debugging); the gate reports drift (MS050); the user asks to sync the session or the docs.
 
 ## When not to use
 
-- Nothing changed yet: use `module-scout` or `module-discover`.
+- Nothing was done or learned yet: use `module-scout` or `module-discover`.
 - The work needs a new module: use `module-create` first.
 - A module doc grew too long (lint MS030 / MS031): use `module-split`.
 - Only lint findings need fixing: use `module-lint`.
@@ -20,55 +20,64 @@ description: Brings module docs and registry fields in line with finished work. 
 
 ## Scope
 
-Writes: the docs of the modules the change touched or made untrue, and their registry fields (the
-`registry` verb or queued proposals). It never edits a `*.legacy.md` file, never edits code, never
-commits, and never touches another module unless the user asks. Temporary files go outside the
-repository.
+Writes: the docs of the modules the session touched or made untrue, and their registry fields
+(the `registry` verb or queued proposals). It never edits a `*.legacy.md` file, never hand-edits a
+role doc another skill owns (it flags it), never edits code, never commits, and never touches
+another module unless the user asks. Temporary files go outside the repository.
 
 If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
 
 ## Steps
 
-1. Pin the change. `<base>` is where the work branched off: `git merge-base <target> HEAD`,
+The session is the primary source; the change in git confirms it and finds missed modules.
+
+- **session** — what to take from the conversation (step 1) → `references/session.md`
+- **placement** — which doc gets what; checks; queued writes (steps 6–7) → `references/placement.md`
+- **report** — findings, proposals, final report (steps 5, 10) → `references/report.md`
+
+1. Extract the session's knowledge (`references/session.md`): the plan goal, decisions with the
+   rejected alternatives, discoveries, patterns, gotchas, new cross-module dependencies and
+   critical rules, each mapped to a module.
+
+2. Pin the change. `<base>` is where the work branched off: `git merge-base <target> HEAD`,
    `<target>` being the branch it merges into (ask when unclear) — never the target itself (its
    later commits would drag in untouched modules). Committed work is `<base>..HEAD`;
    uncommitted work is the files `git diff --name-only <base>` prints plus the new ones
-   `git ls-files --others --exclude-standard` prints, all to `--files` (never a directory).
+   `git ls-files --others --exclude-standard` prints, all to `--files` (never a directory). No
+   code changed: `<base>` is `HEAD`, and step 3 takes `--module`.
 
    Before you edit, save the gate: `modsys ci --base <base> --json > <ci file>` (outside the
    repository; ignore its exit code).
 
-2. Ask modsys what to update.
+3. Ask modsys what to update.
 
    ```bash
    modsys sync-instructions --from-diff <base>..HEAD --json
    modsys sync-instructions --files <path> <path> --json
+   modsys sync-instructions --module <module> --module <module> --json
    ```
 
-   Per module row: `docs_to_update`; `children` on a split parent: pick the child the change is in
+   `--module`: the modules step 1 mapped that the change does not show. Per module row:
+   `docs_to_update`; `children` on a split parent: pick the child the change is in
    and update its doc too (it clears the parent's MS050); `drift` (MS050 = code changed, no doc;
    MS051 = a frozen snapshot was touched — restore it from git, never "fix" it); `fields` with
    their `sync_hint`; `proposals_pending` (changes already queued). Report `files_outside_modules`
    (no module owns them: `module-create` or a routing rule).
 
-3. Find the modules whose docs describe what changed (the code map misses one that only documents
-   it).
+4. Find the modules whose docs describe what changed (the code map misses one that only documents
+   it). Search as `references/choose.md` says.
+   Each candidate whose docs describe the change joins the modules to update, with the docs the
+   search listed.
 
-   Search as `references/choose.md` says.
+5. Print the findings and one proposal block per module (`references/report.md`), then apply
+   without waiting. Interactive mode (the user asked for it): stop after the findings, then ask
+   `ok / skip / edit` per module.
 
-   Each candidate whose docs describe the change joins the modules to update, with the
-   docs the search listed.
+6. Write each module's docs as `references/placement.md` says: the session's items and the
+   change, each in the doc its readers look in. Add what they introduced, correct what they made
+   untrue, remove nothing still true. Short, factual, linked to code paths, never copied code.
 
-4. Per module to update, read the change (`git diff <base>..HEAD -- <its files>`; uncommitted:
-   `git diff <base> -- <its files>` and each new file in full) and its `docs_to_update` (a child's
-   list holds the parent's docs too: module-wide rules go in the parent, area-specific ones in the
-   child). Put each text where its readers look: what the module is and its
-   rules in the module doc, how to change the code in the developer doc, how to test it in the qa
-   doc, other roles by their headings. Add what the change introduced (a component, a rule, a
-   limit, a pitfall), correct what it made untrue, remove nothing still true. Short, factual,
-   linked to code paths, never copied code.
-
-5. Update the registry fields the hints point at.
+7. Update the registry fields the hints point at.
 
    ```bash
    modsys registry append <module> keywords '"<new word>"' --json
@@ -80,18 +89,13 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
      people will name in later tasks and that no keyword or the description covers yet — never a
      code identifier (a class, function, file or variable name: code search finds those), never
      one per task. Keywords only grow; a split parent keeps all of them — never remove one from it.
-   - `related_modules`: when the change made this module rely on another (or share a contract), add
+   - `related_modules`: when the work made this module rely on another (or share a contract), add
      the edge after checking `related`; an unknown relation is refused with the allowed ones.
    - A refused write (exit 2) names the rule it broke: fix the value, never force it.
 
-   Where agents must not write the registry, queue the changes and apply them at once:
+   Where agents must not write the registry, queue the changes (`references/placement.md`).
 
-   ```bash
-   modsys propose --module <module> --op append --field keywords --value '"<new word>"' --reason "<why>" --json
-   modsys sync --from-diff <base>..HEAD --apply-proposals --json
-   ```
-
-6. Run the team's sync hooks (the second form for uncommitted work). Skip this step when step 5 ran
+8. Run the team's sync hooks (the second form for uncommitted work). Skip this step when step 7 ran
    `sync --apply-proposals` (it ran them).
 
    ```bash
@@ -101,16 +105,17 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
    Report every hook message. A failed required hook (exit 1): stop, never bypass it.
 
-7. Check: `modsys ci --base <base> --baseline <ci file> --json`. Its steps (`lint`, `drift`,
+9. Check: `modsys ci --base <base> --baseline <ci file> --json`. Its steps (`lint`, `drift`,
    `coverage`) should pass or be report-only; a `known` finding predates your edits: report it, but
    fix one the change caused (a moved or deleted path). Fix what your updates caused and rerun.
 
-8. Report per module: the docs changed, fields and edges, the hook messages and errors, the `ci`
-   result, the files no module owns. Ask the user to review and commit.
+10. Report as `references/report.md` says (the plan goal, the budget action items, your
+    decisions and questions among it). Ask the user to review and commit.
 
 ## Gates
 
-Autonomous by default: it decides and applies. It stops and asks only when:
+Autonomous by default: it decides, applies and records each decision in the report. It stops and
+asks only when:
 
 1. an update fits two children of a split module equally well;
 2. new work may be a new top-level module or a child of an existing one;
@@ -118,6 +123,8 @@ Autonomous by default: it decides and applies. It stops and asks only when:
    claim, or only flag the drift?);
 4. the only home for the new text is a `*.legacy.md` file — never edited; ask where it should go
    instead.
+
+Interactive mode adds the stops of step 5.
 
 ## Exit codes
 

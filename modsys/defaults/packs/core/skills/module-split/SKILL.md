@@ -5,23 +5,21 @@ description: Splits an oversized module into two to six child modules. Analyses 
 
 # module-split
 
-Turn one module whose docs outgrew their budget into a parent index plus two to six children,
-without losing a line: every moved section lands verbatim in one child, the originals stay
-frozen next to the new docs, and routing keeps working.
+Turn one module whose docs outgrew their budget into a parent index plus children without
+losing a line: every moved section lands verbatim in one child, the originals stay frozen next
+to the new docs, and routing keeps working.
 
 ## When to use
 
 - Lint reports MS030 (a module doc past the split signal) or MS031 (past the hard stop) for
-  the module.
+  the module, or `module-sync` proposed the split.
 - The user asks to split, decompose or break a module into submodules.
-- `module-sync` would have to grow a doc that is already at its budget.
+- A split module needs a child added, a child rebalanced, or its sizes reported.
 
 ## When not to use
 
-- The module is not large — move detail from the module doc into its role docs instead (a
-  `module-sync` job).
-- The module is split already (it has `submodules`): add one child with `module-create`
-  (`--parent`), or move sections between children by hand.
+- The module is under the signals: refuse (step 1) — moving detail into its role docs is a
+  `module-sync` job — unless the user explicitly overrides.
 - A brand-new area is not a split: use `module-create`.
 
 ## Scope
@@ -36,6 +34,10 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
 ## Steps
 
+- **already-split** — add a child, rebalance, report sizes → `references/already-split.md`
+- **shapes** — index, baselines, child docs (steps 5–6) → `references/shapes.md`
+- **check** — checks, report (steps 8–9) → `references/check.md`
+
 1. Analyse.
 
    ```bash
@@ -45,56 +47,45 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    modsys code-map files <module> --json
    ```
 
-   - Stop if the result has `submodules` (already split) or no MS030 / MS031 finding and the
-     user gave no other reason: explain and suggest the right skill.
-   - Size up each doc in `read[]` as an outline table — heading (level two) · first–last line ·
+   - The result has `submodules`: follow `references/already-split.md`. Never split again.
+   - No MS030 / MS031 for the module: refuse, name the signal it is under and suggest moving
+     detail into the role docs; go on only when the user explicitly overrides.
+   - Outline each doc in `read[]` — every level-two and level-three heading · first–last line ·
      length · topic in a few words — under the doc's total length.
-   - Draft candidate children by cohesion: headings about one feature, one kind of data or one
-     flow belong to the same child. Then hold the draft against the code: where
-     `code-map files` puts the module's files under separate paths, the children should follow
-     those paths.
+   - Group sections by cohesion (what changes together, what one task would touch), then hold
+     the groups against the code: separate `code-map files` paths → separate children.
 
 2. Propose, then **stop**.
 
-   - Two to six children: a name (lowercase words joined by `-`), a one-line scope, keywords
-     taken from the parent's (each child needs at least one), expected line counts.
-   - For every doc to split, a table: section · lines · target (a child, or the parent).
-   - What stays in the parent: rules that hold for the whole module, shared tables, anything
-     other modules link to.
+   - Three to six children (two only with the reason stated): name (lowercase words joined by
+     `-`), one-line scope, keywords taken from the parent's (at least one each), expected lines.
+   - For every doc to split — the module doc and each role doc — a table: section · lines ·
+     target (a child, or the parent).
+   - What stays in the parent: module-wide rules, shared tables, anything other modules link to,
+     and every section a tool or another module reads from the parent doc. What stays in each
+     parent role doc: the module-wide baseline.
+   - Per child, the roles without area content: no doc for them (the parent's covers it).
 
    Wait for the user's confirmation. Apply every correction (merge, rename, re-scope) and show
    the table again before writing anything.
 
 3. Freeze. For each doc you will split, copy it byte for byte to a sibling named
    `<name>.legacy.md` — for example `MODULE.md` → `MODULE.legacy.md`, `roles/qa.md` →
-   `roles/qa.legacy.md`.
-   If such a file exists already, stop: an earlier split left it, and it is never overwritten.
-   From here on the legacy copies are read, never edited.
+   `roles/qa.legacy.md`. If such a file exists already, stop: an earlier split left it, and it
+   is never overwritten. From here on the legacy copies are read, never edited.
 
-4. Create the children, one command per child, with the roles whose docs receive sections:
+4. Create the children, one command per child, with only the roles whose docs receive sections:
 
    ```bash
-   modsys create <child> --parent <module> --non-interactive --description "<scope>" --keywords "<k1, k2>" --role <role> --json
+   modsys create <child> --parent <module> --non-interactive --description "<scope>" --keywords "<k1, k2>" --no-standard-roles --role <role> --json
    ```
 
-   `create` also scaffolds every standard role doc, whether or not it gets a section. A
-   scaffolded role doc that receives no section stays as `create` wrote it: do not fill it
-   from the parent — the parent's doc for that role is already the child's baseline. List it
-   as a follow-up in the report (step 9).
-
 5. Move the sections verbatim — no rewording — into the child docs `create` wrote, replacing
-   their template prompts. Fix relative links for the new directory depth. Start each child
-   doc with one line saying it is part of the parent and is read together with the parent's
-   docs.
+   their template prompts; fix relative links for the new directory depth.
 
-6. Rewrite the parent.
-
-   - Its module doc becomes an index: the header, a routing table (child · scope · keywords),
-     then only the module-wide content that stayed.
-   - Each split role doc becomes the module-wide baseline for that role, naming which children
-     now hold the rest.
-   - The parent's keywords stay unchanged: never remove one (tasks that match them still land
-     on the parent and its routing table).
+6. Rewrite the parent (`references/shapes.md`): its module doc becomes the index, each split
+   role doc the baseline for that role. The parent's keywords stay unchanged: never remove one (tasks that match them
+   still land on the parent and its routing table).
 
 7. Route the code: for each child whose code has its own paths,
 
@@ -113,19 +104,9 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    modsys show <module> --json
    ```
 
-   (`HEAD` is the state before the split while nothing is committed; after a commit, pass the
-   commit the split started from.)
+   Check every item of `references/check.md` and fix what fails.
 
-   - No MS030 / MS031 left for the parent; every child under its budgets.
-   - `lint --changed` stays clean of MS051: adding the legacy copies is fine, editing or
-     deleting one is not.
-   - The parent's `keywords` equal what they were before step 3.
-   - Every relative link in the new and rewritten docs resolves from its own directory.
-   - Line accounting: children plus what the parent kept is close to the legacy total; explain
-     any loss over 5 %.
-
-9. Report the children (scope, line counts), the line accounting, the routing rules added and
-   the follow-ups (a role doc a child still lacks). Ask the user to review and commit.
+9. Report as `references/check.md` says. Ask the user to review and commit.
 
 ## Gates
 

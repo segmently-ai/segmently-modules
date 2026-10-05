@@ -5,9 +5,9 @@ description: Creates a new module, or a child of an existing one, with its docs 
 
 # module-create
 
-Add a module (or a child of a split module) the way the registry expects it: a scaffolded doc
-set filled with what is actually known, a registry entry that routes tasks to it, and its code
-mapped — confirmed by the user before anything is written.
+Add a module (or a child of a split module) with real content, not empty templates: a module
+for existing code is written from that code, so nobody builds a second copy of what exists; a
+planned one says what is planned. The user confirms before anything is written.
 
 ## When to use
 
@@ -24,12 +24,17 @@ mapped — confirmed by the user before anything is written.
 ## Scope
 
 Writes: the new module's docs (scaffolded by the `create` verb, then filled in), its registry
-entry, and a routing rule for its code in the team config (the `code-map add` verb). It never
-edits another module, never edits a `*.legacy.md` file, and never commits.
+entry and links, a routing rule for its code in the team config (the `code-map add` verb) and,
+for a child, its row in the parent's routing table. It never edits another module otherwise,
+never edits a `*.legacy.md` file, and never commits.
 
 If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
 
 ## Steps
+
+- **analyse** — interview, analysis (steps 2–3) → `references/analyse.md`
+- **child** — a child module (steps 4–7) → `references/child.md`
+- **fill** — the docs' content, the report (steps 6, 10) → `references/fill.md`
 
 1. Check the name is free and not a duplicate in disguise.
 
@@ -41,41 +46,36 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
    A strong match means an existing module may own this area: show it and ask before
    going on.
 
-2. Gather the answers, one question at a time when the user has not given them:
+2. Ask (`references/analyse.md`), one question at a time: name, status (code exists → `active`, else `planned`),
+   artifacts to read, parent, whether it renders a user interface, extra roles.
 
-   - **name**: lowercase words joined by `-`;
-   - **description**: one sentence — what it does, why it exists, when a task belongs to it;
-   - **keywords**: at least five words or short phrases a task about it would use (a child
-     needs one), in the user's own vocabulary;
-   - **roles**: every module gets the standard role docs; extra roles come from `--role`, or
-     from `--tag` for roles the config ties to a tag. The configured roles are the
-     `roles/<role>.md` rows of `modsys templates list --json`;
-   - **parent**: only for a child of an existing module;
-   - **code**: where its code lives, if it exists yet.
+3. Analyse the artifacts and show the findings (components with paths, imports, real usages,
+   critical rules, dependencies both ways). From them propose the description and at least five
+   keywords (a child: one); the user corrects them.
 
-3. Show the plan and wait.
+4. Show the plan and wait.
 
    ```bash
-   modsys create <name> --non-interactive --description "<one sentence>" --keywords "<k1, k2, k3, k4, k5>" --dry-run
-   modsys create <child> --parent <module> --non-interactive --description "<one sentence>" --keywords "<k1>" --dry-run
+   modsys create <name> --non-interactive --status <status> --description "<one sentence>" --keywords "<k1, k2, k3, k4, k5>" --dry-run
    ```
 
-   Add `--role <role>` or `--tag <tag>` as gathered. Show the files it would write and the
-   registry entry. Exit 2 names what is wrong (a taken name, a description out of bounds, too
-   few keywords): fix it with the user and show the dry run again. **Wait for an explicit yes.**
+   Add `--tag` or `--role` as gathered; a child: `references/child.md`. Show the files, the registry entry and the findings in
+   short. Exit 2 names what is wrong (a taken name, a description out of bounds, too few
+   keywords): fix it with the user and show the dry run again. **Wait for an explicit yes.**
 
-4. Create it — the same command with `--json` in place of `--dry-run`:
+5. Create it — the same command with `--json` in place of `--dry-run`.
+
+6. Fill the scaffolded docs (the `files` of the result) as `references/fill.md` says. Never invent
+   components or rules; "Planned:" before what does not exist yet.
+
+7. Seed its links from the dependencies found:
 
    ```bash
-   modsys create <name> --non-interactive --description "<one sentence>" --keywords "<k1, k2, k3, k4, k5>" --json
+   modsys related <name> --json
+   modsys registry append <name> related_modules '{"module": "<other>", "relation": "<relation>", "description": "<why>"}' --json
    ```
 
-5. Fill the scaffolded docs (the `files` of the result). Every template section holds a short
-   prompt in an HTML comment: replace it with what the user told you and what the existing code
-   shows, or delete the section when there is nothing true to say yet. Never invent components
-   or rules. For an area that is only planned, say "Planned:" before what does not exist yet.
-
-6. Route its code, when the user said where it lives.
+8. Route its code, when the user said where it lives.
 
    ```bash
    modsys code-map add <rule id> --glob "<glob>" --module <name> --dry-run
@@ -84,22 +84,24 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
    Show the dry run first. An existing rule id is refused: pick another.
 
-7. Check it.
+9. Check it.
 
    ```bash
    modsys lint --json
    modsys show <name> --json
+   modsys match "<a typical task for it>" --match lexical --json
    ```
 
-   No error findings for the new module; every doc in `read[]` exists.
+   No error findings for the new module; every doc in `read[]` exists; the typical task ranks
+   the new module first — else improve its keywords with the user.
 
-8. Report the files written, the registry entry, the routing rule, and what the docs still
-   leave open. Ask the user to review and commit.
+10. Report as `references/fill.md` says. Ask the user to review and commit.
 
 ## Gates
 
-- After the dry run (step 3): nothing is written until the user says yes.
-- Before routing code (step 6): the user confirms the glob.
+- Each question (step 2) and the proposed description and keywords (step 3): wait for the answer.
+- After the dry run (step 4): nothing is written until the user says yes.
+- Before routing code (step 8): the user confirms the glob.
 
 ## Exit codes
 

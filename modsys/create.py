@@ -172,7 +172,10 @@ def prompt_missing(ws, answers: dict, missing: list[str]) -> dict:
     return out
 
 
-def roles_to_scaffold(ws, answers: dict) -> list[str]:
+def roles_to_scaffold(ws, answers: dict, standard: bool = True) -> list[str]:
+    """The roles whose docs `create` writes: every standard role (unless `standard` is off — a
+    child that inherits the parent's docs for them), the `applies_when` roles of the tags, and
+    the roles asked for."""
     roles = ws.config.get("roles") or {}
     wanted = set(answers.get("roles", []))
     unknown = wanted - set(enabled_roles(ws.config))
@@ -180,7 +183,8 @@ def roles_to_scaffold(ws, answers: dict) -> list[str]:
         raise UsageError(f"unknown role(s): {', '.join(sorted(unknown))}")
     tags = set(answers.get("tags", []))
     return [r for r in enabled_roles(ws.config)
-            if roles[r].get("standard") or roles[r].get("applies_when") in tags or r in wanted]
+            if (standard and roles[r].get("standard")) or roles[r].get("applies_when") in tags
+            or r in wanted]
 
 
 def engine_templates() -> Path:
@@ -278,9 +282,14 @@ def _check_name(value: str) -> None:
         raise UsageError(f"module name {value!r}: use lowercase words joined by '-' (max 48)")
 
 
-def plan_create(ws, name: str, parent: str | None, answers: dict) -> dict:
-    """Validate everything and compute files + entry; writes nothing."""
+def plan_create(ws, name: str, parent: str | None, answers: dict,
+                standard_roles: bool = True) -> dict:
+    """Validate everything and compute files + entry; writes nothing. `standard_roles=False`
+    (a child only) scaffolds just the roles of `answers` (`roles`, `tags`)."""
     _check_name(name)
+    if not standard_roles and not parent:
+        raise UsageError("--no-standard-roles needs --parent: a top-level module gets every "
+                         "standard role doc")
     modules = ws.registry.modules
     mdir = ws.config["paths"]["modules_dir"]
     if parent:
@@ -308,7 +317,7 @@ def plan_create(ws, name: str, parent: str | None, answers: dict) -> dict:
     files = {f"{rel_dir}/{doc}": string.Template(resolve_template(ws, "MODULE.md"))
              .safe_substitute(values)}
     role_files = {}
-    for role in roles_to_scaffold(ws, answers):
+    for role in roles_to_scaffold(ws, answers, standard_roles):
         rel = f"{rel_dir}/roles/{role}.md"
         files[rel] = render_role_doc(ws, role, values)
         role_files[role] = rel

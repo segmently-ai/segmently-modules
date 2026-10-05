@@ -37,7 +37,8 @@ STEP_1 = (
     "   Before you edit, save the gate: `modsys ci --base <base> --json > <ci file>` (outside the\n"
     "   repository; ignore its exit code).\n")
 STEP_7 = (  # final review I-1 (ruled): a stale path the change itself caused is fixed, not excused
-    "7. Check: `modsys ci --base <base> --baseline <ci file> --json`. Its steps (`lint`, `drift`,\n"
+    # (P8.7 D5: the check is step 9 since the session's knowledge came first)
+    "9. Check: `modsys ci --base <base> --baseline <ci file> --json`. Its steps (`lint`, `drift`,\n"
     "   `coverage`) should pass or be report-only; a `known` finding predates your edits: report it, but\n"
     "   fix one the change caused (a moved or deleted path). Fix what your updates caused and rerun.\n")
 FIX_CLAUSE = ("a `known` finding predates your edits: report it, but fix one the change caused "
@@ -89,7 +90,7 @@ class SavedGateTest(unittest.TestCase):  # P83-AC-012
     def test_step_1_ends_with_the_save(self):
         text = skill("module-sync")
         self.assertEqual(text.count(STEP_1), 1)
-        step1 = text.split("\n2. Ask modsys what to update.")[0]
+        step1 = text.split("\n3. Ask modsys what to update.")[0]  # P8.7: the pin is step 2
         self.assertTrue(step1.endswith("\n\n" + STEP_1), step1[-300:])  # its own lines (review M-1)
 
     def test_step_7_is_exact(self):
@@ -158,7 +159,7 @@ class SavedGateEndToEndTest(unittest.TestCase):  # P83-AC-012 (the two commands,
     def commands(self):
         text = skill("module-sync")
         save = re.search(r"save the gate: `(modsys ci [^`]*)`", text).group(1)
-        check = re.search(r"7\. Check: `(modsys ci [^`]*)`", text).group(1)
+        check = re.search(r"9\. Check: `(modsys ci [^`]*)`", text).group(1)
         return save, check
 
     def test_save_then_check_on_a_repository_with_a_known_finding(self):

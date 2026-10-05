@@ -472,10 +472,10 @@ modsys packs sync --agent claude --agent codex   # .claude/skills/module-*/ and 
 - `module-scout` — quick context on the modules a task names (or finds by meaning), while it is discussed;
 - `module-discover` — the touch-set of a confirmed task or a branch: modules, docs, code files;
 - `module-research` — one question answered in depth from docs and code, with the gaps;
-- `module-sync` — after the work: docs, keywords and links brought in line, `ci` green;
+- `module-sync` — after a work session: what it decided, learned and changed written into the docs, keywords and links, `ci` green;
 - `module-roles` — a new role's doc added to every existing module, confirmed by a dry run;
-- `module-create` — a new module or child, confirmed by a dry run;
-- `module-split` — an oversized module split into children, confirmed before any write;
+- `module-create` — a new module or child, documented from its existing code, confirmed by a dry run;
+- `module-split` — an oversized module split into children (or a split one rebalanced), confirmed before any write;
 - `module-lint` — the gate explained and its safe findings fixed;
 - `module-init` — a codebase without modules taken through `modsys init`, with two stops for you;
 - `module-adopt` — an existing registry read as it is: the config inferred and explained.

@@ -27,9 +27,20 @@ BASELINE = builtin_packs_root() / "qa/skills" / BASELINE_ID
 ROUTED = {BASELINE_ID: (["create", "refresh"], ["exit-codes"])}
 WRAPPED = {"module-discover", "module-scout", "module-research"}  # D3: Task 2 pins their keys
 SINGLE = {  # one scenario: steps and `## Exit codes` inline, no keys, references as before
-    "module-adopt": [], "module-create": [], "module-init": ["references/phases.md"],
-    "module-lint": ["references/lint-codes.md"], "module-split": [], "module-sync": ["references/choose.md"],
+    "module-adopt": [], "module-init": ["references/phases.md"],
+    "module-lint": ["references/lint-codes.md"],
     "module-roles": [], "qa-acceptance": [], "designer-review": []}
+# P8.7 (X4): the writing skills keep their steps and `## Exit codes` inline, no keys, and point
+# into references/ by step — a scenario (a child, an already-split module) or a step's detail
+STEP_ROUTED = {
+    "module-sync": [("session", ["references/session.md"]),
+                    ("placement", ["references/placement.md"]),
+                    ("report", ["references/report.md"])],
+    "module-create": [("analyse", ["references/analyse.md"]), ("child", ["references/child.md"]),
+                      ("fill", ["references/fill.md"])],
+    "module-split": [("already-split", ["references/already-split.md"]),
+                     ("shapes", ["references/shapes.md"]), ("check", ["references/check.md"])]}
+STEP_ROUTED_EXTRA = {"module-sync": ["references/choose.md"]}  # named by step 4, not a route
 LEAD = ("the scenario named by the invocation (`$scenario`) when one is given, else by the "
         "user's words", "read it, then follow it")
 IF_LINE = "If a `modsys` command exits 1 or 2, read `references/exit-codes.md`."
@@ -363,7 +374,24 @@ def oversize(files: dict, signal: int) -> list[str]:
 
 class SingleScenarioTest(unittest.TestCase):  # P84-AC-025 (the single row), SI-P84-11
     def test_the_audit_covers_every_shipped_skill(self):
-        self.assertEqual(sorted(skill_dirs()), sorted([*ROUTED, *WRAPPED, *SINGLE]))
+        self.assertEqual(sorted(skill_dirs()), sorted([*ROUTED, *WRAPPED, *SINGLE, *STEP_ROUTED]))
+
+    def test_the_writing_skills_route_by_step(self):  # P8.7 X4
+        dirs = skill_dirs()
+        for sid, routes in STEP_ROUTED.items():
+            directory = dirs[sid][1]
+            text = (directory / "SKILL.md").read_text("utf-8")
+            with self.subTest(skill=sid):
+                self.assertEqual(route(text), routes)
+                self.assertNotIn("**Route.**", text)
+                self.assertTrue(section(text, "## Exit codes").strip())
+                files = sorted(["SKILL.md", *(f for _, fs in routes for f in fs),
+                                *STEP_ROUTED_EXTRA.get(sid, [])])
+                self.assertEqual(sorted(skill_files(directory)), files)
+                self.assertEqual(set(read_front_matter(directory / "SKILL.md")),
+                                 {"name", "description"})
+                for _, (name,) in routes:  # every route file is named again by its step
+                    self.assertGreaterEqual(section(text, "## Steps").count(f"`{name}`"), 2, name)
 
     def test_no_route_exit_codes_inline_references_as_before(self):
         dirs = skill_dirs()

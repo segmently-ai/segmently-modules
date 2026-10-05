@@ -17,17 +17,17 @@ ROOT = Path(__file__).resolve().parent.parent
 SYNC = builtin_packs_root() / "core" / "skills" / "module-sync" / "SKILL.md"
 ROLES = builtin_packs_root() / "core" / "skills" / "module-roles" / "SKILL.md"
 
-# The module-sync front matter as the previous release shipped it: it must not change (a new
-# trigger would move the skill's routing).
+# The module-sync front matter: it must not change by accident (a new trigger moves the skill's
+# routing). P8.7 (X3, owner): the trigger widened to a session that revealed module knowledge.
 SYNC_NAME = "module-sync"
 SYNC_DESCRIPTION = (
-    "Brings module docs and registry fields in line with finished work. Asks modsys "
-    "sync-instructions which modules the change touched, which docs to update, which drift "
-    "checks fail and what each field's sync hint says, then edits the docs, updates keywords "
-    "and links, runs the team's sync hooks and checks the result with modsys ci. Autonomous, "
-    "it asks only in four ambiguous cases and never commits. Use at the end of a task that "
-    "changed module code, when the user says \"sync the docs\", \"update the module docs\", or "
-    "when a CI drift check fails.")
+    "Brings module docs and registry fields in line with a work session — what it decided, "
+    "rejected, discovered and changed. Takes the session's knowledge first and the code "
+    "change second, asks modsys sync-instructions which docs to update, prints findings and a "
+    "proposal per module, edits docs, keywords and links, runs the sync hooks and checks with "
+    "modsys ci. Autonomous, it asks only in four ambiguous cases and never commits. Use at "
+    "the end of a session that changed module code or revealed module knowledge, when the "
+    "user says \"sync the session\", \"sync the docs\", or a CI drift check fails.")
 
 
 def doc(name: str) -> str:

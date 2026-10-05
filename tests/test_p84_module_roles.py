@@ -39,8 +39,8 @@ Then continue with step 1.
 4. `modsys lint --json` — fix what the new docs caused.
 5. `modsys next --json` — report what is left.
 """
-OLD_NOT_TO_USE = [
-    "- Nothing changed yet: use `module-scout` or `module-discover`.",
+OLD_NOT_TO_USE = [  # P8.7 D5: the first one also covers a session that only learned something
+    "- Nothing was done or learned yet: use `module-scout` or `module-discover`.",
     "- The work needs a new module: use `module-create` first.",
     "- A module doc grew too long (lint MS030 / MS031): use `module-split`.",
     "- Only lint findings need fixing: use `module-lint`."]
@@ -247,42 +247,18 @@ class KeywordBulletTest(unittest.TestCase):  # P84-AC-020
             self.assertIn(clause, sentence)
 
 
-class ModuleSyncOtherwiseUnchangedTest(unittest.TestCase):  # P84-AC-021
-    """Hashes of module-sync's parts at the commit before this task (normalized by nothing: the
-    text is byte-identical)."""
+class ModuleSyncShapeTest(unittest.TestCase):  # P84-AC-021, as P8.7 D5 rewrote the skill
+    """P8.4 pinned module-sync byte for byte outside its keyword bullet; P8.7 (D5: session first)
+    rewrote it on purpose (its contract: `tests/test_p87_writing_skills.py`). What still holds:
+    no agent runs it, its front matter has two keys, it stays under the skill split signal, and
+    its steps route only by step into the four reference files."""
     def setUp(self):
         self.text = SYNC.read_text("utf-8")
 
-    def test_front_matter_and_sections_are_byte_identical(self):
-        self.assertEqual(sha(self.text.split("\n---\n", 1)[0]), "4e7398941a54f767")
-        for heading, want in (("## When to use", "9d1884d2f1aa2a5d"),
-                              ("## Scope", "c7167d6978b768c4"),
-                              ("## Gates", "3378d708e41114af"),
-                              ("## Exit codes", "d7b4b1d830fdb739")):
-            self.assertEqual(sha(section(self.text, heading)), want, heading)
-
-    def test_steps_are_byte_identical_but_for_the_d1_bullet(self):
-        body = section(self.text, "## Steps")
-        body = body.replace(
-            "   - `keywords`: most changes add none. Add one only for a new feature, command or "
-            "concept that\n     people will name in later tasks and that no keyword or the "
-            "description covers yet — never a\n     code identifier (a class, function, file or "
-            "variable name: code search finds those), never\n     one per task. Keywords only "
-            "grow; a split parent keeps all of them — never remove one from it.\n", OLD_KEYWORDS)
-        steps = re.split(r"\n(?=\d\. )", body)
-        self.assertEqual(len(steps), 9)
-        # step 4 (the third) changed in P8.6: the shared candidate search routed to
-        # references/choose.md (X4, the core pack's size signal) — its text moved, not changed
-        want = ["e3b0c44298fc1c14", "d2e79903bff97d60", "97f1613d07b14caf", "d1546798ad43da68",
-                "20a1f50e91b5bfee", "03123ff43483d0fc", "6a9a2d03de9f7ae5", "d1d63fbb8b51b963",
-                "df716e537892c59d"]
-        self.assertEqual([sha(s) for s in steps], want)
-
-    def test_no_route_no_arguments_no_references_no_agent(self):
+    def test_no_arguments_no_agent_and_its_references(self):
         self.assertEqual(set(read_front_matter(SYNC)), {"name", "description"})
         self.assertEqual(sorted(p.name for p in (SYNC.parent / "references").iterdir()),
-                         ["choose.md"])  # P8.6: the shared candidate search, routed (X4)
-        self.assertNotIn("Route", self.text)
+                         ["choose.md", "placement.md", "report.md", "session.md"])
         for path in (ENGINE / "modsys/defaults/agents").rglob("*"):
             if path.is_file():
                 self.assertNotIn("module-sync", path.read_text("utf-8"), path)

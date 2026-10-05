@@ -31,6 +31,9 @@ def register(sub, common) -> None:
     p.add_argument("--status")
     p.add_argument("--tag", action="append", dest="tags", help="repeatable (applies_when roles)")
     p.add_argument("--role", action="append", dest="roles", help="repeatable (optional roles)")
+    p.add_argument("--no-standard-roles", action="store_true",
+                   help="a child (--parent) only: scaffold just the --role / --tag roles; the "
+                        "parent's docs cover the others")
     p.add_argument("--non-interactive", action="store_true", help="never prompt; fail on gaps")
     p.add_argument("--dry-run", action="store_true", help="show files and entry, write nothing")
     p.set_defaults(func=run)
@@ -58,11 +61,15 @@ def _answers(args) -> dict:
 
 def run(args) -> int:
     ws = Workspace.from_args(args)
+    if args.no_standard_roles and not args.parent:  # before any prompt
+        raise UsageError("--no-standard-roles needs --parent: a top-level module gets every "
+                         "standard role doc")
     answers = _answers(args)
     missing = creator.validate_answers(ws, answers, "submodule" if args.parent else "module")
     if missing and not args.non_interactive and creator.interactive():
         answers = creator.prompt_missing(ws, answers, missing)
-    plan = creator.plan_create(ws, args.name, args.parent, answers)
+    plan = creator.plan_create(ws, args.name, args.parent, answers,
+                               standard_roles=not args.no_standard_roles)
     if not args.dry_run:
         creator.apply_create(ws, plan)
     warnings = creator.keyword_warnings(plan["entry"]["keywords"])

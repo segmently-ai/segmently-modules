@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `modsys create CHILD --parent MODULE --no-standard-roles` scaffolds only the `--role` / `--tag`
+  roles' docs for a child: the parent's docs cover its other roles (`roles list` shows it
+  `inherited`). Without `--parent` it is refused (exit 2) before any prompt.
 - Lint **MS068** (warning): a pack skill's `SKILL.md`, or one `references/*.md` file, is longer than
   `[budgets] skill_split_signal` (default 9000 characters); **MS069** (warning): a pack's `SKILL.md`
   files together are longer than `[budgets] pack_split_signal` (default 53600; `references/` and
@@ -121,6 +124,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   role (one the main doc points to goes in the next reads, unread), and ends with "Suggested
   next reads" (`references/brief.md`). **module-research** reads a
   stub's successor.
+- The writing skills follow the job and the output of the originals they were written from again,
+  their steps in `SKILL.md` and each step's detail in `references/`. **module-sync** takes the
+  session first: the plan goal, decisions with the rejected alternatives, discoveries, patterns,
+  gotchas, new dependencies and critical rules, each mapped to a module and written even when the
+  change does not show it (`references/session.md`); a session without a code change syncs through
+  `sync-instructions --module`. It prints its findings and one proposal per module before it
+  applies them (an interactive mode on request: `ok / skip / edit`), places each item by its
+  readers — a role doc another skill owns is flagged, never hand-edited; po only on a business
+  change, designer only on a UI change; the module doc stays short; "Related Modules" prose agrees
+  with `related_modules`; a child's area content gets its own role doc (`roles add`)
+  (`references/placement.md`) — and reports the plan goal, every decision it took and question it
+  asked, and the budget findings as action items (`references/report.md`). Its description now
+  also names a session that only revealed module knowledge. **module-create** asks the status
+  (code exists → `active`) and the artifacts, analyses existing code before the dry run and
+  proposes the description and keywords from it, asks whether the module renders UI (`--tag ui`),
+  fills the docs to a minimum for an active module, seeds `related_modules`, adds a child's row to
+  the parent's routing table, and shows that `match` on a typical task ranks the new module first.
+  **module-split** refuses a module under the size signals unless the user overrides, proposes
+  three to six children (two with a reason) from a level-two and level-three outline, keeps in the
+  parent every section a tool or another module reads from it, gives a child only the role docs
+  with content, names the legacy file in the index and the baselines, gives the routing table a
+  Lines column and checks that it lists every child; an already-split module gets three paths —
+  add a child, rebalance, report sizes (`references/already-split.md`).
 - The skill-eval graders of `module-discover`, `module-scout` and `module-research` look for their
   own `modsys` command (the skills run in the conversation; their agents only on request).
 - `qa-acceptance-baseline`: a `roles/qa_acceptance.md` on disk that the registry does not list is the
