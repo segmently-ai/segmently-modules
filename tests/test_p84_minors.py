@@ -46,8 +46,9 @@ class ChangelogTest(unittest.TestCase):  # M-1
 
     def test_the_wrong_value_rule_is_told_once(self):
         text = flat(unreleased())
-        self.assertEqual(text.count("wrong value"), 1)
-        self.assertIn("where a wrong value is computed and set, not only where it is read", text)
+        self.assertEqual(text.count("wrong value"), 1)  # P8.6 D2: only its removal is told
+        self.assertNotIn("where a wrong value is computed and set, not only where it is read", text)
+        self.assertIn("The rule that looked for where a wrong value is computed and set", text)
 
     def test_no_line_contradicts_the_caps_being_gone(self):
         text = flat(unreleased())
@@ -58,9 +59,10 @@ class ChangelogTest(unittest.TestCase):  # M-1
                       "route files and packs stay within their split signals unless a decision "
                       "is recorded", text)
 
-    def test_the_thin_skills_are_a_change(self):
+    def test_the_finding_skills_are_one_change(self):  # P8.6: the thin form never shipped stable
         added, changed = (flat(part(unreleased(), h)) for h in ("Added", "Changed"))
-        lead = "`module-discover`, `module-scout` and `module-research` are thin"
+        self.assertNotIn("are thin", added + changed)
+        lead = "`module-discover`, `module-scout` and `module-research` keep their steps in `SKILL.md`"
         self.assertNotIn(lead, added)
         self.assertEqual(changed.count(lead), 1)
 

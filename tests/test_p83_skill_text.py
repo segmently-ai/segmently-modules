@@ -256,9 +256,10 @@ class ReleaseNotesTest(unittest.TestCase):  # final review I-3
         entries = [" ".join(e.split()) for e in changed.split("\n- ")]
         mine = [e for e in entries if "`ci --baseline`" in e and "never a code identifier" in e]
         self.assertEqual(len(mine), 1, entries)
-        for needle in ("`git grep -n -e <term> -- <paths>`", "where a wrong value is computed",
+        for needle in ("`git grep -n -e <term> -- <paths>`",
                        "saves the gate", "a temporary file outside the repository", "`packs new`"):
             self.assertIn(needle, mine[0])
+        self.assertNotIn("where a wrong value is computed", mine[0])  # P8.6 D2 removed the rule
         self.assertTrue(mine[0].endswith(
             "run `modsys agents-md` and `modsys packs sync` after the upgrade — `--check` "
             "reports the old block and stale copies until then."), mine[0])
