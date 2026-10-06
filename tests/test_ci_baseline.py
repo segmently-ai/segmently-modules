@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from tests.helpers import git, init_git, make_repo, mutate_registry, run
+from tests.helpers import NO_AUTO_MAINTENANCE, git, init_git, make_repo, mutate_registry, run
 
 ENGINE = Path(__file__).resolve().parents[1]
 GOLDEN = Path(__file__).parent / "fixtures" / "ci_baseline_golden"
@@ -483,7 +483,7 @@ class SubprocessTest(CiBaselineCase):  # P83-AC-005, P83-AC-035 (real pipes)
         env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
         env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1",
                    GIT_CEILING_DIRECTORIES=os.environ["GIT_CEILING_DIRECTORIES"],
-                   PYTHONDONTWRITEBYTECODE="1", PYTHONPATH=str(ENGINE))
+                   PYTHONDONTWRITEBYTECODE="1", PYTHONPATH=str(ENGINE), **NO_AUTO_MAINTENANCE)
         return subprocess.run([sys.executable, "-m", "modsys", *argv], input=stdin,
                               capture_output=True, env=env, cwd=str(ENGINE))
 

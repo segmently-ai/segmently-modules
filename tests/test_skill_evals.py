@@ -16,6 +16,7 @@ from pathlib import Path
 
 from modsys.config import builtin_packs_root
 from modsys.skills import file_hashes, front_matter
+from tests.helpers import NO_AUTO_MAINTENANCE
 from tests.test_builtin_content import SKILLS
 
 # the ten skills the `claude plugin eval` suite covers (P4b); module-init and module-adopt are
@@ -183,6 +184,7 @@ class RunnerTest(unittest.TestCase):  # P4B-AC-019
         work = Path(self._tmp.name) / "ws"
         work.mkdir()
         env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        env.update(NO_AUTO_MAINTENANCE)  # the scaffold commits (tests/helpers.py)
         env["PATH"] = f"{self.out / 'runtime/bin'}{os.pathsep}{env['PATH']}"
         scaffold = self.out / "plugin/evals/module-split/outcome/scaffold.sh"
         subprocess.run(["bash", str(scaffold)], cwd=work, env=env, check=True,

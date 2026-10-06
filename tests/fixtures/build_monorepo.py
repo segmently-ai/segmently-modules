@@ -31,7 +31,11 @@ def _git(dest: Path, day: int, *args: str) -> None:
     env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1",
                GIT_AUTHOR_NAME="bookshop", GIT_AUTHOR_EMAIL="dev@bookshop.example",
                GIT_COMMITTER_NAME="bookshop", GIT_COMMITTER_EMAIL="dev@bookshop.example",
-               GIT_AUTHOR_DATE=date, GIT_COMMITTER_DATE=date)
+               GIT_AUTHOR_DATE=date, GIT_COMMITTER_DATE=date,
+               # no automatic maintenance: git 2.54 and 2.55 repack a fresh repository in the
+               # background after a commit, racing the caller's cleanup
+               GIT_CONFIG_COUNT="2", GIT_CONFIG_KEY_0="maintenance.auto",
+               GIT_CONFIG_VALUE_0="false", GIT_CONFIG_KEY_1="gc.auto", GIT_CONFIG_VALUE_1="0")
     subprocess.run(["git", "-C", str(dest), *args], check=True, capture_output=True, env=env)
 
 

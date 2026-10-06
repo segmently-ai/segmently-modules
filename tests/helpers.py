@@ -17,8 +17,16 @@ SPLIT_FIXTURE = Path(__file__).parent / "fixtures" / "bookshop_split"
 # Every git call of the suite — the helpers' and the engine's own, which runs in-process —
 # ignores the developer's global and system git config (e.g. a core.excludesFile hiding *.py)
 # and never finds a repository above the temp dir (a TMPDIR inside a work tree).
+# Nor does it start git's automatic maintenance: git 2.54 and 2.55 repack a fresh test
+# repository after a commit in a detached process that keeps writing under `.git` after the
+# command returned — a temp dir's cleanup then fails ("Directory not empty") and a tree taken
+# before a step differs from the one after it.
+NO_AUTO_MAINTENANCE = {"GIT_CONFIG_COUNT": "2",
+                       "GIT_CONFIG_KEY_0": "maintenance.auto", "GIT_CONFIG_VALUE_0": "false",
+                       "GIT_CONFIG_KEY_1": "gc.auto", "GIT_CONFIG_VALUE_1": "0"}
 os.environ.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1",
-                  GIT_CEILING_DIRECTORIES=os.path.realpath(tempfile.gettempdir()))
+                  GIT_CEILING_DIRECTORIES=os.path.realpath(tempfile.gettempdir()),
+                  **NO_AUTO_MAINTENANCE)
 
 
 os.environ.pop("MODSYS_AGENT_COMMAND", None)  # a developer's own agent never reaches a test
@@ -89,7 +97,8 @@ def git(root: Path, *args: str) -> str:
     env.update(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.com",
                GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.com",
                GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1",
-               GIT_CEILING_DIRECTORIES=os.environ["GIT_CEILING_DIRECTORIES"])
+               GIT_CEILING_DIRECTORIES=os.environ["GIT_CEILING_DIRECTORIES"],
+               **NO_AUTO_MAINTENANCE)
     return subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True,
                           text=True, env=env).stdout
 

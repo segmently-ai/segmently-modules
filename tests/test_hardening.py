@@ -3,6 +3,7 @@ keeps a `.gitignore` intact and states the right conversion; P3.1 rulings and wr
 pinned; the suite is isolated from the developer's git setup."""
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -217,6 +218,15 @@ class IsolationTest(unittest.TestCase):  # P32-AC-028 (the gate runs the suite t
         self.assertEqual(os.environ["GIT_CONFIG_NOSYSTEM"], "1")
         self.assertEqual(os.environ["GIT_CEILING_DIRECTORIES"],
                          os.path.realpath(tempfile.gettempdir()))
+
+    def test_git_never_starts_its_automatic_maintenance(self):  # CI on git 2.55: a background
+        # repack wrote under `.git` while a test removed its temp dir
+        with tempfile.TemporaryDirectory() as tmp:
+            for key, value in (("maintenance.auto", "false\n"), ("gc.auto", "0\n")):
+                self.assertEqual(git(Path(tmp), "config", key), value)  # the helpers' git
+                self.assertEqual(subprocess.run(  # a tool's git, which inherits the environment
+                    ["git", "-C", tmp, "config", key], capture_output=True, text=True,
+                    check=True).stdout, value)
 
     def test_root_search_stops_at_a_ceiling(self):
         with tempfile.TemporaryDirectory() as tmp:

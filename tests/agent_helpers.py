@@ -9,11 +9,11 @@ from pathlib import Path
 from unittest import mock
 
 from tests import SENTINEL_LOG
-from tests.helpers import SPLIT_FIXTURE, copy_fixture, git
+from tests.helpers import NO_AUTO_MAINTENANCE, SPLIT_FIXTURE, copy_fixture, git
 
 FAKE = Path(__file__).with_name("fake_agent.py")
 CLEAN_KEEP = ("PATH", "TMPDIR", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM",
-              "GIT_CEILING_DIRECTORIES")
+              "GIT_CEILING_DIRECTORIES", *NO_AUTO_MAINTENANCE)
 
 
 def picks(*items):
