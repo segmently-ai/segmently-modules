@@ -29,6 +29,25 @@ def as_list(v) -> list:
     return v if isinstance(v, list) else []
 
 
+def context_paths(cf) -> list[tuple[str, object]]:
+    """(label, value) of every doc path in a `context_files` object: a string (`key`), an array
+    (`key[]`), a map of strings or arrays (`key.name`, `key.name[]`). Values are not checked:
+    lint reports a non-string (MS004); `show` reads the strings only."""
+    out = []
+    for key, val in as_dict(cf).items():
+        if isinstance(val, str):
+            out.append((key, val))
+        elif isinstance(val, dict):
+            for sub, path in val.items():
+                if isinstance(path, str):
+                    out.append((f"{key}.{sub}", path))
+                elif isinstance(path, list):
+                    out += [(f"{key}.{sub}[]", p) for p in path]
+        elif isinstance(val, list):
+            out += [(f"{key}[]", p) for p in val]
+    return out
+
+
 def load_registry(path: Path) -> Registry:
     try:
         data = path.read_bytes()

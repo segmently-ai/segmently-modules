@@ -40,6 +40,79 @@ class ShowTest(unittest.TestCase):
         self.assertIn("unknown role", err)
 
 
+class ShowExtensionsTest(unittest.TestCase):
+    """A team's own registry extensions reach `show`: extra docs in any shape lint accepts, the
+    declared fields' values, and a child's own code pointers."""
+
+    FIELDS = ('[fields.oncall_team]\ntype = "string"\n'
+              '[fields.sla_tier]\ntype = "int"\nscope = ["module", "submodule"]\n'
+              '[fields.file_paths]\ntype = "string[]"\nkind = "code_pointer"\n'
+              'scope = ["module", "submodule"]\n')
+
+    def _repo(self, tmp):
+        root = copy_fixture(tmp)
+        for rel in ("modules/catalog/runbook.md", "modules/catalog/notes/a.md",
+                    "modules/catalog/notes/b.md", "modules/catalog/notes/c.md",
+                    "modules/payments/submodules/refunds/faq.md"):
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text("# doc\n", encoding="utf-8")
+        reg_path = root / "modules" / "registry.json"
+        reg = json.loads(reg_path.read_text(encoding="utf-8"))
+        mods = reg["modules"]
+        mods["catalog"]["context_files"].update({
+            "runbook": "modules/catalog/runbook.md",
+            "supplementary": ["modules/catalog/notes/a.md"],
+            "docs": {"style": "modules/catalog/notes/b.md",
+                     "pair": ["modules/catalog/notes/c.md"]}})
+        mods["catalog"].update({"oncall_team": "books", "sla_tier": 1, "notes": "undeclared"})
+        refunds = mods["payments"]["submodules"]["refunds"]
+        refunds["context_files"]["docs"] = {"faq": "modules/payments/submodules/refunds/faq.md"}
+        refunds.update({"sla_tier": 2, "file_paths": ["src/payments/refunds.py"]})
+        mods["payments"]["file_paths"] = ["src/payments/"]
+        reg_path.write_text(json.dumps(reg, indent=2), encoding="utf-8")
+        (root / ".modsys" / "config.toml").write_text(self.FIELDS, encoding="utf-8")
+        return root
+
+    def test_extra_docs_in_every_shape_lint_accepts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo(tmp)
+            _, env, _ = run_json("show", "catalog", "--root", str(root))
+            _, child, _ = run_json("show", "payments/refunds", "--root", str(root))
+            _, lint, _ = run_json("lint", "--root", str(root))
+        self.assertEqual([(r["label"], r["path"]) for r in env["data"]["read"]],
+                         [("universal", "modules/catalog/MODULE.md"),
+                          ("runbook", "modules/catalog/runbook.md"),
+                          ("supplementary", "modules/catalog/notes/a.md"),
+                          ("docs.style", "modules/catalog/notes/b.md"),
+                          ("docs.pair", "modules/catalog/notes/c.md")])
+        self.assertTrue(all(r["exists"] for r in env["data"]["read"]))
+        self.assertIn(("child docs.faq", "modules/payments/submodules/refunds/faq.md"),
+                      [(r["label"], r["path"]) for r in child["data"]["read"]])
+        self.assertNotIn("MS004", [f["code"] for f in lint["data"]["findings"]])
+
+    def test_declared_data_fields_are_shown_core_and_undeclared_are_not(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo(tmp)
+            _, env, _ = run_json("show", "catalog", "--root", str(root))
+            _, child, _ = run_json("show", "payments/refunds", "--root", str(root))
+            _, text, _ = run("show", "catalog", "--root", str(root))
+            _, bare, _ = run_json("show", "payments", "--root", str(FIXTURE))
+        # declared data fields only: core fields are the envelope's, code pointers are `code`
+        self.assertEqual(env["data"]["fields"], {"oncall_team": "books", "sla_tier": 1})
+        self.assertEqual(child["data"]["fields"], {"sla_tier": 2})  # the target's OWN values
+        self.assertEqual(bare["data"]["fields"], {})
+        self.assertIn("field oncall_team", text)
+        self.assertEqual(text.split("field sla_tier", 1)[1].split()[0], "1")
+
+    def test_child_code_lists_its_own_pointers_then_the_parents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo(tmp)
+            _, child, _ = run_json("show", "payments/refunds", "--root", str(root))
+            _, parent, _ = run_json("show", "payments", "--root", str(root))
+        self.assertEqual(child["data"]["code"], ["src/payments/refunds.py", "src/payments/"])
+        self.assertEqual(parent["data"]["code"], ["src/payments/"])
+
+
 class RelatedAndListTest(unittest.TestCase):
     def test_reverse_edges(self):
         _, env, _ = run_json("related", "payments", *R)

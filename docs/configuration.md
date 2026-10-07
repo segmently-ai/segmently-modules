@@ -530,7 +530,8 @@ A hook runs in the root with the event as JSON on stdin
 `MODSYS_HOOK_ID`, `MODSYS_RUN_ID` in its environment. It may print
 `{"proposals": [{op, module, field|doc, value, reason}], "messages": ["…"]}`; the proposals are
 validated like `modsys propose` and queued under agent `hook-<id>`. A crash, a timeout or
-garbage output fails that hook alone.
+garbage output fails that hook alone. A hook reads a changed module's docs and its declared
+fields with `modsys show <module> --json` (`read`, `fields`) instead of parsing the registry.
 
 A hook is a command the repository or a pack commits: it runs with your environment, the agent
 variables included — in a repository you do not trust, `sync --dry-run` runs none.

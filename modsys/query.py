@@ -1,9 +1,11 @@
+import json
 from pathlib import Path
 
 from modsys.changes import code_globs
 from modsys.config import enabled_roles
+from modsys.fields import CORE_FIELDS
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
-from modsys.registry import as_dict, as_list, resolve_module_arg, stub_head
+from modsys.registry import as_dict, as_list, context_paths, resolve_module_arg, stub_head
 from modsys.workspace import Workspace
 
 
@@ -17,12 +19,12 @@ def role_paths(cf: dict, role: str) -> list:
 
 
 def _extras(cf: dict):
-    for key, val in as_dict(cf).items():
-        if key in ("universal", "roles"):
-            continue
-        for p in val if isinstance(val, list) else [val]:
-            if isinstance(p, str):
-                yield key, p
+    """The docs beyond universal and roles, in every shape lint checks (`context_paths`): a
+    string or an array reads as `key`, a map as `key.name`."""
+    rest = {k: v for k, v in as_dict(cf).items() if k not in ("universal", "roles")}
+    for label, p in context_paths(rest):
+        if isinstance(p, str):
+            yield label.removesuffix("[]"), p
 
 
 def _stub_or_unknown(ws, name: str) -> tuple[int, dict]:
@@ -101,10 +103,17 @@ def show_target(ws, target: str, role: str | None, all_roles: bool) -> tuple[int
         if subs:
             result["submodules"] = {c: (as_dict(s).get("description") or "")
                                     for c, s in subs.items()}
-    for name, fdef in ws.fields.items():
-        if fdef.kind == "code_pointer" and entry.get(name):
-            val = entry[name]
-            result["code"].extend(val if isinstance(val, list) else [val])
+    for holder in ([sub, entry] if child else [entry]):  # a child: its own pointers first
+        for name, fdef in ws.fields.items():
+            if fdef.kind == "code_pointer" and holder.get(name):
+                val = holder[name]
+                for p in val if isinstance(val, list) else [val]:
+                    if p not in result["code"]:
+                        result["code"].append(p)
+    own_entry = sub if child else entry  # the target's OWN values, like keywords
+    result["fields"] = {k: v for k, v in own_entry.items()  # declared data; pointers are `code`
+                        if k in ws.fields and k not in CORE_FIELDS
+                        and ws.fields[k].kind != "code_pointer"}
     result["code_globs"] = code_globs(ws.config, result["module"])
     return EXIT_OK, result
 
@@ -207,6 +216,9 @@ def _render_show(d) -> None:
         print(f"  read  {r['label']:<32} {r['path']}{mark}")
     for c in d["code"] + d["code_globs"]:
         print(f"  code  {c}")
+    for name, value in (d.get("fields") or {}).items():
+        shown = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+        print(f"  field {name:<32} {shown}")
     for c, desc in (d.get("submodules") or {}).items():
         print(f"  child {d['module']}/{c:<30} {desc}")
 

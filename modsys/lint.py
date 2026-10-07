@@ -25,7 +25,7 @@ from modsys.config import (BUILTIN_PACKS, PACK_META_KEYS, ROLE_SCHEMA, builtin_d
 from modsys.fields import value_matches
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.query import role_paths
-from modsys.registry import as_dict, as_list, stub_head
+from modsys.registry import as_dict, as_list, context_paths, stub_head
 from modsys.rules import edge_problems, status_problem
 from modsys.skill_sync import read_marker
 from modsys.skills import (AGENT_DIRS, EJECTED, SKILL_KEYS, behind_reason, declared_skills,
@@ -57,22 +57,6 @@ class Finding:
     module: str
     message: str
     path: str | None = None
-
-
-def _context_paths(cf) -> list[tuple[str, object]]:
-    out = []
-    for key, val in as_dict(cf).items():
-        if isinstance(val, str):
-            out.append((key, val))
-        elif isinstance(val, dict):
-            for sub, path in val.items():
-                if isinstance(path, str):
-                    out.append((f"{key}.{sub}", path))
-                elif isinstance(path, list):
-                    out += [(f"{key}.{sub}[]", p) for p in path]
-        elif isinstance(val, list):
-            out += [(f"{key}[]", p) for p in val]
-    return out
 
 
 def _role_docs(cf: dict) -> list:
@@ -138,7 +122,7 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
                 add("MS001", "error", label, f"missing required field '{fname}'")
 
     def check_paths(label, cf, prefix):
-        for key, p in _context_paths(cf):
+        for key, p in context_paths(cf):
             if not isinstance(p, str):
                 add("MS004", "error", label, f"{prefix}.{key} is not a string: {p!r}")
             elif not ws.exists(p):

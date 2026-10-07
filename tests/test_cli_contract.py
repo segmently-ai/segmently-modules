@@ -19,7 +19,7 @@ GOLDEN = [
     (("schema",), {"$schema", "title", "type", "required", "properties"}),
     (("match", "book"), None),
     (("show", "catalog"), {"module", "status", "description", "keywords", "read", "code",
-                           "code_globs"}),
+                           "code_globs", "fields"}),
     (("related", "catalog"), {"module", "edges", "reverse"}),
     (("list",), None),
     (("lint", "--fail-on", "never"), {"findings", "summary", "failed"}),

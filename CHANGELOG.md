@@ -307,6 +307,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Token-budget tests keep the shipped skills' descriptions within a set total and the `context` /
   `show` output within set lengths; skills, route files and packs stay within their split signals
   unless a decision is recorded.
+- `show` (and every read set built from it: `context`, `choose`, `discover`, `sync-instructions`)
+  lists a module's extra docs in every shape lint checks: a `context_files` map of strings or
+  arrays (`"docs": {"thesis": "…"}`) now reads as `docs.thesis`; strings and arrays read as before.
+  `show` also returns `fields` — the target's own values of the declared data fields (core fields
+  and code pointers excluded; `{}` when none; text: a `field` line each) — so a hook or a skill reads
+  a team's own fields without parsing the registry; and a child's `code` lists its own code pointers
+  before its parent's.
 
 ## [0.1.0] - 2026-10-01
 
