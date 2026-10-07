@@ -249,6 +249,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The text work order (`modsys choose --task`) wraps card lines longer than 2,000 characters over
   following lines indented by four spaces (at the last space that fits, else at the limit); the
   task and rule lines, the JSON form, `catalog_digest` and the agent's work order are unchanged.
+- The `po` role template describes the product meaning of a module: purpose and scope (what it
+  owns, where it ends), job stories (**When** … **I want to** … **so that** …, a stable ID, a status
+  from the delivery or QA record or Unknown, the product conditions that change the story), shared
+  product conditions, open product questions and references; the writing guidance sits in template
+  comments the writer removes. The role's description follows ("Product meaning: the jobs the
+  module serves, their conditions and its boundaries"), `module-create` fills the PO doc with job
+  stories, and a role template may run to 60 lines (was 40). Existing PO docs are unchanged.
 
 ### Fixed
 

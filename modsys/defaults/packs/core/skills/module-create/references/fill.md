@@ -16,8 +16,10 @@ signatures, return types, error cases and integration walkthroughs → developer
 flows → architect; test scenarios and test code → qa; a deep dive for one audience → that role.
 
 **Developer doc**: the real import lines, the API patterns with code from the analysis, the
-common correct uses. **Other role docs**: what the analysis says for that audience; a section with
-nothing true to say yet is deleted.
+common correct uses. **PO doc**: job stories (When … I want to … so that …) from the analysis
+and the user's answers, each with the conditions that change it; a story's status only from a
+delivery or QA record, else Unknown. **Other role docs**: what the analysis says for that
+audience; a section with nothing true to say yet is deleted.
 
 **An active module (its code exists) — minimum:** at least three components with real paths;
 at least one right-and-wrong usage example; real import lines in the developer doc.

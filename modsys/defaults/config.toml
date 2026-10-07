@@ -73,7 +73,7 @@ description = "How to test the module; test patterns"
 [roles.po]
 order = 30
 standard = true
-description = "Product context and user stories"
+description = "Product meaning: the jobs the module serves, their conditions and its boundaries"
 
 [roles.architect]
 order = 40

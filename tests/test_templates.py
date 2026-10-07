@@ -63,7 +63,7 @@ class PerRoleTemplatesTest(Fixture):  # P4A-AC-004
                 self.assertEqual(lines[0], f"# Reviews — {role}")
                 self.assertEqual(lines[2], f"> {roles[role]['description']}")
                 self.assertTrue(3 <= sum(l.startswith("## ") for l in lines) <= 5, lines)
-                self.assertLessEqual(len(lines), 40)
+                self.assertLessEqual(len(lines), 60)
                 self.assertNotIn("${", text)
                 texts[role] = text
         self.assertEqual(len(set(texts.values())), 4)
@@ -72,7 +72,7 @@ class PerRoleTemplatesTest(Fixture):  # P4A-AC-004
         for role in STANDARD:
             with self.subTest(role=role):
                 text = (engine_templates() / "roles" / f"{role}.md").read_text(encoding="utf-8")
-                self.assertLessEqual(len(text.splitlines()), 40)
+                self.assertLessEqual(len(text.splitlines()), 60)
                 self.assertTrue(text.startswith("# ${title} — ${role}\n\n> ${role_description}\n"))
 
     def test_a_role_without_its_own_file_gets_the_generic_template(self):
