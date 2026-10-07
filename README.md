@@ -478,7 +478,8 @@ modsys packs sync --agent claude --agent codex   # .claude/skills/module-*/ and 
 - `module-split` — an oversized module split into children (or a split one rebalanced), confirmed before any write;
 - `module-lint` — the gate explained and its safe findings fixed;
 - `module-init` — a codebase without modules taken through `modsys init`, with two stops for you;
-- `module-adopt` — an existing registry read as it is: the config inferred and explained.
+- `module-adopt` — an existing registry read as it is: the config inferred and explained;
+- `module-assistant` — the entry point: sets modsys up, says how to do something, turns `next` into a plan and carries it out on your OK.
 
 Each one, the `ui` / `qa` packs, keeping them current and owning one: [docs/skills.md](docs/skills.md).
 

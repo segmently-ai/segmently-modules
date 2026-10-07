@@ -76,6 +76,10 @@ CORE: dict[str, tuple[str, list[tuple[str, ...]], list[str]]] = {
                      "naming the next command is not asking",
                      # the P5c follow-up: a tied keyword is kept unless the user names an owner
                      "a tied keyword stays on every module that holds it"]),
+    "module-assistant": ("writer", [("next",), ("setup", "--dry-run"), ("templates", "list"),
+                                    ("packs", "sync"), ("code-map", "add"), ("ci",)],
+                         ["Before any write, show the plan", "stops for a new OK",
+                          "Never present a command or a flag you have not seen"]),
     "module-adopt": ("writer", [("adopt", "--dry-run"), ("adopt",), ("lint",)],  # P5B-AC-029
                      ["Explain each inference with its evidence", "`applies_when`",
                       "`deprecated`", "a commented-out doc budget", "Group the findings by code",
@@ -296,12 +300,13 @@ class InstallLineTest(SkillRules):  # P6-AC-019 (D6, SI-4)
         "module-discover": "fa2b6d6ba50b01fd", "module-init": "b64769f4c169e5b0",
         "module-lint": "bc2538a0a39d1da0", "module-research": "2c773e1a29f3fd6d",
         "module-scout": "83221c73a41cb280", "module-split": "25b942d14038d7dd",
-        "module-sync": "c4a88fb9da93da44", "module-roles": "4984dd28497824bb", "qa-acceptance-baseline": "2a0efce95123748f",
+        "module-sync": "c4a88fb9da93da44", "module-roles": "4984dd28497824bb",
+        "module-assistant": "01f613fedfdf3aa4", "qa-acceptance-baseline": "2a0efce95123748f",
         "qa-acceptance": "d6b590ea3a2523eb", "designer": "6bd3019e180a415a"}
 
     def test_every_body_holds_the_one_line(self):
         skills = self.all_skills()
-        self.assertEqual(len(skills), 13)
+        self.assertEqual(len(skills), 14)
         for sid, (_, directory) in skills.items():
             with self.subTest(skill=sid):
                 text = (directory / "SKILL.md").read_text("utf-8")

@@ -72,7 +72,7 @@ class LayoutTest(BuilderRepo):  # P6-AC-008
         self.assertIn("skills/module-lint/references/lint-codes.md",
                       [p.relative_to(self.out / "modsys").as_posix()
                        for p in (self.out / "modsys").rglob("*")])
-        self.assertEqual(len(list((self.out / "modsys/skills").glob("*/SKILL.md"))), 10)
+        self.assertEqual(len(list((self.out / "modsys/skills").glob("*/SKILL.md"))), 11)
 
     def test_bytes_equal_to_the_sources(self):
         for name, pack in PACKS.items():

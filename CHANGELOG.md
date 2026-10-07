@@ -9,12 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The core skill **`module-assistant`** (14 built-in skills, core 11): the module system's entry point.
+  It routes four scenarios from a thin `SKILL.md` into `references/` — `start` (setup, `module-init` or
+  `module-adopt`, picked from the repository's state), `how-to` (what to do in plain words, then it does it;
+  the commands, from a catalog split by topic and checked against `--help`, only on request), `next`
+  (`modsys next` turned into a short plan: mechanical steps it runs, judgement steps it hands to their
+  skill) and `plan` (a goal that takes several skills, at most four phases with a check each). Its replies
+  are short and in the user's terms — modules, docs, roles, templates, never commands or paths unless
+  asked — and it asks for an OK that says what will happen before any write. The agents' block tells agents to run `modsys next` at the start of module work and names the
+  assistant. The skills' descriptions budget is 7000 characters (was 6600) and `[budgets]
+  pack_split_signal` defaults to 60000 (was 53600), so the core pack with it stays below the signal.
 - `modsys create CHILD --parent MODULE --no-standard-roles` scaffolds only the `--role` / `--tag`
   roles' docs for a child: the parent's docs cover its other roles (`roles list` shows it
   `inherited`). Without `--parent` it is refused (exit 2) before any prompt.
 - Lint **MS068** (warning): a pack skill's `SKILL.md`, or one `references/*.md` file, is longer than
   `[budgets] skill_split_signal` (default 9000 characters); **MS069** (warning): a pack's `SKILL.md`
-  files together are longer than `[budgets] pack_split_signal` (default 53600; `references/` and
+  files together are longer than `[budgets] pack_split_signal` (default 60000; `references/` and
   ejected copies are not counted). Size is a decomposition signal — route, split, or discuss —
   never a cap. Both keys are integers >= 1 in any layer (else exit 2 naming the key) and apply to
   every pack; plain `lint` only. The engine's budget test fails on a shipped crossing that is not

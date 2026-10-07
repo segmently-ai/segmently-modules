@@ -101,7 +101,7 @@ MODSYS_GUARD=/path/to/the/private/guard.py python3 tools/release.py \
 | 5 validate | the guard and the organisation scan over the build; our checks of the publish tree; `claude plugin validate --strict` of each plugin and the marketplace |
 | 6 publish repo | on the channel's branch: exactly `plugins/modsys`, `plugins/modsys-ui`, `plugins/modsys-qa` replaced, both marketplace files merged by plugin name, its own sections of `README.md` and `CHANGELOG.md` |
 | 7 commit | `release modsys <version> (<channel>)`; `stable` adds the tags |
-| 8 smoke install | a throw-away `CLAUDE_CONFIG_DIR`: add the marketplace, install `modsys-ui` (its dependency `modsys` comes with it) and `modsys-qa`, check the ten core skills, run the installed `bin/modsys --version` and `lint` on the bookshop fixture — no model call |
+| 8 smoke install | a throw-away `CLAUDE_CONFIG_DIR`: add the marketplace, install `modsys-ui` (its dependency `modsys` comes with it) and `modsys-qa`, check the eleven core skills, run the installed `bin/modsys --version` and `lint` on the bookshop fixture — no model call |
 
 Then, for `stable`, the commit that starts the next version here (`X.Y.(Z+1).dev0`) — so
 `stable` needs `__version__` = `X.Y.Z.devN` (step 2 says so otherwise). A build the channel
@@ -184,7 +184,7 @@ session — never in a pipeline:
   `evals/skills/<skill>/outcome/prompt.md`, their graders read as assertions; `module-adopt`
   and `module-init` from their `evals.json`): the with-skill pass rate is at least 0.8 per
   skill and not below the run without the skill;
-- the trigger check over the thirteen skill descriptions (a judge subagent, three shuffled runs):
+- the trigger check over the fourteen skill descriptions (a judge subagent, three shuffled runs):
   should-trigger at least 0.8 and false-trigger at most 0.1 on the held-out 40 %.
 
 A description is never changed after its trigger check passed. `evals/skills/README.md` says how

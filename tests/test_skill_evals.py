@@ -33,7 +33,7 @@ PRIMARY = {"module-scout": "show", "module-discover": "discover", "module-resear
            "module-sync": "sync-instructions", "module-create": "create", "module-split": "show",
            "module-lint": "(ci|lint)", "designer": "discover",
            "qa-acceptance": "discover", "qa-acceptance-baseline": "show",
-           "module-roles": "roles"}
+           "module-roles": "roles", "module-assistant": "next"}
 WRAPPED = ("module-discover", "module-scout", "module-research")  # each with an agent
 WRITERS = ("module-sync", "module-create", "module-split")
 
@@ -52,13 +52,13 @@ def case_name(case: Path) -> str:
 
 
 class SuiteShapeTest(unittest.TestCase):  # P4B-AC-019
-    def test_fifteen_cases(self):
+    def test_sixteen_cases(self):  # + module-assistant/trigger (2026-10-07)
         expected = ({f"{s}/trigger" for s in P4B_SKILLS} | {f"{s}/outcome" for s in WRITERS}
                     | {"negative/unrelated"})
         self.assertEqual(set(cases()), expected)
-        self.assertEqual(len(expected), 15)
+        self.assertEqual(len(expected), 16)
         names = [case_name(c) for c in cases().values()]
-        self.assertEqual(len(set(names)), 15)
+        self.assertEqual(len(set(names)), 16)
 
     def test_front_matter_case_yaml_and_grader_types(self):
         for rel, case in cases().items():

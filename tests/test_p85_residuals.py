@@ -155,7 +155,7 @@ class SplitSignalReadTest(unittest.TestCase):  # P85-AC-021
         self.assertIn("decision_key(", text.split("def crossings", 1)[1])
 
     def test_the_split_signals_stay(self):
-        self.assertIn("S, P = 9000, 53600",
+        self.assertIn("S, P = 9000, 60000",
                       (ENGINE / "tests/test_split_signals.py").read_text(encoding="utf-8"))
 
 

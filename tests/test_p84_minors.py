@@ -121,7 +121,7 @@ class IgnoredAgentFilesTest(unittest.TestCase):  # M-5
         init_git(self.root)
         notes = self.notes("--agent", "codex")
         self.assertEqual(len(notes), 2)
-        self.assertTrue(notes[0].startswith("git ignores 10 of the 10 skill copies in "
+        self.assertTrue(notes[0].startswith("git ignores 11 of the 11 skill copies in "
                                             ".agents/skills ("), notes[0])
         self.assertEqual(notes[1], AGENT_NOTE.format(k=1, m=3, names="module-scout-agent"))
 

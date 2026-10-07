@@ -9,7 +9,7 @@ from pathlib import Path
 
 from tests.helpers import copy_fixture, run, run_json
 
-S, P = 9000, 53600
+S, P = 9000, 60000
 SHELF = "stock-check"
 
 
@@ -142,13 +142,13 @@ class Ms069Test(ShelfRepo):  # P84-AC-032
         self.assertEqual(self.codes("MS069"), [])
         self.pack(self.skills(P + 1))
         self.assertEqual(self.codes("MS069"), [
-            ("MS069", "warning", "*", "pack 'shelf': 53601 characters of skills > pack split "
-             "signal 53600 — route, split a skill out, or split the pack",
+            ("MS069", "warning", "*", "pack 'shelf': 60001 characters of skills > pack split "
+             "signal 60000 — route, split a skill out, or split the pack",
              ".modsys/packs/shelf/pack.toml")])
 
     def test_the_signal_is_configurable(self):
         self.pack(self.skills(P + 1))
-        self.config("[budgets]\npack_split_signal = 53601\n")
+        self.config("[budgets]\npack_split_signal = 60001\n")
         self.assertEqual(self.codes("MS069"), [])
         self.config("[budgets]\npack_split_signal = 100\n")
         self.assertIn("pack split signal 100", self.codes("MS069")[0][3])
@@ -238,7 +238,7 @@ class BudgetKeysTest(ShelfRepo):  # P84-AC-034
     def test_the_defaults_file_holds_both_keys(self):
         from modsys.config import core_defaults
         b = core_defaults()["budgets"]
-        self.assertEqual((b["skill_split_signal"], b["pack_split_signal"]), (9000, 53600))
+        self.assertEqual((b["skill_split_signal"], b["pack_split_signal"]), (9000, 60000))
 
     def test_the_starter_config_of_init_is_unchanged(self):
         from modsys.init_cmd import starter_config
@@ -431,7 +431,7 @@ class DocsTest(unittest.TestCase):  # P84-AC-037
 
     def test_configuration_reference(self):
         text = self.doc("docs/configuration.md")
-        for needle in ("| `skill_split_signal` | `9000` |", "| `pack_split_signal` | `53600` |",
+        for needle in ("| `skill_split_signal` | `9000` |", "| `pack_split_signal` | `60000` |",
                        "An integer >= 1", "| MS068 | warning |", "| MS069 | warning |",
                        "`references/*.md`", "(plain `lint` only)"):
             self.assertIn(needle, text)

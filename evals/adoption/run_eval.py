@@ -19,7 +19,7 @@ modsys CLI of THIS checkout (`python -m modsys`, the checkout on PYTHONPATH):
               CLAUDE.md text -> templates list names the pack template
   skills      a git copy of the bookshop fixture -> [packs] builtin = core, ui, qa -> packs list
               (3 built-in rows) -> lint without MS06x -> packs sync to claude and codex (13 x 2
-              created) -> --check -> agents-md lists the 13 skills -> create --tag ui --tag qa
+              created) -> --check -> agents-md lists the 14 skills -> create --tag ui --tag qa
               (the designer and qa_acceptance templates) -> a code change: sync-instructions
               names the module, MS050 and the keywords hint -> eject module-sync -> packs sync
               from the edited copy -> packs new core is refused (a reserved id)
@@ -625,7 +625,7 @@ def packs(sc: Scenario) -> None:
 
 # --- skills ------------------------------------------------------------------------------
 
-BUILTIN_SKILLS = ["designer", "module-adopt", "module-create", "module-discover",
+BUILTIN_SKILLS = ["designer", "module-adopt", "module-assistant", "module-create", "module-discover",
                   "module-init", "module-lint", "module-research", "module-roles", "module-scout",
                   "module-split",
                   "module-sync", "qa-acceptance", "qa-acceptance-baseline"]
@@ -656,7 +656,7 @@ def skills(sc: Scenario) -> None:
     def sync_created():
         data, _ = sc.modsys("packs", "sync", "--agent", "claude", "--agent", "codex")
         rows = sorted({r["skill"] for r in data["skills"] if r["status"] == "created"})
-        check(len(data["skills"]) == 26 and rows == BUILTIN_SKILLS, f"sync {data['summary']}")
+        check(len(data["skills"]) == 28 and rows == BUILTIN_SKILLS, f"sync {data['summary']}")
 
     def check_passes():
         sc.modsys("packs", "sync", "--check", "--agent", "claude", "--agent", "codex")
@@ -713,9 +713,9 @@ def skills(sc: Scenario) -> None:
     for name, fn in [("a git copy of the bookshop fixture", fixture),
                      ("[packs] builtin: packs list shows core, qa, ui", enable),
                      ("plain lint: no pack findings", lint_clean),
-                     ("packs sync: 13 skills x 2 agents created", sync_created),
+                     ("packs sync: 14 skills x 2 agents created", sync_created),
                      ("packs sync --check passes", check_passes),
-                     ("agents-md lists the thirteen skills", agents_md),
+                     ("agents-md lists the fourteen skills", agents_md),
                      ("create --tag ui --tag qa renders the pack templates", create_tagged),
                      ("a code change: sync-instructions names catalog, MS050 and the hints",
                       sync_instructions),

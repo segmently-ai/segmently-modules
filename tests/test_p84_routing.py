@@ -52,6 +52,9 @@ STEP_ROUTED["designer"] = [("prototype", ["references/prototype.md"]),
                            ("flow-patterns", ["references/flow-patterns.md"]),
                            ("checklist", ["references/checklist.md"]),
                            ("artifacts", ["references/artifacts.md"])]
+# 2026-10-07 (owner): module-assistant routes by scenario with its own keys — pinned by
+# tests/test_module_assistant.py
+ASSISTANT = {"module-assistant"}
 STEP_ROUTED_EXTRA = {"module-sync": ["references/choose.md"]}  # named by step 4, not a route
 LEAD = ("the scenario named by the invocation (`$scenario`) when one is given, else by the "
         "user's words", "read it, then follow it")
@@ -402,8 +405,9 @@ def oversize(files: dict, signal: int) -> list[str]:
 
 
 class SingleScenarioTest(unittest.TestCase):  # P84-AC-025 (the single row), SI-P84-11
-    def test_the_audit_covers_every_shipped_skill(self):
-        self.assertEqual(sorted(skill_dirs()), sorted([*ROUTED, *WRAPPED, *SINGLE, *STEP_ROUTED]))
+    def test_the_audit_covers_every_shipped_skill(self):  # + ASSISTANT (2026-10-07)
+        self.assertEqual(sorted(skill_dirs()),
+                         sorted([*ROUTED, *WRAPPED, *SINGLE, *STEP_ROUTED, *ASSISTANT]))
 
     def test_the_writing_skills_route_by_step(self):  # P8.7 X4
         dirs = skill_dirs()

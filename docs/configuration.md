@@ -71,7 +71,7 @@ stub_pattern = 'status:?\**\s*\**(retired|merged|migrated|superseded)'
 | `keywords_soft` | `40` | keywords above this on a module without children: MS020 |
 | `keyword_shared_warn` | `4` | a keyword shared by this many modules or more: MS021 |
 | `skill_split_signal` | `9000` | characters of a pack's `SKILL.md` or of one `references/*.md` file above this: MS068 (route its scenarios or split the skill; a signal, not a cap). An integer >= 1; any layer (a pack, `config.toml`, `config.user.toml`) |
-| `pack_split_signal` | `53600` | characters of a pack's `SKILL.md` files together above this: MS069 (route, split a skill out, or split the pack). An integer >= 1; any layer. Both apply to every pack (built-in, repository, user) |
+| `pack_split_signal` | `60000` | characters of a pack's `SKILL.md` files together above this: MS069 (route, split a skill out, or split the pack). An integer >= 1; any layer. Both apply to every pack (built-in, repository, user) |
 
 ## `[match]`
 

@@ -14,8 +14,9 @@ from modsys import skill_sync
 from tests.helpers import copy_fixture, run, run_json
 
 SKILL = "---\nname: api-review\ndescription: Reviews API changes.\n---\n\n# api-review\n"
-CORE = ["module-adopt", "module-create", "module-discover", "module-init", "module-lint",
-        "module-research", "module-roles", "module-scout", "module-split", "module-sync"]
+CORE = ["module-adopt", "module-assistant", "module-create", "module-discover", "module-init",
+        "module-lint", "module-research", "module-roles", "module-scout", "module-split",
+        "module-sync"]
 
 
 class RemoveRepo(unittest.TestCase):
@@ -87,7 +88,7 @@ class RemoveTest(RemoveRepo):  # P6-AC-005
         self.assertEqual(rows["module-sync"]["reason"], "SKILL.md (locally edited; not removed)")
         self.assertEqual(rows["module-scout"]["reason"], "left unmanaged files: NOTES.md")
         self.assertEqual(rows["module-lint"]["source"], "ejected")
-        self.assertEqual((data["summary"]["removed"], data["summary"]["conflict"]), (10, 1))
+        self.assertEqual((data["summary"]["removed"], data["summary"]["conflict"]), (11, 1))
         self.assertEqual(sorted(p.name for p in (self.root / ".agents/skills").iterdir()),
                          ["module-scout", "module-sync", "my-own", "y"])
         self.assertEqual(sorted(p.name for p in (self.root / ".agents/skills/module-scout")
@@ -107,10 +108,10 @@ class RemoveTest(RemoveRepo):  # P6-AC-005
             "0 invalid"])
         after = self.hashes(".agents/", ".claude/")
         self.assertEqual(after, self.untouched)  # nothing packs sync did not create changed
-        self.assertEqual(len([p for p in (self.root / ".claude/skills").iterdir()]), 11)
+        self.assertEqual(len([p for p in (self.root / ".claude/skills").iterdir()]), 12)
         shutil.rmtree(self.root / ".agents/skills/module-scout")  # the user's own notes
         data = self.sync("--agent", "cursor")  # --remove never edits the config
-        self.assertEqual(data["summary"]["created"], 11)
+        self.assertEqual(data["summary"]["created"], 12)
 
     def test_ctrl_c_and_an_internal_error(self):  # P6-AC-033
         self.sync("--agent", "cursor")
@@ -177,7 +178,7 @@ class RemoveScopeTest(RemoveRepo):  # P6-AC-032 (SI-10)
         data = self.sync("--agent", "cursor", "--agent", "codex", "--remove")
         self.assertEqual({(r["agent"], r.get("same_as")) for r in data["skills"]},
                          {("cursor", None), ("codex", "cursor")})
-        self.assertEqual(data["summary"]["removed"], 22)  # 11 removed once, 11 same_as rows
+        self.assertEqual(data["summary"]["removed"], 24)  # 12 removed once, 12 same_as rows
         self.assertEqual(data["notes"], [".agents/skills is also where gemini, copilot read "
                                          "skills — the copies are gone for them too",
                                          "codex, cursor are still in [packs] agents: the next "
@@ -198,7 +199,7 @@ class RemoveScopeTest(RemoveRepo):  # P6-AC-032 (SI-10)
         data = self.sync("--agent", "claude", "--agent", "codex", "--remove")
         self.assertEqual({(r["agent"], r.get("same_as")) for r in data["skills"]},
                          {("claude", None), ("codex", "claude")})
-        self.assertEqual(data["summary"]["removed"], 22)  # 11 removed once, 11 same_as rows
+        self.assertEqual(data["summary"]["removed"], 24)  # 12 removed once, 12 same_as rows
         self.assertEqual(list((self.root / ".claude/skills").iterdir()), [])
 
     def test_a_configured_agent_and_a_dry_run_are_named(self):  # final review M-15, M-16
@@ -211,7 +212,7 @@ class RemoveScopeTest(RemoveRepo):  # P6-AC-032 (SI-10)
         self.config(["claude", "codex"])
         self.sync()
         data = self.sync("--agent", "claude", "--remove")
-        self.assertEqual(data["summary"]["removed"], 11)
+        self.assertEqual(data["summary"]["removed"], 12)
         self.assertEqual(data["notes"], [
             "claude is still in [packs] agents: the next packs sync copies its skills again "
             "and packs sync --check is stale — take it out of [packs] agents to keep the copies "

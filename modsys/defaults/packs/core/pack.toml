@@ -34,3 +34,6 @@ path = "skills/module-init"
 
 [skills.module-adopt]
 path = "skills/module-adopt"
+
+[skills.module-assistant]
+path = "skills/module-assistant"

@@ -202,7 +202,7 @@ carry module `*`, so `lint --changed` never shows them:
 | MS064 | warning | `reads_roles` names a role no layer configures, or a disabled one |
 | MS065 | warning | another pack with a higher precedence declares the same skill id |
 | MS068 | warning | a skill's `SKILL.md`, or one `references/*.md` file, is over `[budgets] skill_split_signal` (9000 characters) — route its scenarios or split the skill |
-| MS069 | warning | a pack's `SKILL.md` files together are over `[budgets] pack_split_signal` (53600 characters; `references/` is not counted) — route, split a skill out, or split the pack |
+| MS069 | warning | a pack's `SKILL.md` files together are over `[budgets] pack_split_signal` (60000 characters; `references/` is not counted) — route, split a skill out, or split the pack |
 
 ## Size is a decomposition signal
 

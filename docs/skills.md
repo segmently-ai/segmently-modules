@@ -11,7 +11,7 @@ edit module docs and registry fields, then ask you to review and commit.
 
 | Pack | Adds | Skills |
 |---|---|---|
-| `core` | — | `module-scout`, `module-discover`, `module-research`, `module-sync`, `module-roles`, `module-create`, `module-split`, `module-lint`, `module-init`, `module-adopt` |
+| `core` | — | `module-scout`, `module-discover`, `module-research`, `module-sync`, `module-roles`, `module-create`, `module-split`, `module-lint`, `module-init`, `module-adopt`, `module-assistant` |
 | `ui` | the `designer` role (`roles/designer.md`) | `designer` |
 | `qa` | the `qa_acceptance` role (`roles/qa_acceptance.md`) | `qa-acceptance`, `qa-acceptance-baseline` |
 
@@ -30,7 +30,7 @@ Then copy the skills where the agents read them, tell the agents about them, and
 
 ```bash
 modsys packs list                                          # core, qa, ui … built-in
-modsys packs sync --agent claude --agent codex             # 13 skills × 2 agents: created
+modsys packs sync --agent claude --agent codex             # 14 skills × 2 agents: created
 modsys agents-md --target CLAUDE.md --target AGENTS.md     # the managed block lists the skills
 git add .claude/skills .agents/skills .codex/agents CLAUDE.md AGENTS.md
 ```
@@ -115,10 +115,11 @@ lists the agent (the next `packs sync` copies its skills again).
 | `module-lint` | the gate fails: explains each finding, fixes the safe ones, leaves decisions to you | writes safe fixes | `ci`, `lint`, `registry` |
 | `module-init` | a codebase without modules: maps the code, stops for you to confirm the candidates (gate 3), has one writer per module document it (subagents, or one at a time), reconciles, measures routing, stops again before anything lands (gate 7) | writes through `init`, after your yes | `init status`, `init map`, `init confirm`, `init fanout`, `init next`, `init done`, `init reconcile`, `eval routing --prompt`, `init verify`, `init finish` |
 | `module-adopt` | a registry and docs another tool wrote: infers the config, explains each inference, writes it, shows lint by code, then asks what it cannot guess, fixes nothing (hands that to `module-lint`) | writes the config `adopt` infers | `adopt --dry-run`, `adopt`, `lint` |
+| `module-assistant` | work on the module system itself — set it up (it picks setup, `module-init` or `module-adopt` from the repository's state and asks the agents, files and packs in one round), how to do something (in plain words, then it does it; the commands — checked against `--help` — only when you ask for them), what needs attention (`next` turned into a short plan: mechanical steps it runs, judgement steps it hands to their skill), or a goal that takes several skills (at most four phases, a check each); short replies in your terms — modules, docs, roles, templates — and an OK that says what will happen before any write | writes what the approved plan names, through the verbs or the skills it hands steps to | `next`, `setup --dry-run`, `templates list`, `packs sync`, `code-map add`, `ci` |
 
 A typical task: `module-scout` while it is discussed, `module-discover` once it is agreed,
 the work, then `module-sync`; `module-roles` when a role is new, `module-create`,
-`module-split` and `module-lint` when the registry itself needs work; `module-init` or `module-adopt` once, to start. The writers never edit a frozen `*.legacy.md` file. `module-sync`
+`module-split` and `module-lint` when the registry itself needs work; `module-init` or `module-adopt` once, to start; `module-assistant` when you do not know which of them, or what the repository needs now (`modsys next`). The writers never edit a frozen `*.legacy.md` file. `module-sync`
 decides on its own and asks only in four cases (an update that fits two children equally, new
 work that may be a new module or a child, a change that contradicts a doc claim nobody
 confirmed, text whose only home is a frozen file); `module-create` and `module-split` stop for a
@@ -301,7 +302,10 @@ them, and in every other agent, the words of the request pick the line. A failed
 exit codes sit behind an "if" line in their own file (`references/exit-codes.md`), read only when
 a command fails.
 
-Today `qa-acceptance-baseline` routes `create`, `refresh` and `block`: a module without a
+`module-assistant` routes `start`, `how-to`, `next` and `plan` (its `how-to` keeps a catalog
+split by topic under `references/how-to/`, read one topic at a time; Claude Code:
+`/module-assistant next`, `/module-assistant plan <goal>`). `qa-acceptance-baseline` routes
+`create`, `refresh` and `block`: a module without a
 baseline, one whose baseline must catch up after a change, and a baseline split into per-block
 files (an index plus one file per block; `block` names one, `<category>/<name>`). The other
 skills serve one request each and keep their steps inline; the longer ones point into
