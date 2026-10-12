@@ -29,7 +29,7 @@ DESC = "Customer reviews of books: ratings, comments and moderation."
 KW = [a for k in ("review", "rating", "stars", "comment", "moderation") for a in ("--keyword", k)]
 BOOKSHOP = ["catalog", "checkout", "payments", "payments/refunds"]  # legacy-search is a stub
 ROW_KEYS = {"name", "order", "standard", "enabled", "applies_when", "description", "owner",
-            "docs", "missing", "inherited"}
+            "docs", "missing", "inherited", "skipped"}
 LOCK = "modules/registry.json.lock"
 
 
@@ -935,8 +935,8 @@ class SurfaceTest(Repo):  # P61-AC-026, P61-AC-037 (the `roles` part)
         code, out, _ = run("roles", "--help")
         self.assertEqual(code, 0)
         text = " ".join(out.split())
-        for needle in ("{list,add}", "--root", "--config-dir", "--json", "--all", "--recreate",
-                       "--dry-run", "ROLE", "TARGET"):
+        for needle in ("{list,add,skip}", "--note", "--root", "--config-dir", "--json",
+                       "--all", "--recreate", "--dry-run", "ROLE", "TARGET"):
             self.assertIn(needle, text)
 
     def test_options_may_come_before_or_after_the_targets(self):  # on 3.11 as on 3.12+

@@ -16,7 +16,7 @@ Every code the `lint` and `ci` verbs report. **Safe** = a mechanical fix the ski
 | MS010 | a relation points at a child that does not exist | Ask: the child was renamed or removed |
 | MS011 | a deprecated field is present | Ask: the message names the replacement; moving the value is a decision |
 | MS012 | a field nobody declared is present | Ask: declare it in the team config or a pack, or remove it |
-| MS013 | a value does not match its field type | Safe when the intended value is obvious (a string that should be a list); else Ask |
+| MS013 | a value does not match its field type (or a role value that is no doc path, list of doc paths or not-needed mark) | Safe when the intended value is obvious (a string that should be a list; a role value meant as "not needed": the `false` that `roles skip` writes); else Ask |
 | MS014 | a directory under the modules directory is not registered | Ask: register it (`module-create`) or remove it |
 | MS015 | a role doc is listed for a role that is not configured | Ask: configure the role or drop the doc from `context_files` |
 | MS020 | more keywords than the soft budget (info) | Ask: keep, trim or split |

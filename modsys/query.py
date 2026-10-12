@@ -18,6 +18,18 @@ def role_paths(cf: dict, role: str) -> list:
     return []
 
 
+def skip_mark(value) -> bool:
+    """A role value that says the target needs no doc for the role (`roles skip`): `false`, or
+    `{"skip": NOTE}` with a non-blank string NOTE saying why."""
+    return value is False or (isinstance(value, dict) and set(value) == {"skip"}
+                              and isinstance(value["skip"], str) and bool(value["skip"].strip()))
+
+
+def skip_note(value) -> str | None:
+    """The note of a not-needed mark, None for a bare `false` (or for no mark)."""
+    return value["skip"] if isinstance(value, dict) and skip_mark(value) else None
+
+
 def _extras(cf: dict):
     """The docs beyond universal and roles, in every shape lint checks (`context_paths`): a
     string or an array reads as `key`, a map as `key.name`."""
@@ -83,6 +95,12 @@ def show_target(ws, target: str, role: str | None, all_roles: bool) -> tuple[int
 
     roles = enabled_roles(ws.config) if all_roles else ([role] if role else [])
     cf = as_dict(entry.get("context_files"))
+    for r in roles:  # the roles the target needs no doc for (`roles skip`)
+        held = as_dict(as_dict(sub.get("context_files") if child else cf).get("roles"))
+        if child and r not in held:  # a child with no value of its own reads its parent's
+            held = as_dict(cf.get("roles"))
+        if r in held and skip_mark(held[r]):
+            result.setdefault("not_needed", []).append({"role": r, "note": skip_note(held[r])})
     add("universal (parent INDEX)" if subs else "universal", cf.get("universal"))
     if child:
         ccf = as_dict(sub.get("context_files"))
@@ -214,6 +232,9 @@ def _render_show(d) -> None:
     for r in d["read"]:
         mark = "" if r["exists"] else "  (MISSING ON DISK)"
         print(f"  read  {r['label']:<32} {r['path']}{mark}")
+    for n in d.get("not_needed") or []:
+        why = f" — {n['note']}" if n["note"] else ""
+        print(f"  skip  role:{n['role']} not needed{why}")
     for c in d["code"] + d["code_globs"]:
         print(f"  code  {c}")
     for name, value in (d.get("fields") or {}).items():

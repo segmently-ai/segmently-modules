@@ -17,7 +17,7 @@ the module docs.
    | `lint-error` | `module-lint`; an MS004 item whose command is a `roles add … --recreate` is mechanical: that command |
    | `skills` | `modsys packs sync --dry-run`, then without `--dry-run` — mechanical; a copy in `conflict` was edited locally: ask before anything (keep it, or eject the skill) |
    | `agents-md` | `modsys agents-md --dry-run --target <file>`, then without `--dry-run` — mechanical |
-   | `role` | `module-roles` (it writes and fills the docs) |
+   | `role` | `module-roles` (it writes and fills the docs, or marks the modules that do not need the role, after the user's OK) |
    | `ejected` | `modsys eject <skill> --diff --json`; show what changed upstream; the user takes what they want by hand, then `modsys eject <skill> --rebase --dry-run` and without `--dry-run` |
    | `proposals` | `modsys proposals list --json`; apply or reject each run with the user (`modsys proposals apply --dry-run` first) |
    | `lint-warning` | `module-lint`; MS030 / MS031 (a doc too long) is `module-split`'s job |

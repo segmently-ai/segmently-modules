@@ -1,6 +1,6 @@
 ---
 name: module-roles
-description: Adds a new role's doc to every existing module. Declares the role when it is undeclared, shows the plan with modsys roles add --dry-run, writes the docs, fills each one from that module's code and docs, then checks lint and next. Use when the user says "add a role", "a new role for every module", "the upgrade brought a role", or when modsys next names roles add.
+description: Adds a new role's doc to every existing module, or marks a module that does not need the role. Declares the role when it is undeclared, shows the plan with modsys roles add --dry-run, writes the docs, fills each one from that module's code and docs, then checks lint and next. Use when the user says "add a role", "a new role for every module", "the upgrade brought a role", "this module does not need that role", or when modsys next names roles add.
 ---
 
 # module-roles
@@ -9,6 +9,7 @@ description: Adds a new role's doc to every existing module. Declares the role w
 
 - The team (or a newer modsys) added a role, and the existing modules lack its doc.
 - The user asks to add a role to every module, or `modsys next --json` names `roles add` for a role.
+- The user says a module does not need a role, or needs it after all.
 
 ## When not to use
 
@@ -19,8 +20,9 @@ description: Adds a new role's doc to every existing module. Declares the role w
 ## Scope
 
 Writes: one `roles/<role>.md` doc per registered module (a split module's children inherit the
-parent's: `roles add --all` writes none for them; never over an existing doc), and the role's
-declaration in the team config when it is undeclared. It never edits a `*.legacy.md`
+parent's: `roles add --all` writes none for them; never over an existing doc), a not-needed mark
+in the registry for a module the user says needs no doc, and the role's declaration in the team
+config when it is undeclared. It never edits a `*.legacy.md`
 file, never edits code, never commits; ask the user to review and commit. Temporary files go
 outside the repository.
 
@@ -47,11 +49,24 @@ Then continue with step 1.
 4. `modsys lint --json` — fix what the new docs caused.
 5. `modsys next --json` — report what is left.
 
+## A module that does not need the role
+
+Some modules give a role nothing to say — a build tool and a product-owner role, a backend
+module and a designer role. When step 1's plan lists such modules, name them and ask the user
+whether they need the doc at all; before step 2, mark each one the user names:
+`modsys roles skip ROLE MODULE… --note "<why>" --dry-run`, then the same with `--json` instead
+of `--dry-run` (the why in the user's words, one line). Step 2 then leaves those modules alone and
+`next` stops asking for their doc. A module that has the doc is refused: delete the doc
+first, after the user's OK.
+
+The module needs the role after all: `modsys roles add ROLE MODULE --json` writes the doc in place
+of the mark; fill it as in step 3.
+
 ## Gates
 
 Autonomous by default: it declares, writes and fills. It stops and asks only when the role is
-undeclared and what it is for is unclear: the user says what the role covers, then it declares
-the role. Never fill a doc with a claim the module's code and docs do not support.
+undeclared and what it is for is unclear (the user says what the role covers, then it declares
+the role), and before it marks a module as not needing the role (the user names the modules). Never fill a doc with a claim the module's code and docs do not support.
 
 ## Exit codes
 

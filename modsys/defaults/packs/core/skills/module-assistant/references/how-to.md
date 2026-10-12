@@ -20,7 +20,7 @@ say plainly when modsys has no way to do it, naming the closest thing it has.
 |---|---|
 | set up, upgrade, agents, built-in packs, the agents' block in CLAUDE.md / AGENTS.md | `references/how-to/setup.md` |
 | modules: create, children, status, split, remove or rename, registry layout | `references/how-to/modules.md` |
-| roles and templates: add a role, change a role's or `MODULE.md`'s template | `references/how-to/roles-templates.md` |
+| roles and templates: add a role, mark a module that does not need a role (and undo it), change a role's or `MODULE.md`'s template | `references/how-to/roles-templates.md` |
 | registry fields and code mapping: declare a field, set a value, code pointers, `[[code_map]]`, coverage | `references/how-to/fields-code.md` |
 | keeping docs current: after a change, drift, proposals for pipelines, the CI gate | `references/how-to/upkeep.md` |
 | packs, skills and hooks: a team pack, sync or eject a skill, `post_sync` hooks | `references/how-to/packs-hooks.md` |

@@ -31,6 +31,21 @@ The `module-roles` skill: it declares the role when it is new (a `[roles.<name>]
 scaffolds its doc; for existing modules `modsys roles add <role> <module> --dry-run`, then
 without `--dry-run`.
 
+## A module that does not need a role
+Some modules have nothing for a role to say — a backend module and the designer, a build tool
+and the product owner. Mark it once instead of writing an empty doc:
+`modsys roles skip <role> <module>… --note "<why>" --dry-run`, then without `--dry-run`. The
+registry then holds `false` (or `{"skip": "<why>"}` with the note) for that role: `next` stops
+asking for the doc, `roles add <role> --all` leaves the module alone, `show --role <role>` says
+the role is not needed and why. Ask the user which modules before marking them, and keep the
+why in the note — one line in their words. A module that has the doc is refused: delete the
+doc first, after the user's OK. A role no module needs: `enabled = false` in its table instead.
+
+## The module needs the role after all
+`modsys roles add <role> <module> --dry-run`, then without `--dry-run`: it writes the doc in
+place of the mark; fill it from the module's code and docs.
+
 ## See the roles and who lacks a doc
 `modsys roles list --json` — every role, its `docs` and `missing` modules; a child without its
-own doc is `inherited` (the parent's covers it). Hide a role: `enabled = false` in its table.
+own doc is `inherited` (the parent's covers it); `skipped` = the modules marked as not needing
+it. Hide a role: `enabled = false` in its table.

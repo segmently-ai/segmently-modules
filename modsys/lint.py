@@ -11,6 +11,7 @@ skill_split_signal` · MS069 a pack's `SKILL.md` files together over `pack_split
 warnings, plain `lint` only: a size is a decomposition signal, never a cap) ·
 with --changed: MS050 code changed but no doc of its module · MS051 frozen legacy snapshot
 modified or deleted (report narrowed to the changed modules)."""
+import json
 import os
 import re
 from collections import Counter
@@ -24,7 +25,7 @@ from modsys.config import (BUILTIN_PACKS, PACK_META_KEYS, ROLE_SCHEMA, builtin_d
                            delivery_for, discover_packs, enabled_roles)
 from modsys.fields import value_matches
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
-from modsys.query import role_paths
+from modsys.query import role_paths, skip_mark
 from modsys.registry import as_dict, as_list, context_paths, stub_head
 from modsys.rules import edge_problems, status_problem
 from modsys.skill_sync import read_marker
@@ -134,10 +135,14 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
         roles = cf.get("roles") if isinstance(cf, dict) else None
         if roles is not None and not isinstance(roles, dict):
             add("MS013", "error", label, "field 'context_files.roles' does not match type object")
-        for r in as_dict(roles):
+        for r, value in as_dict(roles).items():
             if r not in declared_roles:
                 add("MS015", "warning", label,
                     f"role '{r}' is not configured (declare [roles.{r}] in config or a pack)")
+            if not (value is None or isinstance(value, (str, list)) or skip_mark(value)):
+                add("MS013", "error", label,
+                    f"context_files.roles.{r} is neither a doc path, a list of doc paths nor a "
+                    f'not-needed mark (false or {{"skip": "<note>"}}): {json.dumps(value)}')
 
     for name, entry in modules.items():
         if not isinstance(entry, dict):

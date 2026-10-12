@@ -373,6 +373,16 @@ it as `inherited` (a status of its own, neither `docs` nor `missing`), `modsys n
 for it and `roles add ROLE --all` does not create it. Naming the child (`roles add ROLE
 parent/child`) creates its own doc.
 
+**A module that does not need a role.** Some modules need no doc for a standard role — a
+backend module and a designer role, a build tool and a product-owner role. Say so once:
+`modsys roles skip ROLE MODULE… [--note "why"]` writes the mark into the registry,
+`context_files.roles.<role>` = `false`, or `{"skip": "why"}` with a note. `roles list` counts
+such a module as `skipped` (the text: `not needed N`), not `missing`; `modsys next` stops asking
+for it; `roles add ROLE --all` leaves it alone; `show --role ROLE` names the role as not needed,
+with the note. A module that has the role's doc on disk is refused (delete the doc first). To
+lift the mark, give the module its doc: `modsys roles add ROLE MODULE`. A role that no module
+needs is turned off instead: `[roles.<role>] enabled = false`.
+
 `modsys templates list` prints every template with the layer that wins (`override`,
 `role-template:<pack>`, `pack:<pack>`, `engine`, or `engine-fallback` for a role rendered from
 `roles/_role.md`) and its file. `modsys templates override roles/qa.md` copies the winning
@@ -584,7 +594,7 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS010 | error | a relation's target child is not a child of that module |
 | MS011 | error | a deprecated field is present |
 | MS012 | warning | an undeclared field is present |
-| MS013 | error | a value does not match its field type (or an entry is not an object) |
+| MS013 | error | a value does not match its field type (or an entry is not an object, or a `context_files.roles` value is neither a doc path, a list of doc paths nor a not-needed mark: `false` or `{"skip": "<note>"}`) |
 | MS014 | error | a directory under `modules_dir` is neither registered nor a pointer stub (dot-directories are never modules and are skipped) |
 | MS015 | warning | `context_files.roles` names a role that is not configured |
 | MS020 | info | more keywords than `[budgets] keywords_soft` |

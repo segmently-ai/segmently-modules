@@ -4,8 +4,9 @@ added to EXISTING modules (a team's new role, or a role a newer engine brings).
   list  one row per configured role (enabled or not), by `order` then name: where it comes
         from (`owner`: engine, a pack id, team, user) and its targets — a module, or a child
         `parent/child`, never a pointer stub — with the role's doc registered and on disk
-        (`docs`), with no registered doc (`missing`) and children with none, covered by the
-        parent's doc (`inherited`); read-only, takes no lock
+        (`docs`), with no registered doc (`missing`), children with none, covered by the
+        parent's doc (`inherited`), and targets that need no doc for it (`skipped`: `roles
+        skip`); read-only, takes no lock
   add ROLE (--all | TARGET…) [--recreate] [--dry-run]
         per target (D3): no doc and unregistered → the doc rendered as `create` renders it
         (`create.render_role_doc`) and registered (`created`); a doc on disk, unregistered →
@@ -16,7 +17,14 @@ added to EXISTING modules (a team's new role, or a role a newer engine brings).
         still under the lock — when the registry write fails; every refusal comes before the
         first write: also two targets that would write one doc path. --all leaves a child
         with no doc of its own `inherited`; an explicit child TARGET writes it. An explicit TARGET is
-        taken without its trailing `/` (`checkout/` is `checkout`)."""
+        taken without its trailing `/` (`checkout/` is `checkout`). --all leaves a target marked
+        not needed `skipped`; an explicit TARGET writes its doc in place of the mark.
+  skip ROLE TARGET… [--note TEXT] [--dry-run]
+        marks each target as needing no doc for the role: `context_files.roles.<role>` becomes
+        `false`, or `{"skip": TEXT}` with --note (`marked`; the same mark already there:
+        `unchanged`). Refused before any write: a target with the role's doc on disk (a
+        registered path whose file is gone is replaced by the mark). One registry lock, all or
+        nothing, as add."""
 import argparse
 import contextlib
 import copy
@@ -30,16 +38,18 @@ from modsys.init_finish import restore
 from modsys.layout import build_index
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.packs_cmd import ROLE_NAME
-from modsys.query import role_paths
+from modsys.query import role_paths, skip_mark
 from modsys.registry import as_dict, as_list, resolve_module_arg, stub_head
 from modsys.store import DEFAULT_LOCK_TIMEOUT_S, atomic_write, open_store
 from modsys.workspace import Workspace
 
-ACTIONS = ("list", "add")
-STATUSES = ("created", "registered", "exists", "missing", "recreated", "inherited")
+ACTIONS = ("list", "add", "skip")
+STATUSES = ("created", "registered", "exists", "missing", "recreated", "inherited",
+            "skipped")
 WRITING = {"created": "would create", "registered": "would register",
            "recreated": "would recreate"}  # the text of a --dry-run row
 USAGE = "usage: modsys roles add ROLE (--all | TARGET…) [--recreate] [--dry-run]"
+SKIP_USAGE = "usage: modsys roles skip ROLE TARGET… [--note TEXT] [--dry-run]"
 LOCK_TIMEOUT_S = DEFAULT_LOCK_TIMEOUT_S  # how long `add` waits for the registry lock
 
 
@@ -73,18 +83,24 @@ def register(sub, common) -> None:
                                    "never overwritten, it is only registered; a registered doc "
                                    "whose file is missing is written only with --recreate; "
                                    "--all = every module and child, a split module's INDEX "
-                                   "parent included, never a pointer stub.")
+                                   "parent included, never a pointer stub; it leaves a target "
+                                   "marked not needed. skip ROLE TARGET… [--note TEXT]: mark "
+                                   "each target as needing no doc for the role (false in the "
+                                   "registry, or {\"skip\": TEXT} with --note); roles add "
+                                   "TARGET lifts the mark.")
     p.add_argument("action", choices=ACTIONS)
     p.add_argument("role", nargs="?", metavar="ROLE",
                    help="add: a role that modsys roles list shows")
     p.add_argument("targets", nargs="*", metavar="TARGET",
-                   help="add: a module or parent/child (or a path into the modules dir)")
+                   help="add, skip: a module or parent/child (or a path into the modules dir)")
     p.add_argument("--all", action="store_true", dest="all_targets",
                    help="add: every module and child, never a pointer stub")
     p.add_argument("--recreate", action="store_true",
                    help="add: also write a registered doc whose file is missing")
     p.add_argument("--dry-run", action="store_true",
-                   help="add: report what would be written, write nothing")
+                   help="add, skip: report what would be written, write nothing")
+    p.add_argument("--note", metavar="TEXT",
+                   help="skip: why the module needs no doc for the role (kept with the mark)")
     p.set_defaults(func=run)
     p.__class__ = IntermixedParser  # the sub-parser argparse built, parsing intermixed
 
@@ -188,12 +204,13 @@ def _owner(role: str, layers: list) -> str:
 def role_rows(ws, enabled_only: bool = False) -> list[dict]:
     """The role scan behind `roles list` (and `next`): one row per configured role — or per
     enabled role with `enabled_only` — sorted by order, then name: {name, order, standard,
-    enabled, applies_when, description, owner, docs, missing, inherited}; `docs` = the targets
-    (sorted) whose registered doc paths are all on disk, `missing` = the targets with no registered doc
+    enabled, applies_when, description, owner, docs, missing, inherited, skipped}; `docs` = the
+    targets (sorted) whose registered doc paths are all on disk, `missing` = the targets with no
+    registered doc
     for the role (a registered path whose file is absent is in neither list: lint's MS004);
     `inherited` = the children with no registered doc — `show` reads the parent's role doc for
     them as the baseline, so they are covered, not missing (a parent without a doc stays in
-    `missing`).
+    `missing`); `skipped` = the targets marked as needing no doc for the role (`roles skip`).
     Read-only: never writes, takes no lock."""
     roles, layers = ws.config.get("roles") or {}, _layers(ws)
     modules = ws.registry.modules
@@ -203,12 +220,14 @@ def role_rows(ws, enabled_only: bool = False) -> list[dict]:
         spec = as_dict(spec)
         if enabled_only and not spec.get("enabled", True):
             continue
-        docs, missing, inherited = [], [], []
+        docs, missing, inherited, skipped = [], [], [], []
         for target in targets:
             value = _registered(_holder(modules, target), name)
             paths = role_paths({"roles": {name: value}}, name) if value is not None else []
             if value is None:
                 (inherited if "/" in target else missing).append(target)
+            elif skip_mark(value):
+                skipped.append(target)
             elif paths and all(isinstance(p, str) and p and (ws.root / p).exists()
                                for p in paths):
                 docs.append(target)
@@ -218,7 +237,7 @@ def role_rows(ws, enabled_only: bool = False) -> list[dict]:
                      "applies_when": spec.get("applies_when"),
                      "description": spec.get("description", ""), "owner": _owner(name, layers),
                      "docs": sorted(docs), "missing": sorted(missing),
-                     "inherited": sorted(inherited)})
+                     "inherited": sorted(inherited), "skipped": sorted(skipped)})
     return sorted(rows, key=lambda r: (r["order"], r["name"]))
 
 
@@ -276,9 +295,8 @@ def _values(ws, holder: dict, target: str) -> dict:
         [k for k in as_list(holder.get("keywords")) if isinstance(k, str)])
 
 
-def _plan_target(ws, role: str, target: str, holder: dict, recreate: bool) -> dict:
-    """One target's row: {module, status, path, command?} plus what to write (`write`: root-
-    relative paths, `text`) and whether to register `path` (`register`)."""
+def _check_holder(holder: dict, target: str) -> None:
+    """Refuse a target whose `context_files`, or its `roles`, is present but not an object."""
     cf = holder.get("context_files")  # a key that is present must hold an object (null too)
     if "context_files" in holder and not isinstance(cf, dict):
         raise UsageError(f"context_files of '{target}' is not an object — fix it first "
@@ -286,8 +304,15 @@ def _plan_target(ws, role: str, target: str, holder: dict, recreate: bool) -> di
     if "roles" in as_dict(cf) and not isinstance(cf["roles"], dict):
         raise UsageError(f"context_files.roles of '{target}' is not an object — fix it first "
                          f"(modsys lint)")
+
+
+def _plan_target(ws, role: str, target: str, holder: dict, recreate: bool) -> dict:
+    """One target's row: {module, status, path, command?} plus what to write (`write`: root-
+    relative paths, `text`) and whether to register `path` (`register`). A not-needed mark
+    reads as no registration: the doc is written and registered in its place."""
+    _check_holder(holder, target)
     value = _registered(holder, role)
-    if value is not None:
+    if value is not None and not skip_mark(value):
         paths = role_paths({"roles": {role: value}}, role)
         if not paths or not all(isinstance(p, str) and p for p in paths):
             raise UsageError(f"context_files.roles.{role} of '{target}' is not a path or a list "
@@ -320,6 +345,10 @@ def plan_add(ws, role: str, every: bool, names: list[str], recreate: bool,
     rows = []
     for t in targets:
         holder = _holder(modules, t)
+        if every and skip_mark(_registered(holder, role)):  # marked not needed (`roles skip`)
+            rows.append({"module": t, "status": "skipped", "write": [], "register": False,
+                         "path": f"{_rel_dir(ws, t)}/roles/{role}.md", "text": None})
+            continue
         if every and "/" in t and _registered(holder, role) is None:
             # a child with no doc of its own is covered by its parent's (as `show` reads it);
             # only an explicit TARGET gives it a doc of its own (SI-P81-5)
@@ -399,7 +428,6 @@ def apply_add(ws, role: str, every: bool, names: list[str], recreate: bool) -> l
     after that point leaves every write in place (docs and entries agree)."""
     store = open_store(ws)
     store.lock_timeout_s = LOCK_TIMEOUT_S
-    per_module = ws.config["paths"]["registry_layout"] == "per-module"
     with store.locked():
         written: list[Path] = []
         made: list[Path] = []
@@ -413,24 +441,77 @@ def apply_add(ws, role: str, every: bool, names: list[str], recreate: bool) -> l
                     made += _make_dirs(ws, path.parent, rel)
                     write_new_doc(path, row["text"], rel)
                     written.append(path)
-            touched = _register(raw["modules"], role, rows)
-            files = [store.path] if not per_module else \
-                [store.entry_path(m) for m in sorted(touched)] + [store.path]
-            saved = {p: p.read_bytes() if p.is_file() else None for p in files}
-            stage = (files[:-1] or files) if per_module else files  # being written right now
-            try:
-                if store.commit(original, raw) and per_module:
-                    stage = [store.path]
-                    text, stale = build_index(ws.root, ws.config)
-                    if stale:
-                        atomic_write(store.path, text)
-            except BaseException as e:
-                _put_back(ws, saved, stage, e)
-                raise
+            _commit(ws, store, original, raw, _register(raw["modules"], role, rows))
         except BaseException:
             _remove(written, made)  # still under the lock
             raise
     return [_public(row) for row in rows]  # the commit point was reached
+
+
+def _commit(ws, store, original, raw: dict, touched: set[str]) -> None:
+    """Write `raw` over the registry read as `original` (per-module: the entry files of the
+    `touched` modules, then the index); on any failure every registry file is put back and
+    the error raised."""
+    per_module = ws.config["paths"]["registry_layout"] == "per-module"
+    files = [store.path] if not per_module else \
+        [store.entry_path(m) for m in sorted(touched)] + [store.path]
+    saved = {p: p.read_bytes() if p.is_file() else None for p in files}
+    stage = (files[:-1] or files) if per_module else files  # being written right now
+    try:
+        if store.commit(original, raw) and per_module:
+            stage = [store.path]
+            text, stale = build_index(ws.root, ws.config)
+            if stale:
+                atomic_write(store.path, text)
+    except BaseException as e:
+        _put_back(ws, saved, stage, e)
+        raise
+
+
+# --------------------------------------------------------------------------- roles skip
+
+def _mark(note: str | None):
+    """The registry value of a not-needed mark."""
+    return False if note is None else {"skip": note}
+
+
+def plan_skip(ws, role: str, names: list[str], note: str | None, modules: dict) -> list[dict]:
+    """Every target's row {module, status}: `marked` (the mark to write) or `unchanged` (the
+    same mark is there); refuses — before any write — a target with the role's doc on disk."""
+    rows = []
+    for t in dict.fromkeys(_resolve(ws, modules, arg) for arg in names):
+        holder = _holder(modules, t)
+        _check_holder(holder, t)
+        value = _registered(holder, role)
+        if value is not None and not skip_mark(value):
+            on_disk = [p for p in role_paths({"roles": {role: value}}, role)
+                       if isinstance(p, str) and p and (ws.root / p).exists()]
+            if on_disk:
+                raise UsageError(f"'{t}' has a {role} doc ({on_disk[0]}) — roles skip marks a "
+                                 f"module without one; delete the doc first")
+        same = skip_mark(value) and value == _mark(note)
+        rows.append({"module": t, "status": "unchanged" if same else "marked"})
+    return rows
+
+
+def apply_skip(ws, role: str, names: list[str], note: str | None) -> list[dict]:
+    """Under one registry lock: plan again against the locked registry and write the marks
+    (all or nothing, as `apply_add`)."""
+    store = open_store(ws)
+    store.lock_timeout_s = LOCK_TIMEOUT_S
+    with store.locked():
+        original = store.load()
+        raw = copy.deepcopy(original.raw)
+        rows = plan_skip(ws, role, names, note, raw["modules"])
+        touched = set()
+        for row in rows:
+            if row["status"] == "marked":
+                holder = _holder(raw["modules"], row["module"])
+                holder.setdefault("context_files", {}).setdefault("roles", {})[role] = \
+                    _mark(note)
+                touched.add(row["module"].partition("/")[0])
+        _commit(ws, store, original, raw, touched)
+    return rows
 
 
 def _remove(written: list[Path], made: list[Path]) -> None:
@@ -478,13 +559,19 @@ def run(args) -> int:
     if args.action == "list":
         if args.role is not None or args.targets:
             raise UsageError("roles list takes no ROLE or TARGET")
-        for flag, on in (("--all", args.all_targets), ("--recreate", args.recreate),
-                         ("--dry-run", args.dry_run)):
+        for flag, on, verbs in (("--all", args.all_targets, "roles add"),
+                                ("--recreate", args.recreate, "roles add"),
+                                ("--dry-run", args.dry_run, "roles add and roles skip"),
+                                ("--note", args.note is not None, "roles skip")):
             if on:
-                raise UsageError(f"{flag} applies to roles add")
+                raise UsageError(f"{flag} applies to {verbs}")
         ws = Workspace.from_args(args)
         emit("roles", {"roles": role_rows(ws)}, args.json, _render_list)
         return EXIT_OK
+    if args.action == "skip":
+        return _run_skip(args)
+    if args.note is not None:
+        raise UsageError("--note applies to roles skip")
     if args.role is None:
         raise UsageError(f"roles add needs a ROLE — {USAGE}")
     if args.all_targets and args.targets:
@@ -504,14 +591,38 @@ def run(args) -> int:
     return EXIT_OK
 
 
+def _run_skip(args) -> int:
+    if args.role is None:
+        raise UsageError(f"roles skip needs a ROLE — {SKIP_USAGE}")
+    if args.all_targets:
+        raise UsageError(f"roles skip takes TARGETs, not --all — to turn a role off for every "
+                         f"module, set enabled = false in [roles.{args.role}]")
+    if args.recreate:
+        raise UsageError("--recreate applies to roles add")
+    if not args.targets:
+        raise UsageError(f"roles skip needs a TARGET — {SKIP_USAGE}")
+    note = None if args.note is None else args.note.strip()
+    if note == "":
+        raise UsageError("--note needs a text: why the module needs no doc for the role")
+    ws = Workspace.from_args(args)
+    check_role(ws, args.role)
+    rows = plan_skip(ws, args.role, args.targets, note, ws.registry.modules)  # refusals first
+    if not args.dry_run and any(r["status"] == "marked" for r in rows):
+        rows = apply_skip(ws, args.role, args.targets, note)
+    emit("roles", {"role": args.role, "note": note, "dry_run": args.dry_run, "results": rows},
+         args.json, _render_skip)
+    return EXIT_OK
+
+
 def _render_list(d) -> None:
     for r in d["roles"]:
         kind = ("standard" if r["standard"] else
                 f"tag {r['applies_when']}" if r["applies_when"] else "optional")
         state = "enabled" if r["enabled"] else "disabled"
         inherited = f"  {len(r['inherited'])} inherited" if r.get("inherited") else ""
+        skipped = f"  not needed {len(r['skipped'])}" if r.get("skipped") else ""
         print(f"{r['name']:<20} {r['order']:>5}  {kind:<12} {state:<8}  {r['owner']:<16} "
-              f"docs {len(r['docs']):<4} missing {len(r['missing'])}{inherited}")
+              f"docs {len(r['docs']):<4} missing {len(r['missing'])}{inherited}{skipped}")
 
 
 def _render_add(d) -> None:
@@ -527,3 +638,17 @@ def _render_add(d) -> None:
         print(f"{d['role']}: {summary} — nothing to do")
     else:
         print(f"{d['role']}: {summary}{' (dry run: nothing written)' if d['dry_run'] else ''}")
+
+
+def _render_skip(d) -> None:
+    for r in d["results"]:
+        status = "would mark" if d["dry_run"] and r["status"] == "marked" else r["status"]
+        print(f"{status:<14} {r['module']}")
+    counts = [(s, sum(r["status"] == s for r in d["results"])) for s in ("marked", "unchanged")]
+    summary = ", ".join(f"{n} {s}" for s, n in counts if n)
+    if all(r["status"] == "unchanged" for r in d["results"]):
+        print(f"{d['role']}: {summary} — nothing to do")
+        return
+    why = f" — {d['note']}" if d["note"] else ""
+    dry = " (dry run: nothing written)" if d["dry_run"] else ""
+    print(f"{d['role']}: {summary} not needed{why}{dry}")
