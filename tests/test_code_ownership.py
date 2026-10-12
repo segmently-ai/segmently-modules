@@ -45,10 +45,12 @@ class OwnershipLintTest(Repo):
              "retire it")])
 
     def test_doc_only_silences_it_and_a_stale_name_is_a_warning(self):
-        root = self.repo(RULE + '\n[coverage]\ndoc_only = ["theory", "gone"]\n')
+        root = self.repo(RULE + '\n[coverage]\ndoc_only = ["theory", "gone", "shop/child"]\n')
         self.assertEqual(self.findings(root, "MS054", "MS056"), [
             ("MS056", "warning", "*", "[coverage] doc_only names 'gone', which is not a registry "
-                                      "module")])
+                                      "module"),
+            ("MS056", "warning", "*", "[coverage] doc_only names 'shop/child' — it takes "
+                                      "top-level modules (a module counts its children's code)")])
 
     def test_a_code_pointer_or_a_child_counts_docs_never_do(self):
         root = self.repo(RULE + '\n[fields.file_paths]\ntype = "string[]"\nkind = '
@@ -158,6 +160,26 @@ class BaseTest(Repo):
         self.assertIn(f"base target at {tip[:12]}\nnote: --base target", out)
         code, out, _err = run("ci", "--base", "target", "--root", str(root))
         self.assertIn(f"since target at {tip[:12]}", out)
+
+    def test_a_shallow_clone_says_to_fetch_the_history(self):
+        from tests.helpers import git
+        root = self.repo()
+        git(root, "checkout", "-q", "-b", "target")
+        (root / "src/shop/c.py").write_text("c = 1\n", encoding="utf-8")
+        git(root, "add", "-A")
+        git(root, "commit", "-q", "-m", "target moves on")
+        git(root, "checkout", "-q", "main")
+        (root / "src/shop/d.py").write_text("d = 1\n", encoding="utf-8")
+        git(root, "add", "-A")
+        git(root, "commit", "-q", "-m", "main moves on")
+        clone = root.parent / "clone"
+        git(root.parent, "clone", "-q", "--depth", "1", "--no-single-branch",
+            f"file://{root}", str(clone))
+        code, env, err = run_json("ci", "--base", "origin/target", "--fail-on", "never",
+                                  "--root", str(clone))
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("this clone is shallow: fetch the history first (git fetch --unshallow; "
+                      "in CI a full checkout) to find the merge base", env["data"]["notes"][-1])
 
     def test_a_failed_step_names_the_severity_it_fails_at(self):
         root = self.repo('[lint]\nlink_severity = "warning"\n' + RULE)

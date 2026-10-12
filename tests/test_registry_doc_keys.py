@@ -94,5 +94,30 @@ class DocKeyTest(unittest.TestCase):
                 self.assertIn(why, self.refused(*argv))
 
 
+    def test_a_path_outside_the_repository_is_refused(self):
+        outside = self.root.parent / "outside.md"
+        outside.write_text("# out\n", encoding="utf-8")
+        for value in (json.dumps(str(outside)), '"../outside.md"', '["modules/catalog/api.md", '
+                                                                   '"../outside.md"]'):
+            with self.subTest(value=value):
+                self.assertIn("is outside the repository", self.refused(
+                    "set", "catalog", KEY, value))
+
+    def test_proposals_check_the_path_and_conflict_with_context_files(self):
+        def propose(field, value, run_id):
+            return run("propose", "--module", "catalog", "--op", "set", "--field", field,
+                       "--value", value, "--reason", "r", "--run-id", run_id, *self.R)
+        code, _out, err = propose(KEY, '"modules/catalog/nope.md"', "g0")
+        self.assertEqual(code, 2)
+        self.assertIn("modules/catalog/nope.md is missing on disk (lint MS004)", err)
+        whole = json.dumps({**self.cf(), "supplementary": ["modules/catalog/api.md"]})
+        self.assertEqual(propose("context_files", whole, "g1")[0], 0)
+        self.assertEqual(propose(KEY, '"modules/catalog/history.md"', "g2")[0], 0)
+        code, env, err = run_json("proposals", "apply", *self.R)
+        self.assertEqual(err, "")
+        statuses = sorted(r["status"] for f in env["data"]["files"] for r in f["results"])
+        self.assertEqual(statuses, ["applied", "rejected"])
+
+
 if __name__ == "__main__":
     unittest.main()

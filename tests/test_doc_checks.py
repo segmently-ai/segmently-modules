@@ -4,6 +4,7 @@ reads as · MS017 (info) the unregistered docs directly in a module's directory,
 module · MS041 a link whose target is missing (`[lint] link_severity`) · MS042 (info) an anchor
 that names no heading · MS043 (info) backticked repository paths missing on disk, one finding per
 module."""
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -218,6 +219,80 @@ class StalePathTest(Repo):
         write(self.root, ".gitignore", "out/\n")
         git(self.root, "rm", "-r", "-q", "--cached", "out")
         self.assertEqual(self.findings("MS043"), [])
+
+
+
+class ReviewFixesTest(Repo):  # the final review of 0.1.4: what the first cut got wrong
+    def test_only_markdown_docs_are_read_as_docs(self):
+        write(self.root, "modules/checkout/flow.png", b"\x89PNG\0\0\0")
+        write(self.root, "src/catalog/service.py", "fns[0](ctx)\n")
+        mutate_registry(self.root, lambda d: d["modules"]["checkout"]["context_files"].update(
+            supplementary=["modules/checkout/flow.png", "src/catalog/service.py"]))
+        self.assertEqual(self.findings("MS005", "MS041", "MS042", "MS043"), [])
+
+    def test_footnotes_comments_and_inline_fences_are_no_links(self):
+        write(self.root, CHECKOUT, "# Checkout\n\n[^1]: Footnote text here\n"
+              "[note]: Do not edit by hand\n<!-- [x](gone-1.md) -->\n<!--\n[y](gone-2.md)\n"
+              "-->\n```js const x = 1```\n[z](gone-3.md)\n[ref]: ./gone-4.md \"title\"\n")
+        self.assertEqual([msg.split(" — ")[0] for _c, _s, _m, msg, _p in self.findings("MS041")],
+                         ["line 10: link to gone-3.md", "line 11: link to ./gone-4.md"])
+
+    def test_one_dot_dot_too_many_names_the_depth(self):
+        write(self.root, CHECKOUT, "# Checkout\n\n[x](../../../src/catalog/service.py)\n"
+              "[y](../../../../elsewhere/x.md)\n")
+        self.assertEqual([msg for _c, _s, _m, msg, _p in self.findings("MS041")], [
+            "line 3: link to ../../../src/catalog/service.py — ../src/catalog/service.py is "
+            "missing on disk (from the repository root it is src/catalog/service.py: fix the ../ "
+            "depth)"])
+
+    def test_github_anchors(self):
+        text = ("\ufeff# First\n\n> ## Quoted heading\n- ## Listed heading\n"
+                "## _Private_ API\n## A &amp; B\n## snake_case_name\n")
+        self.assertEqual(anchors(text), {"first", "quoted-heading", "listed-heading",
+                                         "private-api", "a--b", "snake_case_name"})
+
+    def test_a_bom_never_hides_the_first_heading_of_a_target(self):
+        write(self.root, "modules/catalog/MODULE.md", b"\xef\xbb\xbf# Catalog\n")
+        write(self.root, CHECKOUT, "# Checkout\n\n[c](../catalog/MODULE.md#catalog)\n")
+        self.assertEqual(self.findings("MS042"), [])
+
+    def test_long_runs_stay_fast(self):
+        import time
+        write(self.root, CHECKOUT, "# Checkout\n\nx " + "`" * 4000 + "\n## a" + " " * 16000
+              + "b\n" + "`a` " * 3000 + "\n")
+        start = time.monotonic()
+        self.findings("MS041")
+        self.assertLess(time.monotonic() - start, 2.0)
+
+    def test_nothing_outside_the_root_is_read(self):
+        outside = Path(self._tmp.name) / "outside"
+        write(outside.parent, "outside/creds.md", "# Creds\n\n[SECRET-TOKEN](SECRET-TOKEN)\n")
+        mutate_registry(self.root, lambda d: d["modules"]["checkout"]["context_files"].update(
+            supplementary=[str(outside / "creds.md"), "../outside/creds.md"]))
+        mutate_registry(self.root, lambda d: d["modules"].update({
+            "../outside": {"name": "../outside", "status": "active", "description": "x",
+                           "keywords": ["x"]},
+            "bad\u0000name": {"status": "active", "description": "x", "keywords": ["x"]}}))
+        code, env, err = run_json("lint", "--root", str(self.root), "--fail-on", "never")
+        self.assertEqual((code, err), (0, ""))
+        text = json.dumps(env["data"]["findings"])
+        self.assertNotIn("SECRET", text)
+        self.assertNotIn("creds.md is not registered", text)
+        self.assertNotIn("1 doc(s) in modules/../outside", text)
+
+    def test_lint_changed_never_lists_the_repository(self):
+        from unittest import mock
+        import subprocess
+        write(self.root, "modules/catalog/roles/developer.md", "# Dev\n\n`src/catalog/gone.py`\n")
+        init_git(self.root)
+        write(self.root, "src/catalog/service.py", "x = 2\n")
+        with mock.patch("modsys.changes.subprocess.run", wraps=subprocess.run) as spy:
+            code, env, err = run_json("lint", "--changed", "--root", str(self.root),
+                                      "--fail-on", "never")
+        self.assertEqual((code, err), (0, ""))
+        self.assertNotIn("MS043", [f["code"] for f in env["data"]["findings"]])
+        self.assertNotIn(["ls-files", "-z"],  # the tracked listing: only MS043 asks for it
+                         [c.args[0][3:] for c in spy.call_args_list])
 
 
 if __name__ == "__main__":

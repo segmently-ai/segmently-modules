@@ -3,6 +3,8 @@ registry document; persistence is the store's job (modsys.store)."""
 import difflib
 import hashlib
 import json
+import posixpath
+import re
 
 from modsys.fields import FieldDef, value_matches
 from modsys.output import UsageError
@@ -117,6 +119,21 @@ def apply_field_op(raw: dict, fields: dict[str, FieldDef], op: str, target: str,
 DOC_KEY_PREFIX = "context_files."
 
 
+def check_doc_key_paths(field: str, op: str, value, exists) -> None:
+    """Refuse a `context_files.<key>` write whose new path is missing on disk (lint MS004);
+    `exists` = the workspace's path test. Writers and proposals both check it."""
+    for path in doc_key_paths(field, op, value):
+        if isinstance(path, str) and path.strip() and not exists(path):
+            raise UsageError(f"{field}: {path} is missing on disk (lint MS004) — write the doc "
+                             f"first")
+
+
+def _outside_repo(path: str) -> bool:
+    p = posixpath.normpath(path.replace("\\", "/"))
+    return p.startswith("/") or bool(re.match(r"[A-Za-z]:", p)) or p == ".." or \
+        p.startswith("../")
+
+
 def doc_key_paths(field: str, op: str, value) -> list[str]:
     """The doc paths a `context_files.<key>` write adds (`set`, `append`) — each must exist on
     disk, as lint MS004 requires; none for any other field or op."""
@@ -151,6 +168,12 @@ def _doc_key_op(entry: dict, target: str, op: str, key: str, value) -> bool:
 
     def path(v) -> bool:
         return isinstance(v, str) and bool(v.strip())
+
+    if op in ("set", "append"):  # a path that is already there can always be removed
+        for v in value if isinstance(value, list) else [value]:
+            if path(v) and _outside_repo(v):
+                raise UsageError(f"{field}: {v} is outside the repository — a doc path is "
+                                 f"relative to the root")
 
     if op == "unset":
         if key not in cf:

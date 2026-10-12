@@ -4,7 +4,7 @@ import json
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.store import open_store, serialize
 from modsys.workspace import Workspace
-from modsys.writers import OPS, apply_field_op, doc_key_paths, unified_diff
+from modsys.writers import OPS, apply_field_op, check_doc_key_paths, unified_diff
 
 
 def register(sub, common) -> None:
@@ -35,10 +35,7 @@ def parse_value(op: str, text: str | None):
 def run(args) -> int:
     ws = Workspace.from_args(args)
     value = parse_value(args.op, args.value)
-    for path in doc_key_paths(args.field, args.op, value):
-        if isinstance(path, str) and path.strip() and not ws.exists(path):
-            raise UsageError(f"{args.field}: {path} is missing on disk (lint MS004) — write "
-                             f"the doc first")
+    check_doc_key_paths(args.field, args.op, value, ws.exists)
     store = open_store(ws)
     data = {"op": args.op, "target": args.target, "field": args.field,
             "dry_run": args.dry_run, "changed": False}

@@ -31,7 +31,8 @@ from pathlib import Path
 
 from modsys.output import UsageError
 from modsys.store import atomic_write, file_lock, file_sha256, open_store, utc_now
-from modsys.writers import OPS as FIELD_OPS, apply_field_op, entry_for, entry_sha256
+from modsys.writers import (OPS as FIELD_OPS, apply_field_op, check_doc_key_paths, entry_for,
+                            entry_sha256)
 
 SCHEMA = "modsys.proposal/1"
 DOC_OPS = ("doc_write", "doc_append")
@@ -113,6 +114,7 @@ def make_item(ws, op: str, module: str, reason: str, field: str | None = None,
             raise UsageError(f"{op} proposals need --field")
         apply_field_op(copy.deepcopy(raw), ws.fields, op, module, field, value,  # validates
                        vocab=ws.config["registry"])
+        check_doc_key_paths(field, op, value, ws.exists)  # context_files.<key>: on disk
         return {"op": op, "module": module, "field": field, "value": value, "reason": reason,
                 "base_sha256": entry_sha256(raw, module)}
     if op in DOC_OPS:
@@ -184,8 +186,10 @@ def _apply_item(ws, raw: dict, start_raw: dict, docs: dict, touched: dict, file_
         entry_for(raw, module)  # unknown module / child -> UsageError, for every op
         if op in FIELD_OPS:
             field, value = item["field"], item.get("value")
-            key = ("field", module, field)
+            # `context_files.<key>` shares its conflict key with `context_files` itself
+            key = ("field", module, field.partition(".")[0])
             vocab = ws.config["registry"]
+            check_doc_key_paths(field, op, value, ws.exists)
             if not apply_field_op(copy.deepcopy(raw), ws.fields, op, module, field, value,
                                   vocab=vocab):
                 return {**result, "status": "noop"}

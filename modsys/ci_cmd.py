@@ -11,7 +11,7 @@ import re
 from dataclasses import asdict
 
 from modsys.changes import (branch_point, changed_files, commit_ref, commit_sha, diff_names,
-                            repo_files, require_work_tree)
+                            is_shallow, repo_files, require_work_tree)
 from modsys.coverage_cmd import coverage_report, percent
 from modsys.lint import FAIL_ON, drift_report, failing, lint_registry, severity_counts
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
@@ -184,10 +184,12 @@ def base_notes(root, base: str, commit: str) -> list[str]:
     point = branch_point(root, base)
     if point is None:
         return []
-    fix = (f"pass its merge base: git merge-base {base} HEAD ({point[:SHORT]})" if point else
-           f"{base} and HEAD share no history")
+    fix = (f"on a branch, pass its merge base: git merge-base {base} HEAD ({point[:SHORT]})"
+           if point else "this clone is shallow: fetch the history first (git fetch "
+           "--unshallow; in CI a full checkout) to find the merge base" if is_shallow(root)
+           else f"{base} and HEAD share no history")
     return [f"--base {base} ({commit[:SHORT]}) is not an ancestor of HEAD: the drift also "
-            f"counts what {base} changed that HEAD lacks — on a branch, {fix}"]
+            f"counts what {base} changed that HEAD lacks — {fix}"]
 
 
 def _summary(step: dict, d: dict) -> str:

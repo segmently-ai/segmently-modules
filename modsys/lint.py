@@ -259,7 +259,7 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
                     if n > budgets["role_doc_max"]:
                         add("MS032", "warning", label,
                             f"{n} lines > role budget {budgets['role_doc_max']}", p)
-    out += doc_findings(ws, heading, repo)
+    out += doc_findings(ws, heading, repo if overlap else None)  # --changed: no file list
 
     targets = target_names(modules)
     for rule in as_list(cfg.get("code_map")):
@@ -268,7 +268,10 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
                 f"'{rule['module']}' is not a registry module or child; the rule maps nothing")
     doc_only = as_list(cfg["coverage"].get("doc_only"))
     for name in doc_only:
-        if name not in modules:
+        if isinstance(name, str) and "/" in name and name.partition("/")[0] in modules:
+            add("MS056", "warning", "*", f"[coverage] doc_only names '{name}' — it takes "
+                f"top-level modules (a module counts its children's code)")
+        elif name not in modules:
             add("MS056", "warning", "*", f"[coverage] doc_only names '{name}', which is not a "
                 f"registry module")
     out += pack_findings(ws)

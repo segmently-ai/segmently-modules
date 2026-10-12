@@ -5,6 +5,7 @@ finding per module · MS041 a relative link in a registered doc whose target is 
 (`[lint] link_severity`) · MS042 (info) a `#anchor` that names no heading of its target doc ·
 MS043 (info) backticked repository paths outside the components table that are missing on disk,
 one finding per module."""
+import html
 import os
 import posixpath
 import re
@@ -13,15 +14,20 @@ from modsys.changes import DEPENDENCY_DIRS, code_globs
 from modsys.registry import as_dict, context_paths
 
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
-_CODE_SPAN = re.compile(r"(`+)(.+?)\1")
+_BACKTICKS = re.compile(r"`+")
 _BACKTICK = re.compile(r"`([^`]+)`")
 # an inline link or image: [text](target "title") — one level of nested brackets in the text,
 # one level of parentheses in the target
 _LINK = re.compile(r"!?\[(?:[^\[\]]|\[[^\[\]]*\])*\]\(\s*(<[^>\n]*>|(?:[^\s()]|\([^\s()]*\))*)"
                    r"(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*\)")
-_REF_DEF = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(<[^>]*>|\S+)")
+# a reference definition `[label]: target "title"` — never a footnote `[^1]: text`, never a
+# label followed by prose (`[note]: Do not edit`)
+_REF_DEF = re.compile(r"^ {0,3}\[(?!\^)[^\]]+\]:[ \t]*(<[^>]*>|\S+)"
+                      r"(?:[ \t]+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?[ \t]*$")
 _SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
-_ATX = re.compile(r"^ {0,3}#{1,6}(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$")
+_ATX_OPEN = re.compile(r"^ {0,3}#{1,6}(?=[ \t]|$)")
+_CONTAINER = re.compile(r"^ {0,3}(?:>[ ]?|(?:[-*+]|\d{1,9}[.)])[ \t]+)")  # quote, list item
+_EMPHASIS_UNDERSCORE = re.compile(r"(?<!\w)_+|_+(?!\w)")
 _SETEXT = re.compile(r"^ {0,3}(?:=+|-+)[ \t]*$")
 _HTML_ID = re.compile(r"""\b(?:id|name)\s*=\s*["']([^"']+)["']""")
 _ATTR_ID = re.compile(r"\s*\{#([^}\s]+)\}\s*$")
@@ -29,6 +35,7 @@ _LINE_ANCHOR = re.compile(r"L\d+(?:-L\d+)?")
 _PLACEHOLDER = re.compile(r"[<>{}$*…]|\.\.\.")
 _GLOB = re.compile(r"[*?\[{]")
 GENERATED = frozenset(DEPENDENCY_DIRS) | {"coverage"}  # build output: never a stale doc path
+DOC_SUFFIXES = (".md", ".markdown")  # what is read as a doc: never an image or a source file
 SHOWN = 5
 
 
@@ -46,30 +53,47 @@ def _norm(path: str) -> str:
     return posixpath.normpath(path.replace(os.sep, "/"))
 
 
+def in_repo(path: str) -> bool:
+    """`path` is relative and stays inside the root once normalized (no absolute path, no drive,
+    no `..` that climbs out): the only paths the doc checks read."""
+    p = _norm(path)
+    return not (p.startswith("/") or re.match(r"[A-Za-z]:", p) or p == ".." or
+                p.startswith("../"))
+
+
+def _is_doc(path: str) -> bool:
+    return path.lower().endswith(DOC_SUFFIXES)
+
+
 def _listed(items: list[str]) -> str:
     return ", ".join(items[:SHOWN]) + (", …" if len(items) > SHOWN else "")
 
 
 def _targets(ws):
     """(target, entry, its directory by `create`'s path rule) of every module and child entry
-    that is an object, in registry order."""
+    that is an object, in registry order; the directory is None when it would lie outside the
+    root (a name with `..`) or cannot name a path (a NUL in it)."""
     mdir = ws.config["paths"]["modules_dir"].rstrip("/")
+
+    def folder(rel: str) -> str | None:
+        return rel if in_repo(rel) and "\0" not in rel else None
+
     for name, entry in ws.registry.modules.items():
         if not isinstance(entry, dict):
             continue
-        yield name, entry, f"{mdir}/{name}"
+        yield name, entry, folder(f"{mdir}/{name}")
         for child, sub in as_dict(entry.get("submodules")).items():
             if isinstance(sub, dict):
-                yield f"{name}/{child}", sub, f"{mdir}/{name}/submodules/{child}"
+                yield f"{name}/{child}", sub, folder(f"{mdir}/{name}/submodules/{child}")
 
 
 def registered_docs(ws) -> dict[str, str]:
     """{normalized doc path: the first target that names it} over every `context_files` path
-    (universal, roles, extras) of every module and child."""
+    (universal, roles, extras) of every module and child that lies inside the root."""
     out: dict[str, str] = {}
     for target, entry, _ in _targets(ws):
         for _, path in context_paths(entry.get("context_files")):
-            if isinstance(path, str) and path:
+            if isinstance(path, str) and path and "\0" not in path and in_repo(path):
                 out.setdefault(_norm(path), target)
     return out
 
@@ -82,38 +106,104 @@ def _decode(ws, rel: str) -> tuple[str | None, str | None]:
         if not path.is_file():
             return None, None
         data = path.read_bytes()
-    except OSError:
+    except (OSError, ValueError):
         return None, None
     nul = data.count(b"\0")
     if nul:
         return None, f"holds {nul} NUL byte(s)"
     try:
-        return data.decode("utf-8"), None
+        return data.decode("utf-8").removeprefix("\ufeff"), None
     except UnicodeDecodeError as e:
         line = data[:e.start].count(b"\n") + 1
         return None, f"is not valid UTF-8 (byte 0x{data[e.start]:02x} on line {line})"
 
 
+def _strip_comments(line: str, inside: bool) -> tuple[str, bool]:
+    """`line` without its HTML comments (`<!-- … -->`, which may span lines) and whether a
+    comment is still open at its end."""
+    out, pos = [], 0
+    while True:
+        if inside:
+            end = line.find("-->", pos)
+            if end < 0:
+                return "".join(out), True
+            pos, inside = end + 3, False
+        else:
+            start = line.find("<!--", pos)
+            if start < 0:
+                out.append(line[pos:])
+                return "".join(out), False
+            out.append(line[pos:start])
+            pos, inside = start + 4, True
+
+
 def _outside_fences(text: str):
-    """(line number, line) of every line outside fenced code blocks."""
-    fence = None
+    """(line number, line) of every line outside fenced code blocks and HTML comments (the
+    comments cut out of the line). A backtick run whose line holds another backtick is inline
+    code, not a fence (```` ```js x``` ````)."""
+    fence, comment = None, False
     for n, line in enumerate(text.splitlines(), 1):
         m = _FENCE.match(line)
-        if fence is None:
-            if m:
-                fence = m.group(1)
-                continue
-            yield n, line
-        elif m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) \
-                and not line.strip()[len(m.group(1)):].strip():
-            fence = None
+        if fence is not None:
+            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) \
+                    and not line.strip()[len(m.group(1)):].strip():
+                fence = None
+            continue
+        if m and not comment and not (m.group(1)[0] == "`" and
+                                      "`" in line.strip()[len(m.group(1)):]):
+            fence = m.group(1)
+            continue
+        line, comment = _strip_comments(line, comment)
+        yield n, line
+
+
+def _strip_code_spans(line: str) -> str:
+    """`line` without its code spans: a run of N backticks up to the next run of exactly N (an
+    unmatched run is text). Linear in the line's length."""
+    runs = [(m.start(), m.end()) for m in _BACKTICKS.finditer(line)]
+    following: list[int | None] = [None] * len(runs)
+    last: dict[int, int] = {}
+    for i in range(len(runs) - 1, -1, -1):  # the next run of the same length, right to left
+        n = runs[i][1] - runs[i][0]
+        following[i] = last.get(n)
+        last[n] = i
+    out, pos, i = [], 0, 0
+    while i < len(runs):
+        j = following[i]
+        if j is None:
+            i += 1
+            continue
+        out.append(line[pos:runs[i][0]])
+        pos, i = runs[j][1], j + 1
+    out.append(line[pos:])
+    return "".join(out)
+
+
+def _atx_title(line: str) -> str | None:
+    """The text of an ATX heading (`## Title ##`), inside a block quote or a list item too;
+    None for any other line."""
+    for _ in range(4):  # `> - ## x`: a few container levels at most
+        m = _CONTAINER.match(line)
+        if not m:
+            break
+        line = line[m.end():]
+    m = _ATX_OPEN.match(line)
+    if not m:
+        return None
+    title = line[m.end():].strip()
+    bare = title.rstrip("#")
+    if bare != title and (not bare or bare[-1] in " \t"):  # a closing `##` sequence
+        title = bare.rstrip()
+    return title
 
 
 def _slug(text: str) -> str:
-    """GitHub's heading anchor: link text kept, tags dropped, lower case, everything but
-    letters, digits, `_`, `-` and spaces dropped, spaces as `-`."""
+    """GitHub's heading anchor: link text kept, tags dropped, entities decoded, emphasis
+    underscores dropped (a `snake_case` word keeps its own), lower case, everything but letters,
+    digits, `_`, `-` and spaces dropped, spaces as `-`."""
     text = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", text)
-    text = re.sub(r"<[^>]+>", "", text)
+    text = html.unescape(re.sub(r"<[^>]+>", "", text))
+    text = _EMPHASIS_UNDERSCORE.sub("", text)
     return re.sub(r"[^\w\- ]", "", text.strip().lower()).replace(" ", "-")
 
 
@@ -134,11 +224,11 @@ def anchors(text: str) -> set[str]:
         out.add(slug if count == 0 else f"{slug}-{count}")
 
     previous = ""
-    for _, line in _outside_fences(text):
+    for _, line in _outside_fences(text.removeprefix("\ufeff")):
         out.update(a.lower() for a in _HTML_ID.findall(line))
-        atx = _ATX.match(line)
-        if atx:
-            heading(atx.group(1) or "")
+        title = _atx_title(line)
+        if title is not None:
+            heading(title)
             previous = ""
             continue
         if _SETEXT.match(line) and previous.strip() and not previous.lstrip().startswith(
@@ -154,7 +244,7 @@ def _links(text: str):
     """(line number, target) of every inline link, image and reference definition outside code
     (fenced blocks and code spans)."""
     for n, line in _outside_fences(text):
-        prose = _CODE_SPAN.sub("", line)
+        prose = _strip_code_spans(line)
         for m in _LINK.finditer(prose):
             yield n, m.group(1)
         ref = _REF_DEF.match(prose)
@@ -163,14 +253,17 @@ def _links(text: str):
 
 
 def doc_findings(ws, heading: str, repo) -> list:
-    """MS005, MS016, MS017, MS041, MS042 and MS043 (see the module docstring); `heading` is the
-    components-table heading (`[lint] component_table_heading`) whose table MS040 checks;
-    `repo` = lint's `RepoFiles` (git asked once per run)."""
+    """MS005, MS016, MS017, MS041, MS042 and MS043 (see the module docstring) — over `*.md`
+    docs only; `heading` is the components-table heading (`[lint] component_table_heading`)
+    whose table MS040 checks; `repo` = lint's `RepoFiles` (git asked once per run), None under
+    `lint --changed`, which skips MS043 (it needs the repository's file list)."""
     from modsys.lint import Finding  # lint imports this module
     out: list = []
     docs = registered_docs(ws)
     texts: dict[str, str | None] = {}
     for rel, target in docs.items():
+        if not _is_doc(rel):
+            continue
         text, why = _decode(ws, rel)
         texts[rel] = text
         if why:
@@ -192,7 +285,7 @@ def doc_findings(ws, heading: str, repo) -> list:
         """`name` is a top-level directory holding files git does not ignore (outside git: a
         directory at the root)."""
         if not roots:
-            roots.append(None if repo.error() else
+            roots.append(None if repo.error() else  # `repo` is set: MS043 runs
                          {p.split("/")[0] for p in repo.files() if "/" in p})
         return name in roots[0] if roots[0] is not None else (ws.root / name).is_dir()
 
@@ -202,7 +295,7 @@ def doc_findings(ws, heading: str, repo) -> list:
             continue
         for n, raw in _links(text):
             out += _check_link(ws, rel, target, n, raw, text_of, cache, severity, Finding)
-        for path in _stale_paths(ws, rel, target, text, heading, repo_root):
+        for path in (_stale_paths(ws, rel, target, text, heading, repo_root) if repo else ()):
             stale.setdefault(target, []).append((rel, path))
     for target, found in stale.items():
         doc_names = sorted({doc for doc, _ in found})
@@ -224,11 +317,13 @@ def _orphans(ws, docs: dict[str, str], Finding) -> list:
             names = sorted(p.name for p in (ws.root / rel_dir).iterdir()
                            if p.suffix == ".md" and p.is_file()
                            and not p.name.endswith(".legacy.md"))
-        except OSError:
+        except (OSError, ValueError):
             return []
         return [f"{rel_dir}/{n}" for n in names if _norm(f"{rel_dir}/{n}") not in docs]
 
     for target, entry, base in _targets(ws):
+        if base is None:
+            continue
         for rel in unregistered(f"{base}/roles"):
             stem = posixpath.splitext(posixpath.basename(rel))[0]
             out.append(Finding("MS016", "warning", target, f"{rel} is not registered — agents "
@@ -286,13 +381,13 @@ def _check_link(ws, doc: str, target: str, n: int, raw: str, text_of, cache, sev
         rooted = _norm(path)  # agents read `src/x.ts` from the repository root as well
         if not ws.exists(rel) and not path.startswith(("./", "../")) and ws.exists(rooted):
             rel = rooted
-    if rel == ".." or rel.startswith("../"):
-        return []
+    bare = re.sub(r"^(?:\.\./)+", "", path)
+    hint = (f" (from the repository root it is {_norm(bare)}: fix the ../ depth)"
+            if bare != path and in_repo(bare) and ws.exists(_norm(bare)) else "")
+    if not in_repo(rel):  # outside the repository: not checked, unless it is a depth slip
+        return [Finding("MS041", severity, target, f"line {n}: link to {link} — {rel} is missing "
+                        f"on disk{hint}", doc)] if hint else []
     if not ws.exists(rel):
-        hint = ""
-        bare = re.sub(r"^(?:\.\./)+", "", path)
-        if bare != path and ws.exists(_norm(bare)):
-            hint = f" (from the repository root it is {_norm(bare)}: fix the ../ depth)"
         return [Finding("MS041", severity, target, f"line {n}: link to {link} — {rel} is missing "
                         f"on disk{hint}", doc)]
     anchor = unquote(anchor)

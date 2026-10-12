@@ -103,16 +103,24 @@ def commit_sha(root: Path, ref: str) -> str:
 
 def branch_point(root: Path, base: str) -> str | None:
     """None when the commit `base` is HEAD or one of its ancestors (drift since `base` is the
-    change of this branch); else the merge base of `base` and HEAD (`base` has commits HEAD
-    does not, e.g. a target branch that moved on) — "" when they share no history."""
+    change of this branch), or when git cannot tell; else the merge base of `base` and HEAD
+    (`base` has commits HEAD does not, e.g. a target branch that moved on) — "" when none is
+    found (no shared history, or a shallow clone that lacks it: `is_shallow`)."""
     proc = subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor", _rev(base),
                            "HEAD"], capture_output=True, encoding="utf-8", errors="replace",
                           env=git_env())
-    if proc.returncode == 0:
+    if proc.returncode != 1:  # 0: an ancestor; anything else: an error, nothing to say
         return None
     proc = subprocess.run(["git", "-C", str(root), "merge-base", _rev(base), "HEAD"],
                           capture_output=True, encoding="utf-8", errors="replace", env=git_env())
     return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def is_shallow(root: Path) -> bool:
+    """The repository at `root` is a shallow clone (its history is cut)."""
+    proc = subprocess.run(["git", "-C", str(root), "rev-parse", "--is-shallow-repository"],
+                          capture_output=True, encoding="utf-8", errors="replace", env=git_env())
+    return proc.stdout.strip() == "true"
 
 
 def _paths(output: str) -> list[str]:
