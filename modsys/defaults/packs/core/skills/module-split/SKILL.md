@@ -20,6 +20,9 @@ to the new docs, and routing keeps working.
 
 - The module is under the signals: refuse (step 1) — moving detail into its role docs is a
   `module-sync` job — unless the user explicitly overrides.
+- The doc is long because of dated history ("Sprint N additions", checkpoints), API dumps or
+  checklists: move those into a supplementary doc first (`module-lint`); split only what is
+  still too long after that.
 - A brand-new area is not a split: use `module-create`.
 
 ## Scope

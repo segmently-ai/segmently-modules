@@ -45,7 +45,8 @@ GOLDEN = [
     (("coverage",), {"total", "mapped", "share", "modules", "unmapped"}),
     (("code-map", "list"), None),
     (("code-map", "files", "catalog"), {"target", "files", "total"}),
-    (("ci", "--fail-on", "never"), {"base", "fail_on", "steps", "failed", "notes"}),
+    (("ci", "--fail-on", "never"), {"base", "base_commit", "fail_on", "steps", "failed",
+                                    "notes"}),
     (("templates", "list"), None),
     (("templates", "override", "roles/qa.md", "--dry-run"), {"template", "file", "from",
                                                              "dry_run"}),
@@ -67,7 +68,7 @@ GOLDEN = [
     (("eval", "routing", "--prompt"), {"mode", "per_module", "modules", "prompt"}),  # P5b D3
     (("roles", "list"), {"roles"}),  # P6.1 W3
     (("roles", "add", "designer", "checkout", "--dry-run"), {"role", "dry_run", "results"}),
-    (("next", "--base", "HEAD"), {"version", "items", "skipped"}),  # P6.1 W4
+    (("next", "--base", "HEAD"), {"version", "items", "skipped", "base"}),  # P6.1 W4
     (("catalog",), {"match", "search", "modules"}),  # P8.1 tasks 3a/3b
     (("choose", "--task", "refund a book"),
      {"task", "rules", "cards", "answer_schema", "catalog_digest", "max_picks", "search"}),

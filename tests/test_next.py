@@ -63,12 +63,15 @@ def nxt(root: Path, *argv) -> dict:
     env, end = json.JSONDecoder().raw_decode(out)
     assert out[end:].strip() == "" and set(env) == {"schema", "data"}, out
     assert env["schema"] == "modsys.next/1", env
-    assert list(env["data"]) == ["version", "items", "skipped"], env
+    with_base = "--base" in argv and "base" in env["data"]  # --base inside git: the commit
+    keys = ["version", "items", "skipped"] + (["base"] if with_base else [])
+    assert list(env["data"]) == keys, env
     assert env["data"]["version"] == VERSION
     ranks = [i["rank"] for i in env["data"]["items"]]
     assert ranks == list(range(1, len(ranks) + 1)), ranks
-    for item in env["data"]["items"]:
-        assert list(item) == ["rank", "kind", "summary", "command"], item
+    for item in env["data"]["items"]:  # a role and a no-code item also list their modules
+        extra = ["modules"] if item["kind"] in ("role", "no-code") else []
+        assert list(item) == ["rank", "kind", "summary", "command"] + extra, item
     return env["data"]
 
 
@@ -77,9 +80,13 @@ def rows(data: dict) -> list[tuple]:
 
 
 def text_of(data: dict, version: str = VERSION) -> str:
-    """The text `next` prints for `data`: the version line, then per item `<rank>. <summary>` and
-    the command indented under it — or `nothing to do`."""
+    """The text `next` prints for `data`: the version line, the base line and its notes (with
+    --base inside git), then per item `<rank>. <summary>` and the command indented under it —
+    or `nothing to do`."""
     lines = [f"modsys {version}"]
+    if data.get("base"):
+        lines.append(f"base {data['base']['ref']} at {data['base']['commit'][:12]}")
+        lines += [f"note: {n}" for n in data["base"]["notes"]]
     for i in data["items"]:
         head = f"{i['rank']}. "
         lines += [head + i["summary"], " " * len(head) + i["command"]]
@@ -153,12 +160,15 @@ SEEDED_ITEMS = [
      "modsys lint"),
     ("skills", "skill copies not in sync (claude): stale team-review", "modsys packs sync"),
     ("agents-md", "CLAUDE.md: the modsys block is stale", "modsys agents-md --target CLAUDE.md"),
-    ("role", "architect: no doc in 3 module(s)", "modsys roles add architect --all"),
+    ("role", "architect: no doc in 3 module(s): catalog, checkout, payments",
+     "modsys roles add architect --all"),
     ("ejected", "ejected skill 'team-notes' is behind pack 'team' (ejected from 9.0.0, pack is "
                 "now 9.1.0)", "modsys eject --diff team-notes"),
     ("proposals", "1 pending proposal file(s), 1 item(s)", "modsys proposals list"),
     ("lint-warning", "1 lint warning(s): MS012", "modsys lint"),
     ("unmapped", "1 file(s) map to no module: src/misc/tool.py", "modsys coverage"),
+    ("no-code", "2 active module(s) map no code file, so drift never fires for them: checkout, "
+                "payments", "modsys lint"),
     ("drift", "drift since main: code changed without a doc update: catalog",
      "modsys sync-instructions --from-diff main..HEAD"),
 ]
@@ -456,7 +466,8 @@ class UpgradeTest(unittest.TestCase):  # P61-AC-010, P61-AC-014 (D2: no state fi
         row = {r["name"]: r for r in engine_json(engine, root, "roles", "list")["roles"]}
         self.assertEqual((row["security"]["docs"], row["security"]["missing"]), ([], targets))
         data = engine_json(engine, root, "next")  # (2)
-        self.assertEqual(rows(data), [("role", f"security: no doc in {len(targets)} module(s)",
+        self.assertEqual(rows(data), [("role", f"security: no doc in {len(targets)} module(s): "
+                                               f"{', '.join(targets)}",
                                        "modsys roles add security --all")])
         self.assertEqual(engine_cli(engine, root, "next"),
                          (0, text_of(data), ""))
@@ -505,7 +516,8 @@ class UpgradeTest(unittest.TestCase):  # P61-AC-010, P61-AC-014 (D2: no state fi
              "modsys packs sync"),
             ("agents-md", "CLAUDE.md: the modsys block is stale",
              "modsys agents-md --target CLAUDE.md"),
-            ("role", "security: no doc in 3 module(s)", "modsys roles add security --all"),
+            ("role", "security: no doc in 3 module(s): catalog, checkout, payments",
+             "modsys roles add security --all"),
             ("ejected", "ejected skill 'module-scout' is behind pack 'core' (the pack's files "
                         "changed since the eject)", "modsys eject --diff module-scout")])
         self.assertEqual(engine_cli(engine, root, "next"), (0, text_of(data), ""))
@@ -572,8 +584,10 @@ class EdgesTest(unittest.TestCase):  # P61-AC-029, SI-P61-4, SI-P61-5, SI-P61-7,
                 data = nxt(root, *argv)
                 self.assertEqual(data["skipped"][-2:], [f"unmapped: {reason}", drift])
                 self.assertEqual([i["summary"] for i in data["items"]],  # the others still run
-                                 ["qa: no doc in 2 module(s)", "po: no doc in 3 module(s)",
-                                  "architect: no doc in 3 module(s)"])
+                                 ["qa: no doc in 2 module(s): checkout, payments",
+                                  "po: no doc in 3 module(s): catalog, checkout, payments",
+                                  "architect: no doc in 3 module(s): catalog, checkout, "
+                                  "payments"])
 
     def test_no_code_map_no_unmapped_item(self):  # (c)
         root = copy_fixture(self.tmp)

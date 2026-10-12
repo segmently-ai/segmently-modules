@@ -22,7 +22,7 @@ from modsys.registry import as_dict, as_list
 _GIT_LOCATION_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
                       "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_PREFIX")
 CODE_MAP_SCHEMA = {"id": "str", "module": "str", "pattern": "str", "globs": "list[str]",
-                   "exclusive": "bool"}
+                   "exclusive": "bool", "shared": "bool"}
 # dependency and build directories: never code of the repository's own modules (a walk outside
 # git skips them; `adopt` never takes them for a code-map prefix)
 DEPENDENCY_DIRS = ("node_modules", ".venv", "venv", "__pycache__", "dist", "build", "target",
@@ -94,6 +94,25 @@ def commit_ref(root: Path, ref: str, origin: str | None = None) -> str:
         raise UsageError(f"{where} {ref!r} is not a commit in this repository (in CI, fetch the "
                          f"target branch first, e.g. git fetch origin main)")
     return ref
+
+
+def commit_sha(root: Path, ref: str) -> str:
+    """The full hash of the commit `ref` names (a ref `commit_ref` accepted)."""
+    return git(root, "rev-parse", "--verify", "--quiet", f"{_rev(ref)}^{{commit}}").strip()
+
+
+def branch_point(root: Path, base: str) -> str | None:
+    """None when the commit `base` is HEAD or one of its ancestors (drift since `base` is the
+    change of this branch); else the merge base of `base` and HEAD (`base` has commits HEAD
+    does not, e.g. a target branch that moved on) — "" when they share no history."""
+    proc = subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor", _rev(base),
+                           "HEAD"], capture_output=True, encoding="utf-8", errors="replace",
+                          env=git_env())
+    if proc.returncode == 0:
+        return None
+    proc = subprocess.run(["git", "-C", str(root), "merge-base", _rev(base), "HEAD"],
+                          capture_output=True, encoding="utf-8", errors="replace", env=git_env())
+    return proc.stdout.strip() if proc.returncode == 0 else ""
 
 
 def _paths(output: str) -> list[str]:
@@ -205,6 +224,9 @@ def validate_code_map(layer: dict, source, check_table) -> None:
                              f"or parent/child name")
         if "globs" in rule and "module" not in rule:
             raise UsageError(f"{source}: code_map.{rule['id']}: globs need a module")
+        if rule.get("exclusive") is True and rule.get("shared") is True:
+            raise UsageError(f"{source}: code_map.{rule['id']}: exclusive takes its files from "
+                             f"the other rules and shared shares them — set one of the two")
         if "pattern" in rule and "{module}" not in rule["pattern"]:
             fixed = json.dumps(rule["pattern"], ensure_ascii=False)
             module = json.dumps(rule.get("module", "NAME"), ensure_ascii=False)

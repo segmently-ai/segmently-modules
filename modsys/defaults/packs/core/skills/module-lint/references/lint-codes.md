@@ -9,6 +9,7 @@ Every code the `lint` and `ci` verbs report. **Safe** = a mechanical fix the ski
 | MS002 | an entry's `name` differs from its registry key | Safe: set `name` to the key |
 | MS003 | `status` is not one of the configured statuses | Ask which status; the error lists the allowed ones |
 | MS004 | a `context_files` path is missing on disk | Safe when the file moved (fix the path); Ask when it was deleted |
+| MS005 | a registered doc holds NUL bytes or is not valid UTF-8 (damaged) | Safe when git history has a clean version (restore it); else Ask |
 | MS006 | a relation name is not one of the configured relations | Ask which relation; the writer's error lists them |
 | MS007 | a relation has no `description` | Safe when the docs say why the modules are linked; else Ask |
 | MS008 | a relation has no `module` target | Ask which module it points at |
@@ -19,17 +20,24 @@ Every code the `lint` and `ci` verbs report. **Safe** = a mechanical fix the ski
 | MS013 | a value does not match its field type (or a role value that is no doc path, list of doc paths or not-needed mark) | Safe when the intended value is obvious (a string that should be a list; a role value meant as "not needed": the `false` that `roles skip` writes); else Ask |
 | MS014 | a directory under the modules directory is not registered | Ask: register it (`module-create`) or remove it |
 | MS015 | a role doc is listed for a role that is not configured | Ask: configure the role or drop the doc from `context_files` |
+| MS016 | a doc in a module's `roles/` directory that no registry entry names — agents never load it | Safe when the message names the role and it has no doc yet (rename it to `roles/<role>.md`, then `modsys roles add <role> <module> --json`); else Ask: register it as a supplementary doc, merge it into the registered doc, or delete it |
+| MS017 | docs directly in a module's directory that no registry entry names (info, one per module) | Ask per doc: register it (`modsys registry append <module> context_files.supplementary '"<path>"' --json`) when agents need it, else leave it or move it out (plans and notes) |
 | MS020 | more keywords than the soft budget (info) | Ask: keep, trim or split |
 | MS021 | a keyword shared by many modules (info, `*`) | Ask which module the word really routes to |
 | MS022 | an empty keyword, which matches every task | Safe: remove it |
-| MS030 | the module doc is past the split signal | Ask: `module-split`, or move detail into role docs |
-| MS031 | the module doc is past the hard stop | Ask: `module-split` |
-| MS032 | a role doc is past its budget | Ask: trim, or split the module |
+| MS030 | the module doc is past the split signal | Ask: trim first — move dated history, API dumps and checklists into a supplementary doc and register it (`modsys registry append <module> context_files.supplementary '"<path>"' --json`); `module-split` when it is still too long |
+| MS031 | the module doc is past the hard stop | Ask: the trim of MS030, then `module-split` |
+| MS032 | a role doc is past its budget | Ask: trim (history and reference sections into a supplementary doc), or split the module |
 | MS040 | a path in the components table is missing on disk | Safe when the file moved (fix the path); else Ask |
+| MS041 | a link in a registered doc points at a file that is missing (`[lint] link_severity`, default warning) | Safe when the message says where the file is now ("fix the ../ depth") or the file moved; Ask when it was deleted |
+| MS042 | a link's `#anchor` names no heading of its target doc (info) | Safe when the heading was renamed (link the new anchor); Ask when the section is gone |
+| MS043 | backticked repository paths outside the components table that are missing on disk (info, one per module) | Ask: the code moved (fix the path) or was deleted (drop the sentence); an example path is fine |
 | MS050 | code changed but none of the module's docs did (drift) | `module-sync`: the docs need a real update |
 | MS051 | a frozen `*.legacy.md` snapshot was modified or deleted | Safe: restore it from git; never edit it |
 | MS052 | a routing rule names a module that does not exist (`*`) | Ask: fix the rule in the team config |
-| MS053 | two routing rules send one file to two modules (`*`) | Ask which rule wins (`exclusive = true`) or narrow a glob |
+| MS053 | two routing rules send one file to two modules (`*`) | Ask which rule wins (`exclusive = true`), whether both modules own the files on purpose (`shared = true` on the narrower rule) or narrow a glob |
+| MS054 | an active module maps no code file, so drift never fires for it (info) | Ask: map its code (`modsys code-map add <id> --glob '<dir>/**' --module <module> --dry-run`), list it in `[coverage] doc_only` when it owns no code on purpose, or retire it |
+| MS056 | `[coverage] doc_only` names a module that is not in the registry (`*`) | Ask: fix the name in the team config, or drop it |
 | MS060 | an unknown key in a pack's `pack.toml` (`*`) | Ask the pack's owner (usually a typo) |
 | MS061 | a pack role's template is missing or outside the pack (`*`) | Ask the pack's owner |
 | MS062 | a pack skill agents cannot load, or a `references/` file it names that is missing (`*`) | Ask the pack's owner; the message says what is wrong |

@@ -546,7 +546,9 @@ class SubprocessTest(CiBaselineCase):  # P83-AC-005, P83-AC-035 (real pipes)
 
 
 class IdenticalWithoutTheFlagTest(CiBaselineCase):  # P83-AC-008
-    """The outputs recorded from the engine before the flag existed (one commit hash is masked)."""
+    """The outputs recorded from the engine before the flag existed (commit hashes masked), with
+    what came later: the base's commit (`base_commit`, and its 12 digits in the drift line) and
+    the severity a failed step fails at."""
 
     def states(self):
         yield "clean-head", ("--base", "HEAD")
@@ -559,7 +561,7 @@ class IdenticalWithoutTheFlagTest(CiBaselineCase):  # P83-AC-008
         yield "edited", ("--base", "HEAD~1")
 
     def test_text_and_json_match_the_recording(self):
-        sha = re.compile(r"\b[0-9a-f]{40}\b")
+        sha = re.compile(r"\b[0-9a-f]{40}\b|\b[0-9a-f]{12}\b")  # the text prints 12 digits
         for name, argv in self.states():
             for form, extra in (("txt", ()), ("json", ("--json",))):
                 with self.subTest(state=name, form=form):

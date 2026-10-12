@@ -20,8 +20,9 @@ the module docs.
    | `role` | `module-roles` (it writes and fills the docs, or marks the modules that do not need the role, after the user's OK) |
    | `ejected` | `modsys eject <skill> --diff --json`; show what changed upstream; the user takes what they want by hand, then `modsys eject <skill> --rebase --dry-run` and without `--dry-run` |
    | `proposals` | `modsys proposals list --json`; apply or reject each run with the user (`modsys proposals apply --dry-run` first) |
-   | `lint-warning` | `module-lint`; MS030 / MS031 (a doc too long) is `module-split`'s job |
+   | `lint-warning` | `module-lint`; a doc too long (MS030 / MS031 / MS032): offer the trim first — move its dated history ("Sprint N additions", checkpoints), API dumps and checklists into a supplementary doc and register it (`modsys registry append <module> context_files.supplementary '"<path>"' --dry-run`, then with `--json`) — and `module-split` only when the doc is still too long |
    | `unmapped` | `modsys coverage --json`; per directory ask: map it (`modsys code-map add <id> --pattern '<dir>/{module}/**' --dry-run`) or exclude it (`[coverage] exclude`) |
+   | `no-code` | per module in `modules`, ask: map its code (`modsys code-map add <id> --glob '<dir>/**' --module <module> --dry-run`, then with `--json`), list it in `[coverage] doc_only` in the team config when it owns no code on purpose (after the user's OK), or retire it |
    | `drift` | `module-sync` (code changed, docs did not) |
 
 3. **The plan.** Keep `next`'s rank, one line per step in plain words: what is wrong and what

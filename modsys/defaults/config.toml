@@ -37,6 +37,7 @@ fail_on = "error"
 component_table_heading = "EXISTING Components"
 drift_severity = "warning"     # MS050 (lint --changed): code changed, no doc of its module
 overlap_severity = "warning"   # MS053: two [[code_map]] rules route one file to two modules
+link_severity = "warning"      # MS041: a link in a registered doc whose target is missing
 
 [create]
 min_keywords = 5              # top-level modules; a child needs at least 1
@@ -48,6 +49,7 @@ default_status = "planned"
 # include = ["**"] is the built-in default (not set here: arrays merge by appending, so a
 # default "**" could never be narrowed); a team `include` replaces it.
 exclude = []                  # globs; the modules dir, the config dir and dotfiles never count
+# doc_only = []               # modules that own no code on purpose: lint MS054 leaves them alone
 
 [ci]
 fail_on = "warning"           # modsys ci: lint and drift fail at this severity (--fail-on)

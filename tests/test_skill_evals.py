@@ -195,7 +195,8 @@ class RunnerTest(unittest.TestCase):  # P4B-AC-019
         self.assertEqual([r["id"] for r in rows if r["builtin"]], ["core", "qa", "ui"])
         proc = subprocess.run(["modsys", "lint", "--json"], cwd=work, env=env,
                               capture_output=True, text=True)
-        self.assertEqual([f["code"] for f in json.loads(proc.stdout)["data"]["findings"]],
+        self.assertEqual([f["code"] for f in json.loads(proc.stdout)["data"]["findings"]
+                          if f["severity"] != "info"],  # MS054 notes the modules without code
                          ["MS030"])  # the seed: a doc past the split signal
 
     def test_run_py_is_stdlib_only(self):

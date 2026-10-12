@@ -87,8 +87,12 @@ class EngineReportsTest(Fixture):  # P85-AC-008 (PRE-004)
         self.assertNotIn("role:qa_acceptance", roles)
         self.assertEqual(self.dry_run(), [{"module": "catalog", "status": "registered",
                                            "path": CATALOG_DOC}])
-        lint = self.ok("lint")
-        self.assertEqual((lint["findings"], lint["failed"]), ([], False))
+        lint = self.ok("lint")  # MS016 (0.1.4): lint names the unlisted doc and the fix
+        self.assertEqual(([(f["code"], f["severity"], f["module"], f["path"])
+                           for f in lint["findings"]], lint["failed"]),
+                         ([("MS016", "warning", "catalog", CATALOG_DOC)], False))
+        self.assertIn("modsys roles add qa_acceptance catalog registers it",
+                      lint["findings"][0]["message"])
         row = next(r for r in self.ok("roles", "list")["roles"] if r["name"] == "qa_acceptance")
         self.assertIn("catalog", row["missing"])  # SI-P85-7: `missing`, though the file exists
         self.assertNotIn("catalog", row["docs"])

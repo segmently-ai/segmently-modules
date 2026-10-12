@@ -43,6 +43,9 @@ def register(sub, common) -> None:
                    help="add: a glob routed to --module (repeatable)")
     p.add_argument("--exclusive", action="store_true",
                    help="add: a file this rule routes is mapped ONLY by exclusive rules")
+    p.add_argument("--shared", action="store_true",
+                   help="add: the files this rule routes belong to other modules too, on purpose "
+                        "(lint MS053 does not report its overlaps)")
     p.add_argument("--dry-run", action="store_true", help="add: show the block, write nothing")
     p.set_defaults(func=run)
 
@@ -87,7 +90,7 @@ def _defined_in(ws, rule_id: str) -> str | None:
 
 
 def add_rule(ws, rule_id, pattern: str | None, globs: list[str] | None, module: str | None,
-             exclusive: bool, dry_run: bool) -> dict:
+             exclusive: bool, dry_run: bool, shared: bool = False) -> dict:
     """Append one `[[code_map]]` rule to the team config; every refusal writes nothing."""
     if not rule_id:
         raise UsageError("code-map add: id must be a non-empty string")
@@ -119,6 +122,8 @@ def add_rule(ws, rule_id, pattern: str | None, globs: list[str] | None, module: 
         rule["globs"] = list(globs)
     if exclusive:
         rule["exclusive"] = True
+    if shared:
+        rule["shared"] = True
     validate_layer({"code_map": [rule]}, team)  # the actionable pattern error, types
     lines = ["[[code_map]]"] + [
         f"{key} = " + ("[" + ", ".join(_toml_string(g) for g in value) + "]"
@@ -172,11 +177,12 @@ def run(args) -> int:
         if args.name is None:
             raise UsageError("code-map add needs an ID (the new rule's id)")
         data = add_rule(ws, args.name, args.pattern, args.globs, args.module, args.exclusive,
-                        args.dry_run)
+                        args.dry_run, shared=args.shared)
         emit("code-map", data, args.json, _render_add)
         return EXIT_OK
-    if args.pattern is not None or args.globs or args.exclusive or args.dry_run:
-        raise UsageError("--pattern, --glob, --exclusive and --dry-run apply to code-map add")
+    if args.pattern is not None or args.globs or args.exclusive or args.shared or args.dry_run:
+        raise UsageError("--pattern, --glob, --exclusive, --shared and --dry-run apply to "
+                         "code-map add")
     if args.action == "list":
         if args.name is not None:
             raise UsageError("code-map list takes no TARGET (filter with --module TARGET)")

@@ -54,7 +54,7 @@ class SkipTest(Repo):
             code, env, err = run_json("next", *self.R)
             self.assertEqual((code, err), (0, ""))
             return [i["summary"] for i in env["data"]["items"] if i["kind"] == "role"]
-        self.assertIn("qa: no doc in 2 module(s)", roles())
+        self.assertIn("qa: no doc in 2 module(s): checkout, payments", roles())
         self.skip("qa", "checkout", "payments")
         self.assertFalse([s for s in roles() if s.startswith("qa:")], roles())
 

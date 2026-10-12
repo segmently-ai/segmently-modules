@@ -49,7 +49,7 @@ class ConfigDocTest(unittest.TestCase):
 
     def test_every_lint_code_is_in_the_table(self):
         source = "".join((ENGINE / "modsys" / f).read_text(encoding="utf-8")
-                         for f in ("lint.py", "rules.py"))
+                         for f in ("lint.py", "rules.py", "doc_checks.py"))
         emitted = set(re.findall(r"MS\d{3}", source))
         documented = set(re.findall(r"^\| (MS\d{3}) \|", CONFIG_DOC.read_text(encoding="utf-8"),
                                     re.M))

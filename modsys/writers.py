@@ -80,6 +80,8 @@ def apply_field_op(raw: dict, fields: dict[str, FieldDef], op: str, target: str,
     if op not in OPS:
         raise UsageError(f"unknown op '{op}' (ops: {', '.join(OPS)})")
     entry, scope = entry_for(raw, target)
+    if field.startswith(DOC_KEY_PREFIX):
+        return _doc_key_op(entry, target, op, field[len(DOC_KEY_PREFIX):], value)
     fdef = _field_def(fields, field, scope)
     if op == "set":
         _check(fdef, value)
@@ -109,6 +111,79 @@ def apply_field_op(raw: dict, fields: dict[str, FieldDef], op: str, target: str,
             return False
     _check(fdef, new)
     entry[field] = new
+    return True
+
+
+DOC_KEY_PREFIX = "context_files."
+
+
+def doc_key_paths(field: str, op: str, value) -> list[str]:
+    """The doc paths a `context_files.<key>` write adds (`set`, `append`) — each must exist on
+    disk, as lint MS004 requires; none for any other field or op."""
+    if not field.startswith(DOC_KEY_PREFIX) or op not in ("set", "append"):
+        return []
+    return [value] if isinstance(value, str) else list(value) if isinstance(value, list) else []
+
+
+def _doc_key_op(entry: dict, target: str, op: str, key: str, value) -> bool:
+    """One `context_files.<key>` write: `universal` is one path (`set` / `unset`); any other key
+    but `roles` (`roles add` / `roles skip` write those) is one path or a list of paths — `set`
+    replaces it, `append` adds a path (a single path becomes a list), `remove` drops it (the key
+    goes when no path is left), `unset` deletes the key. A key that holds a map is edited with
+    `registry set TARGET context_files '<object>'`."""
+    field = DOC_KEY_PREFIX + key
+    if not key or "." in key:
+        raise UsageError(f"'{field}' names no key: write context_files.<key>, e.g. "
+                         f"context_files.supplementary")
+    if key == "roles":
+        raise UsageError("role docs are written by modsys roles add ROLE TARGET (and marked not "
+                         "needed by modsys roles skip), not by registry")
+    cf = entry.get("context_files", {})
+    if not isinstance(cf, dict):
+        raise UsageError(f"context_files of '{target}' is not an object — fix it first "
+                         f"(modsys lint)")
+    current = cf.get(key)
+    if isinstance(current, dict):
+        raise UsageError(f"{field} of '{target}' is a map; edit it with modsys registry set "
+                         f"{target} context_files '<object>'")
+    if key == "universal" and op in ("append", "remove"):
+        raise UsageError(f"{field} is one path; use set")
+
+    def path(v) -> bool:
+        return isinstance(v, str) and bool(v.strip())
+
+    if op == "unset":
+        if key not in cf:
+            return False
+        del cf[key]
+        return True
+    if op == "set":
+        ok = path(value) or (key != "universal" and isinstance(value, list) and value
+                             and all(path(v) for v in value) and len(set(value)) == len(value))
+        if not ok:
+            raise UsageError(f"{field} takes a doc path" + ("" if key == "universal" else
+                             " or a list of distinct doc paths") + f", got {value!r}")
+        if current == value:
+            return False
+        cf[key] = value
+        entry["context_files"] = cf
+        return True
+    if not path(value):
+        raise UsageError(f"{op} {field} takes one doc path, got {value!r}")
+    items = [] if current is None else [current] if isinstance(current, str) else list(current)
+    if op == "append":
+        if value in items:
+            return False
+        cf[key] = items + [value]
+        entry["context_files"] = cf
+        return True
+    new = [i for i in items if i != value]
+    if new == items:
+        return False
+    if new:
+        cf[key] = new
+    else:
+        del cf[key]
     return True
 
 

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- lint checks the module docs as files. MS005 (error): a registered doc that holds NUL bytes or is not valid UTF-8 — a damaged doc used to pass with only its length checked. MS016 (warning): a doc in a module's `roles/` directory that no registry entry names, with the role its name reads as (`ARCHITECTURE.md` → `architect`) and how to register it. MS017 (info, one per module): unregistered docs directly in a module's directory. MS041 (`[lint] link_severity`, default warning): a link in a registered doc whose target is missing — a root-relative `src/x.ts` counts when it exists from the root, and a wrong `../` depth is named. MS042 (info): an anchor that names no heading of its target doc. MS043 (info, one per module): backticked repository paths outside the components table that are missing on disk (read from the root, next to the doc and under the module's code directories; build output and git-ignored directories are never checked).
+- lint MS054 (info): an active module that maps no code file, so drift never fires for it; `[coverage] doc_only` names the modules that own no code on purpose (a name that is no module is MS056). `modsys next` lists the MS054 modules in a `no-code` item.
+- `modsys next`: a `role` item names its modules (the first five in the summary, all of them in `modules`); with `--base`, `base` names the commit it resolved to.
+- `modsys ci`: `base_commit` names the commit `--base` resolved to (the drift line says `since <REF> at <hash>`), a note says when that commit is not an ancestor of HEAD and names the merge base, and a failed step's line names the severity it fails at (`— fails at warning`).
+- `modsys registry OP TARGET context_files.<key>`: one doc key of `context_files` — `registry append catalog context_files.supplementary '"modules/catalog/history.md"'` registers a supplementary doc in one command without rewriting universal and roles; a new path must exist on disk; role docs stay with `roles add` / `roles skip`.
+- `[[code_map]] shared = true` (`code-map add --shared`): the files a rule routes belong to its module and to the modules other rules route them to, on purpose (a feature module and the service that ships it) — both keep them and MS053 leaves the pair alone.
+- The skills route a doc that is too long to the trim first: `module-lint`, `module-split`, `module-sync` and `module-assistant` move dated history, API dumps and checklists into a supplementary doc before they propose a split.
+- Two of the new findings are warnings and can fail a gate after the upgrade: MS016 and MS041 (`[lint] link_severity = "info"` keeps the gate green while the links are fixed). The messages of the existing findings are unchanged, so a `ci --baseline` file still matches them.
+
 ## [0.1.3] - 2026-10-12
 
 ### Added

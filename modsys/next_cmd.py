@@ -14,12 +14,14 @@ The kinds, in rank order (D4):
   agents-md     one per instruction file at the root (CLAUDE.md, AGENTS.md, GEMINI.md,
                 .github/copilot-instructions.md) that holds a modsys block differing from its
                 render (SI-P61-4)
-  role          one per enabled standard role that some module or child has no doc for
+  role          one per enabled standard role that some module or child has no doc for (all
+                of them in `modules`)
   ejected       one per ejected skill lint MS063 warns about (`eject --diff SKILL` when it is
                 behind its pack)
   proposals     the pending proposal files
   lint-warning  the other lint warnings, counted, with their codes (MS063 never twice, SI-P61-6)
   unmapped      the files no module maps — only with a `[[code_map]]` rule, inside git
+  no-code       the active modules that map no code file (lint MS054), in `modules`
   drift         with --base: MS050 / MS051 since REF (`sync-instructions --from-diff REF..HEAD`;
                 drift that includes an uncommitted or untracked file: `sync-instructions
                 --module M` per drifted module, in registry order)
@@ -36,7 +38,9 @@ from shlex import quote
 
 from modsys import __version__
 from modsys.agents_md_cmd import _BEGIN, END, _bare, _lines, agents_md
-from modsys.changes import changed_files, commit_ref, git, map_files, repo_files, work_tree_error
+from modsys.changes import (changed_files, commit_ref, commit_sha, git, map_files, repo_files,
+                            work_tree_error)
+from modsys.ci_cmd import SHORT, base_notes
 from modsys.config import delivery_for, enabled_roles
 from modsys.coverage_cmd import coverage_report
 from modsys.init_cmd import init_root
@@ -74,6 +78,7 @@ def register(sub, common) -> None:
                                    "copies and stale agents-md blocks, standard roles without "
                                    "docs, ejected skills behind their pack, pending proposals, "
                                    "lint warnings, unmapped files (with a [[code_map]] rule), "
+                                   "active modules that map no code, "
                                    "drift since --base — each with the modsys command that "
                                    "fixes it. Also what an engine upgrade brought. Writes "
                                    "nothing; exit 0 with or without items.")
@@ -185,11 +190,29 @@ def stale_blocks(ws, skipped: list[str]) -> list[tuple]:
     return out
 
 
+MODULES_SHOWN = 5
+
+
+def _shown(names: list[str]) -> str:
+    return ", ".join(names[:MODULES_SHOWN]) + (", …" if len(names) > MODULES_SHOWN else "")
+
+
 def missing_roles(ws) -> list[tuple]:
-    """One item per enabled standard role with targets (modules, children) that have no doc."""
-    return [("role", f"{r['name']}: no doc in {len(r['missing'])} module(s)",
-             f"modsys roles add {quote(r['name'])} --all")
+    """One item per enabled standard role with targets (modules, children) that have no doc;
+    `modules` lists them all, the summary the first few."""
+    return [("role", f"{r['name']}: no doc in {len(r['missing'])} module(s): "
+                     f"{_shown(r['missing'])}",
+             f"modsys roles add {quote(r['name'])} --all", {"modules": r["missing"]})
             for r in role_rows(ws, enabled_only=True) if r["standard"] and r["missing"]]
+
+
+def no_code(findings: list) -> list[tuple]:
+    """One item for the active modules that map no code file (lint MS054, info)."""
+    names = [f.module for f in findings if f.code == "MS054"]
+    if not names:
+        return []
+    return [("no-code", f"{len(names)} active module(s) map no code file, so drift never fires "
+                        f"for them: {_shown(names)}", "modsys lint", {"modules": names})]
 
 
 def ejected(findings: list) -> list[tuple]:
@@ -307,15 +330,20 @@ def drift_command(ws, base: str, findings: list, dirty: set[str]) -> str:
 
 
 def plan(ws, base: str | None) -> dict:
-    """{version, items: [{rank, kind, summary, command}], skipped: ["<kind>: <reason>"]}."""
+    """{version, items: [{rank, kind, summary, command}], skipped: ["<kind>: <reason>"]} and,
+    with --base inside git, `base`: {ref, commit, notes} (`notes`: `ci`'s note when the commit
+    is not an ancestor of HEAD)."""
     found: list[tuple] = []
     skipped: list[str] = []
+    resolved = None
     if not _set_up(ws):
         found.append(("setup", NOT_SET_UP, "modsys setup"))
     else:
         no_git = work_tree_error(ws.root)
         if base is not None and not no_git:
             base = commit_ref(ws.root, base, origin="flag")  # an unknown ref: exit 2
+            commit = commit_sha(ws.root, base)
+            resolved = {"ref": base, "commit": commit, "notes": base_notes(ws.root, base, commit)}
         findings = lint_registry(ws)
 
         def kind(name: str, compute, cannot=(Skip, UsageError)) -> None:
@@ -332,10 +360,14 @@ def plan(ws, base: str | None) -> dict:
         kind("proposals", lambda: proposals(ws))
         found.extend(lint_warnings(findings))
         kind("unmapped", lambda: unmapped(ws, no_git))
+        found.extend(no_code(findings))
         kind("drift", lambda: drift(ws, base, no_git), cannot=Skip)  # git errors: exit 2
-    items = [{"rank": rank, "kind": k, "summary": summary, "command": command}
-             for rank, (k, summary, command) in enumerate(found, 1)]
-    return {"version": __version__, "items": items, "skipped": skipped}
+    items = [{"rank": rank, "kind": item[0], "summary": item[1], "command": item[2],
+              **(item[3] if len(item) > 3 else {})} for rank, item in enumerate(found, 1)]
+    data = {"version": __version__, "items": items, "skipped": skipped}
+    if resolved is not None:
+        data["base"] = resolved
+    return data
 
 
 def run(args) -> int:
@@ -346,6 +378,10 @@ def run(args) -> int:
 
 def _render(d) -> None:
     print(f"modsys {d['version']}")
+    if d.get("base"):
+        print(f"base {d['base']['ref']} at {d['base']['commit'][:SHORT]}")
+        for note in d["base"]["notes"]:
+            print(f"note: {note}")
     if not d["items"]:
         print("nothing to do")
     for item in d["items"]:

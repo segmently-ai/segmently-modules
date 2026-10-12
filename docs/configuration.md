@@ -159,6 +159,7 @@ engine reads none), and the engine ships, installs and suggests no model.
 | `component_table_heading` | `"EXISTING Components"` | the `MODULE.md` section whose table rows lint checks for backticked paths (MS040) |
 | `drift_severity` | `"warning"` | severity of MS050 (`info`, `warning` or `error`) |
 | `overlap_severity` | `"warning"` | severity of MS053 (`info`, `warning` or `error`) |
+| `link_severity` | `"warning"` | severity of MS041, a link in a registered doc whose target is missing (`info`, `warning` or `error`) — `info` keeps a gate green while the links are fixed |
 
 ## `[create]`
 
@@ -192,6 +193,7 @@ proposals dir (`[paths]`) and dotfiles or dot-directories at any level never cou
 |---|---|---|
 | `include` | `["**"]` (built in) | globs a file must match to count; a team `include` replaces the built-in `**`; `include = []` is refused (it would count no file — omit `include` to count every file) |
 | `exclude` | `[]` | globs that never count (generated code, vendored files, docs) |
+| `doc_only` | `[]` | modules that own no code on purpose (a theory or registry module): lint MS054 leaves them alone; a name that is no registry module is MS056 |
 
 ## `[ci]`
 
@@ -486,6 +488,7 @@ modsys code-map add catalog-search --glob "src/catalog/search/**" --module catal
 | `globs` | a list of globs routed to `module` |
 | `module` | required with `globs`: a top-level module or a child (`parent/child`), never empty; with a `pattern` it overrides the capture |
 | `exclusive` | `true`: a file this rule matches is mapped ONLY by the exclusive rules that match it — other rules skip the file (docs and `code_pointer` mapping are unaffected). An exclusive rule wins only over non-exclusive rules: two exclusive rules that route one file to different modules are still an MS053 overlap |
+| `shared` | `true`: the files this rule routes belong to its module AND to the modules other rules route them to, on purpose — a feature module and the service that ships it; both keep the file (drift fires for both) and MS053 does not report the overlaps of this rule. `exclusive` and `shared` in one rule are refused (`code-map add --shared` writes it) |
 
 A `pattern` MUST contain a literal `{module}` segment — even when `module` is also set (which
 then overrides the value the segment would have captured, per the row above). `pattern =
@@ -573,7 +576,7 @@ then materializes it from that copy and the pack never overwrites it — the who
 
 `lint` checks the registry, fields, docs and config; `lint --changed` narrows the report to the
 modules a change touches and adds the drift checks. Config-level findings carry module `*`
-(MS021, MS052, MS053 and the pack checks MS06x) — `lint --changed` drops them along with every other finding outside the
+(MS021, MS052, MS053, MS056 and the pack checks MS06x) — `lint --changed` drops them along with every other finding outside the
 touched modules, so they show up ONLY in plain `modsys lint` (and `modsys ci`). A CI gate built only on `lint --changed`
 never sees a shared-keyword note (MS021, severity `info` — report-only, it never fails a gate at
 any `--fail-on` setting) or a typo'd `[[code_map]]` rule (MS052, severity `warning`); `modsys ci`
@@ -587,6 +590,7 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS002 | error | an entry's `name` differs from its registry key |
 | MS003 | error | `status` not in `[registry] statuses` |
 | MS004 | error | a `context_files` path is missing on disk (or not a string) |
+| MS005 | error | a registered doc holds NUL bytes or is not valid UTF-8 (damaged); path = the doc |
 | MS006 | error | `related_modules[].relation` not in `[registry] relations` |
 | MS007 | error | a relation without a `description` |
 | MS008 | error | a relation without a `module` target |
@@ -597,6 +601,8 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS013 | error | a value does not match its field type (or an entry is not an object, or a `context_files.roles` value is neither a doc path, a list of doc paths nor a not-needed mark: `false` or `{"skip": "<note>"}`) |
 | MS014 | error | a directory under `modules_dir` is neither registered nor a pointer stub (dot-directories are never modules and are skipped) |
 | MS015 | warning | `context_files.roles` names a role that is not configured |
+| MS016 | warning | a `*.md` in a module's (or child's) `roles/` directory that no registry entry names — agents never load it; the message names the role its file name reads as (the same name, or one starting with it: `ARCHITECTURE.md` → `architect`) and how to register it; `*.legacy.md` never counts |
+| MS017 | info | the `*.md` files directly in a module's (or child's) directory that no registry entry names, one finding per module (path = the directory; nested directories such as `plans/` are not looked at; `*.legacy.md` never counts) |
 | MS020 | info | more keywords than `[budgets] keywords_soft` |
 | MS021 | info | a keyword shared by `[budgets] keyword_shared_warn` modules or more (plain `lint` only) |
 | MS022 | warning | an empty keyword (matches every task) |
@@ -604,10 +610,15 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS031 | error | `MODULE.md` longer than `module_doc_hard_stop` |
 | MS032 | warning | a role doc longer than `role_doc_max` |
 | MS040 | warning | a backticked path in the components table is missing on disk |
+| MS041 | `link_severity` | a Markdown link (inline, image or reference definition; never inside code) in a registered doc whose target is missing on disk — relative to the doc, a leading `/` from the root, and a path that does not start with `./` or `../` also counts when it exists from the root (agents read `src/x.ts` so); a URL, a placeholder (`{`, `<`, `*`, `…`) and a path outside the repository are not checked; when the path without its leading `../` exists from the root the message says so ("fix the ../ depth"); path = the doc |
+| MS042 | info | a link's `#anchor` names no heading of its target `.md` (GitHub's heading anchors, `-1`, `-2` for repeats, `{#id}` and HTML `id` / `name`; case-insensitive; a `#L12` line anchor is not checked) |
+| MS043 | info | backticked repository paths outside fenced code and outside the components table that are missing on disk, one finding per module: a path whose first segment is a top-level directory holding files git does not ignore, found neither from the root, nor next to the doc, nor under the module's code directories (its `[[code_map]]` globs and code pointers); build output (`dist/`, `build/`, `node_modules/`, `coverage/`, …) is never checked |
 | MS050 | `drift_severity` | `--changed`: a module's code changed but none of its docs; a changed doc of the target, of its parent or of one of its children counts (so an update of a child's doc clears its parent), never a sibling's |
 | MS051 | error | `--changed`: a frozen `*.legacy.md` snapshot was modified or deleted |
 | MS052 | warning | a `[[code_map]]` rule's `module` is not a registry module or child (plain `lint` only) |
-| MS053 | `overlap_severity` | two `[[code_map]]` rules route the same file to two different modules (plain `lint` only; see below) |
+| MS053 | `overlap_severity` | two `[[code_map]]` rules route the same file to two different modules, neither rule `shared = true` (plain `lint` only; see below) |
+| MS054 | info | an `active` module that maps no code file — none of its files or its children's comes through a `[[code_map]]` rule or a code pointer (docs never count), so drift never fires for it — unless `[coverage] doc_only` names it; only with a `[[code_map]]` rule, inside git, plain `lint` only; `next` lists these modules in one `no-code` item |
+| MS056 | warning | `[coverage] doc_only` names a module that is not in the registry |
 | MS060 | warning | an unknown key in a pack's `pack.toml` — at the top level (neither a meta key nor a config section), in a `[roles.<name>]` or in a `[skills.<id>]` table (plain `lint` only) |
 | MS061 | error | a pack role's `template` file does not exist in the pack, or resolves outside the pack directory (plain `lint` only) |
 | MS062 | error | a pack skill, or an ejected copy in `<config_dir>/overrides/skills/<skill>/` (the one `packs sync` then copies), agents cannot load: its `path` does not exist, is not a directory or is outside the pack; it contains a symlink; it has no `SKILL.md`; the front matter is missing, has no `name` or one that differs from the skill id, has an unquoted `name` / `description` value that agents' strict YAML loaders reject (a `: ` inside, a trailing `:`, or a leading `@`, `%`, `*`, `&`, `!`, `[`, `{` or backtick), or has no `description` of 1–1024 characters; or a file it names — each `references/<file>` written in its `SKILL.md` or in one of its `references/*.md` files (one level of chaining) — does not exist or lies outside the skill directory (a name holding `*`, `?` or `[` is a pattern and is not checked — `references/route-*`, `references/[ab].md`; the message names the naming file, whose path is the finding's; `packs sync` and `eject` do not look at names; `argument-hint` and `arguments` are accepted in any form) (plain `lint` only) |
@@ -628,6 +639,8 @@ names both rules, the target each gives the first such file, the file count and 
 file (`[[code_map]] 'db' (-> db) and 'repositories' (-> orders) both map 4 file(s), e.g.
 app/repositories/orders.py — mark the more specific rule exclusive = true or narrow its
 globs`). The check runs only with two rules or more and inside a git work tree (otherwise it is
-skipped silently; without rules `lint` runs no git command at all). Only the rules are compared:
+skipped silently). Lint asks git at most once per run whether the root is a work tree and once
+for the file list, shared by MS043, MS053 and MS054; without a `[[code_map]]` rule and without
+a backticked repository path in the docs it runs no git command at all. Only the rules are compared:
 a file's docs location and `code_pointer` fields never make a pair. Plain `lint` and the lint
 step of `modsys ci` compute it; `lint --changed` does not (it would drop the finding anyway).

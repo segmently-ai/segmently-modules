@@ -10,7 +10,8 @@ import json
 import re
 from dataclasses import asdict
 
-from modsys.changes import changed_files, commit_ref, diff_names, repo_files, require_work_tree
+from modsys.changes import (branch_point, changed_files, commit_ref, commit_sha, diff_names,
+                            repo_files, require_work_tree)
 from modsys.coverage_cmd import coverage_report, percent
 from modsys.lint import FAIL_ON, drift_report, failing, lint_registry, severity_counts
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
@@ -135,6 +136,7 @@ def run(args) -> int:
     known = read_baseline(args.baseline) if args.baseline is not None else None
     require_work_tree(ws.root, "ci")
     base = commit_ref(ws.root, base, origin="flag" if args.base is not None else "config")
+    base_commit = commit_sha(ws.root, base)
 
     findings = lint_registry(ws)
     rows, fresh = _marked(findings, known)
@@ -162,23 +164,45 @@ def run(args) -> int:
                               "total": report["total"], "unmapped": len(report["unmapped"]),
                               "fail_under": threshold}})
     notes = [NOTHING_TO_COMPARE] if not changed["files"] and base == "HEAD" else []
+    notes += base_notes(ws.root, base, base_commit)
     failed = any(s["status"] == "failed" for s in steps)
-    data = {"base": base, "fail_on": fail_on, "steps": steps, "failed": failed, "notes": notes}
+    data = {"base": base, "base_commit": base_commit, "fail_on": fail_on, "steps": steps,
+            "failed": failed, "notes": notes}
     if known is not None:
         data["baseline"] = args.baseline
     emit("ci", data, args.json, lambda d: _render(d, report["unmapped"]))
     return EXIT_FINDINGS if failed else EXIT_OK
 
 
-def _summary(step: dict) -> str:
+SHORT = 12  # the hash prefix the text prints
+
+
+def base_notes(root, base: str, commit: str) -> list[str]:
+    """A note when the commit `base` names is not HEAD or one of its ancestors: drift since it
+    also counts what `base` changed that HEAD lacks (a target branch that moved on) — on a
+    branch the base is the merge base, which the note names."""
+    point = branch_point(root, base)
+    if point is None:
+        return []
+    fix = (f"pass its merge base: git merge-base {base} HEAD ({point[:SHORT]})" if point else
+           f"{base} and HEAD share no history")
+    return [f"--base {base} ({commit[:SHORT]}) is not an ancestor of HEAD: the drift also "
+            f"counts what {base} changed that HEAD lacks — on a branch, {fix}"]
+
+
+def _summary(step: dict, d: dict) -> str:
     s = step["summary"]
     counts = f"{s.get('error')} error(s), {s.get('warning')} warning(s), {s.get('info')} info"
+    if step["status"] == "failed" and step["name"] in ("lint", "drift"):
+        counts += f" — fails at {d['fail_on']}"
     if step["name"] == "lint":
         return counts
     if step["name"] == "drift":
+        since = s["base"] if d["base_commit"].startswith(s["base"]) else \
+            f"{s['base']} at {d['base_commit'][:SHORT]}"  # a hash base is not repeated
         if step["status"] == "no-changes":
-            return f"no changed files since {s['base']}"
-        return (f"{s['files']} file(s) changed since {s['base']} ({s['committed']} committed, "
+            return f"no changed files since {since}"
+        return (f"{s['files']} file(s) changed since {since} ({s['committed']} committed, "
                 f"{s['uncommitted']} uncommitted): {counts}")
     gate = "" if s["fail_under"] is None else f", fail-under {s['fail_under']:g} %"
     return f"share {s['share']} ({percent(s['share'])} %), {s['unmapped']} unmapped{gate}"
@@ -191,7 +215,7 @@ def _render(d, unmapped: list[str]) -> None:
     for step in d["steps"]:
         n_known = step["summary"].get("known", 0) if step["name"] != "coverage" else 0
         mark = f" ({n_known} known from the baseline)" if n_known else ""
-        print(f"{step['name']:<9} {step['status']:<12} {_summary(step)}{mark}")
+        print(f"{step['name']:<9} {step['status']:<12} {_summary(step, d)}{mark}")
         if step["status"] == "failed":
             if step["name"] == "coverage":
                 for f in unmapped[:UNMAPPED_SHOWN]:

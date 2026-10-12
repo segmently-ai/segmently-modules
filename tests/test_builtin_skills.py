@@ -504,7 +504,7 @@ class LintCodesReferenceTest(unittest.TestCase):  # module-lint explains every c
 
     def test_every_lint_code_is_explained(self):
         source = "".join((ENGINE / "modsys" / f).read_text(encoding="utf-8")
-                         for f in ("lint.py", "rules.py"))
+                         for f in ("lint.py", "rules.py", "doc_checks.py"))
         ref = (builtin_packs_root() / "core/skills/module-lint/references/lint-codes.md")
         documented = re.findall(r"^\| (MS\d{3}) \|", ref.read_text("utf-8"), re.M)
         self.assertEqual(sorted(documented), sorted(set(re.findall(r"MS\d{3}", source))))

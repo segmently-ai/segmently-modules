@@ -43,10 +43,10 @@ LAYER_SCHEMA = {
     "match": {**{k: "int" for k in ("keyword_weight", "combination_weight", "negative_weight",
                                     "min_score", "top")}, "mode": "str"},
     "lint": {"fail_on": "str", "component_table_heading": "str", "drift_severity": "str",
-             "overlap_severity": "str"},
+             "overlap_severity": "str", "link_severity": "str"},
     "create": {"min_keywords": "int", "description_min": "int", "description_max": "int",
                "default_status": "str"},
-    "coverage": {"include": "list[str]", "exclude": "list[str]"},
+    "coverage": {"include": "list[str]", "exclude": "list[str]", "doc_only": "list[str]"},
     "ci": {"fail_on": "str", "base": "str", "coverage_fail_under": "number"},
     "packs": {"agents": "list[str]", "builtin": "list[str]", "builtin_delivery": "str|table"},
     "init": {"exclude": "list[str]", "co_change_commits": "int", "max_parallel": "int",
@@ -139,7 +139,7 @@ def validate_layer(layer: dict, source) -> None:
         except re.error as e:
             raise UsageError(f"{source}: [registry] stub_pattern: invalid regular expression: "
                              f"{e}") from None
-    for key in ("drift_severity", "overlap_severity"):
+    for key in ("drift_severity", "overlap_severity", "link_severity"):
         severity = layer.get("lint", {}).get(key)
         if severity is not None and severity not in ("info", "warning", "error"):
             raise UsageError(f"{source}: [lint] {key}: expected info, warning or error, "

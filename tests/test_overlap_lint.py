@@ -117,7 +117,9 @@ class OverlapConfigTest(unittest.TestCase):  # P32-AC-015, P32-AC-016 (git calls
 
     def test_without_rules_or_git_the_check_is_skipped(self):
         self.assertEqual(self.git_calls(self.repo("", git=False)), [])  # no git command at all
-        self.assertEqual(self.git_calls(self.repo(rule("a", "m1", "lib/**"), git=False)), [])
+        # one rule outside git: MS053 needs two, MS054 asks git once whether it is a work tree
+        self.assertEqual(self.git_calls(self.repo(rule("a", "m1", "lib/**"), git=False)),
+                         [["rev-parse", "--is-inside-work-tree"]])
         root = self.repo(self.OVERLAP, git=False)
         self.assertEqual(self.git_calls(root), [["rev-parse", "--is-inside-work-tree"]])
 

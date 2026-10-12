@@ -1,7 +1,10 @@
-"""Registry lint. Codes: MS001-MS004, MS006-MS015 registry/field checks · MS020-MS022
-keyword budgets and hygiene · MS030-MS032 doc budgets · MS040 component paths ·
+"""Registry lint. Codes: MS001-MS004, MS006-MS015 registry/field checks · MS005, MS016, MS017,
+MS041-MS043 the docs as files (modsys.doc_checks) · MS020-MS022 keyword budgets and hygiene ·
+MS030-MS032 doc budgets · MS040 component paths ·
 MS052 a [[code_map]] rule whose `module` is not in the registry · MS053 two [[code_map]] rules
-route one file to two different modules · MS060-MS062, MS064, MS065 pack checks (unknown
+route one file to two different modules · MS054 (info) an active module that maps no code ·
+MS056 `[coverage] doc_only` naming no module ·
+MS060-MS062, MS064, MS065 pack checks (unknown
 pack.toml keys, role templates, skills agents cannot load, skills reading unconfigured roles,
 shadowed skill ids) · MS063 ejected skills behind their pack · MS066 a repository pack that
 replaces a built-in pack (info) · MS067 a managed copy of a built-in skill while
@@ -23,6 +26,7 @@ from modsys.changes import (changed_files, code_map_routes, diff_names, map_file
                             target_names, work_tree_error)
 from modsys.config import (BUILTIN_PACKS, PACK_META_KEYS, ROLE_SCHEMA, builtin_delivery,
                            delivery_for, discover_packs, enabled_roles)
+from modsys.doc_checks import doc_findings
 from modsys.fields import value_matches
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.query import role_paths, skip_mark
@@ -58,6 +62,34 @@ class Finding:
     module: str
     message: str
     path: str | None = None
+
+
+class RepoFiles:
+    """What lint asks git, asked once per run and shared by the checks that need it (MS043,
+    MS053, MS054): whether the root is in a work tree, the repository's files (git-tracked +
+    new, not ignored) and the `[[code_map]]` routes of those files."""
+
+    def __init__(self, ws):
+        self.ws = ws
+        self._error: list = []
+        self._files: list[str] | None = None
+        self._routes: list[tuple] | None = None
+
+    def error(self) -> str | None:
+        if not self._error:
+            self._error.append(work_tree_error(self.ws.root))
+        return self._error[0]
+
+    def files(self) -> list[str]:
+        if self._files is None:
+            self._files = repo_files(self.ws.root)
+        return self._files
+
+    def rule_routes(self) -> list[tuple]:
+        """(path, target, rule id) of every rule that routes each file (`code_map_routes`)."""
+        if self._routes is None:
+            self._routes = list(code_map_routes(self.ws, self.files()))
+        return self._routes
 
 
 def _role_docs(cf: dict) -> list:
@@ -102,6 +134,7 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
     doc is read through `ws.disk` (the overlay of `init verify`; the path itself otherwise)."""
     out: list[Finding] = []
     cfg, root, modules = ws.config, ws.root, ws.registry.modules
+    repo = RepoFiles(ws)
     statuses, relations = cfg["registry"]["statuses"], cfg["registry"]["relations"]
     budgets = cfg["budgets"]
 
@@ -226,15 +259,54 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
                     if n > budgets["role_doc_max"]:
                         add("MS032", "warning", label,
                             f"{n} lines > role budget {budgets['role_doc_max']}", p)
+    out += doc_findings(ws, heading, repo)
 
     targets = target_names(modules)
     for rule in as_list(cfg.get("code_map")):
         if isinstance(rule, dict) and "module" in rule and rule["module"] not in targets:
             add("MS052", "warning", "*", f"[[code_map]] '{rule.get('id')}': module "
                 f"'{rule['module']}' is not a registry module or child; the rule maps nothing")
+    doc_only = as_list(cfg["coverage"].get("doc_only"))
+    for name in doc_only:
+        if name not in modules:
+            add("MS056", "warning", "*", f"[coverage] doc_only names '{name}', which is not a "
+                f"registry module")
     out += pack_findings(ws)
     if overlap:
-        out += overlap_findings(ws)
+        out += overlap_findings(ws, repo)
+        out += code_findings(ws, set(doc_only), repo)
+    return out
+
+
+def code_findings(ws, doc_only: set, repo: RepoFiles) -> list[Finding]:
+    """MS054 (info): an `active` module that maps no code file — no file reaches it or one of
+    its children through a `[[code_map]]` rule, and none of their code pointers names a path
+    that exists (its docs never count); left alone when `[coverage] doc_only` names it. Only
+    with a `[[code_map]]` rule (without one every module maps nothing) and inside a git work
+    tree; skipped by `lint --changed`, as MS053 is."""
+    if not as_list(ws.config.get("code_map")) or repo.error():
+        return []
+    owners = {target.partition("/")[0] for _path, target, _rule in repo.rule_routes()}
+    pointers = [name for name, fdef in ws.fields.items() if fdef.kind == "code_pointer"]
+
+    def points_at_code(holder: dict) -> bool:
+        for field in pointers:
+            value = holder.get(field)
+            for p in value if isinstance(value, list) else [value]:
+                if isinstance(p, str) and p and ws.exists(p.split(":")[0].rstrip("/")):
+                    return True
+        return False
+
+    out = []
+    for name, entry in _objects(ws.registry.modules):
+        if entry.get("status") != "active" or name in owners or name in doc_only:
+            continue
+        holders = [entry] + [s for s in as_dict(entry.get("submodules")).values()
+                             if isinstance(s, dict)]
+        if not any(points_at_code(h) for h in holders):
+            out.append(Finding("MS054", "info", name, "active module maps no code file — map its "
+                               "code (modsys code-map add), list it in [coverage] doc_only when "
+                               "it owns no code on purpose, or retire it"))
     return out
 
 
@@ -485,22 +557,26 @@ def _related(a: str, b: str) -> bool:
     return a == b or a == b.partition("/")[0] or b == a.partition("/")[0]
 
 
-def overlap_findings(ws) -> list[Finding]:
+def overlap_findings(ws, repo: RepoFiles | None = None) -> list[Finding]:
     """MS053 (config-level, module `*`): per pair of `[[code_map]]` rules, the repository files
     (git-tracked + new, no coverage filters) they route — after `exclusive` precedence — to two
-    targets where neither is the other's parent. Only the rules route files here (docs and
-    `code_pointer` sources are never evaluated). Skipped silently with fewer than two rules
-    (no pair can overlap) and outside a git work tree."""
+    targets where neither is the other's parent and neither rule is `shared = true` (a file it
+    routes belongs to its module and to the others on purpose, e.g. a feature module and the
+    service that ships it). Only the rules route files here (docs and `code_pointer` sources are
+    never evaluated). Skipped silently with fewer than two rules (no pair can overlap) and
+    outside a git work tree."""
+    repo = repo or RepoFiles(ws)
     rules = [r for r in as_list(ws.config.get("code_map")) if isinstance(r, dict) and "id" in r]
-    if len(rules) < 2 or work_tree_error(ws.root):
+    if len(rules) < 2 or repo.error():
         return []
+    shared = {r["id"] for r in rules if r.get("shared") is True}  # overlaps on purpose
     per_file: dict[str, dict] = {}  # path -> {rule id: target}; repo_files order = sorted
-    for path, target, rule_id in code_map_routes(ws, repo_files(ws.root)):
+    for path, target, rule_id in repo.rule_routes():
         per_file.setdefault(path, {})[rule_id] = target
     pairs: dict[tuple, list] = {}  # (rule a, rule b) -> [files, first path, target a, target b]
     for path, by_rule in per_file.items():
         for a, b in combinations(sorted(by_rule), 2):
-            if not _related(by_rule[a], by_rule[b]):
+            if not _related(by_rule[a], by_rule[b]) and not {a, b} & shared:
                 pairs.setdefault((a, b), [0, path, by_rule[a], by_rule[b]])[0] += 1
     severity = ws.config["lint"]["overlap_severity"]
     return [Finding("MS053", severity, "*",

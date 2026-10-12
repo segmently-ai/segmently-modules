@@ -18,7 +18,9 @@ hand the ones that need a decision to the user with the options.
 
 - The findings are drift (MS050) after a code change: the docs need real updates — use
   `module-sync`.
-- A doc is over its size budget (MS030 / MS031): that is a split — use `module-split`.
+- A doc is over its size budget (MS030 / MS031 / MS032) and still too long once its dated
+  history and reference sections moved into a supplementary doc (the trim, see the lint codes):
+  that is a split — use `module-split`.
 - You need context on a module, not a fix: use `module-scout`.
 
 ## Scope
@@ -60,6 +62,8 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
      path (`modsys registry set <module> context_files '<the corrected object>' --json`).
    - A frozen `*.legacy.md` that was changed (MS051): restore it from git — never edit it
      further.
+   - A link whose target moved (MS041 naming where the file is now, e.g. "fix the ../ depth"):
+     correct the link in the doc.
 
 4. Leave the judgement calls to the user, each with the options you see: a `status` outside
    the configured list (which one? the message lists them), a relation to another module

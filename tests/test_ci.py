@@ -166,7 +166,8 @@ class CiOptionsTest(CiRepo):  # P32-AC-019
     def test_json_shape_and_text(self):
         self.touch("src/tasks/a.py")
         data = self.ci(code=1)
-        self.assertEqual(set(data), {"base", "fail_on", "steps", "failed", "notes"})
+        self.assertEqual(set(data), {"base", "base_commit", "fail_on", "steps", "failed",
+                                     "notes"})
         self.assertEqual([set(s) for s in data["steps"]],
                          [{"name", "status", "summary", "findings"},
                           {"name", "status", "summary", "findings"},

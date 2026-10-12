@@ -32,7 +32,8 @@ signature in the module doc, every component row has a path and a purpose, no le
 touched, each child update in the child the proposal named.
 
 **Budget watch** — the `lint` step of step 9, for every doc in scope: MS030 (a module doc past the
-split signal) → propose `module-split`; MS031 (past the hard stop) → the split is required; a split
+split signal) → propose the trim first (dated history, API dumps and checklists into a
+supplementary doc), then `module-split`; MS031 (past the hard stop) → the split is required; a split
 parent's index past the signal → cross-cutting content crept in, move it to the children; a child
 past it → rebalance its parent; MS032 (a role doc past its budget) → route its excess. Each one is
 an action item in the report, never a silent trim.

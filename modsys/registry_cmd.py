@@ -4,7 +4,7 @@ import json
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.store import open_store, serialize
 from modsys.workspace import Workspace
-from modsys.writers import OPS, apply_field_op, unified_diff
+from modsys.writers import OPS, apply_field_op, doc_key_paths, unified_diff
 
 
 def register(sub, common) -> None:
@@ -12,7 +12,8 @@ def register(sub, common) -> None:
                        help="edit one registry field (validated by field definitions)")
     p.add_argument("op", choices=OPS)
     p.add_argument("target", help="module or module/child")
-    p.add_argument("field")
+    p.add_argument("field", help="a declared field, or context_files.<key> for one doc key "
+                                 "(e.g. context_files.supplementary)")
     p.add_argument("value", nargs="?", help="JSON value (quote strings: '\"text\"')")
     p.add_argument("--dry-run", action="store_true", help="print the diff, write nothing")
     p.set_defaults(func=run)
@@ -34,6 +35,10 @@ def parse_value(op: str, text: str | None):
 def run(args) -> int:
     ws = Workspace.from_args(args)
     value = parse_value(args.op, args.value)
+    for path in doc_key_paths(args.field, args.op, value):
+        if isinstance(path, str) and path.strip() and not ws.exists(path):
+            raise UsageError(f"{args.field}: {path} is missing on disk (lint MS004) — write "
+                             f"the doc first")
     store = open_store(ws)
     data = {"op": args.op, "target": args.target, "field": args.field,
             "dry_run": args.dry_run, "changed": False}

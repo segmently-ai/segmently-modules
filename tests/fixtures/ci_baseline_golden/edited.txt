@@ -1,9 +1,9 @@
 exit 1
-lint      failed       0 error(s), 3 warning(s), 0 info
+lint      failed       0 error(s), 3 warning(s), 0 info — fails at warning
   WARNING MS030 catalog: 10 lines > split signal 3  (modules/catalog/MODULE.md)
   WARNING MS040 catalog: component path missing on disk: src/catalog/gone.py  (modules/catalog/MODULE.md)
   WARNING MS040 payments: component path missing on disk: src/payments/missing.py  (modules/payments/MODULE.md)
-drift     failed       3 file(s) changed since HEAD~1 (1 committed, 2 uncommitted): 0 error(s), 3 warning(s), 0 info
+drift     failed       3 file(s) changed since HEAD~1 at <sha> (1 committed, 2 uncommitted): 0 error(s), 3 warning(s), 0 info — fails at warning
   WARNING MS030 catalog: 10 lines > split signal 3  (modules/catalog/MODULE.md)
   WARNING MS040 catalog: component path missing on disk: src/catalog/gone.py  (modules/catalog/MODULE.md)
   WARNING MS040 payments: component path missing on disk: src/payments/missing.py  (modules/payments/MODULE.md)
