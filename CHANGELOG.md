@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-12
+
 ### Added
 
 - `modsys roles skip ROLE TARGET… [--note TEXT]`: a module that needs no doc for a role says so in the registry — `context_files.roles.<role>` = `false`, or `{"skip": TEXT}` with a note on why. `roles list` counts it as `skipped` (`not needed N`), not `missing`; `modsys next` stops asking for its doc; `roles add --all` leaves it alone, while `roles add ROLE TARGET` writes the doc in place of the mark; `show --role` names the role as not needed, with the note. A module with the role's doc on disk is refused. The `module-roles` and `module-assistant` skills offer the mark when a module does not need a role.
