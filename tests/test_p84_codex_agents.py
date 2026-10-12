@@ -18,7 +18,7 @@ from unittest import mock
 import modsys
 from modsys import skill_sync, skills
 from modsys.config import builtin_packs_root
-from tests.helpers import copy_fixture, init_git, run, run_json
+from tests.helpers import changelog_since_first_release, copy_fixture, init_git, run, run_json
 
 V = modsys.__version__
 ENGINE = Path(__file__).resolve().parents[1]
@@ -911,7 +911,7 @@ class DocsTest(unittest.TestCase):  # P84-AC-010
 
     def test_changelog(self):
         log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
-        unreleased = " ".join(log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0].split())
+        unreleased = " ".join(changelog_since_first_release(log).split())
         for needle in ("`module-discover-agent`, `module-scout-agent` and `module-research-agent`",
                        "`.codex/agents/<name>.toml`", "`modsys/defaults/agents/`",
                        "nothing is written or removed through a symlinked or non-directory "

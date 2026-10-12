@@ -262,7 +262,7 @@ def _summary(s: dict, ws) -> str:
         return _items(d["targets"], s["status"])
     agents = d.get("agent_files") or []  # codex only
     if not d["skills"] and not agents:  # under builtin_delivery = "plugin" a note names them
-        return ("nothing to copy" if builtin_delivery(ws.config) == "plugin"
+        return ("nothing to copy" if builtin_delivery(ws.config) != "repo"
                 else "no pack skills (add one: modsys packs new ID --skill NAME)")
     parts = []
     if d["skills"]:

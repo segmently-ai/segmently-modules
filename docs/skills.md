@@ -67,6 +67,14 @@ twice and cannot tell which to trigger:
   packs' roles and templates and every repository pack's skills are the same under both;
   the `agents-md` block words the skill list's lead-in by delivery.
 
+- **A table, one value per agent**: `builtin_delivery = { claude = "plugin", codex = "repo" }`:
+  Claude Code from the plugin, Codex as copies (Codex enables a plugin only for the user, in
+  every repository). An agent the table leaves out takes the value of an agent that reads the
+  same directory, else `"repo"`; agents that share `.agents/skills` need the same value. `packs
+  sync` copies the built-in skills only for the `"repo"` agents and a repository pack's skills
+  for every agent; MS067 looks only where a plugin delivers; `eject` of a built-in skill needs
+  `"repo"` for every agent.
+
 The engine cannot see which plugins an agent has installed: installing the plugin in a
 repository that keeps `"repo"` delivery gives the agent each built-in skill twice — set
 `"plugin"` there, or leave the plugin out. Cursor, Gemini CLI and GitHub Copilot have no modsys

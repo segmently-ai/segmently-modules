@@ -48,7 +48,7 @@ import re
 import shutil
 import stat
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from modsys.output import UsageError
@@ -146,8 +146,10 @@ def plugin_sources(ws, sources: dict[str, Source]) -> dict[str, Source]:
     out = {}
     for sid, src in sources.items():
         if sid in builtin and src.kind == "ejected" and not src.blocked:
-            src.blocked = (f"ejected to {ws.rel(src.dir)} while {PLUGIN_PROVIDES} — delete the "
-                           f"ejected copy, or set [packs] builtin_delivery = \"repo\"")
+            # a copy, not the shared source: an agent with "repo" delivery still syncs it
+            src = replace(src, blocked=(f"ejected to {ws.rel(src.dir)} while {PLUGIN_PROVIDES} "
+                                        f"— delete the ejected copy, or set [packs] "
+                                        f"builtin_delivery = \"repo\""))
         if sid not in builtin or src.kind == "ejected":
             out[sid] = src
     return out
@@ -429,15 +431,16 @@ def managed_agents(root: Path, agent_files: bool = False) -> list[str]:
     return out
 
 
-def plan_sync(ws, agents: list[str], plugin: bool = False,
+def plan_sync(ws, agents: list[str], plugin: bool | set[str] = False,
               sources: dict[str, Source] | None = None) -> list[Plan]:
     """Every (agent, skill) plan, agents in the given order, skills by id; an agent whose
     directory is the same real directory as an earlier agent's repeats that agent's plans
-    with `same_as` (applied once). `plugin`: `builtin_delivery = "plugin"` (`plugin_sources`).
-    `sources`: `skill_sources(ws)` when the caller already has them."""
+    with `same_as` (applied once). `plugin`: the agents whose built-in skills a plugin provides
+    (`plugin_sources`; True: every agent). `sources`: `skill_sources(ws)` when the caller
+    already has them."""
     sources = skill_sources(ws) if sources is None else sources
-    if plugin:
-        sources = plugin_sources(ws, sources)
+    plugged = set(agents) if plugin is True else set(plugin or ())
+    by_plugin = plugin_sources(ws, sources) if plugged else sources
     plans, seen = [], {}
     for agent in agents:
         agent_dir = ws.root / AGENT_DIRS[agent]
@@ -449,8 +452,9 @@ def plan_sync(ws, agents: list[str], plugin: bool = False,
                       for p in plans if p.agent == first]
             continue
         seen[real] = agent
-        mine = [plan_skill(agent, agent_dir / sid, src) for sid, src in sources.items()]
-        mine += plan_orphans(agent, agent_dir, set(sources))
+        own = by_plugin if agent in plugged else sources
+        mine = [plan_skill(agent, agent_dir / sid, src) for sid, src in own.items()]
+        mine += plan_orphans(agent, agent_dir, set(own))
         plans += sorted(mine, key=lambda p: p.skill)
     return plans
 

@@ -10,7 +10,7 @@ import string
 from pathlib import Path
 
 from modsys import __version__
-from modsys.config import builtin_delivery, enabled_roles
+from modsys.config import builtin_delivery, enabled_roles, plugin_agents
 from modsys.create import resolve_template
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.skill_sync import skill_sources
@@ -55,10 +55,11 @@ def _skill_line(sid, src) -> str:
 def skill_groups(ws) -> list[tuple[str, str]]:
     """[(delivery key, lines)] — one line per pack skill, `` - `<skill>` — <first sentence of
     the description> ``, from the source `packs sync` uses (an ejected copy first). Under
-    `builtin_delivery = "plugin"` the skills of an enabled built-in pack (not ejected, not
-    shadowed by a repository pack) are the `plugin` group, listed first; every other skill is
-    the `repo` group (`packs sync` still copies it). An empty group is left out."""
-    plugin = builtin_delivery(ws.config) == "plugin"
+    `builtin_delivery = "plugin"` (or a table that gives "plugin" to some agents) the skills of
+    an enabled built-in pack (not ejected, not shadowed by a repository pack) are the `plugin`
+    group, listed first; every other skill is the `repo` group (`packs sync` still copies it).
+    An empty group is left out."""
+    plugin = builtin_delivery(ws.config) != "repo"
     builtin = ({sid for sid, s in pack_skills(ws.config_dir).items() if s.builtin}
                if plugin else set())
     groups = {"plugin": [], "repo": []}
@@ -71,13 +72,19 @@ def skill_groups(ws) -> list[tuple[str, str]]:
 def render_block(ws) -> list[str]:
     """The block's lines, markers included, without line ends."""
     groups = skill_groups(ws)
+    words = dict(SKILLS_DELIVERY)
+    if builtin_delivery(ws.config) == "mixed":  # a table: name the agents the plugins serve
+        from modsys.skills import AGENT_DIRS
+        words["plugin"] = (f"the modsys plugins provide these skills for "
+                           f"{', '.join(sorted(plugin_agents(ws.config, AGENT_DIRS)))}; "
+                           f"`modsys packs sync` copies them for the other agents")
     skills = groups[0][1]
     for key, lines in groups[1:]:
-        skills += f"\nSkills from packs ({SKILLS_DELIVERY[key]}):\n{lines}"
+        skills += f"\nSkills from packs ({words[key]}):\n{lines}"
     values = {"modules_dir": ws.config["paths"]["modules_dir"],
               "registry": ws.config["paths"]["registry"],
               "roles": ", ".join(enabled_roles(ws.config)), "skills": skills,
-              "skills_delivery": SKILLS_DELIVERY[groups[0][0]], "version": __version__}
+              "skills_delivery": words[groups[0][0]], "version": __version__}
     body = string.Template(resolve_template(ws, "agents-md.md")).safe_substitute(values)
     return [BEGIN, *body.replace("\r\n", "\n").rstrip("\n").split("\n"), END]
 

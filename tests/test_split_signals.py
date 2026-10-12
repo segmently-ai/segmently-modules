@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.helpers import copy_fixture, run, run_json
+from tests.helpers import changelog_since_first_release, copy_fixture, run, run_json
 
 S, P = 9000, 60000
 SHELF = "stock-check"
@@ -451,7 +451,7 @@ class DocsTest(unittest.TestCase):  # P84-AC-037
         import modsys.lint
         self.assertIn("MS068", modsys.lint.__doc__)
         self.assertIn("MS069", modsys.lint.__doc__)
-        changelog = self.doc("CHANGELOG.md").split("## [Unreleased]", 1)[1].split("\n## ", 1)[0]
+        changelog = changelog_since_first_release(self.doc("CHANGELOG.md"))
         for needle in ("MS068", "MS069", "skill_split_signal", "pack_split_signal", "SPLIT_DECISIONS"):
             self.assertIn(needle, changelog)
 

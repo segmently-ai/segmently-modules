@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from modsys.config import builtin_packs_root
-from tests.helpers import copy_fixture, init_git, run, run_json
+from tests.helpers import changelog_since_first_release, copy_fixture, init_git, run, run_json
 from tests.plugin_helpers import load_tool
 from tests.test_builtin_skills import section
 
@@ -25,7 +25,7 @@ def flat(text: str) -> str:
 
 def unreleased() -> str:
     log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
-    return log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+    return changelog_since_first_release(log)
 
 
 def part(text: str, heading: str) -> str:

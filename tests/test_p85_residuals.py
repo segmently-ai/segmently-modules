@@ -15,7 +15,7 @@ from unittest import mock
 import modsys
 from modsys import skill_sync
 from modsys.config import core_defaults
-from tests.helpers import run, run_json
+from tests.helpers import changelog_since_first_release, run, run_json
 from tests.test_next import nxt, rows
 from tests.test_p84_codex_agents import ENGINE, NAMES, CodexRepo, snap
 from tests.test_split_signals import SHELF, ReferencesTest, ShelfRepo, skill_text
@@ -463,7 +463,7 @@ class DocsTest(unittest.TestCase):  # P85-AC-026, AC-020
                       .split("_REFERENCE")[0][-700:])
 
     def test_the_changelog_has_both_entries(self):
-        fixed = self.doc("CHANGELOG.md").split("## [", 2)[1].split("### Fixed", 1)[1]
+        fixed = changelog_since_first_release(self.doc("CHANGELOG.md")).split("### Fixed", 1)[1]
         self.assertRegex(fixed, r"(?s)\A\s*- Lint \*\*MS062\*\*: .*?is a pattern, not a file")
         self.assertRegex(fixed, r"(?s)- A bare `packs sync` and `next` under "
                                 r"`builtin_delivery = \"plugin\"` infer codex from a `\.codex/agents/`")

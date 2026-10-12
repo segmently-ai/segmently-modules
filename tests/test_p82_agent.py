@@ -13,7 +13,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests.helpers import git
+from tests.helpers import changelog_since_first_release, git
 from tests.plugin_helpers import CLAUDE, ENGINE, NO_CLAUDE, claude_env, copy_engine, run_tool, tree
 
 AGENT_REL = "modsys/defaults/agents/module-chooser.md"
@@ -181,7 +181,7 @@ class DocsTest(unittest.TestCase):  # P82-AC-033
         for doc in ("README.md", "CHANGELOG.md"):
             self.assertIn("module-chooser", (ENGINE / doc).read_text(encoding="utf-8"), doc)
         log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
-        unreleased = log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+        unreleased = changelog_since_first_release(log)
         self.assertIn("module-chooser", unreleased)
 
 

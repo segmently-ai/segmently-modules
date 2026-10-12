@@ -149,3 +149,12 @@ def next_major(version: str | None = None) -> str:
     """The next major release of `version` (default: the engine's): X.Y.Z[.devN] -> (X+1).0.0."""
     major = release_version(version).split(".")[0]
     return f"{int(major) + 1}.0.0"
+
+
+def changelog_since_first_release(log: str) -> str:
+    """CHANGELOG.md from `## [Unreleased]` down to `## [0.1.0]` (exclusive): every entry made
+    after the first release, whether it still waits in `[Unreleased]` or a later release took
+    it — a doc test of a feature keeps finding its entry after the release that ships it."""
+    after = log.split("## [Unreleased]", 1)[1]
+    return after.split("\n## [0.1.0]", 1)[0]
+

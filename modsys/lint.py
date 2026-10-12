@@ -21,7 +21,7 @@ from pathlib import Path
 from modsys.changes import (changed_files, code_map_routes, diff_names, map_files, repo_files,
                             target_names, work_tree_error)
 from modsys.config import (BUILTIN_PACKS, PACK_META_KEYS, ROLE_SCHEMA, builtin_delivery,
-                           discover_packs, enabled_roles)
+                           delivery_for, discover_packs, enabled_roles)
 from modsys.fields import value_matches
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.query import role_paths
@@ -325,7 +325,7 @@ def pack_findings(ws) -> list[Finding]:
             out.append(Finding("MS063", "warning", "*", f"ejected skill '{sid}' is behind pack "
                                f"'{skill.pack}' ({reason}) — review: modsys eject {sid} --diff",
                                where))
-    if builtin_delivery(ws.config) == "plugin":
+    if builtin_delivery(ws.config) != "repo":
         out += plugin_copies(ws, {sid for sid, s in skills.items() if s.builtin})
     return out + split_findings(ws)
 
@@ -451,6 +451,8 @@ def plugin_copies(ws, builtin: set[str]) -> list[Finding]:
             continue
         seen.add(real)
         agent = next(a for a, d in AGENT_DIRS.items() if d == rel)
+        if delivery_for(ws.config, agent) != "plugin":  # a table: this directory gets copies
+            continue
         command = ("modsys packs sync" if not configured or real in covered
                    else f"modsys packs sync --agent {agent}")
         try:

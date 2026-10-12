@@ -94,9 +94,9 @@ class ValuesAndLayersTest(DeliveryRepo):  # P6-AC-001 (SI-8)
         for value, why in (('"Plugin"', "expected one of repo, plugin, got 'Plugin'"),
                            ('""', "expected one of repo, plugin, got ''"),
                            ('"both"', "expected one of repo, plugin, got 'both'"),
-                           ("5", "expected a string, got 5"),
-                           ("true", "expected a string, got True"),
-                           ('["plugin"]', "expected a string, got ['plugin']")):
+                           ("5", "expected a string or a table, got 5"),
+                           ("true", "expected a string or a table, got True"),
+                           ('["plugin"]', "expected a string or a table, got ['plugin']")):
             for layer in ("team", "user"):
                 with self.subTest(value=value, layer=layer):
                     self.config(value if layer == "team" else None,
@@ -377,7 +377,7 @@ class DeliveryContractTest(DeliveryRepo):  # P6-AC-033 (the D2 rows)
                 self.assertEqual((code, out), (2, ""))
                 self.assertTrue(err.startswith("modsys: error: "), err)
                 self.assertIn(".modsys/config.toml: [packs] builtin_delivery: expected a "
-                              "string, got 5", err)
+                              "string or a table, got 5", err)
                 self.assertNotIn("Traceback", err)
 
 

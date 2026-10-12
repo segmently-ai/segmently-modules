@@ -29,6 +29,7 @@ _TYPES = {
     "list[str]": (lambda v: isinstance(v, list) and all(isinstance(i, str) for i in v),
                   "a list of strings"),
     "number": (lambda v: isinstance(v, (int, float)) and not isinstance(v, bool), "a number"),
+    "str|table": (lambda v: isinstance(v, (str, dict)), "a string or a table"),
 }
 # Only KNOWN keys are checked; unknown keys and sections pass (forward compatibility).
 LAYER_SCHEMA = {
@@ -47,7 +48,7 @@ LAYER_SCHEMA = {
                "default_status": "str"},
     "coverage": {"include": "list[str]", "exclude": "list[str]"},
     "ci": {"fail_on": "str", "base": "str", "coverage_fail_under": "number"},
-    "packs": {"agents": "list[str]", "builtin": "list[str]", "builtin_delivery": "str"},
+    "packs": {"agents": "list[str]", "builtin": "list[str]", "builtin_delivery": "str|table"},
     "init": {"exclude": "list[str]", "co_change_commits": "int", "max_parallel": "int",
              "routing_min_hit_rate": "number"},
 }
@@ -161,10 +162,7 @@ def validate_layer(layer: dict, source) -> None:
             raise UsageError(f"{source}: [packs] agents: unknown agent {unknown[0]!r} "
                              f"(agents: {', '.join(AGENT_DIRS)})")
     _check_builtin(layer.get("packs", {}).get("builtin"), source)
-    delivery = layer.get("packs", {}).get("builtin_delivery")
-    if delivery is not None and delivery not in BUILTIN_DELIVERY:
-        raise UsageError(f"{source}: [packs] builtin_delivery: expected one of "
-                         f"{', '.join(BUILTIN_DELIVERY)}, got {delivery!r}")
+    _check_delivery(layer.get("packs", {}).get("builtin_delivery"), source)
     layout = layer.get("paths", {}).get("registry_layout")
     if layout is not None and layout not in REGISTRY_LAYOUTS:
         raise UsageError(f"{source}: [paths] registry_layout: expected one of "
@@ -204,12 +202,63 @@ def _check_builtin(ids, source) -> None:
                          f"(built-in packs: {', '.join(BUILTIN_PACKS)})")
 
 
+def _check_delivery(value, source) -> None:
+    """`[packs] builtin_delivery`: a string (every agent) or a table {agent: value}; agents that
+    read the same directory (codex, cursor, gemini, copilot: `.agents/skills`) need the same
+    value."""
+    if value is None:
+        return
+    where = f"{source}: [packs] builtin_delivery"
+    if isinstance(value, str):
+        if value not in BUILTIN_DELIVERY:
+            raise UsageError(f"{where}: expected one of {', '.join(BUILTIN_DELIVERY)}, "
+                             f"got {value!r}")
+        return
+    from modsys.skills import AGENT_DIRS  # skills imports this module
+    by_dir: dict[str, tuple[str, str]] = {}
+    for agent, v in value.items():
+        if agent not in AGENT_DIRS:
+            raise UsageError(f"{where}: unknown agent {agent!r} (agents: {', '.join(AGENT_DIRS)})")
+        if v not in BUILTIN_DELIVERY:
+            raise UsageError(f"{where}: {agent}: expected one of {', '.join(BUILTIN_DELIVERY)}, "
+                             f"got {v!r}")
+        first = by_dir.setdefault(AGENT_DIRS[agent], (agent, v))
+        if first[1] != v:
+            raise UsageError(f"{where}: {first[0]} and {agent} read the same directory "
+                             f"({AGENT_DIRS[agent]}) and need the same delivery")
+
+
+def delivery_for(config: dict, agent: str) -> str:
+    """The built-in skills' delivery for one agent: "repo" — `packs sync` copies them into the
+    agent's directory — or "plugin" — a modsys plugin provides them there, and `packs sync`
+    removes the copies it made. `[packs] builtin_delivery` is a string (every agent) or a table
+    {agent: value}; an agent the table leaves out takes the value of an agent that reads the
+    same directory, else "repo". Set in the team or the user config (the user's wins); a pack
+    cannot set it."""
+    value = (config.get("packs") or {}).get("builtin_delivery", "repo")
+    if isinstance(value, str):
+        return value
+    if agent in value:
+        return value[agent]
+    from modsys.skills import AGENT_DIRS  # skills imports this module
+    shared = [v for a, v in value.items() if AGENT_DIRS.get(a) == AGENT_DIRS.get(agent)]
+    return shared[0] if shared else "repo"
+
+
+def plugin_agents(config: dict, agents) -> set[str]:
+    """The agents among `agents` whose built-in skills a plugin provides (`delivery_for`)."""
+    return {a for a in agents if delivery_for(config, a) == "plugin"}
+
+
 def builtin_delivery(config: dict) -> str:
-    """`[packs] builtin_delivery` (P6 D2): "repo" (the default) — `packs sync` copies the
-    built-in packs' skills into the agents' directories — or "plugin" — the modsys plugins
-    provide them, and `packs sync` removes the copies it made. Set in the team or the user
-    config (the user's wins); a pack cannot set it."""
-    return (config.get("packs") or {}).get("builtin_delivery", "repo")
+    """`[packs] builtin_delivery` as one word (P6 D2): "repo" (the default) or "plugin" for
+    every agent, "mixed" when a table gives both (`delivery_for` answers per agent)."""
+    value = (config.get("packs") or {}).get("builtin_delivery", "repo")
+    if isinstance(value, str):
+        return value
+    from modsys.skills import AGENT_DIRS  # skills imports this module
+    kinds = {delivery_for(config, a) for a in AGENT_DIRS}
+    return kinds.pop() if len(kinds) == 1 else "mixed"
 
 
 def shown(path: Path, root: Path | None):

@@ -15,12 +15,12 @@ import os
 import shutil
 from pathlib import Path
 
-from modsys.config import builtin_delivery
+from modsys.config import plugin_agents
 from modsys.output import EXIT_OK, UsageError, emit
 from modsys.skill_sync import copy_file, sync_command
 from modsys.store import atomic_write
-from modsys.skills import (EJECTED, EJECTED_SCHEMA, behind_reason, ejected_dir, pack_skills,
-                           read_ejected, source_hashes, source_problem)
+from modsys.skills import (AGENT_DIRS, EJECTED, EJECTED_SCHEMA, behind_reason, ejected_dir,
+                           pack_skills, read_ejected, source_hashes, source_problem)
 from modsys.workspace import Workspace
 
 SET_AGENTS = " (or set [packs] agents once)"
@@ -68,10 +68,15 @@ def eject(ws, skill_id: str, dry_run: bool) -> dict:
         raise UsageError(f"unknown skill '{skill_id}' (pack skills: "
                          f"{', '.join(skills) or 'none'})")
     skill = skills[skill_id]
-    if skill.builtin and builtin_delivery(ws.config) == "plugin":
+    plugged = sorted(plugin_agents(ws.config, AGENT_DIRS)) if skill.builtin else []
+    if plugged and len(plugged) == len(AGENT_DIRS):
         raise UsageError(f"skill '{skill_id}' comes from the built-in pack '{skill.pack}': "
                          f'builtin_delivery = "plugin" — the plugin provides this skill; eject '
                          f'needs "repo"')
+    if plugged:
+        raise UsageError(f"skill '{skill_id}' comes from the built-in pack '{skill.pack}': "
+                         f'builtin_delivery gives "plugin" to {", ".join(plugged)} — the plugin '
+                         f'provides this skill there; eject needs "repo" for every agent')
     problem = source_problem(skill.source, skill_id, skill.pack_dir)
     if problem:
         raise UsageError(f"skill '{skill_id}' of pack '{skill.pack}' is not loadable: {problem} "

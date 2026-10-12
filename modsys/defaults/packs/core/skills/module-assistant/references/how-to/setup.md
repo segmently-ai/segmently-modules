@@ -24,7 +24,8 @@ Undo: remove the id, sync again.
 ## Skills from the plugin instead of copies in the repository
 `[packs] builtin_delivery = "plugin"`: the modsys plugins provide the built-in skills and
 `packs sync` removes the copies it made (an edited copy is a conflict and stays). Default
-`"repo"`: `packs sync` copies them.
+`"repo"`: `packs sync` copies them. Per agent: `builtin_delivery = { claude = "plugin", codex =
+"repo" }` — Claude Code from the plugin, Codex as copies.
 
 ## The agents' block in CLAUDE.md / AGENTS.md
 `modsys agents-md --dry-run --target CLAUDE.md`, then without `--dry-run`. Only the text between

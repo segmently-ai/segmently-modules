@@ -24,7 +24,8 @@ from pathlib import Path
 from modsys.changes import git_env
 from modsys.code_map_cmd import _toml_string
 from modsys.config import (BUILTIN_PACKS, BUILTIN_PLUGINS, DEFAULT_PACK_PRIORITY,
-                           builtin_delivery, core_defaults, discover_packs)
+                           core_defaults, delivery_for, discover_packs,
+                           plugin_agents)
 from modsys.create import NAME, article
 from modsys.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from modsys.skill_sync import (AGENT_BAD_MARKER, AGENT_NOT_MANAGED, AGENT_STATUSES, NO_RECORD,
@@ -233,21 +234,25 @@ def _names(words: list[str]) -> str:
     return ", ".join(words)
 
 
-def sync_notes(ws, chosen: list[str], plugin: bool, rows: list[dict],
+def sync_notes(ws, chosen: list[str], plugin: set[str], rows: list[dict],
                agent_rows: list[dict] = ()) -> list[str]:
-    """The `note:` lines of a `packs sync` run (`data.notes`): under `builtin_delivery =
-    "plugin"`, the plugins that provide the enabled built-in packs' skills and the chosen
-    agents no plugin exists for; Copilot's duplicates (it reads both directories) when `claude`
+    """The `note:` lines of a `packs sync` run (`data.notes`): for the chosen agents whose
+    built-in skills a plugin provides (`plugin`), the plugins that provide the enabled built-in
+    packs' skills — naming those agents when the others get copies — and the agents among them
+    no plugin exists for; Copilot's duplicates (it reads both directories) when `claude`
     syncs together with an agent of `.agents/skills` — under `"plugin"` only when a copy stays
     in both (a row that is not `removed`): the built-in skills are in neither there; the copies
     and the Codex agent files (`agent_rows`) git ignores."""
     notes = []
     provided = [p["id"] for p in discover_packs(ws.config_dir) if p["builtin"]] if plugin else []
     if provided:
-        notes.append('builtin_delivery = "plugin": the built-in skills come from the plugins '
+        some = [a for a in chosen if a in plugin] if set(chosen) - plugin else []
+        lead = f'builtin_delivery = "plugin" for {_names(some)}' if some else \
+            'builtin_delivery = "plugin"'
+        notes.append(f"{lead}: the built-in skills come from the plugins "
                      + ", ".join(f"{BUILTIN_PLUGINS[p]} ({p})" for p in provided)
-                     + " — packs sync copies none of them")
-        bare = [a for a in chosen if a in NO_PLUGIN]
+                     + " — packs sync copies none of them" + (" there" if some else ""))
+        bare = [a for a in chosen if a in NO_PLUGIN and a in plugin]
         if bare:
             verb, pronoun = ("gets", "it") if len(bare) == 1 else ("get", "them")
             notes.append(f"{_names(bare)} {verb} no built-in skills: no modsys plugin exists "
@@ -377,12 +382,12 @@ def sync(ws, agents: list[str] | None, check: bool, dry_run: bool,
     else:
         chosen = list(dict.fromkeys(
             agents or (ws.config.get("packs") or {}).get("agents")
-            or managed_agents(ws.root, builtin_delivery(ws.config) == "plugin")))
+            or managed_agents(ws.root, delivery_for(ws.config, "codex") == "plugin")))
     if not chosen:
         *first, last = AGENT_DIRS
         raise UsageError(f"choose --agent {', '.join(first)} or {last} (repeatable), or set "
                          f"[packs] agents")
-    plugin = builtin_delivery(ws.config) == "plugin"
+    plugin = plugin_agents(ws.config, chosen)
     try:
         sources = None if remove else skill_sources(ws)
         plans = plan_remove(ws, chosen) if remove else plan_sync(ws, chosen, plugin, sources)
@@ -511,7 +516,7 @@ def agent_hint(ws, r) -> str:
         keep = (f"edit {copy}" if is_ejected(ws.config_dir, r["skill"])
                 else f"modsys eject {r['skill']}, edit {copy}")
         skill = pack_skills(ws.config_dir).get(r["skill"])
-        if skill and skill.builtin and builtin_delivery(ws.config) == "plugin":
+        if skill and skill.builtin and delivery_for(ws.config, "codex") == "plugin":  # codex's file
             keep = f'set [packs] builtin_delivery = "repo", {keep}'  # eject needs "repo"
         return (f"revert it (git checkout -- {here}) and sync again, or keep the change: {keep}, "
                 f"then packs sync")
@@ -541,7 +546,7 @@ def _render_sync(d, ws, remove: bool = False) -> None:
         if remove:
             print("nothing to remove: no copy made by packs sync in " + ", ".join(
                 dict.fromkeys(AGENT_DIRS[a] for a in d["agents"])))
-        elif builtin_delivery(ws.config) == "plugin":
+        elif plugin_agents(ws.config, d["agents"]):
             print('nothing to copy: the built-in skills come from the modsys plugins '
                   '(builtin_delivery = "plugin"); a repository pack\'s skills are copied (add '
                   'one: modsys packs new ID --skill NAME)')
