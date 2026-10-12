@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-12
+
 ### Added
 
 - `[packs] builtin_delivery` per agent: a table such as `{ claude = "plugin", codex = "repo" }` gives Claude Code the built-in skills from the plugin and Codex as copies, so a repository pack's skills reach both agents through `packs sync` without a second copy of a built-in skill next to the plugin. An agent the table leaves out takes the value of an agent that reads the same directory, else "repo"; agents that share `.agents/skills` need the same value. Under a table, MS067 looks only where a plugin delivers, `eject` of a built-in skill needs "repo" for every agent, and the agents' block names the agents the plugins serve. A string keeps its meaning (every agent); a value of the wrong type now reads "expected a string or a table".
