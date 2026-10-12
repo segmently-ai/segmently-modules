@@ -87,7 +87,7 @@ class EngineReportsTest(Fixture):  # P85-AC-008 (PRE-004)
         self.assertNotIn("role:qa_acceptance", roles)
         self.assertEqual(self.dry_run(), [{"module": "catalog", "status": "registered",
                                            "path": CATALOG_DOC}])
-        lint = self.ok("lint")  # MS016 (0.1.4): lint names the unlisted doc and the fix
+        lint = self.ok("lint")  # MS016: lint now names the unlisted doc and the fix
         self.assertEqual(([(f["code"], f["severity"], f["module"], f["path"])
                            for f in lint["findings"]], lint["failed"]),
                          ([("MS016", "warning", "catalog", CATALOG_DOC)], False))

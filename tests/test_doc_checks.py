@@ -222,7 +222,7 @@ class StalePathTest(Repo):
 
 
 
-class ReviewFixesTest(Repo):  # the final review of 0.1.4: what the first cut got wrong
+class ReviewFixesTest(Repo):  # the final review: what the first cut got wrong
     def test_only_markdown_docs_are_read_as_docs(self):
         write(self.root, "modules/checkout/flow.png", b"\x89PNG\0\0\0")
         write(self.root, "src/catalog/service.py", "fns[0](ctx)\n")
