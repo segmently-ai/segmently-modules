@@ -23,7 +23,7 @@ from unittest import mock
 
 from modsys import agent as agent_mod
 from tests.agent_helpers import AgentRepo, picks
-from tests.helpers import mutate_registry, run, run_json
+from tests.helpers import changelog_since_first_release, mutate_registry, run, run_json
 
 try:
     import resource
@@ -857,7 +857,7 @@ class DocsTest(unittest.TestCase):
 
     def test_the_changelog(self):  # P83-AC-030
         text = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
-        unreleased = " ".join(text.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0].split())
+        unreleased = " ".join(changelog_since_first_release(text).split())
         for needle in ("A first Ctrl-C, SIGTERM or SIGHUP at the very start or end of an agent "
                        "call no longer leaves the temp directory or a handler behind",  # N-1
                        "A task file or stdin that is not UTF-8 is exit 2 `cannot read <path>: "

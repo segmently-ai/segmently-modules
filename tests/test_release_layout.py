@@ -14,7 +14,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.helpers import git
+from tests.helpers import changelog_since_first_release, git
 from tests.plugin_helpers import ENGINE
 from tests.release_helpers import copy_repos, tree_hash
 
@@ -300,7 +300,7 @@ class DocsTest(unittest.TestCase):  # P83-AC-022
                            "kill every running test process group"):
                 self.assertIn(needle, text)
         changes = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
-        unreleased = changes.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+        unreleased = changelog_since_first_release(changes)
         for flag in ("`--jobs N`", "`--suite-passed TREE`"):
             self.assertIn(flag, unreleased)
 

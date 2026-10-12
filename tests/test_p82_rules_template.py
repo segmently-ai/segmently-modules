@@ -12,7 +12,7 @@ from unittest import mock
 
 from modsys.create import engine_templates
 from tests.agent_helpers import AgentRepo, picks
-from tests.helpers import run, run_json
+from tests.helpers import changelog_since_first_release, run, run_json
 
 TASK = "refund payment catalog"
 REL = ".modsys/overrides/templates/choose/rules.md"
@@ -453,7 +453,7 @@ class DocsTest(unittest.TestCase):  # P82-AC-014 (the template items; 1b adds th
 
     def test_the_changelog_names_it(self):
         text = self.doc("CHANGELOG.md")
-        unreleased = text.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+        unreleased = changelog_since_first_release(text)
         self.assertIn("choose/rules.md", unreleased)
 
 

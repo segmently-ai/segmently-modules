@@ -23,7 +23,8 @@ from unittest import mock
 
 from modsys.config import builtin_packs_root
 from modsys.packs_cmd import scaffold_files
-from tests.helpers import SPLIT_FIXTURE, copy_fixture, init_git, run, run_json
+from tests.helpers import (SPLIT_FIXTURE, changelog_since_first_release, copy_fixture, init_git,
+                           run, run_json)
 from tests.test_builtin_skills import argv, commands, section, uses
 
 ENGINE = Path(__file__).resolve().parents[1]
@@ -552,7 +553,7 @@ class DocsTest(unittest.TestCase):  # P8.2 task 5: docs/skills.md follows the sh
 
     def test_changelog(self):  # fix 1 M-2: the mode said the right way round
         log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
-        unreleased = flat(log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0])
+        unreleased = flat(changelog_since_first_release(log))
         self.assertIn("search both ways (`hybrid`) unless the user says otherwise or `match.mode` "
                       "is `semantic`", unreleased)
         self.assertNotIn("search by meaning unless the user says otherwise", unreleased)

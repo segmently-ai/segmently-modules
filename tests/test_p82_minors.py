@@ -14,7 +14,8 @@ import unittest
 from pathlib import Path
 
 from tests.agent_helpers import AgentRepo, picks
-from tests.helpers import FIXTURE, SPLIT_FIXTURE, copy_fixture, init_git, make_repo, run, run_json
+from tests.helpers import (FIXTURE, SPLIT_FIXTURE, changelog_release, copy_fixture,
+                           init_git, make_repo, run, run_json)
 from tests.test_p82_repo_mode import note
 
 try:
@@ -595,8 +596,7 @@ class DocsTest(unittest.TestCase):
                       "them with the team", cell)
 
     def test_changelog_names_both_fixes(self):  # P82-AC-028
-        fixed = CHANGELOG.split("## [Unreleased]", 1)[1].split("### Fixed", 1)[1] \
-            .split("\n## [", 1)[0]
+        fixed = changelog_release(CHANGELOG, "0.1.1").split("### Fixed", 1)[1]
         self.assertIn("closed stdout reader", fixed)
         self.assertIn("skill copies", fixed)
 

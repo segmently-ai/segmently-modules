@@ -14,7 +14,7 @@ from unittest import mock
 
 from modsys.config import builtin_packs_root, core_defaults
 from modsys.skills import file_hashes, front_matter, read_front_matter, sha256_file
-from tests.helpers import copy_fixture, run_json
+from tests.helpers import changelog_since_first_release, copy_fixture, run_json
 from tests.plugin_helpers import copy_engine, run_tool
 from tests.test_budgets import SPLIT_DECISIONS, decision_key
 from tests.test_builtin_skills import (PACK_SKILLS, command_guard, commands, route, route_files,
@@ -637,8 +637,8 @@ class RoutingDocsTest(unittest.TestCase):  # P84-AC-025 (the docs name the route
             self.assertIn(needle, part)
 
     def test_the_changelog_names_it(self):
-        text = flat((ENGINE / "CHANGELOG.md").read_text("utf-8"))
-        unreleased = text.split("## [Unreleased]", 1)[1].split(" ## [", 1)[0]
+        log = (ENGINE / "CHANGELOG.md").read_text("utf-8")
+        unreleased = flat(changelog_since_first_release(log))
         self.assertIn("`qa-acceptance-baseline` routes its three scenarios", unreleased)
 
 

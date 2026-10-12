@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 from tests.agent_helpers import AgentRepo, picks
-from tests.helpers import run, run_json
+from tests.helpers import changelog_since_first_release, run, run_json
 
 TASK = "refund payment catalog"
 KW12 = [f"book-kw{i:02d}" for i in (7, 3, 11, 1, 9, 2, 12, 5, 4, 10, 6, 8)]  # not sorted
@@ -325,6 +325,6 @@ class DocsTest(unittest.TestCase):  # P82-AC-014 (the cap and --effort items)
 
     def test_the_changelog_names_both(self):
         text = self.doc("CHANGELOG.md")
-        unreleased = text.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+        unreleased = changelog_since_first_release(text)
         self.assertIn("card_keywords", unreleased)
         self.assertIn("choose --effort", unreleased)

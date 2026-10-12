@@ -10,7 +10,8 @@ import unittest
 from pathlib import Path
 
 from modsys.config import builtin_packs_root
-from tests.helpers import SPLIT_FIXTURE, copy_fixture, init_git, mutate_registry, run
+from tests.helpers import (SPLIT_FIXTURE, changelog_since_first_release, copy_fixture, init_git,
+                           mutate_registry, run)
 from tests.test_builtin_skills import commands, section, skill_files, uses
 
 ENGINE = Path(__file__).resolve().parents[1]
@@ -28,7 +29,7 @@ def flat(text: str) -> str:
 def unreleased_sections(log: str) -> dict[str, str]:
     """The `### ` sections of `[Unreleased]`, heading -> body (moved here from the retired P8.4
     module in P8.6)."""
-    text = log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+    text = changelog_since_first_release(log)
     parts = re.split(r"^### (.+)\n", text, flags=re.M)
     return dict(zip(parts[1::2], parts[2::2]))
 

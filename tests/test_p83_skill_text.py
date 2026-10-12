@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 from modsys.config import builtin_packs_root, core_defaults
-from tests.helpers import copy_fixture, run, run_json
+from tests.helpers import changelog_since_first_release, copy_fixture, run, run_json
 from tests.test_budgets import SPLIT_DECISIONS, decision_key
 
 ENGINE = Path(__file__).resolve().parents[1]
@@ -242,7 +242,7 @@ class SavedGateEndToEndTest(unittest.TestCase):  # P83-AC-012 (the two commands,
 class ReleaseNotesTest(unittest.TestCase):  # final review I-3
     def unreleased(self):
         log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
-        return log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+        return changelog_since_first_release(log)
 
     def test_the_keyword_line_states_the_d1_rule(self):  # P8.4 fix wave M-1: once, final words
         flat = " ".join(self.unreleased().split())

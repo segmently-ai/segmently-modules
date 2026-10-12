@@ -17,7 +17,7 @@ from unittest import mock
 
 from modsys.config import builtin_packs_root, core_defaults
 from modsys.skills import file_hashes, read_front_matter
-from tests.helpers import copy_fixture, run_json
+from tests.helpers import changelog_since_first_release, copy_fixture, run_json
 from tests.plugin_helpers import copy_engine, run_tool
 from tests.test_builtin_skills import section, skill_files
 
@@ -302,8 +302,8 @@ class DocsTest(unittest.TestCase):
         for needle in ("| `ui` | the `designer` role (`roles/designer.md`) | `designer` |",
                        "**prototype**", "**rework-audit**", "**review**", "[ui]"):
             self.assertIn(needle, skills)
-        changelog = flat((ENGINE / "CHANGELOG.md").read_text("utf-8"))
-        unreleased = changelog.split("## [Unreleased]", 1)[1].split(" ## [", 1)[0]
+        log = (ENGINE / "CHANGELOG.md").read_text("utf-8")
+        unreleased = flat(changelog_since_first_release(log))
         self.assertIn(f"The `ui` pack's skill is **`designer`** (it was `{OLD}`; `packs sync` "
                       "removes the old copy)", unreleased)
 

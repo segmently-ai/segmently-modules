@@ -9,7 +9,7 @@ from pathlib import Path
 
 from modsys.agent import NESTED
 from tests.agent_helpers import AgentRepo, picks
-from tests.helpers import git, run
+from tests.helpers import changelog_release, git, run
 
 OPT = "MODSYS_AGENT_ALLOW_REPO_MODE"
 TASK = "partial refund for a returned book"
@@ -493,7 +493,7 @@ class DocsTest(unittest.TestCase):  # P82-AC-021
         readme = " ".join(self.text("README.md").split())
         self.assertNotIn("its `[match] mode` decides whether", readme)
         self.assertIn(OPT, readme)
-        unreleased = self.text("CHANGELOG.md").split("## [", 2)[1]
+        unreleased = changelog_release(self.text("CHANGELOG.md"), "0.1.1")
         self.assertIn(OPT, unreleased)
         self.assertIn("checked only when a config file sets a non-lexical mode",
                       " ".join(unreleased.split()))

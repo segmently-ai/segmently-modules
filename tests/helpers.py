@@ -158,3 +158,10 @@ def changelog_since_first_release(log: str) -> str:
     after = log.split("## [Unreleased]", 1)[1]
     return after.split("\n## [0.1.0]", 1)[0]
 
+
+def changelog_release(log: str, version: str) -> str:
+    """The `## [<version>] - <date>` section of CHANGELOG.md, without its heading line: the
+    entries one release shipped."""
+    after = log.split(f"## [{version}]", 1)[1].split("\n", 1)[1]
+    return after.split("\n## [", 1)[0]
+

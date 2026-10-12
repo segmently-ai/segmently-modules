@@ -11,7 +11,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from tests.helpers import NO_AUTO_MAINTENANCE, git, init_git, make_repo, mutate_registry, run
+from tests.helpers import (NO_AUTO_MAINTENANCE, changelog_since_first_release, git, init_git,
+                           make_repo, mutate_registry, run)
 
 ENGINE = Path(__file__).resolve().parents[1]
 GOLDEN = Path(__file__).parent / "fixtures" / "ci_baseline_golden"
@@ -594,7 +595,7 @@ class DocsTest(unittest.TestCase):  # P83-AC-009
                        "run of ASCII digits"):
             self.assertIn(needle, row)
         log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
-        unreleased = log.split("## [Unreleased]")[1].split("\n## [")[0]
+        unreleased = changelog_since_first_release(log)
         self.assertIn("ci --baseline", unreleased)
 
     def test_the_readme_ci_gate_names_the_flag(self):  # final review M-2 (1)

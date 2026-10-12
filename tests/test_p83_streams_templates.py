@@ -15,7 +15,7 @@ from pathlib import Path
 
 from modsys.agent import validate_command
 from tests.agent_helpers import AgentRepo
-from tests.helpers import copy_fixture, make_repo
+from tests.helpers import changelog_since_first_release, copy_fixture, make_repo
 from tests.test_p82_minors import ENGINE, LAUNCHER, SCRIPT, Spawn
 
 TIMEOUT = 90
@@ -440,7 +440,7 @@ class DocsTest(unittest.TestCase):
     def test_the_contract_and_the_changelog_name_the_changes(self):  # P83-AC-034
         for needle in ("fd 2 is closed at start", "the null device", "exists but cannot be read"):
             self.assertIn(needle, DOCS)
-        unreleased = CHANGELOG.split("## [Unreleased]")[1].split("\n## [")[0]
+        unreleased = changelog_since_first_release(CHANGELOG)
         for needle in ("stderr closed at start", "cannot read", "--sandbox read-only"):
             self.assertIn(needle, unreleased)
 
