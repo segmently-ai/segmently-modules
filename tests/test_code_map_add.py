@@ -1,4 +1,4 @@
-"""`modsys code-map add`: appends one rule to the team config — never a rewrite, never a
+"""`segmently-modules code-map add`: appends one rule to the team config — never a rewrite, never a
 damaged file."""
 import hashlib
 import os
@@ -30,21 +30,21 @@ class AddTest(unittest.TestCase):  # P32-AC-010
                                  "--keyword", f"{name}-a", "--keyword", f"{name}-b",
                                  "--keyword", f"{name}-c", "--keyword", f"{name}-d",
                                  "--keyword", f"{name}-e", *self.R)[0], 0)
-        self.team = self.root / ".modsys" / "config.toml"
+        self.team = self.root / ".segmently-modules" / "config.toml"
 
     def tearDown(self):
         self._tmp.cleanup()
 
     def add(self, *argv):
         code, env, err = run_json("code-map", "add", *argv, *self.R)
-        self.assertEqual((code, err, env["schema"]), (0, "", "modsys.code-map/1"))
+        self.assertEqual((code, err, env["schema"]), (0, "", "segmently-modules.code-map/1"))
         return env["data"]
 
     def test_appends_one_rule_and_it_takes_effect(self):
         before = self.team.read_bytes()
         data = self.add("tasks-src", "--glob", "src/tasks/**", "--module", "tasks")
         block = '[[code_map]]\nid = "tasks-src"\nmodule = "tasks"\nglobs = ["src/tasks/**"]\n'
-        self.assertEqual(data, {"id": "tasks-src", "file": ".modsys/config.toml", "block": block,
+        self.assertEqual(data, {"id": "tasks-src", "file": ".segmently-modules/config.toml", "block": block,
                                 "dry_run": False})
         self.assertEqual(self.team.read_bytes(), before + b"\n" + block.encode())
         (self.root / "src/tasks").mkdir(parents=True)
@@ -72,7 +72,7 @@ class AddTest(unittest.TestCase):  # P32-AC-010
         self.assertEqual(sha(self.team), before)
         out = run("code-map", "add", "x", "--glob", "src/x/**", "--module", "tasks", "--dry-run",
                   *self.R)[1]
-        self.assertTrue(out.startswith("would append to .modsys/config.toml:\n[[code_map]]\n"))
+        self.assertTrue(out.startswith("would append to .segmently-modules/config.toml:\n[[code_map]]\n"))
 
     def test_the_same_id_again_is_refused(self):
         self.add("tasks-src", "--glob", "src/tasks/**", "--module", "tasks")
@@ -89,7 +89,7 @@ class RefusalTest(unittest.TestCase):  # P32-AC-011
         self.root = make_repo(self._tmp.name, {"tasks": ["task"], "lists": ["list"]},
                               '## team config\n[[code_map]]\nid = "team-rule"\nmodule = "tasks"\n'
                               'globs = ["t/**"]\n')
-        self.team = self.root / ".modsys" / "config.toml"
+        self.team = self.root / ".segmently-modules" / "config.toml"
         self.R = ("--root", str(self.root))
 
     def tearDown(self):
@@ -99,7 +99,7 @@ class RefusalTest(unittest.TestCase):  # P32-AC-011
         before = self.team.read_bytes() if self.team.exists() else None
         code, out, err = run("code-map", "add", *argv, "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertTrue(err.startswith("modsys: error:"), err)
+        self.assertTrue(err.startswith("segmently-modules: error:"), err)
         self.assertNotIn("Traceback", err)
         self.assertEqual(self.team.read_bytes() if self.team.exists() else None, before)
         return err
@@ -140,19 +140,19 @@ class RefusalTest(unittest.TestCase):  # P32-AC-011
             err = self.refused("x", "--glob", "a/**", "--module", "tasks")
         finally:
             os.chmod(self.team, 0o600)
-        self.assertIn("cannot write .modsys/config.toml:", err)  # root-relative
+        self.assertIn("cannot write .segmently-modules/config.toml:", err)  # root-relative
         self.assertNotIn(str(self.root), err)
         self.assertIn("nothing written", err)
 
     def test_id_defined_in_any_layer(self):
-        pack = self.root / ".modsys" / "packs" / "acme" / "pack.toml"
+        pack = self.root / ".segmently-modules" / "packs" / "acme" / "pack.toml"
         pack.parent.mkdir(parents=True)
         pack.write_text('id = "acme"\n[[code_map]]\nid = "pack-rule"\npattern = "p/{module}/**"\n')
-        (self.root / ".modsys" / "config.user.toml").write_text(
+        (self.root / ".segmently-modules" / "config.user.toml").write_text(
             '[[code_map]]\nid = "user-rule"\nmodule = "lists"\nglobs = ["u/**"]\n')
-        for rule_id, where in (("team-rule", "defined in .modsys/config.toml;"),
-                               ("pack-rule", "defined in pack acme (.modsys/packs/acme/pack.toml)"),
-                               ("user-rule", "defined in .modsys/config.user.toml;")):
+        for rule_id, where in (("team-rule", "defined in .segmently-modules/config.toml;"),
+                               ("pack-rule", "defined in pack acme (.segmently-modules/packs/acme/pack.toml)"),
+                               ("user-rule", "defined in .segmently-modules/config.user.toml;")):
             with self.subTest(rule_id=rule_id):
                 err = self.refused(rule_id, "--glob", "z/**", "--module", "tasks")
                 self.assertIn("already defined", err)
@@ -161,7 +161,7 @@ class RefusalTest(unittest.TestCase):  # P32-AC-011
 
     def test_no_team_config(self):
         self.team.unlink()
-        self.assertIn("run `modsys init` first", self.refused("x", "--glob", "a/**", "--module",
+        self.assertIn("run `segmently-modules init` first", self.refused("x", "--glob", "a/**", "--module",
                                                               "tasks"))
 
     def test_a_static_code_map_array_makes_the_append_invalid(self):
@@ -180,7 +180,7 @@ class WriteSafetyTest(unittest.TestCase):  # P32-AC-012
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = make_repo(self._tmp.name, {"tasks": ["task"]}, "# starter\n")
-        self.team = self.root / ".modsys" / "config.toml"
+        self.team = self.root / ".segmently-modules" / "config.toml"
         self.R = ("--root", str(self.root))
 
     def tearDown(self):
@@ -211,7 +211,7 @@ class WriteSafetyTest(unittest.TestCase):  # P32-AC-012
         self.assertTrue(self.team.read_bytes().startswith(b"# no newline\n\n[[code_map]]\n"))
 
     def test_symlink_and_mode_are_kept(self):
-        shared = self.root / "shared" / "modsys.toml"
+        shared = self.root / "shared" / "segmently_modules.toml"
         shared.parent.mkdir()
         shared.write_text("# shared team config\n")
         self.team.unlink()

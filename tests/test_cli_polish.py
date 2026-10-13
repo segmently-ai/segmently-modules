@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from modsys.proposals import join_blocks
+from segmently_modules.proposals import join_blocks
 from tests.helpers import copy_fixture, git, init_git, make_repo, run, run_json
 
 DESC = "Customer reviews of books: ratings, comments and moderation."
@@ -99,7 +99,7 @@ class QuietLintAndTemplateTest(unittest.TestCase):
             _, env, _ = run_json("lint", "--fail-on", "never", "--root", str(root))
         section = text.split("## EXISTING Components")[1].split("## Usage")[0]
         for needle in ("<!--", "backticks", "MS040", "[[code_map]]", "code_pointer",
-                       ".modsys/config.toml", "docs/configuration.md"):
+                       ".segmently-modules/config.toml", "docs/configuration.md"):
             self.assertIn(needle, section)
         self.assertNotIn("reviews", {f["module"] for f in env["data"]["findings"]
                                      if f["code"] == "MS040"})
@@ -133,7 +133,7 @@ class P5aTextTest(unittest.TestCase):  # P5A-AC-007 (D0b)
         code, out, _ = run("coverage", "--root", str(root))
         self.assertEqual(code, 0)
         self.assertIn("2 dotfile(s) not counted (dotfiles and dot-directories never count)",
-                      out.splitlines())  # .modsys/config.toml: the config dir, not a dotfile
+                      out.splitlines())  # .segmently-modules/config.toml: the config dir, not a dotfile
         data = run_json("coverage", "--root", str(root))[1]["data"]
         self.assertEqual((set(data), data["total"]),
                          ({"total", "mapped", "share", "modules", "unmapped"}, 1))

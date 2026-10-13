@@ -134,7 +134,7 @@ class KeywordWarningsTest(unittest.TestCase):  # P5A-AC-006 (D0b)
                 code, out, err = run(*self.argv(keywords, name="loans"), *mode, *self.R)
                 self.assertEqual(code, 0)
                 self.assertEqual(err.splitlines(), [
-                    l for l in err.splitlines() if l.startswith("modsys: warning: ")])
+                    l for l in err.splitlines() if l.startswith("segmently-modules: warning: ")])
                 self.assertEqual(len(err.splitlines()), 3)  # short, generic, the plural line
                 self.assertIn("loans", out)
                 if "--dry-run" not in mode:
@@ -151,17 +151,17 @@ class KeywordWarningsTest(unittest.TestCase):  # P5A-AC-006 (D0b)
 
     def test_an_interactive_run_warns_after_the_prompts(self):
         answers = iter([DESC[1]])
-        with mock.patch("modsys.create.interactive", return_value=True), \
+        with mock.patch("segmently_modules.create.interactive", return_value=True), \
                 mock.patch("builtins.input", lambda prompt: next(answers)):
             code, out, err = run("create", "loans", *[a for k in ["api"] + NEUTRAL
                                                        for a in ("--keyword", k)], *self.R)
         self.assertEqual(code, 0)
-        self.assertEqual(err, "modsys: warning: keyword 'api' is short (3 characters): it "
+        self.assertEqual(err, "segmently-modules: warning: keyword 'api' is short (3 characters): it "
                               "matches many tasks — prefer a longer domain word\n")
 
 
 class OneLineHintsTest(unittest.TestCase):  # P5B-AC-045 (D15(c))
-    SUMMARY = ("modsys: warning: {n} keyword(s) without their singular / plural form (matching "
+    SUMMARY = ("segmently-modules: warning: {n} keyword(s) without their singular / plural form (matching "
                "is exact: add the form tasks use): {pairs} — --json lists each")
     TABLE = [  # (keywords, stderr lines, data.warnings count)
         (["books", "book"], [], 0),
@@ -172,9 +172,9 @@ class OneLineHintsTest(unittest.TestCase):  # P5B-AC-045 (D15(c))
          [SUMMARY.format(n=6, pairs="loans → loan, reviews → review, fines → fine and 3 more")],
          6),
         (["ui", "data", "loans", "reviews"],
-         ["modsys: warning: keyword 'ui' is short (2 characters): it matches many tasks — prefer "
+         ["segmently-modules: warning: keyword 'ui' is short (2 characters): it matches many tasks — prefer "
           "a longer domain word",
-          "modsys: warning: keyword 'data' is a generic word: it matches many tasks — prefer a "
+          "segmently-modules: warning: keyword 'data' is a generic word: it matches many tasks — prefer a "
           "domain word", SUMMARY.format(n=2, pairs="loans → loan, reviews → review")], 4),
     ]
 

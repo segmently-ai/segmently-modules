@@ -1,4 +1,4 @@
-"""`modsys adopt` (D2): the config an existing registry needs, inferred with its evidence —
+"""`segmently-modules adopt` (D2): the config an existing registry needs, inferred with its evidence —
 paths, roles, fields, the dir whitelist, updated_at_path, a code-map rule, budgets (commented
 out); written to config.toml or adopt.proposed.toml, never touching the registry or its docs;
 lint in report mode; the fixture regenerates equivalent declarations (row 5.1)."""
@@ -13,17 +13,17 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys.adopt_cmd import ADOPT_OPENING, STARTER_OPENING, adopt_header
-from modsys.cli import build_parser
-from modsys.config import load_config
-from modsys.init_cmd import _HEADER
+from segmently_modules.adopt_cmd import ADOPT_OPENING, STARTER_OPENING, adopt_header
+from segmently_modules.cli import build_parser
+from segmently_modules.config import load_config
+from segmently_modules.init_cmd import _HEADER
 from tests.helpers import FIXTURE, run, run_json
 from tests.test_cli_contract import DOC as CONTRACT, GOLDEN
 
 KEY_LINE = re.compile(r"^(?:[A-Za-z0-9_-]+|\"[^\"]*\") = ")
 
 
-def manifest(root: Path, skip: str = ".modsys") -> dict:
+def manifest(root: Path, skip: str = ".segmently-modules") -> dict:
     """sha256 of every file outside `skip` (paths relative to the root)."""
     return {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted(root.rglob("*")) if p.is_file() and not p.is_symlink()
@@ -74,7 +74,7 @@ class AdoptRepo(unittest.TestCase):
         got, env, err = run_json("adopt", *argv, *self.R)
         self.assertEqual((got, err), (code, ""), env)
         if code == 0:
-            self.assertEqual(env["schema"], "modsys.adopt/1")
+            self.assertEqual(env["schema"], "segmently-modules.adopt/1")
             return env["data"]
         return env
 
@@ -82,7 +82,7 @@ class AdoptRepo(unittest.TestCase):
         before = manifest(self.root, skip="")
         code, out, err = run("adopt", *argv, "--json", *self.R)
         self.assertEqual((code, out), (2, ""), err)
-        self.assertTrue(err.startswith("modsys: error: "), err)
+        self.assertTrue(err.startswith("segmently-modules: error: "), err)
         self.assertEqual(manifest(self.root, skip=""), before)
         return err
 
@@ -103,7 +103,7 @@ class AdoptOutputsTest(AdoptRepo):  # P5A-AC-015
         header = " ".join(adopt_header().replace("##", " ").split())
         self.assertEqual(header, flat.replace(STARTER_OPENING, ADOPT_OPENING))
         self.assertTrue(header.startswith(
-            "modsys team config, written by modsys adopt — review it, then commit it. adopt set "
+            "segmently-modules team config, written by segmently-modules adopt — review it, then commit it. adopt set "
             "the keys below (each `# adopt:` line says why); commented-out keys are for the team "
             "to decide. Layers (later wins): "), header)
         self.assertNotIn("uncomment what you need", header)  # the adopted keys are active
@@ -123,16 +123,16 @@ class AdoptOutputsTest(AdoptRepo):  # P5A-AC-015
         return data
 
     def test_the_decision_table(self):
-        data = self.untouched("--dry-run")  # absent, dry run: nothing, not even .modsys/
-        self.assertFalse((self.root / ".modsys").exists())
-        self.assertEqual((data["config_path"], data["dry_run"]), (".modsys/config.toml", True))
+        data = self.untouched("--dry-run")  # absent, dry run: nothing, not even .segmently-modules/
+        self.assertFalse((self.root / ".segmently-modules").exists())
+        self.assertEqual((data["config_path"], data["dry_run"]), (".segmently-modules/config.toml", True))
         self.check_text(data["config"])
         data = self.untouched()  # absent: config.toml created
-        config = self.root / ".modsys/config.toml"
+        config = self.root / ".segmently-modules/config.toml"
         self.assertEqual(config.read_text(), data["config"])
         self.check_text(config.read_text())
-        load_config(self.root / ".modsys", self.root)
-        self.assertEqual((data["config_path"], data["dry_run"]), (".modsys/config.toml", False))
+        load_config(self.root / ".segmently-modules", self.root)
+        self.assertEqual((data["config_path"], data["dry_run"]), (".segmently-modules/config.toml", False))
         self.assertEqual(set(data), {"root", "registry", "layout", "inferred", "config_path",
                                      "config", "lint", "next_steps", "dry_run"})
         self.assertEqual(set(data["inferred"]), {"paths", "roles", "fields", "dir_whitelist",
@@ -140,22 +140,22 @@ class AdoptOutputsTest(AdoptRepo):  # P5A-AC-015
                                                  "code_map_suggestion", "budgets", "skipped",
                                                  "statuses", "relations"})  # P5B-AC-044
         steps = " ".join(data["next_steps"])
-        self.assertIn("review .modsys/config.toml", steps)
+        self.assertIn("review .segmently-modules/config.toml", steps)
         self.assertIn('[packs] builtin = ["core"]', steps)
         stamp = (config.read_bytes(), config.stat().st_mtime_ns)
         self.write("src/checkout/b.py")
         self.registry({"catalog": entry("catalog", file_paths=["src/catalog/a.py"]),
                        "checkout": entry("checkout", owner="team-b")})
         data = self.untouched("--dry-run")  # present, dry run: nothing
-        self.assertFalse((self.root / ".modsys/adopt.proposed.toml").exists())
-        self.assertEqual(data["config_path"], ".modsys/adopt.proposed.toml")
+        self.assertFalse((self.root / ".segmently-modules/adopt.proposed.toml").exists())
+        self.assertEqual(data["config_path"], ".segmently-modules/adopt.proposed.toml")
         data = self.untouched()  # present: the proposal, config.toml untouched
-        proposal = self.root / ".modsys/adopt.proposed.toml"
+        proposal = self.root / ".segmently-modules/adopt.proposed.toml"
         self.assertEqual(proposal.read_text(), data["config"])
         self.assertEqual(self.toml(data)["fields"], {"owner": {"type": "string",
                                                                "scope": ["module"]}})
         self.assertEqual((config.read_bytes(), config.stat().st_mtime_ns), stamp)
-        self.assertIn("merge .modsys/adopt.proposed.toml into .modsys/config.toml by hand",
+        self.assertIn("merge .segmently-modules/adopt.proposed.toml into .segmently-modules/config.toml by hand",
                       " ".join(data["next_steps"]))
         self.check_text(proposal.read_text())
         config.write_text(config.read_text() + '\n[fields.owner]\ntype = "string"\n')
@@ -174,11 +174,11 @@ class AdoptOutputsTest(AdoptRepo):  # P5A-AC-015
         self.assertEqual((code, err), (0, ""))
         self.assertTrue(out.startswith(adopt_header()))
         self.assertIn("[fields.file_paths]", out)
-        self.assertIn("would write .modsys/config.toml", out)
+        self.assertIn("would write .segmently-modules/config.toml", out)
         code, out, _ = run("adopt", *self.R)
         self.assertNotIn("[fields.file_paths]", out)
-        self.assertIn("wrote .modsys/config.toml", out)
-        self.assertIn("next: review .modsys/config.toml", out)
+        self.assertIn("wrote .segmently-modules/config.toml", out)
+        self.assertIn("next: review .segmently-modules/config.toml", out)
 
 
 class RoleInferenceTest(AdoptRepo):  # P5A-AC-016
@@ -218,14 +218,14 @@ class RoleInferenceTest(AdoptRepo):  # P5A-AC-016
                                                            "developer", "team_role")),
                        "b": entry("b", context_files=carry("auditor", "reviewer")),
                        "c": entry("c", context_files=carry("auditor", "reviewer"))})
-        self.write(".modsys/packs/team/pack.toml", 'id = "team"\n[roles.team_role]\norder = 45\n')
+        self.write(".segmently-modules/packs/team/pack.toml", 'id = "team"\n[roles.team_role]\norder = 45\n')
         data = self.adopt("--dry-run")
         rows = [(r["name"], r["order"]) for r in data["inferred"]["roles"]]
         self.assertEqual(rows, [("auditor", 55), ("reviewer", 65), ("ux", 75)])
         roles = self.toml(data)["roles"]
         for spec in roles.values():
             self.assertEqual(set(spec), {"order", "standard"})
-        self.write(".modsys/config.toml", '[roles.auditor]\norder = 70\n')
+        self.write(".segmently-modules/config.toml", '[roles.auditor]\norder = 70\n')
         rows = [(r["name"], r["order"]) for r in self.adopt("--dry-run")["inferred"]["roles"]]
         self.assertEqual(rows, [("reviewer", 80), ("ux", 90)])
 
@@ -264,7 +264,7 @@ class FieldInferenceTest(AdoptRepo):  # P5A-AC-017
                 self.assertEqual(decl["where"].get("kind"), kind)
         probed = []
         real = os.path.lexists
-        with mock.patch("modsys.adopt_cmd.os.path.lexists",
+        with mock.patch("segmently_modules.adopt_cmd.os.path.lexists",
                         side_effect=lambda p: probed.append(str(p)) or real(p)):
             self.fields({f"m{i}": entry(f"m{i}", where=v) for i, v in enumerate(never)})
         self.assertFalse([p for p in probed if "outside" in p or "hosts" in p or "~" in p])
@@ -294,12 +294,12 @@ class FieldInferenceTest(AdoptRepo):  # P5A-AC-017
                 lint = run_json("lint", "--fail-on", "never", *self.R)[1]["data"]
                 self.assertIn(("MS012", "b"), [(f["code"], f["module"])
                                                for f in lint["findings"]])
-                shutil.rmtree(self.root / ".modsys")
+                shutil.rmtree(self.root / ".segmently-modules")
 
     def test_scope_and_what_is_never_inferred(self):
         child = {"description": "Child.", "keywords": ["c"], "note": "x",
                  "context_files": {"universal": "modules/a/submodules/c/MODULE.md"}}
-        self.write(".modsys/config.toml", '[fields.declared]\ntype = "string"\n')
+        self.write(".segmently-modules/config.toml", '[fields.declared]\ntype = "string"\n')
         decl, inferred = self.fields({"a": entry("a", both="y", declared="z",
                                                  submodules={"c": {**child, "both": "w"}})})
         self.assertEqual((decl["note"]["scope"], decl["both"]["scope"]),
@@ -307,7 +307,7 @@ class FieldInferenceTest(AdoptRepo):  # P5A-AC-017
         self.assertEqual(sorted(f["name"] for f in inferred["fields"]), ["both", "note"])
         for spec in decl.values():
             self.assertFalse({"deprecated", "description", "used_by", "ask_on_create"} & set(spec))
-        (self.root / ".modsys/config.toml").unlink()
+        (self.root / ".segmently-modules/config.toml").unlink()
         shutil.rmtree(self.root / "modules")
         self.registry({"a": entry("a", both="y", declared="z",
                                   submodules={"c": {**child, "both": "w"}})})
@@ -326,7 +326,7 @@ class FieldInferenceTest(AdoptRepo):  # P5A-AC-017
 class DirsAndTimestampTest(AdoptRepo):  # P5A-AC-018
     def test_dir_whitelist(self):
         shutil.copytree(FIXTURE, self.root, dirs_exist_ok=True)
-        shutil.rmtree(self.root / ".modsys")
+        shutil.rmtree(self.root / ".segmently-modules")
         self.write("modules/_shared/notes.md")
         self.write("modules/.cache/x")
         data = self.adopt()
@@ -384,10 +384,10 @@ class CodeMapInferenceTest(AdoptRepo):  # P5A-AC-019
 
     def test_the_committed_fixture_and_an_existing_rule(self):
         shutil.copytree(FIXTURE, self.root, dirs_exist_ok=True)
-        shutil.rmtree(self.root / ".modsys")
+        shutil.rmtree(self.root / ".segmently-modules")
         self.assertIsNone(self.adopt("--dry-run")["inferred"]["code_map"])  # 1 of 3
         self.write("src/checkout/cart.py")
-        self.write(".modsys/config.toml", '[[code_map]]\nid = "x"\nglobs = ["x/**"]\n'
+        self.write(".segmently-modules/config.toml", '[[code_map]]\nid = "x"\nglobs = ["x/**"]\n'
                                           'module = "catalog"\n')
         self.assertIsNone(self.adopt("--dry-run")["inferred"]["code_map"])
 
@@ -396,7 +396,7 @@ class CodeMapInferenceTest(AdoptRepo):  # P5A-AC-019
         data = self.adopt()
         suggestion = {"pattern": "src/{module}/**", "covered": 49, "total": 100}
         self.assertEqual(data["inferred"]["code_map_suggestion"], suggestion)
-        config = self.root / ".modsys/config.toml"
+        config = self.root / ".segmently-modules/config.toml"
         text = config.read_text()
         self.assertEqual(text, data["config"])
         block = text.split("# [[code_map]]\n", 1)[1].splitlines()
@@ -483,7 +483,7 @@ class PathsAndLayoutTest(AdoptRepo):  # P5A-AC-021
         self.registry({"a": a}, rel="docs/modules/registry.json")
         self.assertIn("no registry at modules/registry.json — pass the registry file with "
                       "--registry PATH", self.refused())
-        self.assertIn("modsys init map", self.refused())
+        self.assertIn("segmently-modules init map", self.refused())
         data = self.adopt("--registry", "docs/modules/registry.json")
         self.assertEqual(self.toml(data)["paths"], {"registry": "docs/modules/registry.json",
                                                     "modules_dir": "docs/modules"})
@@ -500,7 +500,7 @@ class PathsAndLayoutTest(AdoptRepo):  # P5A-AC-021
         self.assertEqual((data["layout"], self.toml(data)["paths"]),
                          ("per-module", {"registry_layout": "per-module"}))
         self.assertEqual(self.listed(), ["a", "b"])
-        shutil.rmtree(self.root / ".modsys")
+        shutil.rmtree(self.root / ".segmently-modules")
         (self.root / "modules/b/module.json").unlink()
         data = self.adopt()  # P5B-AC-046: a mixed layout keeps the registry file (was exit 2)
         self.assertEqual((data["layout"], data["inferred"]["paths"]), ("single", {}))
@@ -568,10 +568,10 @@ class VocabularyInferenceTest(AdoptRepo):  # P5B-AC-044 (D15(b), SI-27)
         self.assertEqual(data["inferred"]["relations"], [{"value": "uses", "count": 1},
                                                          {"value": "wraps", "count": 1}])
         self.assertIn('# adopt: "wraps" on 1 edge (b/x)', data["config"])
-        self.write(".modsys/config.toml", '[registry]\nstatuses = ["stable"]\n')
+        self.write(".segmently-modules/config.toml", '[registry]\nstatuses = ["stable"]\n')
         layer, data = self.vocabulary({"a": entry("a", status="stable")})
         self.assertEqual((layer, data["inferred"]["statuses"]), ({}, []))
-        (self.root / ".modsys/config.toml").unlink()
+        (self.root / ".segmently-modules/config.toml").unlink()
         layer, data = self.vocabulary({
             "a": entry("a", status=None), "b": entry("b", status=3), "c": entry("c", status=""),
             "d": entry("d", related_modules=[{"module": "a", "relation": None,
@@ -638,7 +638,7 @@ class LayoutDetectionTest(AdoptRepo):  # P5B-AC-046 (D15(d) M-3)
                       data["config"])
         self.assertEqual(manifest(self.root), before)
         self.files(entry("b"), None)  # a's file names another module: not its entry
-        shutil.rmtree(self.root / ".modsys")
+        shutil.rmtree(self.root / ".segmently-modules")
         self.assertEqual(self.adopt("--dry-run")["layout"], "single")
 
     def test_the_flag(self):
@@ -674,7 +674,7 @@ class UserLayerTest(AdoptRepo):  # P5B-AC-047 (D15(d) M-4, SI-28)
     def test_the_decision_table(self):
         roles, _ = self.roles_written()
         self.assertEqual(list(roles), ["reviewer"])  # declared nowhere: declared
-        user = self.write(".modsys/config.user.toml", '[roles.reviewer]\norder = 70\n'
+        user = self.write(".segmently-modules/config.user.toml", '[roles.reviewer]\norder = 70\n'
                                                       '[fields.owner]\ntype = "string"\n')
         roles, text = self.roles_written()
         self.assertEqual(list(roles), ["reviewer"])  # only the personal file: declared too
@@ -682,7 +682,7 @@ class UserLayerTest(AdoptRepo):  # P5B-AC-047 (D15(d) M-4, SI-28)
         owner = text.split("[fields.owner]\n", 1)[1].split("\nscope", 1)[0].splitlines()
         self.assertEqual((owner[0], owner[-1]), ('type = "string"', "# adopt: also declared in "
                                                                     "config.user.toml (personal)"))
-        team = self.write(".modsys/config.toml", '[roles.reviewer]\norder = 70\n')
+        team = self.write(".segmently-modules/config.toml", '[roles.reviewer]\norder = 70\n')
         roles, _ = self.roles_written()
         self.assertEqual(roles, {})  # the team file declares it: not repeated
         user.unlink()
@@ -691,10 +691,10 @@ class UserLayerTest(AdoptRepo):  # P5B-AC-047 (D15(d) M-4, SI-28)
         team.unlink()
 
     def test_a_teammate_without_the_personal_file(self):
-        user = self.write(".modsys/config.user.toml", '[roles.reviewer]\norder = 70\n')
+        user = self.write(".segmently-modules/config.user.toml", '[roles.reviewer]\norder = 70\n')
         before = user.read_bytes()
         data = self.adopt()
-        self.assertEqual(data["config_path"], ".modsys/config.toml")
+        self.assertEqual(data["config_path"], ".segmently-modules/config.toml")
         self.assertEqual(data["lint"]["counts"], {})  # report mode: every layer
         self.assertEqual(user.read_bytes(), before)
         user.unlink()  # a teammate's checkout
@@ -713,7 +713,7 @@ class PersonalEverySectionTest(AdoptRepo):  # P5B-AC-047 (M-4 in every section, 
         self.write("modules/_shared/notes.md")
         personal = "also declared in config.user.toml (personal)"
         self.assertNotIn(personal, self.adopt("--dry-run")["config"])
-        self.write(".modsys/config.user.toml",
+        self.write(".segmently-modules/config.user.toml",
                    '[registry]\nupdated_at_path = "updatedAt"\nstatuses = ["stable"]\n'
                    'dir_whitelist = ["_shared"]\n\n[budgets]\nmodule_doc_split_signal = 700\n\n'
                    '[[code_map]]\nid = "src"\npattern = "src/{module}/**"\n')
@@ -793,7 +793,7 @@ class LintReportTest(AdoptRepo):  # P5A-AC-022
 
 
 class GitignoreStepTest(AdoptRepo):  # E-B: the adopter's .gitignore lines
-    STEP = ("modsys init — adds the .gitignore lines for the lock file, proposals and init (it "
+    STEP = ("segmently-modules init — adds the .gitignore lines for the lock file, proposals and init (it "
             "keeps your config)")
 
     def test_init_after_adopt_keeps_the_config_and_adds_only_the_ignore_lines(self):
@@ -808,7 +808,7 @@ class GitignoreStepTest(AdoptRepo):  # E-B: the adopter's .gitignore lines
         self.assertEqual({p for p in before.keys() | after.keys()
                           if before.get(p) != after.get(p)}, {".gitignore"})
         self.assertEqual((self.root / ".gitignore").read_text(), "node_modules/\n"
-                         "docs/modules/registry.json.lock\n.modsys/proposals/\n.modsys/init/\n.modsys/config.user.toml\n")
+                         "docs/modules/registry.json.lock\n.segmently-modules/proposals/\n.segmently-modules/init/\n.segmently-modules/config.user.toml\n")
         self.assertNotIn(self.STEP, self.adopt("--dry-run")["next_steps"])
 
     def test_the_step_names_a_missing_gitignore_too(self):
@@ -828,9 +828,9 @@ class FixtureEquivalenceTest(unittest.TestCase):  # P5A-AC-023 (row 5.1)
             for rel in ("src/checkout/cart.py", "src/payments/gateway.py"):
                 (root / rel).parent.mkdir(parents=True, exist_ok=True)
                 (root / rel).write_text("VALUE = 1\n")
-        (self.ref / ".modsys/config.toml").write_text('[[code_map]]\nid = "src"\n'
+        (self.ref / ".segmently-modules/config.toml").write_text('[[code_map]]\nid = "src"\n'
                                                       'pattern = "src/{module}/**"\n')
-        shutil.rmtree(self.new / ".modsys")
+        shutil.rmtree(self.new / ".segmently-modules")
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -861,7 +861,7 @@ class FixtureEquivalenceTest(unittest.TestCase):  # P5A-AC-023 (row 5.1)
                                  self.out(self.new, "show", target, "--all-roles"))
         self.assertEqual(run("lint", "--fail-on", "warning", "--root", str(self.new))[0], 0)
         self.assertFalse(run("lint", "--root", str(FIXTURE))[0])
-        self.assertFalse((FIXTURE / ".modsys/config.toml").exists())
+        self.assertFalse((FIXTURE / ".segmently-modules/config.toml").exists())
 
 
 class EdgeInputsTest(AdoptRepo):  # P5A-AC-043
@@ -873,7 +873,7 @@ class EdgeInputsTest(AdoptRepo):  # P5A-AC-043
                                             "updated_at_path": None, "statuses": [],
                                             "relations": [], "code_map": None,
                                             "code_map_suggestion": None, "budgets": []})
-        self.assertIn("modsys init map", " ".join(data["next_steps"]))
+        self.assertIn("segmently-modules init map", " ".join(data["next_steps"]))
 
     def test_odd_names_and_non_ascii_evidence(self):
         cf = {"universal": "modules/käse/MODULE.md",
@@ -881,14 +881,14 @@ class EdgeInputsTest(AdoptRepo):  # P5A-AC-043
         self.registry({"käse": entry("käse", context_files=cf,
                                      **{'review "notes"': "x", "a\\b": "y"})})
         data = self.adopt()
-        layer = tomllib.loads((self.root / ".modsys/config.toml").read_text(encoding="utf-8"))
+        layer = tomllib.loads((self.root / ".segmently-modules/config.toml").read_text(encoding="utf-8"))
         self.assertEqual((list(layer["roles"]), sorted(layer["fields"])),
                          (["ux designer"], ["a\\b", 'review "notes"']))
         self.assertIn("carried by 1 entry: käse", data["config"])
 
     def test_a_fixed_point(self):
         shutil.copytree(FIXTURE, self.root, dirs_exist_ok=True)
-        shutil.rmtree(self.root / ".modsys")
+        shutil.rmtree(self.root / ".segmently-modules")
         self.write("modules/_shared/x.md")
         first = self.adopt()["inferred"]
         again = self.adopt("--dry-run")["inferred"]
@@ -909,43 +909,43 @@ class WritesAndRacesTest(AdoptRepo):  # P5A-AC-044
         self.registry({"a": entry("a", odd="x")})
 
     def test_a_config_that_appears_meanwhile(self):
-        from modsys import adopt_cmd
+        from segmently_modules import adopt_cmd
         real = adopt_cmd.plan_adopt
 
         def racing(*args):
             plan = real(*args)
-            self.write(".modsys/config.toml", "# theirs\n")
+            self.write(".segmently-modules/config.toml", "# theirs\n")
             return plan
 
-        with mock.patch("modsys.adopt_cmd.plan_adopt", side_effect=racing):
+        with mock.patch("segmently_modules.adopt_cmd.plan_adopt", side_effect=racing):
             code, out, err = run("adopt", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertIn(".modsys/config.toml appeared while adopt was running; run adopt again",
+        self.assertIn(".segmently-modules/config.toml appeared while adopt was running; run adopt again",
                       err)
-        self.assertEqual((self.root / ".modsys/config.toml").read_text(), "# theirs\n")
-        self.assertEqual([p.name for p in (self.root / ".modsys").iterdir()], ["config.toml"])
+        self.assertEqual((self.root / ".segmently-modules/config.toml").read_text(), "# theirs\n")
+        self.assertEqual([p.name for p in (self.root / ".segmently-modules").iterdir()], ["config.toml"])
 
     @unittest.skipIf(os.geteuid() == 0, "root writes into read-only directories")
     def test_a_read_only_config_dir(self):
-        (self.root / ".modsys").mkdir()
-        os.chmod(self.root / ".modsys", 0o555)
+        (self.root / ".segmently-modules").mkdir()
+        os.chmod(self.root / ".segmently-modules", 0o555)
         code, out, err = run("adopt", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertIn("cannot write .modsys/config.toml", err)
-        os.chmod(self.root / ".modsys", 0o755)
-        self.assertEqual(list((self.root / ".modsys").iterdir()), [])
+        self.assertIn("cannot write .segmently-modules/config.toml", err)
+        os.chmod(self.root / ".segmently-modules", 0o755)
+        self.assertEqual(list((self.root / ".segmently-modules").iterdir()), [])
 
     def test_ctrl_c_while_writing(self):
-        with mock.patch("modsys.adopt_cmd.os.link", side_effect=KeyboardInterrupt):
-            self.assertEqual(run("adopt", *self.R), (130, "", "modsys: interrupted\n"))
-        self.assertEqual(list((self.root / ".modsys").iterdir()), [])
+        with mock.patch("segmently_modules.adopt_cmd.os.link", side_effect=KeyboardInterrupt):
+            self.assertEqual(run("adopt", *self.R), (130, "", "segmently-modules: interrupted\n"))
+        self.assertEqual(list((self.root / ".segmently-modules").iterdir()), [])
         self.adopt()
-        proposal = self.root / ".modsys/adopt.proposed.toml"
+        proposal = self.root / ".segmently-modules/adopt.proposed.toml"
         proposal.write_text("# old\n")
-        with mock.patch("modsys.store.os.replace", side_effect=KeyboardInterrupt):
-            self.assertEqual(run("adopt", *self.R), (130, "", "modsys: interrupted\n"))
+        with mock.patch("segmently_modules.store.os.replace", side_effect=KeyboardInterrupt):
+            self.assertEqual(run("adopt", *self.R), (130, "", "segmently-modules: interrupted\n"))
         self.assertEqual(proposal.read_text(), "# old\n")
-        self.assertEqual(sorted(p.name for p in (self.root / ".modsys").iterdir()),
+        self.assertEqual(sorted(p.name for p in (self.root / ".segmently-modules").iterdir()),
                          ["adopt.proposed.toml", "config.toml"])
 
 
@@ -954,24 +954,24 @@ class AdoptContractTest(AdoptRepo):  # P5A-AC-046, P5A-AC-042
         self.registry({"a": entry("a")})
         for text in ("code_map = 5\n", "[init]\nexclude = 5\n"):
             with self.subTest(config=text):
-                self.write(".modsys/config.toml", text)
+                self.write(".segmently-modules/config.toml", text)
                 code, out, err = run("adopt", "--json", *self.R)
                 self.assertEqual((code, out), (2, ""))
                 self.assertIn("config.toml", err)
                 self.assertNotIn("Traceback", err)
-        (self.root / ".modsys/config.toml").unlink()
-        with mock.patch("modsys.adopt_cmd.lint_registry", side_effect=KeyboardInterrupt):
+        (self.root / ".segmently-modules/config.toml").unlink()
+        with mock.patch("segmently_modules.adopt_cmd.lint_registry", side_effect=KeyboardInterrupt):
             self.assertEqual(run("adopt", "--dry-run", *self.R),
-                             (130, "", "modsys: interrupted\n"))
-        with mock.patch("modsys.adopt_cmd.lint_registry", side_effect=RuntimeError("boom")):
+                             (130, "", "segmently-modules: interrupted\n"))
+        with mock.patch("segmently_modules.adopt_cmd.lint_registry", side_effect=RuntimeError("boom")):
             with mock.patch.dict(os.environ):
-                os.environ.pop("MODSYS_DEBUG", None)
+                os.environ.pop("SEGMENTLY_MODULES_DEBUG", None)
                 code, out, err = run("adopt", "--dry-run", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertIn("modsys: internal error: RuntimeError: boom", err)
+        self.assertIn("segmently-modules: internal error: RuntimeError: boom", err)
         code, out, err = run("adopt", "--dry-run", "--root", str(self.root), "--config-dir",
-                             str(self.root / ".modsys"), "--json")
-        self.assertEqual((code, err, json.loads(out)["schema"]), (0, "", "modsys.adopt/1"))
+                             str(self.root / ".segmently-modules"), "--json")
+        self.assertEqual((code, err, json.loads(out)["schema"]), (0, "", "segmently-modules.adopt/1"))
 
     def test_twenty_six_verbs_everywhere(self):  # the count: test_eval_routing (27, P5b D3)
         parser = set(build_parser()._subparsers._group_actions[0].choices)

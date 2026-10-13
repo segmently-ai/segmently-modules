@@ -2,7 +2,7 @@
 order on stdin and answers deterministically. argv[1] is a JSON file of its behaviour:
 `answer` (the text it prints), `exit` (its exit code), `sleep` (seconds to block after it has
 written `started`), `stderr` (text), `log` (a JSON file it writes: its argv, its stdin, the
-files `MODSYS_WORK_ORDER` / `MODSYS_SCHEMA` name and their content, its environment),
+files `SEGMENTLY_MODULES_WORK_ORDER` / `SEGMENTLY_MODULES_SCHEMA` name and their content, its environment),
 `started` (a marker file), `grandchild` (a file to write the pid of a `sleep` child into),
 `nested` (an argv to run as a child and record: rc, stdout, stderr), `flood` (bytes to print), `helper` (seconds a session-leading helper holds stdout), `ignore_term`
 (true: SIGTERM is ignored, only SIGKILL stops it), `answer_hex` (the bytes it prints, in hex:
@@ -22,7 +22,7 @@ def main() -> int:
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
     stdin = sys.stdin.read()
     record = {"argv": sys.argv[2:], "stdin": stdin, "env": dict(os.environ), "cwd": os.getcwd()}
-    for key, name in (("MODSYS_WORK_ORDER", "work_order_file"), ("MODSYS_SCHEMA", "schema_file")):
+    for key, name in (("SEGMENTLY_MODULES_WORK_ORDER", "work_order_file"), ("SEGMENTLY_MODULES_SCHEMA", "schema_file")):
         path = os.environ.get(key)
         record[name] = {"path": path, "exists": bool(path) and Path(path).is_file(),
                         "content": Path(path).read_text(encoding="utf-8")

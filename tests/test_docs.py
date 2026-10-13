@@ -1,16 +1,16 @@
 """The user docs stay true to the engine: every config key and lint code is documented, and
-every `modsys …` command in a doc's code blocks uses a real verb and real flags."""
+every `segmently-modules …` command in a doc's code blocks uses a real verb and real flags."""
 import re
 import shlex
 import unittest
 from pathlib import Path
 
-from modsys.changes import CODE_MAP_SCHEMA
-from modsys.cli import build_parser
-from modsys.config import LAYER_SCHEMA, PACK_META_KEYS, ROLE_SCHEMA
-from modsys.fields import CORE_FIELDS, DECLARATION_KEYS
-from modsys.hooks import HOOK_SCHEMA
-from modsys.skills import AGENT_DIRS
+from segmently_modules.changes import CODE_MAP_SCHEMA
+from segmently_modules.cli import build_parser
+from segmently_modules.config import LAYER_SCHEMA, PACK_META_KEYS, ROLE_SCHEMA
+from segmently_modules.fields import CORE_FIELDS, DECLARATION_KEYS
+from segmently_modules.hooks import HOOK_SCHEMA
+from segmently_modules.skills import AGENT_DIRS
 
 ENGINE = Path(__file__).resolve().parents[1]
 CONFIG_DOC = ENGINE / "docs" / "configuration.md"
@@ -26,12 +26,12 @@ def verbs() -> dict:
 
 
 def commands(text: str) -> list[list[str]]:
-    """`modsys VERB …` command lines from the fenced code blocks (continuations joined)."""
+    """`segmently-modules VERB …` command lines from the fenced code blocks (continuations joined)."""
     out = []
     for block in _FENCE.finditer(text):
         for line in block.group(3).replace("\\\n", " ").splitlines():
             line = line.strip()
-            if line.startswith("modsys ") and not line.startswith("modsys -"):
+            if line.startswith("segmently-modules ") and not line.startswith("segmently-modules -"):
                 out.append(shlex.split(line.split(" #")[0].split("<<")[0]))
     return out
 
@@ -48,18 +48,18 @@ class ConfigDocTest(unittest.TestCase):
             self.assertIn(f"## `[{section}]`", doc)
 
     def test_every_lint_code_is_in_the_table(self):
-        source = "".join((ENGINE / "modsys" / f).read_text(encoding="utf-8")
+        source = "".join((ENGINE / "segmently_modules" / f).read_text(encoding="utf-8")
                          for f in ("lint.py", "rules.py", "doc_checks.py"))
         emitted = set(re.findall(r"MS\d{3}", source))
         documented = set(re.findall(r"^\| (MS\d{3}) \|", CONFIG_DOC.read_text(encoding="utf-8"),
                                     re.M))
         self.assertEqual(emitted, documented)
 
-    def test_a_ci_gate_is_pointed_to_modsys_ci_not_a_separate_plain_lint(self):  # M-7
+    def test_a_ci_gate_is_pointed_to_segmently_modules_ci_not_a_separate_plain_lint(self):  # M-7
         doc = CONFIG_DOC.read_text(encoding="utf-8")
-        self.assertNotIn("a CI gate must also run plain `modsys lint --fail-on warning`", doc)
-        self.assertNotIn("run plain\n`modsys lint --fail-on warning` too", doc)
-        self.assertIn("modsys ci", doc)
+        self.assertNotIn("a CI gate must also run plain `segmently-modules lint --fail-on warning`", doc)
+        self.assertNotIn("run plain\n`segmently-modules lint --fail-on warning` too", doc)
+        self.assertIn("segmently-modules ci", doc)
 
 
 class CommandsInDocsTest(unittest.TestCase):

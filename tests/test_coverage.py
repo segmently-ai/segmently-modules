@@ -1,4 +1,4 @@
-"""`modsys coverage`: which repository files map to a module, and which map to none."""
+"""`segmently-modules coverage`: which repository files map to a module, and which map to none."""
 import shutil
 import tempfile
 import unittest
@@ -29,7 +29,7 @@ class CoverageTest(unittest.TestCase):
         self._tmp.cleanup()
 
     def config(self, text: str) -> None:
-        write(self.root / ".modsys" / "config.toml", text)
+        write(self.root / ".segmently-modules" / "config.toml", text)
 
     def coverage(self, *argv):
         code, env, err = run_json("coverage", *argv, *self.R)

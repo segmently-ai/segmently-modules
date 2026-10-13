@@ -1,5 +1,5 @@
 """P8.4 fix wave, the final review's text minors: one coherent `[Unreleased]` story (M-1), the
-module-roles Scope says children inherit (M-3), the built `modsys` plugin README tells Codex users
+module-roles Scope says children inherit (M-3), the built `segmently-modules` plugin README tells Codex users
 where the agents come from (M-4), the git-ignore note of `packs sync` covers the Codex agent files
 (M-5) and the README names the pack lint codes as they are (M-6)."""
 import re
@@ -7,8 +7,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from modsys.config import builtin_packs_root
-from tests.helpers import changelog_since_first_release, copy_fixture, init_git, run, run_json
+from segmently_modules.config import builtin_packs_root
+from tests.helpers import (changelog_release, changelog_since_first_release, copy_fixture, init_git,
+                           run, run_json)
 from tests.plugin_helpers import load_tool
 from tests.test_builtin_skills import section
 
@@ -60,7 +61,8 @@ class ChangelogTest(unittest.TestCase):  # M-1
                       "is recorded", text)
 
     def test_the_finding_skills_are_one_change(self):  # P8.6: the thin form never shipped stable
-        added, changed = (flat(part(unreleased(), h)) for h in ("Added", "Changed"))
+        shipped = changelog_release((ENGINE / "CHANGELOG.md").read_text(encoding="utf-8"), "0.1.1")
+        added, changed = (flat(part(shipped, h)) for h in ("Added", "Changed"))
         self.assertNotIn("are thin", added + changed)
         lead = "`module-discover`, `module-scout` and `module-research` keep their steps in `SKILL.md`"
         self.assertNotIn(lead, added)
@@ -80,13 +82,13 @@ class PluginReadmeTest(unittest.TestCase):  # M-4
     def test_the_core_readme_says_where_codex_gets_the_agents(self):
         builder = load_tool("build_plugins")
         agents = ["module-chooser.md", *(f"{a}.md" for a in AGENTS)]
-        text = flat(builder.readme("modsys", ["module-scout"], agents))
+        text = flat(builder.readme("segmently-modules", ["module-scout"], agents))
         codex = text.split("- Codex:", 1)[1].split(" - Cursor", 1)[0]
-        self.assertIn("Codex reads no plugin agents: `modsys setup` and `modsys packs sync "
+        self.assertIn("Codex reads no plugin agents: `segmently-modules setup` and `segmently-modules packs sync "
                       "--agent codex` write the three skills' agents to `.codex/agents/`", codex)
         delivery = text.split('set `builtin_delivery = "plugin"`', 1)[1]
         self.assertIn("it still writes Codex's three agent files in `.codex/agents/`", delivery)
-        for name in ("modsys-ui", "modsys-qa"):  # the agents come with the core plugin only
+        for name in ("segmently-modules-ui", "segmently-modules-qa"):  # the agents come with the core plugin only
             self.assertNotIn(".codex/agents", builder.readme(name, ["x"]))
 
 
@@ -96,7 +98,7 @@ class IgnoredAgentFilesTest(unittest.TestCase):  # M-5
         self.addCleanup(self._tmp.cleanup)
         self.root = copy_fixture(self._tmp.name)
         self.R = ("--root", str(self.root))
-        (self.root / ".modsys/config.toml").write_text('[packs]\nbuiltin = ["core"]\n',
+        (self.root / ".segmently-modules/config.toml").write_text('[packs]\nbuiltin = ["core"]\n',
                                                        encoding="utf-8")
 
     def notes(self, *argv) -> list[str]:

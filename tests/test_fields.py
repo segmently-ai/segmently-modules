@@ -1,8 +1,8 @@
 import unittest
 
-from modsys.fields import (CORE_FIELDS, check_type, load_field_defs, to_json_schema,
+from segmently_modules.fields import (CORE_FIELDS, check_type, load_field_defs, to_json_schema,
                            value_matches)
-from modsys.output import UsageError
+from segmently_modules.output import UsageError
 
 
 class TypeCheckTest(unittest.TestCase):

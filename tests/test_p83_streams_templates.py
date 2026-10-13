@@ -13,7 +13,7 @@ import time
 import unittest
 from pathlib import Path
 
-from modsys.agent import validate_command
+from segmently_modules.agent import validate_command
 from tests.agent_helpers import AgentRepo
 from tests.helpers import changelog_since_first_release, copy_fixture, make_repo
 from tests.test_p82_minors import ENGINE, LAUNCHER, SCRIPT, Spawn
@@ -22,9 +22,9 @@ TIMEOUT = 90
 README = (ENGINE / "README.md").read_text(encoding="utf-8")
 DOCS = (ENGINE / "docs/cli-contract.md").read_text(encoding="utf-8")
 CHANGELOG = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
-CODEX = ('export MODSYS_AGENT_COMMAND=\'["sh", "-c", "codex exec -m {codex_model} -c '
+CODEX = ('export SEGMENTLY_MODULES_AGENT_COMMAND=\'["sh", "-c", "codex exec -m {codex_model} -c '
          'model_reasoning_effort={reasoning} --sandbox read-only --output-schema '
-         '\\"$MODSYS_SCHEMA\\" -"]\'')
+         '\\"$SEGMENTLY_MODULES_SCHEMA\\" -"]\'')
 PYTHONS = [p for p in (shutil.which("python3"), "/usr/local/bin/python3.11")
            if p and os.path.exists(p)]
 
@@ -32,7 +32,7 @@ PYTHONS = [p for p in (shutil.which("python3"), "/usr/local/bin/python3.11")
 DRIVER = r"""
 import json, os, stat, subprocess, sys
 from unittest import mock
-import modsys.cli as cli
+import segmently_modules.cli as cli
 mode, report = sys.argv[1], sys.argv[2]
 def boom(args):
     raise RuntimeError("boom")
@@ -50,7 +50,7 @@ def probe(args):
     fh.close()
     return 0
 target = {"boom": boom, "probe": probe}[mode]
-with mock.patch("modsys.catalog_cmd.run", target):
+with mock.patch("segmently_modules.catalog_cmd.run", target):
     sys.exit(cli.main(["catalog"]))
 """
 
@@ -72,8 +72,8 @@ class ClosedStderrTest(Spawn):
         return proc.returncode, proc.stdout, proc.stderr.decode("utf-8", "replace")
 
     def matrix(self):
-        (self.root / ".modsys").mkdir(exist_ok=True)
-        (self.root / ".modsys/config.toml").write_text('[match]\nmode = "semantic"\n',
+        (self.root / ".segmently-modules").mkdir(exist_ok=True)
+        (self.root / ".segmently-modules/config.toml").write_text('[match]\nmode = "semantic"\n',
                                                        encoding="utf-8")
         R = self.R
         return [("refusal", ("choose", "--top", "0", "--task", "x", *R), 2),
@@ -89,7 +89,7 @@ class ClosedStderrTest(Spawn):
                 open_code, open_out, open_err = self.shell("", argv, entry)
                 self.assertEqual(open_code, want, (name, entry))
                 if name == "note run":
-                    self.assertIn("modsys: note:", open_err)
+                    self.assertIn("segmently-modules: note:", open_err)
                 for redirect in ("2>&-", "1>&- 2>&-"):
                     with self.subTest(case=name, entry=entry, redirect=redirect):
                         code, out, err = self.shell(redirect, argv, entry)
@@ -112,7 +112,7 @@ class ClosedStderrTest(Spawn):
                 self.assertEqual(proc.returncode, 2)
                 self.assertEqual(proc.stdout, b"")
                 if not redirect:
-                    self.assertIn("modsys: internal error: RuntimeError: boom",
+                    self.assertIn("segmently-modules: internal error: RuntimeError: boom",
                                   proc.stderr.decode())
                 else:
                     self.assertEqual(proc.stderr, b"")
@@ -120,14 +120,14 @@ class ClosedStderrTest(Spawn):
 
     def test_a_sigint_during_an_agent_call_is_130_with_empty_stdout(self):  # P83-AC-031
         started = self.tmp / "started"
-        os.environ["MODSYS_AGENT_COMMAND"] = json.dumps(self.behaviour(
+        os.environ["SEGMENTLY_MODULES_AGENT_COMMAND"] = json.dumps(self.behaviour(
             sleep=60, started=str(started), answer="{}"))
         env = {**os.environ, "PYTHONPATH": str(ENGINE)}
 
         def child():
             os.close(2)
             signal.signal(signal.SIGINT, signal.SIG_DFL)
-        proc = subprocess.Popen([sys.executable, "-m", "modsys", "choose", "--task", "x",
+        proc = subprocess.Popen([sys.executable, "-m", "segmently_modules", "choose", "--task", "x",
                                  "--run", *self.R], env=env, stdout=subprocess.PIPE,
                                 cwd=str(ENGINE), preexec_fn=child)
         self.addCleanup(proc.__exit__, None, None, None)
@@ -202,7 +202,7 @@ class ClosedStderrTest(Spawn):
 
 class ResolutionTest(unittest.TestCase):
     """Every candidate state, run on each Python the engine supports that is installed."""
-    SHOWN = ".modsys/overrides/templates/choose/rules.md"
+    SHOWN = ".segmently-modules/overrides/templates/choose/rules.md"
 
     def setUp(self):
         import tempfile
@@ -216,10 +216,10 @@ class ResolutionTest(unittest.TestCase):
         """A new fixture copy: (root, overrides dir)."""
         self.n += 1
         root = copy_fixture(self.tmp / f"c{self.n}")
-        return root, root / ".modsys/overrides/templates"
+        return root, root / ".segmently-modules/overrides/templates"
 
     def cli(self, py, root, *argv, extra=()):
-        proc = subprocess.run([py, "-m", "modsys", *argv, "--root", str(root), *extra],
+        proc = subprocess.run([py, "-m", "segmently_modules", *argv, "--root", str(root), *extra],
                               stdin=subprocess.DEVNULL, capture_output=True, text=True,
                               env=self.env, cwd=str(ENGINE), timeout=30)
         return proc.returncode, proc.stdout, proc.stderr
@@ -267,7 +267,7 @@ class ResolutionTest(unittest.TestCase):
                     lines = err.splitlines()
                     self.assertEqual(len(lines), 1, err)
                     self.assertTrue(
-                        lines[0].startswith(f"modsys: error: cannot read {self.SHOWN}: "), err)
+                        lines[0].startswith(f"segmently-modules: error: cannot read {self.SHOWN}: "), err)
 
     def test_a_missing_candidate_falls_through(self):  # P83-AC-033
         for py in PYTHONS:
@@ -275,8 +275,8 @@ class ResolutionTest(unittest.TestCase):
                 with self.subTest(python=py, state=state):
                     root, over = self.fresh()
                     if state == "enotdir":  # the override's parent directory is a file
-                        (root / ".modsys").mkdir(exist_ok=True)
-                        (root / ".modsys/overrides").write_text("a file", encoding="utf-8")
+                        (root / ".segmently-modules").mkdir(exist_ok=True)
+                        (root / ".segmently-modules/overrides").write_text("a file", encoding="utf-8")
                     code, out, err = self.cli(py, root, "templates", "list", extra=("--json",))
                     self.assertEqual((code, err), (0, ""))
                     self.assertEqual({r["source"] for r in json.loads(out)["data"]
@@ -293,7 +293,7 @@ class ResolutionTest(unittest.TestCase):
 
     def broken_pack(self, root):
         """A repository pack `books` whose `templates/choose/rules.md` is a directory."""
-        base = root / ".modsys/packs/books"
+        base = root / ".segmently-modules/packs/books"
         (base / "templates/choose/rules.md").mkdir(parents=True)
         (base / "pack.toml").write_text('id = "books"\nversion = "0.1.0"\n', encoding="utf-8")
         return base
@@ -315,7 +315,7 @@ class ResolutionTest(unittest.TestCase):
             pack = self.broken_pack(root)
             code, out, err = self.cli(py, root, "templates", "list")
             self.assertEqual((code, out), (2, ""), err)
-            self.assertIn("modsys: error: cannot read .modsys/packs/books/templates/choose/rules.md: ",
+            self.assertIn("segmently-modules: error: cannot read .segmently-modules/packs/books/templates/choose/rules.md: ",
                           err)
 
     def test_every_template_and_verb_refuses_alike(self):  # P83-AC-033
@@ -338,7 +338,7 @@ class ResolutionTest(unittest.TestCase):
                     self.assertEqual(code, 2, err)
                     self.assertEqual(out, "")
                     self.assertTrue(err.startswith(
-                        f"modsys: error: cannot read .modsys/overrides/templates/{template}: "),
+                        f"segmently-modules: error: cannot read .segmently-modules/overrides/templates/{template}: "),
                         err)
                     self.assertEqual(tree(root), base)  # nothing written
                     self.assertEqual(list(root.rglob("*.lock")), [])  # the lock is released
@@ -360,14 +360,14 @@ class ResolutionTest(unittest.TestCase):
                     base = tree(root)
                     code, out, err = self.cli(py, root, *argv)
                     self.assertEqual((code, out, err), (2, "", (
-                        f"modsys: error: cannot read .modsys/overrides/templates/{template}: "
+                        f"segmently-modules: error: cannot read .segmently-modules/overrides/templates/{template}: "
                         f"not valid UTF-8\n")))
                     self.assertEqual(tree(root), base)
 
     def role_template(self, template):
         """A repository pack whose role `designer` names this `template` file."""
         root, _ = self.fresh()
-        base = root / ".modsys/packs/books"
+        base = root / ".segmently-modules/packs/books"
         base.mkdir(parents=True)
         (base / "pack.toml").write_text(
             'id = "books"\nversion = "0.1.0"\n[roles.designer]\n'
@@ -383,7 +383,7 @@ class ResolutionTest(unittest.TestCase):
                     self.assertEqual((code, out), (2, ""), err)
                     lines = err.splitlines()
                     self.assertEqual(len(lines), 1, err)
-                    self.assertTrue(lines[0].startswith("modsys: error: cannot read "), err)
+                    self.assertTrue(lines[0].startswith("segmently-modules: error: cannot read "), err)
                     self.assertTrue(lines[0].endswith("a\\0b: embedded null byte"), err)
                     self.assertNotIn("internal error", err)
 
@@ -410,8 +410,8 @@ class DocsTest(unittest.TestCase):
     def test_the_codex_example_has_the_sandbox_flag(self):  # P83-AC-034
         self.assertIn(CODEX, README)
         self.assertEqual(README.count("codex exec -m {codex_model}"), 1)
-        command = json.loads(CODEX[len("export MODSYS_AGENT_COMMAND='"):-1])
-        validate_command(command, "MODSYS_AGENT_COMMAND")
+        command = json.loads(CODEX[len("export SEGMENTLY_MODULES_AGENT_COMMAND='"):-1])
+        validate_command(command, "SEGMENTLY_MODULES_AGENT_COMMAND")
         self.assertIn('claude -p --model {claude_model} --output-format json --json-schema',
                       README)
 
@@ -426,7 +426,7 @@ class DocsTest(unittest.TestCase):
         bullets = {b.split("**", 1)[0]: "- **" + b for b in DOCS.split("\n- **")[1:]}
         stdout, stderr = bullets["A closed stdout reader"], bullets["stderr closed at start"]
         sentence = ("With stderr open, any other stdout write error (a full disk, a file size "
-                    "limit) is exit `2` with one stderr line `modsys: error: cannot write "
+                    "limit) is exit `2` with one stderr line `segmently-modules: error: cannot write "
                     "stdout: <reason>`.")
         self.assertIn(sentence, " ".join(stdout.split()))
         self.assertNotIn("cannot write stdout", stderr)

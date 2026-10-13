@@ -5,7 +5,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from modsys.init_cmd import starter_config
+from segmently_modules.init_cmd import starter_config
 from tests.test_builtin_content import PACKS
 
 ENGINE = Path(__file__).resolve().parents[1]
@@ -21,11 +21,11 @@ class SkillDocsTest(unittest.TestCase):  # P4B-AC-023
         for sid in (s for ids in PACKS.values() for s in ids):
             self.assertIn(f"`{sid}`", text)
         for needle in ("## Enable them", "builtin = [\"core\", \"ui\", \"qa\"]",
-                       "modsys packs sync --agent claude --agent codex", "## The core skills",
+                       "segmently-modules packs sync --agent claude --agent codex", "## The core skills",
                        "## The ui and qa packs", "## Keeping them current",
-                       "## Owning one skill: eject", "modsys eject module-sync",
-                       "## Owning a whole pack: copy it", ".modsys/packs/ui",
-                       "modsys sync-instructions", "reserved"):
+                       "## Owning one skill: eject", "segmently-modules eject module-sync",
+                       "## Owning a whole pack: copy it", ".segmently-modules/packs/ui",
+                       "segmently-modules sync-instructions", "reserved"):
             self.assertIn(needle, text)
 
     def test_writing_a_pack_covers_builtin_packs_and_reserved_ids(self):
@@ -49,12 +49,12 @@ class SkillDocsTest(unittest.TestCase):  # P4B-AC-023
         text = flat("docs/configuration.md")
         self.assertIn("| `builtin` | `[]` |", text)
         self.assertIn("**built-in packs**", text)
-        self.assertIn("`modsys sync-instructions` lists it", text)
+        self.assertIn("`segmently-modules sync-instructions` lists it", text)
 
     def test_the_config_file_is_optional(self):  # fix wave G9
         layers = flat("docs/configuration.md").split("## Layers", 1)[1].split(" ## ", 1)[0]
         self.assertIn("Every file layer is optional", layers)
-        self.assertIn("with no `.modsys/config.toml` on disk", layers)
+        self.assertIn("with no `.segmently-modules/config.toml` on disk", layers)
 
     def test_an_engine_upgrade_and_the_copies(self):  # fix wave M2
         text = flat("docs/skills.md")
@@ -68,7 +68,7 @@ class SkillDocsTest(unittest.TestCase):  # P4B-AC-023
         eject = flat("docs/skills.md").split("## Owning one skill: eject", 1)[1].split(" ## ")[0]
         pack = flat("docs/writing-a-pack.md").split("## Owning a skill: eject", 1)[1].split(
             " ## ")[0]
-        ref = next(line for line in (ENGINE / "modsys/defaults/packs/core/skills/module-lint/"
+        ref = next(line for line in (ENGINE / "segmently_modules/defaults/packs/core/skills/module-lint/"
                                               "references/lint-codes.md").read_text(
             encoding="utf-8").splitlines() if line.startswith("| MS063 |"))
         for name, text in (("skills.md", eject), ("writing-a-pack.md", pack),

@@ -15,12 +15,12 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import modsys
-from modsys import skill_sync, skills
-from modsys.config import builtin_packs_root
+import segmently_modules
+from segmently_modules import skill_sync, skills
+from segmently_modules.config import builtin_packs_root
 from tests.helpers import changelog_since_first_release, copy_fixture, init_git, run, run_json
 
-V = modsys.__version__
+V = segmently_modules.__version__
 ENGINE = Path(__file__).resolve().parents[1]
 CORE = builtin_packs_root() / "core" / "skills"
 CORE_N = len(list(CORE.glob("*/SKILL.md")))  # the core pack's skills, as shipped
@@ -52,7 +52,7 @@ def instructions(skill: str) -> str:  # P8.6 D1: the agent runs its skill; no sk
 def marker(data: bytes) -> tuple[dict, bytes]:
     """The parsed first line of an agent file and the bytes after it."""
     line, _, rest = data.partition(b"\n")
-    prefix = b"# modsys-managed: "
+    prefix = b"# segmently-modules-managed: "
     assert line.startswith(prefix), line
     return json.loads(line[len(prefix):]), rest
 
@@ -91,14 +91,14 @@ class CodexRepo(unittest.TestCase):
         self._tmp.cleanup()
 
     def config(self, text: str) -> None:
-        (self.root / ".modsys/config.toml").write_text(text, encoding="utf-8")
+        (self.root / ".segmently-modules/config.toml").write_text(text, encoding="utf-8")
 
     def sync(self, *argv: str, agents=("codex",), code: int = 0) -> dict:
         flags = [a for agent in agents for a in ("--agent", agent)]
         got, env, err = run_json("packs", "sync", *flags, *argv, *self.R)
         self.assertEqual((got, err), (code, ""), env)
         self.assertEqual(set(env), {"schema", "data"})
-        self.assertEqual(env["schema"], "modsys.packs/1")
+        self.assertEqual(env["schema"], "segmently-modules.packs/1")
         self.assertIs(env["data"]["failed"], code == 1)
         return env["data"]
 
@@ -118,7 +118,7 @@ class CodexRepo(unittest.TestCase):
         """A repository pack `core` (it replaces the built-in one) declaring `skills_` {skill:
         the text of an extra `references/procedure.md`, or None for none}; default: the three
         wrapped skills, no extra file. The agent files never read that file (P8.6 D1)."""
-        pack = self.root / ".modsys/packs/core"
+        pack = self.root / ".segmently-modules/packs/core"
         shutil.rmtree(pack, ignore_errors=True)
         wanted = skills_ if skills_ is not None else {s: None for s in WRAPPED}
         text = f'id = "core"\nversion = "{version}"\n'
@@ -158,11 +158,11 @@ class WrittenTest(CodexRepo):  # P84-AC-006
                 data = self.agent_file(name).read_bytes()
                 head, rest = marker(data)
                 self.assertEqual(list(head), ["schema", "pack", "skill", "version", "sha256"])
-                self.assertEqual(head, {"schema": "modsys.managed/1", "pack": "core",
+                self.assertEqual(head, {"schema": "segmently-modules.managed/1", "pack": "core",
                                         "skill": SKILL_OF[name], "version": V,
                                         "sha256": sha(rest)})
                 self.assertEqual(data.split(b"\n", 1)[0].decode(),
-                                 "# modsys-managed: " + json.dumps(head))
+                                 "# segmently-modules-managed: " + json.dumps(head))
                 doc = tomllib.loads(data.decode("utf-8"))
                 self.assertEqual(sorted(doc), ["description", "developer_instructions", "name"])
                 self.assertEqual(doc["name"], name)
@@ -219,7 +219,7 @@ class WrittenTest(CodexRepo):  # P84-AC-006
         before = self.agent_file("module-discover-agent").read_bytes()
         code, out, err = run("eject", "module-discover", *self.R)
         self.assertEqual((code, err), (0, ""))
-        edited = self.root / ".modsys/overrides/skills/module-discover/SKILL.md"
+        edited = self.root / ".segmently-modules/overrides/skills/module-discover/SKILL.md"
         edited.write_bytes(edited.read_bytes() + b"\nTeam rule: name the ticket.\n")
         data = self.sync()
         self.assertEqual([r["status"] for r in data["skills"] if r["skill"] == "module-discover"],
@@ -286,9 +286,9 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
         path = self.agent_file("module-discover-agent")
         old_body = ('name = "module-discover-agent"\ndescription = "x"\n'
                     'developer_instructions = """\n## Steps\n\n1. Choose.\n"""\n').encode()
-        head = {"schema": "modsys.managed/1", "pack": "core", "skill": "module-discover",
+        head = {"schema": "segmently-modules.managed/1", "pack": "core", "skill": "module-discover",
                 "version": V, "sha256": sha(old_body)}
-        path.write_bytes(("# modsys-managed: " + json.dumps(head) + "\n").encode() + old_body)
+        path.write_bytes(("# segmently-modules-managed: " + json.dumps(head) + "\n").encode() + old_body)
         old = path.read_bytes()
         before = snap(self.root)
         data = self.sync("--check", code=1)
@@ -297,7 +297,7 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
                                            ("module-scout-agent", "unchanged")])
         self.assertEqual(snap(self.root), before)
         self.assertTrue(self.text("--check", code=1)[-1].endswith(
-            "stale — run modsys packs sync --agent codex"))
+            "stale — run segmently-modules packs sync --agent codex"))
         data = self.sync()
         self.assertEqual(self.rows(data)[0], ("module-discover-agent", "updated"))
         new = self.agent_file("module-discover-agent").read_bytes()
@@ -330,8 +330,8 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
         i = lines.index(f"conflict   codex   .codex/agents/module-scout-agent.toml  (core {V})")
         self.assertEqual(lines[i + 1], "  module-scout-agent.toml (locally edited) — revert it "
                                        "(git checkout -- .codex/agents/module-scout-agent.toml) "
-                                       "and sync again, or keep the change: modsys eject "
-                                       "module-scout, edit .modsys/overrides/skills/module-scout/"
+                                       "and sync again, or keep the change: segmently-modules eject "
+                                       "module-scout, edit .segmently-modules/overrides/skills/module-scout/"
                                        "SKILL.md, then packs sync")
         self.assertEqual(lines[-1], f"packs sync: 0 created, 0 updated, {CORE_N} unchanged, 0 removed, "
                                     f"0 conflict, 0 invalid; agent files: 0 created, 0 updated, "
@@ -347,7 +347,7 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
         data = self.sync(code=1)
         row = data["agent_files"][0]
         self.assertEqual(row["status"], "conflict")
-        self.assertTrue(row["reason"].startswith("not managed by modsys"), row)
+        self.assertTrue(row["reason"].startswith("not managed by segmently-modules"), row)
         self.assertEqual(path.read_text(encoding="utf-8"), 'name = "module-discover-agent"\n')
         self.assertEqual(self.rows(data)[1:], [("module-research-agent", "created"),
                                                ("module-scout-agent", "created")])
@@ -362,7 +362,7 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
         self.assertEqual(row["status"], "conflict")
         self.assertIn("not a valid marker", row["reason"])
         self.assertEqual(path.read_bytes(), damaged)
-        path.write_bytes(b"# modsys-managed: {not json\n" + damaged.split(b"\n", 1)[1])
+        path.write_bytes(b"# segmently-modules-managed: {not json\n" + damaged.split(b"\n", 1)[1])
         self.assertEqual(self.sync(code=1)["agent_files"][1]["status"], "conflict")
 
     def test_another_skills_marker_is_a_conflict(self):
@@ -461,7 +461,7 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
     def test_a_marked_file_behind_a_symlinked_agents_directory(self):  # AC-007, amended
         """No agent wanted (core disabled, or a repository `core` without the wrapped skills)
         and `.codex/agents` a symlink: a read-only look behind it. The agent file there that
-        carries a modsys marker line is a `conflict` (exit 1: packs sync cannot remove it
+        carries a segmently-modules marker line is a `conflict` (exit 1: packs sync cannot remove it
         through the symlink); the hand-written one gives no row; nothing is written or removed
         through it — in sync, `--check`, `--dry-run`, `--remove` and `setup`."""
         reason = (".codex/agents is a symlink — packs sync cannot remove module-scout-agent.toml "
@@ -501,7 +501,7 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
                 i = lines.index("  conflict  codex   .codex/agents/module-scout-agent.toml")
                 self.assertEqual(lines[i + 1], f"    {reason} — {hint}")
                 self.assertEqual(lines[-1], "setup: packs sync left 1 agent file unwritten — "
-                                            "resolve it as shown above, then run modsys setup "
+                                            "resolve it as shown above, then run segmently-modules setup "
                                             "again")
                 self.assertEqual(self.sync("--remove", code=1)["agent_files"], want)
                 self.assertTrue(self.text("--remove", code=1)[-1].endswith(suffix))
@@ -542,14 +542,14 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
 
     def test_remove_looks_behind_a_symlinked_agents_directory(self):  # AC-007, amended
         """`--remove` wants no agent: through a symlinked `.codex/agents` (or `.codex`) each
-        agent file with a modsys marker line — a damaged one too — is a `conflict`, a file
+        agent file with a segmently-modules marker line — a damaged one too — is a `conflict`, a file
         without one gives no row, and nothing behind the symlink is removed."""
         self.sync()
         outside = self.tmp / "outside"
         (self.root / ".codex/agents").rename(outside)
         os.symlink(outside, self.root / ".codex/agents")
         path = outside / "module-research-agent.toml"
-        path.write_bytes(b"# modsys-managed: {broken\n" + path.read_bytes().partition(b"\n")[2])
+        path.write_bytes(b"# segmently-modules-managed: {broken\n" + path.read_bytes().partition(b"\n")[2])
         path = outside / "module-discover-agent.toml"
         path.write_bytes(path.read_bytes().partition(b"\n")[2])  # no marker line: not ours
         there = snap(outside)
@@ -590,8 +590,8 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
         self.assertEqual(lines[i + 1], "  module-scout-agent.toml (locally edited) — revert it "
                                        "(git checkout -- .codex/agents/module-scout-agent.toml) "
                                        "and sync again, or keep the change: set [packs] "
-                                       "builtin_delivery = \"repo\", modsys eject module-scout, "
-                                       "edit .modsys/overrides/skills/module-scout/SKILL.md, "
+                                       "builtin_delivery = \"repo\", segmently-modules eject module-scout, "
+                                       "edit .segmently-modules/overrides/skills/module-scout/SKILL.md, "
                                        "then packs sync")
 
     def test_a_symlinked_or_regular_agents_directory(self):
@@ -641,7 +641,7 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
         (self.root / ".codex/agents").chmod(0o555)
         code, out, err = run("packs", "sync", "--agent", "codex", "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertTrue(err.startswith("modsys: error: cannot write .codex/agents/"
+        self.assertTrue(err.startswith("segmently-modules: error: cannot write .codex/agents/"
                                        "module-discover-agent.toml: Permission denied — fix it "
                                        "and run packs sync again"), err)
         self.assertEqual(err.count("\n"), 1)
@@ -652,7 +652,7 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
         self.sync()
         self.repo_core("9.1.0")  # every agent file stale: its marker's version
         old = {n: self.agent_file(n).read_bytes() for n in NAMES}
-        from modsys import packs_cmd
+        from segmently_modules import packs_cmd
         real, calls = packs_cmd.apply_agent_file, []
 
         def seam(plan):
@@ -663,7 +663,7 @@ class LifecycleTest(CodexRepo):  # P84-AC-007
 
         with mock.patch.object(packs_cmd, "apply_agent_file", side_effect=seam):
             self.assertEqual(run("packs", "sync", "--agent", "codex", "--json", *self.R),
-                             (130, "", "modsys: interrupted\n"))
+                             (130, "", "segmently-modules: interrupted\n"))
         self.assertNotEqual(self.agent_file(NAMES[0]).read_bytes(), old[NAMES[0]])
         for name in NAMES[1:]:
             self.assertEqual(self.agent_file(name).read_bytes(), old[name])
@@ -709,7 +709,7 @@ class OnlyForCodexTest(CodexRepo):  # P84-AC-008
         for agents in (("claude",), ("cursor",), ("gemini",), ("copilot",),
                        ("claude", "cursor", "gemini", "copilot")):
             with self.subTest(agents=agents), mock.patch(
-                    "modsys.packs_cmd.plan_agent_files", side_effect=AssertionError("read")):
+                    "segmently_modules.packs_cmd.plan_agent_files", side_effect=AssertionError("read")):
                 for argv in ((), ("--check",), ("--dry-run",)):
                     data = self.sync(*argv, agents=agents)
                     self.assertEqual(list(data), OLD_KEYS)
@@ -815,7 +815,7 @@ class OutputShapeTest(CodexRepo):  # P84-AC-009, P84-AC-038
                       "1 conflict)", lines)
         self.assertIn("  conflict  codex   .codex/agents/module-scout-agent.toml", lines)
         self.assertEqual(lines[-1], "setup: packs sync left 1 agent file unwritten — resolve it "
-                                    "as shown above, then run modsys setup again")
+                                    "as shown above, then run segmently-modules setup again")
 
     def test_read_only_runs_keep_the_tree(self):  # P84-AC-038
         self.sync()
@@ -825,14 +825,14 @@ class OutputShapeTest(CodexRepo):  # P84-AC-009, P84-AC-038
         for argv in (("--check",), ("--dry-run",)):
             got, out, err = run("packs", "sync", "--agent", "codex", *argv, "--json", *self.R)
             self.assertIn(got, (0, 1))
-            self.assertEqual(json.loads(out)["schema"], "modsys.packs/1")
+            self.assertEqual(json.loads(out)["schema"], "segmently-modules.packs/1")
         self.assertEqual(snap(self.root), before)
 
     @unittest.skipIf(os.geteuid() == 0, "root writes into a read-only directory")
     def test_a_real_process(self):  # one JSON document; a refusal: empty stdout, one line
         env = {**os.environ, "PYTHONPATH": str(ENGINE)}
-        env.pop("MODSYS_DEBUG", None)
-        argv = [sys.executable, "-m", "modsys", "packs", "sync", "--agent", "codex", "--json",
+        env.pop("SEGMENTLY_MODULES_DEBUG", None)
+        argv = [sys.executable, "-m", "segmently_modules", "packs", "sync", "--agent", "codex", "--json",
                 *self.R]
         proc = subprocess.run(argv, capture_output=True, text=True, env=env, cwd=self.tmp)
         self.assertEqual((proc.returncode, proc.stderr), (0, ""))
@@ -843,7 +843,7 @@ class OutputShapeTest(CodexRepo):  # P84-AC-009, P84-AC-038
         proc = subprocess.run(argv, capture_output=True, text=True, env=env, cwd=self.tmp)
         self.assertEqual((proc.returncode, proc.stdout), (2, ""))
         self.assertEqual(proc.stderr.count("\n"), 1)
-        self.assertTrue(proc.stderr.startswith("modsys: error: cannot write .codex/agents/"),
+        self.assertTrue(proc.stderr.startswith("segmently-modules: error: cannot write .codex/agents/"),
                         proc.stderr)
         self.assertNotIn("Traceback", proc.stderr)
 
@@ -856,7 +856,7 @@ class OutputShapeTest(CodexRepo):  # P84-AC-009, P84-AC-038
 
 class ProbeOutcomeTest(CodexRepo):  # P84-AC-002 (outcome A ruled: the keys are kept)
     def test_codex_copies_are_byte_identical_to_the_sources(self):
-        team = self.root / ".modsys/packs/team/skills/stock-check"
+        team = self.root / ".segmently-modules/packs/team/skills/stock-check"
         team.mkdir(parents=True)
         (team.parent.parent / "pack.toml").write_text(
             'id = "team"\nversion = "1.0.0"\n\n[skills.stock-check]\npath = "skills/stock-check"\n',
@@ -872,7 +872,7 @@ class ProbeOutcomeTest(CodexRepo):  # P84-AC-002 (outcome A ruled: the keys are 
                 if src.is_file():
                     copy = self.root / ".agents/skills" / skill / src.relative_to(CORE / skill)
                     self.assertEqual(copy.read_bytes(), src.read_bytes(), copy)
-        source = (ENGINE / "modsys/skill_sync.py").read_text(encoding="utf-8")
+        source = (ENGINE / "segmently_modules/skill_sync.py").read_text(encoding="utf-8")
         self.assertNotIn("argument-hint", source)  # no strip code for the two keys
         self.assertNotIn("arguments:", source)
 
@@ -883,14 +883,14 @@ class DocsTest(unittest.TestCase):  # P84-AC-010
 
     def test_skills_doc(self):
         text = self.flat("docs/skills.md")
-        for needle in ("the `modsys` plugin ships four agents",
+        for needle in ("the `segmently-modules` plugin ships four agents",
                        "`module-discover-agent`, `module-scout-agent` and `module-research-agent`",
                        "tools Read, Grep, Glob, Bash, Agent, Skill", "`model: sonnet`",
-                       "`skills: [modsys:module-<x>]`",  # P8.6 D1: the agent only runs its skill
+                       "`skills: [segmently-modules:module-<x>]`",  # P8.6 D1: the agent only runs its skill
                        "read `.agents/skills/module-<x>/SKILL.md` and follow it",
                        "`.codex/agents/module-discover-agent.toml`",
                        "whenever the agents they sync for include `codex`",
-                       "`# modsys-managed:`", "`packs sync --check`",
+                       "`# segmently-modules-managed:`", "`packs sync --check`",
                        "`packs sync --remove --agent codex`", "A locally edited file",
                        "Nothing is written or removed through a symlinked or non-directory "
                        "`.codex/agents`: while the repository wants the agents, all three are "
@@ -913,7 +913,7 @@ class DocsTest(unittest.TestCase):  # P84-AC-010
         log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
         unreleased = " ".join(changelog_since_first_release(log).split())
         for needle in ("`module-discover-agent`, `module-scout-agent` and `module-research-agent`",
-                       "`.codex/agents/<name>.toml`", "`modsys/defaults/agents/`",
+                       "`.codex/agents/<name>.toml`", "`modsys/defaults/agents/`",  # 0.1.1, the old name
                        "nothing is written or removed through a symlinked or non-directory "
                        "`.codex/agents` (all three files are conflicts while the agents are "
                        "wanted; when none is, only a file with the marker behind a symlink is "

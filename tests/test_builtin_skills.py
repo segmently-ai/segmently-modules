@@ -1,5 +1,5 @@
 """Structure of the built-in packs' skills (D6), a test per rule over every skill of every
-built-in pack: names, loadability, description and file lengths, every `modsys …` command
+built-in pack: names, loadability, description and file lengths, every `segmently-modules …` command
 parsed by the real CLI parser (the guard can fail: SI-7), no machine paths, `--json` for what a
 skill parses, the sections, each core skill's scope and verbs (D3), the writer rules, generic
 text. `CORE` and `PACK_SKILLS` list what each skill must say; a skill is added with its row."""
@@ -13,9 +13,9 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from modsys.cli import build_parser
-from modsys.config import BUILTIN_PACKS, builtin_packs_root
-from modsys.skills import read_front_matter, source_problem
+from segmently_modules.cli import build_parser
+from segmently_modules.config import BUILTIN_PACKS, builtin_packs_root
+from segmently_modules.skills import read_front_matter, source_problem
 from tests.helpers import copy_fixture, git, init_git, run, run_json
 
 ENGINE = Path(__file__).resolve().parents[1]
@@ -60,7 +60,7 @@ CORE: dict[str, tuple[str, list[tuple[str, ...]], list[str]]] = {
                                ("init", "fanout"), ("init", "next"), ("init", "done"),
                                ("init", "reconcile"), ("eval", "routing", "--prompt"),
                                ("init", "verify"), ("init", "finish")],  # P5B-AC-028 (D6)
-                    ["Run `modsys init status --json` first and continue from the recorded phase",
+                    ["Run `segmently-modules init status --json` first and continue from the recorded phase",
                      "**STOP — gate 3.**", "merges, splits, renames and exclusions",
                      "never dispatch an item you did not claim", "at most `max_parallel`",
                      "Without subagents, loop yourself", "Ask the user about each keyword tie",
@@ -123,7 +123,7 @@ _FENCE = re.compile(r"^([ \t]*)(`{3,})[^\n]*\n(.*?)^\1\2\s*$", re.M | re.S)
 _INLINE = re.compile(r"`([^`\n]+)`")
 _PLACEHOLDER = re.compile(r"<[^<>\n]*>")
 _ABSOLUTE = re.compile(r"(?:^|[\s`'\"(=])(/[\w.-]+/[\w./-]*|[A-Za-z]:\\\S+)", re.M)
-_SPLIT = re.compile(r"`(modsys [^`]*\n[^`]*)`")  # an inline command broken over two lines
+_SPLIT = re.compile(r"`(segmently-modules [^`]*\n[^`]*)`")  # an inline command broken over two lines
 MERGE_BASE = "`git merge-base <target> HEAD`"  # what `<base>` is: where the work branched off
 TARGET_AS_BASE = re.compile(r"\bbase\b[^.(]*\([^)]*\bthe target branch\b")  # the branch itself
 
@@ -170,15 +170,15 @@ def route_files(directory: Path) -> dict[str, str]:
 
 
 def commands(text: str) -> list[str]:
-    """Every `modsys …` command of a text: fenced-block lines (continuations joined) and inline
+    """Every `segmently-modules …` command of a text: fenced-block lines (continuations joined) and inline
     code spans."""
     out = []
     for block in _FENCE.finditer(text):
         for line in block.group(3).replace("\\\n", " ").splitlines():
-            if line.strip().startswith("modsys "):
+            if line.strip().startswith("segmently-modules "):
                 out.append(line.strip())
     out += [s.strip() for s in _INLINE.findall(_FENCE.sub("", text))
-            if s.strip().startswith("modsys ")]
+            if s.strip().startswith("segmently-modules ")]
     return out
 
 
@@ -288,21 +288,22 @@ class NamesAndLoadingTest(SkillRules):  # P4B-AC-014
 
 
 class InstallLineTest(SkillRules):  # P6-AC-019 (D6, SI-4)
-    LINE = ("If `modsys` is not found, tell the user how to install it — the `modsys` plugin "
-            "for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or "
-            "`pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it "
-            "runs.")
+    LINE = ("If `segmently-modules` is not found, tell the user how to install it — the "
+            "`segmently-modules` plugin for Claude Code, `uv tool install "
+            "git+https://github.com/segmently-ai/segmently-modules.git`, or `pipx install "
+            "git+https://github.com/segmently-ai/segmently-modules.git` — and stop until it runs.")
     DESCRIPTIONS = {  # sha256[:16] of each description at f1f5e46: a body edit never moves one
         # (P8.7 X3: module-sync's moved — its trigger widened to a session that revealed knowledge)
         # (P8.8, owner: qa-acceptance's delivery sentence — shown in the conversation, not a file)
         # (P8.9, owner: designer-review renamed `designer`, its description names the three routes)
-        "module-adopt": "3409f228fda67c5d", "module-create": "3d1a2d2954de0900",
-        "module-discover": "fa2b6d6ba50b01fd", "module-init": "b64769f4c169e5b0",
-        "module-lint": "bc2538a0a39d1da0", "module-research": "2c773e1a29f3fd6d",
-        "module-scout": "83221c73a41cb280", "module-split": "25b942d14038d7dd",
-        "module-sync": "c4a88fb9da93da44", "module-roles": "a744a16d35e3d0e5",
-        "module-assistant": "01f613fedfdf3aa4", "qa-acceptance-baseline": "2a0efce95123748f",
-        "qa-acceptance": "d6b590ea3a2523eb", "designer": "6bd3019e180a415a"}
+        # (the rename to Segmently Modules, owner: the product name left the verb mentions)
+        "module-adopt": "c8f67a732e47681a", "module-create": "88844df447f72c53",
+        "module-discover": "c94d722d31235c69", "module-init": "2bed37af36af61b7",
+        "module-lint": "d19804f58e3380f7", "module-research": "be7f867931e5c0ce",
+        "module-scout": "79df2d2b49d5ccb6", "module-split": "134b4160f4344630",
+        "module-sync": "373a648c232de290", "module-roles": "686cf561ceb829bf",
+        "module-assistant": "840b945cfa4eff76", "qa-acceptance-baseline": "a14b60b636d19605",
+        "qa-acceptance": "9285192a1351f89f", "designer": "6bd3019e180a415a"}
 
     def test_every_body_holds_the_one_line(self):
         skills = self.all_skills()
@@ -315,8 +316,9 @@ class InstallLineTest(SkillRules):  # P6-AC-019 (D6, SI-4)
                 self.assertNotIn("not found", front)  # the body, never the description
                 self.assertLess(body.index(self.LINE), body.index("\n## Steps\n"))
                 self.assertIn(f"\n\n{self.LINE}\n\n", body)  # its own paragraph
-        urls = re.findall(r"github\.com(\S*)", self.LINE)  # placeholders only (D13)
-        self.assertEqual(urls, ["/<owner>/<repo>.git`,", "/<owner>/<repo>.git`"])
+        urls = re.findall(r"github\.com(\S*)", self.LINE)  # the public repository only
+        self.assertEqual(urls, ["/segmently-ai/segmently-modules.git`,",
+                                "/segmently-ai/segmently-modules.git`"])
 
     def test_no_description_changed(self):
         found = {sid: hashlib.sha256(read_front_matter(directory / "SKILL.md")["description"]
@@ -332,31 +334,31 @@ class CommandGuardTest(SkillRules):  # P4B-AC-018
                 self.assertEqual(command_guard(skill_files(directory)), [])
 
     def test_placeholders_stand_for_one_value(self):
-        self.assertEqual(argv('modsys discover --task-file <file> --json  # the task'),
+        self.assertEqual(argv('segmently-modules discover --task-file <file> --json  # the task'),
                          ["discover", "--task-file", "X", "--json"])
-        self.assertEqual(argv('modsys context --task "<the task in one sentence>" --json'),
+        self.assertEqual(argv('segmently-modules context --task "<the task in one sentence>" --json'),
                          ["context", "--task", "X", "--json"])
-        self.assertEqual(argv("modsys sync --from-diff <base>..HEAD --dry-run"),
+        self.assertEqual(argv("segmently-modules sync --from-diff <base>..HEAD --dry-run"),
                          ["sync", "--from-diff", "X..HEAD", "--dry-run"])
-        self.assertEqual(argv("modsys create … --dry-run"), ["create", "X", "--dry-run"])
+        self.assertEqual(argv("segmently-modules create … --dry-run"), ["create", "X", "--dry-run"])
         # P8.2 D5: the work order's text form goes to a file; the redirect is the shell's
-        self.assertEqual(argv("modsys choose --task-file <task file> > <order file>"),
+        self.assertEqual(argv("segmently-modules choose --task-file <task file> > <order file>"),
                          ["choose", "--task-file", "X"])
-        self.assertTrue(to_a_file("modsys choose --task-file <task file> > <order file>"))
-        self.assertFalse(to_a_file("modsys choose --task-file <task file>"))
-        self.assertFalse(to_a_file("modsys show x --json  # a > b"))
+        self.assertTrue(to_a_file("segmently-modules choose --task-file <task file> > <order file>"))
+        self.assertFalse(to_a_file("segmently-modules choose --task-file <task file>"))
+        self.assertFalse(to_a_file("segmently-modules show x --json  # a > b"))
 
     def test_the_guard_can_fail(self):
-        planted = {"SKILL.md": "Run `modsys shwo x` first.\n\n```bash\nmodsys packs install ui\n"
-                               "modsys show x --rolee r\n```\n",
-                   "references/more.md": "Then `modsys match x --from-diff a..b`, and\n"
-                                         "`modsys show x\n--json`.\n"}
+        planted = {"SKILL.md": "Run `segmently-modules shwo x` first.\n\n```bash\nsegmently-modules packs install ui\n"
+                               "segmently-modules show x --rolee r\n```\n",
+                   "references/more.md": "Then `segmently-modules match x --from-diff a..b`, and\n"
+                                         "`segmently-modules show x\n--json`.\n"}
         failures = command_guard(planted)
         self.assertEqual([f.split(" — ")[0] for f in failures],
-                         ["SKILL.md: modsys packs install ui", "SKILL.md: modsys show x --rolee r",
-                          "SKILL.md: modsys shwo x",
-                          "references/more.md: modsys match x --from-diff a..b",
-                          "references/more.md: modsys show x --json"])
+                         ["SKILL.md: segmently-modules packs install ui", "SKILL.md: segmently-modules show x --rolee r",
+                          "SKILL.md: segmently-modules shwo x",
+                          "references/more.md: segmently-modules match x --from-diff a..b",
+                          "references/more.md: segmently-modules show x --json"])
         self.assertTrue(all(" — " in f and f.split(" — ")[1] for f in failures), failures)
 
 
@@ -473,12 +475,12 @@ class ContractTest(SkillRules):  # P4B-AC-015, P4B-AC-016
                 "---\nname: stock-check\ndescription: Checks the shelves.\n---\n\n## Steps\n\n"
                 "**Route.** Pick one.\n\n- **restock** — more copies of a book\n"
                 "  → `references/restock.md`\n- **count** — how many are left →\n"
-                "  `references/count.md`\n\nIf a `modsys` command exits 1 or 2, read "
+                "  `references/count.md`\n\nIf a `segmently-modules` command exits 1 or 2, read "
                 "`references/exit-codes.md`.\n\n1. Look at the shelf.\n\n## Gates\n\nNone.\n",
                 encoding="utf-8")
-            (skill / "references/restock.md").write_text("```bash\nmodsys lint --json\n```\n")
+            (skill / "references/restock.md").write_text("```bash\nsegmently-modules lint --json\n```\n")
             (skill / "references/count.md").write_text("Count them.\n")
-            (skill / "references/exit-codes.md").write_text("Run `modsys ci --json`.\n")
+            (skill / "references/exit-codes.md").write_text("Run `segmently-modules ci --json`.\n")
             text = (skill / "SKILL.md").read_text("utf-8")
             self.assertEqual(route(text), [("restock", ["references/restock.md"]),
                                            ("count", ["references/count.md"])])
@@ -503,7 +505,7 @@ class LintCodesReferenceTest(unittest.TestCase):  # module-lint explains every c
         self.assertTrue(rows["MS002"].startswith("Safe"), rows["MS002"])
 
     def test_every_lint_code_is_explained(self):
-        source = "".join((ENGINE / "modsys" / f).read_text(encoding="utf-8")
+        source = "".join((ENGINE / "segmently_modules" / f).read_text(encoding="utf-8")
                          for f in ("lint.py", "rules.py", "doc_checks.py"))
         ref = (builtin_packs_root() / "core/skills/module-lint/references/lint-codes.md")
         documented = re.findall(r"^\| (MS\d{3}) \|", ref.read_text("utf-8"), re.M)
@@ -526,8 +528,8 @@ class InitAndAdoptSkillsTest(unittest.TestCase):  # P5B-AC-028, P5B-AC-029 (D6, 
     def test_module_adopt_writes_before_it_asks(self):  # G11: the order of the steps
         steps = section((builtin_packs_root() / "core/skills/module-adopt/SKILL.md")
                         .read_text("utf-8"), "## Steps")
-        order = [steps.index(s) for s in ("modsys adopt --dry-run --json", "**Write it.**",
-                                          "modsys adopt --json", "modsys lint --json",
+        order = [steps.index(s) for s in ("segmently-modules adopt --dry-run --json", "**Write it.**",
+                                          "segmently-modules adopt --json", "segmently-modules lint --json",
                                           "**Then ask what adopt never guesses**", "**Report**")]
         self.assertEqual(order, sorted(order))
 
@@ -579,18 +581,18 @@ class InitAndAdoptSkillsTest(unittest.TestCase):  # P5B-AC-028, P5B-AC-029 (D6, 
 
 class ScaffoldBaseTest(unittest.TestCase):  # P5A-AC-004 (D0a)
     def test_the_scaffold_says_what_the_base_is(self):
-        scaffold = (ENGINE / "modsys/defaults/scaffold/SKILL.md").read_text("utf-8")
+        scaffold = (ENGINE / "segmently_modules/defaults/scaffold/SKILL.md").read_text("utf-8")
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(tmp)
             code, _, err = run("packs", "new", "team", "--skill", "api-review", "--root",
                                str(root))
             self.assertEqual((code, err), (0, ""))
-            skill = root / ".modsys/packs/team/skills/api-review"
+            skill = root / ".segmently-modules/packs/team/skills/api-review"
             rendered = (skill / "SKILL.md").read_text("utf-8")
             self.assertIsNone(source_problem(skill, "api-review"))
         for text in (scaffold, rendered):
             flat = " ".join(text.split())
-            self.assertIn("modsys discover --from-diff <base>..HEAD", flat)
+            self.assertIn("segmently-modules discover --from-diff <base>..HEAD", flat)
             self.assertIn(MERGE_BASE, flat)
             self.assertIsNone(TARGET_AS_BASE.search(flat))
 

@@ -91,7 +91,7 @@ class SignalTest(SuiteRepo):  # P83-AC-018
         before = self.both()
         for case, env in (("guard", {"FAKE_GUARD_MODE": "hangup"}), ("git", {})):  # SIGHUP from
             if case == "git":  # the guard; SIGTERM from the git that makes the release commit
-                self.git_wrapper('case "$*" in *"commit -q -m release modsys"*"(dev)"*) '
+                self.git_wrapper('case "$*" in *"commit -q -m release segmently-modules"*"(dev)"*) '
                                  'kill -TERM $PPID; sleep 5; exit 1 ;; esac')
             with self.subTest(child=case):
                 proc = self.run_release("dev", env={**env,
@@ -136,7 +136,7 @@ class SnapshotTest(ReleaseRepo):  # P83-AC-020: the class's snapshot of a finish
         self.assertEqual(git(self.pub, "symbolic-ref", "HEAD").strip(), "refs/heads/dev")
         proc = self.release("dev")  # the snapshot's run: no release ran here
         self.assertEqual(proc.returncode, 0)
-        self.assertRegex(proc.stdout, r"\ndone: modsys \S+ \(dev\)\n$")
+        self.assertRegex(proc.stdout, r"\ndone: segmently-modules \S+ \(dev\)\n$")
         self.assertFalse((self.base / "git.log").exists())
         proc = self.release("dev")  # the next one runs: the same build is nothing to release
         self.assert_ok(proc)

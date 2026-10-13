@@ -1,10 +1,10 @@
 """Writers refuse what lint reports as an ERROR for the field (status, related_modules edges):
-one shared rule set (modsys.rules), so a validated write never creates a lint error."""
+one shared rule set (segmently_modules.rules), so a validated write never creates a lint error."""
 import json
 import tempfile
 import unittest
 
-from modsys.rules import edge_problems, status_problem
+from segmently_modules.rules import edge_problems, status_problem
 from tests.helpers import copy_fixture, mutate_registry, run, run_json
 
 MODULES = {"catalog": {}, "payments": {"submodules": {"refunds": {}}}}
@@ -54,7 +54,7 @@ class WriterRulesTest(unittest.TestCase):
         err = self.refused("registry", "set", "catalog", "status", '"shipped"')
         self.assertIn("field 'status': status 'shipped' not in", err)
         self.assertIn("(lint MS003)", err)
-        (self.root / ".modsys" / "config.toml").write_text('[registry]\nstatuses = ["shipped"]\n')
+        (self.root / ".segmently-modules" / "config.toml").write_text('[registry]\nstatuses = ["shipped"]\n')
         self.assertEqual(run("registry", "set", "catalog", "status", '"shipped"', *self.R)[0], 0)
         self.assertNotIn("MS003", self.lint_codes())
 
@@ -97,7 +97,7 @@ class WriterRulesTest(unittest.TestCase):
                              "--reason", "r", "--run-id", "r1", *self.R)
         self.assertEqual((code, out), (2, ""))
         self.assertIn("(lint MS006)", err)
-        self.assertEqual(list((self.root / ".modsys").glob("proposals/*.json")), [])
+        self.assertEqual(list((self.root / ".segmently-modules").glob("proposals/*.json")), [])
 
 
 if __name__ == "__main__":

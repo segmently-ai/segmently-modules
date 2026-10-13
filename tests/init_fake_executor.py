@@ -1,8 +1,8 @@
 """A fake `init` executor for the tests and the adoption eval: it writes, from a work item alone,
 deterministic docs a writer agent could have written — no model, stdlib only. Run as
-`python3 tests/init_fake_executor.py [switches]` by `modsys init run --executor …` (stdin = the
-prompt; env MODSYS_INIT_MODULE, MODSYS_INIT_STAGING, MODSYS_INIT_WORK), or import `write_docs`.
-Run by `modsys init eval-tasks --executor …` (env MODSYS_INIT_TASKS), it writes that file: five
+`python3 tests/init_fake_executor.py [switches]` by `segmently-modules init run --executor …` (stdin = the
+prompt; env SEGMENTLY_MODULES_INIT_MODULE, SEGMENTLY_MODULES_INIT_STAGING, SEGMENTLY_MODULES_INIT_WORK), or import `write_docs`.
+Run by `segmently-modules init eval-tasks --executor …` (env SEGMENTLY_MODULES_INIT_TASKS), it writes that file: five
 tasks per module of the staging registry, each naming two of its keywords (`--tasks-mode`
 spoils them on purpose).
 
@@ -12,7 +12,7 @@ from its name. `storefront` writes one edge of its own (to `catalog`, `complemen
 
 Switches (anything else on the command line is ignored, so a test can pass odd arguments):
   --record LOG        append a JSON line per start and end: {event, module, argv, stdin_sha256,
-                      env (the MODSYS_* variables), cwd, time, pid}
+                      env (the SEGMENTLY_MODULES_* variables), cwd, time, pid}
   --stop-after N      calls are counted in LOG.calls/ (one file per call, created exclusively);
                       the call after the Nth writes a partial MODULE.md and partial.tmp, then
                       kills its parent (the `init run`) with SIGKILL
@@ -134,9 +134,9 @@ def switches(argv: list[str]) -> dict:
 def record(opts: dict, event: str, stdin: bytes) -> None:
     if "record" not in opts:
         return
-    line = {"event": event, "module": os.environ.get("MODSYS_INIT_MODULE"), "argv": sys.argv,
+    line = {"event": event, "module": os.environ.get("SEGMENTLY_MODULES_INIT_MODULE"), "argv": sys.argv,
             "stdin_sha256": hashlib.sha256(stdin).hexdigest(),
-            "env": {k: v for k, v in os.environ.items() if k.startswith("MODSYS_")},
+            "env": {k: v for k, v in os.environ.items() if k.startswith("SEGMENTLY_MODULES_")},
             "cwd": os.getcwd(), "time": time.time(), "pid": os.getpid()}
     with open(opts["record"], "a", encoding="utf-8") as fh:
         fh.write(json.dumps(line) + "\n")
@@ -193,11 +193,11 @@ def main() -> int:
     if "ignore-term" in opts:
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
     stdin = sys.stdin.buffer.read()  # the prompt: this fake writes from the work item alone
-    if "MODSYS_INIT_TASKS" in os.environ:
+    if "SEGMENTLY_MODULES_INIT_TASKS" in os.environ:
         record(opts, "tasks", stdin)
-        return write_tasks(Path(os.environ["MODSYS_INIT_TASKS"]), opts.get("tasks-mode"))
-    module = os.environ["MODSYS_INIT_MODULE"]
-    staging = Path(os.environ["MODSYS_INIT_STAGING"])
+        return write_tasks(Path(os.environ["SEGMENTLY_MODULES_INIT_TASKS"]), opts.get("tasks-mode"))
+    module = os.environ["SEGMENTLY_MODULES_INIT_MODULE"]
+    staging = Path(os.environ["SEGMENTLY_MODULES_INIT_STAGING"])
     if "pids" in opts:
         Path(opts["pids"]).mkdir(exist_ok=True)
         (Path(opts["pids"]) / str(os.getpid())).write_text(module)
@@ -231,7 +231,7 @@ def main() -> int:
             return 3
         if opts.get("nothing") == module:
             return 0
-        item = json.loads(Path(os.environ["MODSYS_INIT_WORK"]).read_text(encoding="utf-8"))
+        item = json.loads(Path(os.environ["SEGMENTLY_MODULES_INIT_WORK"]).read_text(encoding="utf-8"))
         write_docs(Path.cwd(), item, staging)
         if module in opts.get("invent-always", "").split(",") or \
                 (module in opts.get("invent", "").split(",") and not retry):

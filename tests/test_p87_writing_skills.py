@@ -9,7 +9,7 @@ pack, and `create --no-standard-roles` (the child keeps only the role docs that 
 import unittest
 from pathlib import Path
 
-from modsys.config import builtin_packs_root, core_defaults
+from segmently_modules.config import builtin_packs_root, core_defaults
 from tests.helpers import copy_fixture, run, run_json
 
 CORE = builtin_packs_root() / "core" / "skills"
@@ -36,7 +36,7 @@ CONTRACT = {
     "module-sync": [  # D5: session first, diff second
         "The session is the primary source; the change in git confirms it and finds missed modules.",
         "revealed module knowledge", "`<base>` is `HEAD`, and step 3 takes `--module`",
-        "modsys sync-instructions --module <module> --module <module> --json",
+        "segmently-modules sync-instructions --module <module> --module <module> --json",
         "**Plan goal**", "**Decisions** — each choice made, with the alternatives rejected and why.",
         "**Discoveries**", "**Patterns**", "**Gotchas**", "**Dependencies**", "**Critical rules**",
         "homeless discovery: report it, never drop it", "sync from the change alone",
@@ -44,14 +44,14 @@ CONTRACT = {
         "Before any edit, print in your reply — the user audits the run from it",
         "**Findings**: each session item (kind · module · fact)", "**Proposal: <module>**",
         "Then apply without waiting.", "Only after that print, write each module's docs",
-        "Ask modsys what to update — always, a session without a code change too.",
+        "Ask Segmently Modules what to update — always, a session without a code change too.",
         "Interactive mode (the user asked for it)", "`ok / skip / edit`",
         "never hand-edits a role doc another skill owns (it flags it)",
         "never hand-edited — flag it for that skill in the report",
         "only when business behaviour changed", "only when the UI changed",
         "past about 300 lines after the edit, route the excess to them",
         "reconcile the prose with the edges",
-        "`modsys roles add <role> <module>/<child> --json` creates and registers it",
+        "`segmently-modules roles add <role> <module>/<child> --json` creates and registers it",
         "never copy the area content into the parent's baseline",
         "**Budget watch**", "never a silent trim",
         "every decision you took on your own and every question you asked, with the answer",
@@ -67,10 +67,10 @@ CONTRACT = {
         "at least three components with real paths",
         "at least one right-and-wrong usage example", "real import lines in the developer doc",
         "no template comment (`<!-- … -->`) left", "about 200–300 lines", "Planned:",
-        "modsys registry append <name> related_modules",
+        "segmently-modules registry append <name> related_modules",
         "--no-standard-roles", "add the child's row to the parent's routing table",
         "the routing table must list every child",
-        'modsys match "<a typical task for it>" --match lexical --json',
+        'segmently-modules match "<a typical task for it>" --match lexical --json',
         "the typical task ranks the new module first",
         "template comments left (0)",
     ],

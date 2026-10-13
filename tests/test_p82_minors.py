@@ -25,7 +25,7 @@ except ImportError:  # no rlimits here
 
 ENGINE = Path(__file__).resolve().parents[1]
 LAUNCHER = ENGINE / "tools/launcher.sh"
-SCRIPT = "import sys; from modsys.cli import main; sys.exit(main())"  # the console script
+SCRIPT = "import sys; from segmently_modules.cli import main; sys.exit(main())"  # the console script
 DOCS = (ENGINE / "docs/cli-contract.md").read_text(encoding="utf-8")
 CHANGELOG = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
 BAD = ("Exception ignored", "BrokenPipeError", "Traceback", "internal error")
@@ -45,12 +45,12 @@ class Spawn(AgentRepo, unittest.TestCase):
         plugin = self.tmp / "plugin"
         (plugin / "bin").mkdir(parents=True)
         (plugin / "runtime").mkdir()
-        os.symlink(ENGINE / "modsys", plugin / "runtime/modsys")
-        shutil.copy(LAUNCHER, plugin / "bin/modsys")
-        (plugin / "bin/modsys").chmod(0o755)
-        self.entries = {"module": [sys.executable, "-m", "modsys"],
+        os.symlink(ENGINE / "segmently_modules", plugin / "runtime/segmently_modules")
+        shutil.copy(LAUNCHER, plugin / "bin/segmently-modules")
+        (plugin / "bin/segmently-modules").chmod(0o755)
+        self.entries = {"module": [sys.executable, "-m", "segmently_modules"],
                         "script": [sys.executable, "-c", SCRIPT],
-                        "launcher": [str(plugin / "bin/modsys")]}
+                        "launcher": [str(plugin / "bin/segmently-modules")]}
 
     def spawn(self, argv, state="open", entry="module", err_closed=False, env=None,
               cwd=None, prefix=64):
@@ -152,7 +152,7 @@ class WriteErrorTest(Spawn):  # I1
             resource.setrlimit(resource.RLIMIT_FSIZE, (200, 200))
         out = self.tmp / "out.txt"
         with open(out, "wb") as f:
-            proc = subprocess.run([sys.executable, "-m", "modsys", *argv], stdout=f,
+            proc = subprocess.run([sys.executable, "-m", "segmently_modules", *argv], stdout=f,
                                   stderr=subprocess.PIPE, env=self.env, cwd=ENGINE,
                                   preexec_fn=limit, timeout=TIMEOUT)
         return proc.returncode, proc.stderr.decode()
@@ -165,7 +165,7 @@ class WriteErrorTest(Spawn):  # I1
                 self.assertEqual(code, 2)
                 lines = err.splitlines()
                 self.assertEqual(len(lines), 1, err)
-                self.assertTrue(lines[0].startswith("modsys: error: cannot write stdout: "), err)
+                self.assertTrue(lines[0].startswith("segmently-modules: error: cannot write stdout: "), err)
                 self.quiet(err)
 
 
@@ -181,7 +181,7 @@ class WriterTest(Spawn):
 
     def fresh(self, name):
         root = copy_fixture(self.tmp / name, SPLIT_FIXTURE)
-        pack = root / ".modsys/packs/team"
+        pack = root / ".segmently-modules/packs/team"
         (pack / "skills/api-review").mkdir(parents=True)
         (pack / "pack.toml").write_text('id = "team"\nversion = "9.0.0"\npriority = 50\n'
                                         '[skills.api-review]\npath = "skills/api-review"\n')
@@ -220,7 +220,7 @@ class WriterTest(Spawn):
         scratch = self.tmp / "scratch"
         scratch.mkdir()
         grand = self.tmp / "grand"
-        os.environ["MODSYS_AGENT_COMMAND"] = json.dumps(self.behaviour(
+        os.environ["SEGMENTLY_MODULES_AGENT_COMMAND"] = json.dumps(self.behaviour(
             answer=picks(("orders/refunds", 0.9)), grandchild=str(grand)))
         env = {**os.environ, "PYTHONPATH": str(ENGINE), "TMPDIR": str(scratch)}
         argv = ("choose", "--task-file", str(self.task), "--run", *self.R)
@@ -239,8 +239,8 @@ class WriterTest(Spawn):
 
 
 class RefusalAndEntryPointTest(Spawn):
-    SEAM = ("import sys\nfrom modsys import catalog_cmd\nfrom modsys.cli import main\n"
-            "from modsys.output import UsageError\n"
+    SEAM = ("import sys\nfrom segmently_modules import catalog_cmd\nfrom segmently_modules.cli import main\n"
+            "from segmently_modules.output import UsageError\n"
             "def go(args):\n    print('partial ' * 20000)\n    raise UsageError('boom')\n"
             "catalog_cmd.run = go\nsys.exit(main(['catalog']))\n")
 
@@ -253,15 +253,15 @@ class RefusalAndEntryPointTest(Spawn):
                     self.assertEqual(code, 2)
                     self.assertEqual(out, b"")
                     self.assertEqual(len(err.splitlines()), 1, err)
-                    self.assertTrue(err.startswith("modsys: error: "), err)
+                    self.assertTrue(err.startswith("segmently-modules: error: "), err)
                     self.quiet(err)
 
     def test_a_refusal_after_partial_output(self):  # P82-AC-024 (b) (c), through a seam
         self.entries["seam"] = [sys.executable, "-c", self.SEAM]
         code, _, err = self.spawn((), "B", "seam")
-        self.assertEqual((code, err), (2, "modsys: error: boom\n"))
+        self.assertEqual((code, err), (2, "segmently-modules: error: boom\n"))
         code, out, err = self.spawn((), "open", "seam")
-        self.assertEqual((code, err), (2, "modsys: error: boom\n"))
+        self.assertEqual((code, err), (2, "segmently-modules: error: boom\n"))
         self.assertGreater(len(out), 100_000)  # the partial output is there without a closed reader
         code, _, _ = self.spawn((), "B", "seam", err_closed=True)
         self.assertEqual(code, 2)
@@ -285,13 +285,13 @@ class RefusalAndEntryPointTest(Spawn):
 
     def test_sigint_during_an_agent_call_is_still_130(self):  # P82-AC-024 (f)
         started = self.tmp / "started"
-        os.environ["MODSYS_AGENT_COMMAND"] = json.dumps(self.behaviour(
+        os.environ["SEGMENTLY_MODULES_AGENT_COMMAND"] = json.dumps(self.behaviour(
             sleep=60, started=str(started), answer="{}"))
         env = {**os.environ, "PYTHONPATH": str(ENGINE)}
         out_r, out_w = os.pipe()
         os.close(out_r)
         proc = subprocess.Popen(
-            [sys.executable, "-m", "modsys", "choose", "--task", "x", "--run", *self.R],
+            [sys.executable, "-m", "segmently_modules", "choose", "--task", "x", "--run", *self.R],
             env=env, stdout=out_w, stderr=subprocess.PIPE, cwd=ENGINE,
             preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
         os.close(out_w)
@@ -308,18 +308,18 @@ class RefusalAndEntryPointTest(Spawn):
             if proc.poll() is None:
                 proc.kill()
         self.assertEqual(proc.returncode, 130)
-        self.assertIn("modsys: interrupted", err)
+        self.assertIn("segmently-modules: interrupted", err)
         self.quiet(err)
 
     def test_a_note_run_with_a_closed_stdout_prints_the_note_once(self):  # D6 + D7
-        (self.root / ".modsys").mkdir(exist_ok=True)
-        (self.root / ".modsys/config.toml").write_text('[match]\nmode = "semantic"\n',
+        (self.root / ".segmently-modules").mkdir(exist_ok=True)
+        (self.root / ".segmently-modules/config.toml").write_text('[match]\nmode = "semantic"\n',
                                                        encoding="utf-8")
         argv = ("match", "partial refund", *self.R)
         code, _, err = self.spawn(argv, "B")
         want = self.spawn(argv)
         self.assertEqual(code, 0)
-        self.assertEqual(err.count("modsys: note: "), 1, err)
+        self.assertEqual(err.count("segmently-modules: note: "), 1, err)
         self.assertEqual(err, want[2])
         self.quiet(err)
 
@@ -347,7 +347,7 @@ class DeferredNoteStreamsTest(Spawn):  # final review I-1: the D6 note under eve
                     yield mode, (*argv, *self.R, *form)
 
     def shell(self, redirect, argv, preexec_fn=None, stdout=subprocess.PIPE):
-        """(exit code, stdout bytes, stderr text) of modsys run through `/bin/sh` with
+        """(exit code, stdout bytes, stderr text) of segmently-modules run through `/bin/sh` with
         `redirect` applied."""
         cmd = ["/bin/sh", "-c", f'exec "$@" {redirect}', "sh", *self.entries["module"], *argv]
         proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=stdout,
@@ -384,7 +384,7 @@ class DeferredNoteStreamsTest(Spawn):  # final review I-1: the D6 note under eve
                         continue
                     lines = err.splitlines()
                     self.assertEqual(len(lines), 1, err)
-                    self.assertTrue(lines[0].startswith("modsys: error: cannot write stdout: "),
+                    self.assertTrue(lines[0].startswith("segmently-modules: error: cannot write stdout: "),
                                     err)
                     self.assertNotIn("note", err)
                     self.quiet(err)
@@ -409,7 +409,7 @@ class IgnoredCopiesTest(unittest.TestCase):
         self.R = ("--root", str(self.root))
 
     def pack(self, *names):
-        d = self.root / ".modsys/packs/team"
+        d = self.root / ".segmently-modules/packs/team"
         shutil.rmtree(d, ignore_errors=True)
         text = 'id = "team"\nversion = "9.0.0"\npriority = 50\n'
         for n in names:
@@ -506,7 +506,7 @@ class IgnoredCopiesTest(unittest.TestCase):
         (self.root / ".gitignore").write_text(".agents/\n", encoding="utf-8")
         self.assertEqual(self.sync("--agent", "codex")[0], 0)
         self.pack("api-review", "module-a")  # module-b leaves the pack: its copy is `removed`
-        (self.root / ".modsys/packs/team/skills/api-review/SKILL.md").write_text(
+        (self.root / ".segmently-modules/packs/team/skills/api-review/SKILL.md").write_text(
             "no front matter\n", encoding="utf-8")  # an unloadable source: `invalid`
         code, notes, env = self.sync("--agent", "codex")
         self.assertEqual(code, 1)
@@ -518,7 +518,7 @@ class IgnoredCopiesTest(unittest.TestCase):
 
     def test_one_git_process_per_skills_directory(self):  # I2
         from unittest import mock
-        from modsys import packs_cmd
+        from segmently_modules import packs_cmd
         self.pack("module-a", "module-b", "api-review", "zeta")
         (self.root / ".gitignore").write_text(ALLOW, encoding="utf-8")
         init_git(self.root)
@@ -535,7 +535,7 @@ class IgnoredCopiesTest(unittest.TestCase):
             k=2, m=4, d=".agents/skills", names="api-review, zeta")])
 
     def test_the_old_sentence_is_gone(self):  # P82-AC-025
-        self.assertNotIn("the synced skills are written there", (ENGINE / "modsys/packs_cmd.py")
+        self.assertNotIn("the synced skills are written there", (ENGINE / "segmently_modules/packs_cmd.py")
                          .read_text(encoding="utf-8"))
         self.assertNotIn("the synced skills are written there", DOCS)
 

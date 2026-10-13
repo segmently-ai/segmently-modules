@@ -6,10 +6,10 @@ import unittest
 from dataclasses import asdict
 from unittest import mock
 
-from modsys import lint as linter
-from modsys.changes import code_map_routes, routes
-from modsys.lint import drift_report, lint_registry, severity_counts
-from modsys.workspace import Workspace
+from segmently_modules import lint as linter
+from segmently_modules.changes import code_map_routes, routes
+from segmently_modules.lint import drift_report, lint_registry, severity_counts
+from segmently_modules.workspace import Workspace
 from tests.helpers import init_git, make_repo, mutate_registry, run_json
 from tests.test_overlap_lint import MODULES, TAIL, rule
 
@@ -35,7 +35,7 @@ class Repo(unittest.TestCase):
 
 class LintChangedSkipsOverlapTest(Repo):  # P4A-AC-001
     def calls(self, root, *argv) -> tuple[int, dict]:
-        with mock.patch("modsys.lint.overlap_findings", wraps=linter.overlap_findings) as spy:
+        with mock.patch("segmently_modules.lint.overlap_findings", wraps=linter.overlap_findings) as spy:
             code, env, err = run_json(*argv, "--root", str(root))
         self.assertEqual((code, err), (0, ""))
         return spy.call_count, env["data"]
@@ -75,7 +75,7 @@ class LintChangedSkipsOverlapTest(Repo):  # P4A-AC-001
                                        "changed": changed})
 
     def git_calls(self, root) -> list:
-        with mock.patch("modsys.changes.subprocess.run", wraps=subprocess.run) as spy:
+        with mock.patch("segmently_modules.changes.subprocess.run", wraps=subprocess.run) as spy:
             code, _, err = run_json("lint", "--changed", "--base", "HEAD", "--fail-on", "never",
                                     "--root", str(root))
         self.assertEqual((code, err), (0, ""))
@@ -106,7 +106,7 @@ class OverlapSourcesTest(Repo):  # P4A-AC-002
 
     def test_findings_are_unchanged_with_docs_and_pointers_on_the_same_files(self):
         root = self.pointer_repo()
-        with mock.patch("modsys.changes._pointer_paths",
+        with mock.patch("segmently_modules.changes._pointer_paths",
                         side_effect=AssertionError("code_pointer evaluated")):
             code, env, err = run_json("lint", "--fail-on", "never", "--root", str(root))
         self.assertEqual((code, err), (0, ""))

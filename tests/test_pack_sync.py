@@ -1,4 +1,4 @@
-"""`modsys packs sync` (D7): statuses decided before anything is written, file safety, agents,
+"""`segmently-modules packs sync` (D7): statuses decided before anything is written, file safety, agents,
 `--check` / `--dry-run`, mirrored agent directories and the `[packs]` config section."""
 import errno
 import hashlib
@@ -12,15 +12,15 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys import skill_sync
-from modsys.init_cmd import starter_config
+from segmently_modules import skill_sync
+from segmently_modules.init_cmd import starter_config
 from tests.helpers import copy_fixture, run, run_json
 
 SKILL = "---\nname: {sid}\ndescription: {desc}\n---\n\n# {sid}\n"
 BLOCK = '[skills.{sid}]\npath = "skills/{sid}"\n'
 EDIT_HINT = ("  SKILL.md (locally edited) — revert it (git checkout -- "
-             ".claude/skills/api-review) and sync again, or keep the change: modsys eject "
-             "api-review, copy the change into .modsys/overrides/skills/api-review, then packs "
+             ".claude/skills/api-review) and sync again, or keep the change: segmently-modules eject "
+             "api-review, copy the change into .segmently-modules/overrides/skills/api-review, then packs "
              "sync")
 
 
@@ -33,7 +33,7 @@ class SyncRepo(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = copy_fixture(self._tmp.name)
         self.R = ("--root", str(self.root))
-        self.team = self.root / ".modsys/packs/team"
+        self.team = self.root / ".segmently-modules/packs/team"
         self.pack("team", ["api-review"])
 
     def tearDown(self):
@@ -41,7 +41,7 @@ class SyncRepo(unittest.TestCase):
 
     def pack(self, pack_id: str, skills: list[str], version: str = "9.0.0",
              priority: int = 50) -> None:
-        d = self.root / ".modsys/packs" / pack_id
+        d = self.root / ".segmently-modules/packs" / pack_id
         d.mkdir(parents=True, exist_ok=True)
         (d / "pack.toml").write_text(
             f'id = "{pack_id}"\nversion = "{version}"\npriority = {priority}\n'
@@ -54,7 +54,7 @@ class SyncRepo(unittest.TestCase):
                               encoding="utf-8")
 
     def src(self, rel: str, pack_id: str = "team", sid: str = "api-review") -> Path:
-        return self.root / ".modsys/packs" / pack_id / "skills" / sid / rel
+        return self.root / ".segmently-modules/packs" / pack_id / "skills" / sid / rel
 
     def dest(self, rel: str = "", sid: str = "api-review", agent_dir=".claude/skills") -> Path:
         return self.root / agent_dir / sid / rel
@@ -63,7 +63,7 @@ class SyncRepo(unittest.TestCase):
         flags = [a for agent in agents for a in ("--agent", agent)]
         got, env, err = run_json("packs", "sync", *flags, *argv, *self.R)
         self.assertEqual((got, err), (code, ""), env)
-        self.assertEqual(env["schema"], "modsys.packs/1")
+        self.assertEqual(env["schema"], "segmently-modules.packs/1")
         self.assertIs(env["data"]["failed"], code == 1)
         return env["data"]
 
@@ -86,8 +86,8 @@ class SyncTransitionsTest(SyncRepo):  # P4A-AC-014
             "source": "pack", "dir": ".claude/skills/api-review", "status": "created",
             "files": ["SKILL.md", "references/api.md"], "reason": None}])
         files = {rel: sha(self.src(rel).read_bytes()) for rel in ("SKILL.md", "references/api.md")}
-        self.assertEqual(self.dest(".modsys-managed").read_text(), json.dumps(
-            {"schema": "modsys.managed/1", "pack": "team", "skill": "api-review",
+        self.assertEqual(self.dest(".segmently-modules-managed").read_text(), json.dumps(
+            {"schema": "segmently-modules.managed/1", "pack": "team", "skill": "api-review",
              "version": "9.0.0", "source": "pack", "files": files},
             indent=2, sort_keys=True) + "\n")
         for rel in files:
@@ -109,7 +109,7 @@ class SyncTransitionsTest(SyncRepo):  # P4A-AC-014
         self.assertEqual((self.statuses(data), data["skills"][0]["files"]),
                          ([("claude", "api-review", "updated")], ["SKILL.md"]))
         self.assertEqual(self.dest("SKILL.md").read_bytes(), self.src("SKILL.md").read_bytes())
-        marker = json.loads(self.dest(".modsys-managed").read_text())
+        marker = json.loads(self.dest(".segmently-modules-managed").read_text())
         self.assertEqual((marker["version"], marker["files"]["SKILL.md"]),
                          ("9.1.0", sha(self.src("SKILL.md").read_bytes())))
 
@@ -143,14 +143,14 @@ class SyncTransitionsTest(SyncRepo):  # P4A-AC-014
     def test_other_conflicts_leave_the_skill_untouched(self):
         cases = {
             "deleted": (lambda: self.dest("SKILL.md").unlink(), "SKILL.md (locally deleted)"),
-            "no marker": (lambda: self.dest(".modsys-managed").unlink(),
-                          "not managed by modsys (no .modsys-managed)"),
-            "another pack": (lambda: self.dest(".modsys-managed").write_text(
-                self.dest(".modsys-managed").read_text().replace('"team"', '"other"')),
+            "no marker": (lambda: self.dest(".segmently-modules-managed").unlink(),
+                          "not managed by segmently-modules (no .segmently-modules-managed)"),
+            "another pack": (lambda: self.dest(".segmently-modules-managed").write_text(
+                self.dest(".segmently-modules-managed").read_text().replace('"team"', '"other"')),
                 "managed for pack 'other', skill 'api-review'"),
             "unmanaged file": (lambda: (self.dest("notes.md").write_text("mine\n"),
                                         self.src("notes.md").write_text("theirs\n")),
-                               "notes.md (exists and is not managed by modsys)")}
+                               "notes.md (exists and is not managed by segmently-modules)")}
         for name, (change, reason) in cases.items():
             with self.subTest(case=name):
                 shutil.rmtree(self.root / ".claude", ignore_errors=True)
@@ -214,7 +214,7 @@ class SyncTransitionsTest(SyncRepo):  # P4A-AC-014
         data = self.sync()
         self.assertEqual((data["skills"][0]["status"], data["skills"][0]["reason"]),
                          ("updated", None))
-        marker = json.loads(self.dest(".modsys-managed").read_text())
+        marker = json.loads(self.dest(".segmently-modules-managed").read_text())
         self.assertEqual(sorted(marker["files"]), ["SKILL.md", "new.md"])
 
 
@@ -236,14 +236,14 @@ class SyncFileSafetyTest(SyncRepo):  # P4A-AC-015
         self.assertEqual(stat.S_IMODE(self.dest("scripts/run.sh").stat().st_mode), 0o755)
 
     def test_generated_and_marker_files_are_not_copied(self):
-        for rel in ("__pycache__/x.pyc", "x.pyc", ".DS_Store", ".modsys-managed",
-                    ".modsys-ejected", "lib/__pycache__/y.pyc", "lib/y.py"):
+        for rel in ("__pycache__/x.pyc", "x.pyc", ".DS_Store", ".segmently-modules-managed",
+                    ".segmently-modules-ejected", "lib/__pycache__/y.pyc", "lib/y.py"):
             self.src(rel).parent.mkdir(parents=True, exist_ok=True)
             self.src(rel).write_text("x\n")
         self.assertEqual(self.sync()["skills"][0]["files"], ["SKILL.md", "lib/y.py"])
         self.assertEqual(sorted(p.relative_to(self.dest()).as_posix()
                                 for p in self.dest().rglob("*") if p.is_file()),
-                         [".modsys-managed", "SKILL.md", "lib/y.py"])
+                         [".segmently-modules-managed", "SKILL.md", "lib/y.py"])
 
     def test_unloadable_sources_are_invalid_and_never_written(self):
         os.symlink("SKILL.md", self.src("link.md"))
@@ -269,7 +269,7 @@ class SyncFileSafetyTest(SyncRepo):  # P4A-AC-015
         (self.root / ".claude/skills").write_text("not a directory\n")
         code, out, err = run("packs", "sync", "--agent", "claude", "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertTrue(err.startswith("modsys: error: cannot write .claude/skills/api-review: "),
+        self.assertTrue(err.startswith("segmently-modules: error: cannot write .claude/skills/api-review: "),
                         err)
         self.assertIn("run packs sync again", err)
 
@@ -279,8 +279,8 @@ class SyncFileSafetyTest(SyncRepo):  # P4A-AC-015
         real = skill_sync.copy_file
         for error, code, needle in [
                 (OSError(errno.ENOSPC, "No space left on device"), 2,
-                 "modsys: error: cannot write .claude/skills/api-review: No space left on device"),
-                (KeyboardInterrupt(), 130, "modsys: interrupted\n")]:
+                 "segmently-modules: error: cannot write .claude/skills/api-review: No space left on device"),
+                (KeyboardInterrupt(), 130, "segmently-modules: interrupted\n")]:
             with self.subTest(error=type(error).__name__):
                 calls = []
 
@@ -290,7 +290,7 @@ class SyncFileSafetyTest(SyncRepo):  # P4A-AC-015
                         raise error
                     real(src, path)
 
-                with mock.patch("modsys.skill_sync.copy_file", side_effect=the_second_write_fails):
+                with mock.patch("segmently_modules.skill_sync.copy_file", side_effect=the_second_write_fails):
                     got, out, err = run("packs", "sync", "--agent", "claude", "--json", *self.R)
                 self.assertEqual((got, out, len(calls)), (code, "", 2))
                 self.assertTrue(err.startswith(needle), err)
@@ -312,12 +312,12 @@ class SyncFileSafetyTest(SyncRepo):  # P4A-AC-015
         self.assertEqual(data["skills"][0]["reason"],
                          "references/api.md (a symlink or directory in the way)")
         self.assertEqual(list(outside.iterdir()), [])
-        marker = json.loads(self.dest(".modsys-managed").read_text())
+        marker = json.loads(self.dest(".segmently-modules-managed").read_text())
         marker["files"]["../../escape.md"] = sha(b"x")
-        self.dest(".modsys-managed").write_text(json.dumps(marker))
+        self.dest(".segmently-modules-managed").write_text(json.dumps(marker))
         self.dest("references").unlink()
         data = self.sync(code=1)
-        self.assertEqual(data["skills"][0]["reason"], ".modsys-managed is not a valid marker")
+        self.assertEqual(data["skills"][0]["reason"], ".segmently-modules-managed is not a valid marker")
         self.assertFalse((self.root / ".claude/escape.md").exists())
         written = sorted(p for p in (self.root / ".claude").rglob("*") if p.is_file())
         self.assertTrue(all(self.dest() in p.parents for p in written), written)
@@ -325,12 +325,12 @@ class SyncFileSafetyTest(SyncRepo):  # P4A-AC-015
 
 class SyncAgentsTest(SyncRepo):  # P4A-AC-016
     def config(self, text: str) -> None:
-        (self.root / ".modsys/config.toml").write_text(text, encoding="utf-8")
+        (self.root / ".segmently-modules/config.toml").write_text(text, encoding="utf-8")
 
     def test_the_agents_come_from_flags_or_config(self):
         code, out, err = run("packs", "sync", "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertIn("modsys: error: choose --agent claude, codex, cursor, gemini or copilot "
+        self.assertIn("segmently-modules: error: choose --agent claude, codex, cursor, gemini or copilot "
                       "(repeatable), or set [packs] agents", err)  # P6 D5 (SI-9)
         self.config('[packs]\nagents = ["claude"]\n')
         self.assertEqual(self.statuses(self.sync(agents=())), [("claude", "api-review",
@@ -356,7 +356,7 @@ class SyncAgentsTest(SyncRepo):  # P4A-AC-016
             with self.subTest(argv=argv):
                 code, out, err = run(*argv, *self.R)
                 self.assertEqual((code, out), (2, ""))
-                self.assertIn(".modsys/config.toml: [packs] agents: unknown agent 'windsurf' "
+                self.assertIn(".segmently-modules/config.toml: [packs] agents: unknown agent 'windsurf' "
                               "(agents: claude, codex, cursor, gemini, copilot)", err)
         self.config("")
         code, out, err = run("packs", "sync", "--agent", "windsurf", "--json", *self.R)
@@ -412,7 +412,7 @@ class SyncAgentsTest(SyncRepo):  # P4A-AC-016
         self.pack("a", ["api-review"], priority=10)
         self.pack("b", ["api-review"], priority=60)
         self.sync()
-        marker = json.loads(self.dest(".modsys-managed").read_text())
+        marker = json.loads(self.dest(".segmently-modules-managed").read_text())
         self.assertEqual(marker["pack"], "a")
         self.assertEqual(self.dest("SKILL.md").read_bytes(),
                          self.src("SKILL.md", pack_id="a").read_bytes())
@@ -434,7 +434,7 @@ class SyncAgentsTest(SyncRepo):  # P4A-AC-016
         shutil.rmtree(self.root / ".claude")
         shutil.rmtree(self.root / ".agents")
         self.assertEqual(run("packs", "sync", "--agent", "claude", *self.R)[1].splitlines()[0],
-                         "no pack skills (add one: modsys packs new ID --skill NAME)")
+                         "no pack skills (add one: segmently-modules packs new ID --skill NAME)")
 
 
 class SyncHintsTest(SyncRepo):  # fix wave F3: each conflict reason gets a hint that works
@@ -449,20 +449,20 @@ class SyncHintsTest(SyncRepo):  # fix wave F3: each conflict reason gets a hint 
         self.dest("notes.md").write_text("mine\n")  # joined with a move problem: the edit wins
         self.assertEqual(self.text()[1], EDIT_HINT.replace(
             "SKILL.md (locally edited)", "SKILL.md (locally edited); notes.md (exists and is not "
-                                         "managed by modsys)"))
+                                         "managed by segmently-modules)"))
         self.assertEqual(run("eject", "api-review", *self.R)[0], 0)  # the source is the copy
         self.dest("SKILL.md").unlink()
         self.assertEqual(self.text()[1], "  SKILL.md (locally deleted); notes.md (exists and is "
-                                         "not managed by modsys) — revert it (git checkout -- "
+                                         "not managed by segmently-modules) — revert it (git checkout -- "
                                          ".claude/skills/api-review) and sync again, or keep the "
-                                         "change: copy it into .modsys/overrides/skills/"
+                                         "change: copy it into .segmently-modules/overrides/skills/"
                                          "api-review, then packs sync")
 
     def test_something_in_the_way(self):
         self.sync()
         self.src("notes.md").write_text("theirs\n")
         self.dest("notes.md").write_text("mine\n")
-        self.assertEqual(self.text()[1], "  notes.md (exists and is not managed by modsys) — "
+        self.assertEqual(self.text()[1], "  notes.md (exists and is not managed by segmently-modules) — "
                                          "move it away, then sync again")
         shutil.rmtree(self.root / ".claude")
         (self.root / "elsewhere").mkdir()
@@ -479,17 +479,17 @@ class SyncHintsTest(SyncRepo):  # fix wave F3: each conflict reason gets a hint 
     def test_a_directory_that_is_not_ours(self):
         self.dest().mkdir(parents=True)
         self.dest("SKILL.md").write_text("mine\n")
-        self.assertEqual(self.text()[1], "  not managed by modsys (no .modsys-managed) — a skill "
+        self.assertEqual(self.text()[1], "  not managed by segmently-modules (no .segmently-modules-managed) — a skill "
                                          "written by hand: move or rename it, then sync again")
         shutil.rmtree(self.root / ".claude")
         self.sync()
-        marker = self.dest(".modsys-managed")
+        marker = self.dest(".segmently-modules-managed")
         marker.write_text(marker.read_text().replace('"team"', '"other"'))
         self.assertEqual(self.text()[1], "  managed for pack 'other', skill 'api-review' — it "
                                          "belongs to pack 'other': remove it if that pack is "
                                          "gone, or rename one of the skills")
         marker.write_text("{}\n")
-        self.assertEqual(self.text()[1], "  .modsys-managed is not a valid marker — restore the "
+        self.assertEqual(self.text()[1], "  .segmently-modules-managed is not a valid marker — restore the "
                                          "marker (git checkout -- .claude/skills/api-review) or "
                                          "move the directory away, then sync again")
 
@@ -501,10 +501,10 @@ class SyncHintsTest(SyncRepo):  # fix wave F3: each conflict reason gets a hint 
             "conflict   claude  .claude/skills/api-review  (team 9.0.0)",
             "  SKILL.md (locally edited; not removed) — revert the edit, or delete the directory "
             "if the skill is no longer wanted"])
-        self.dest(".modsys-managed").write_text("{}\n")
+        self.dest(".segmently-modules-managed").write_text("{}\n")
         self.assertEqual(self.text()[:2], [
             "conflict   claude  .claude/skills/api-review  (no valid marker)",
-            "  .modsys-managed is not a valid marker (not removed) — restore the marker (git "
+            "  .segmently-modules-managed is not a valid marker (not removed) — restore the marker (git "
             "checkout -- .claude/skills/api-review) or delete the directory"])
 
     def test_check_says_what_would_fix_it(self):
@@ -518,21 +518,21 @@ class SyncHintsTest(SyncRepo):  # fix wave F3: each conflict reason gets a hint 
         self.assertEqual(self.text("--check")[-1], counts.format(0, 1, 1) + blocked)
         self.src("SKILL.md", sid="notes").write_text(SKILL.format(sid="notes", desc="New."))
         self.assertEqual(self.text("--check")[-1], counts.format(1, 0, 1)
-                         + "stale — run modsys packs sync --agent claude; " + blocked)
+                         + "stale — run segmently-modules packs sync --agent claude; " + blocked)
         self.dest("SKILL.md").write_text(mine)
         self.assertEqual(self.text("--check")[-1], counts.format(1, 1, 0)
-                         + "stale — run modsys packs sync --agent claude")
+                         + "stale — run segmently-modules packs sync --agent claude")
 
     def test_invalid_sources(self):
         self.src("SKILL.md").write_text("# no front matter\n")
         self.assertEqual(self.text()[1], "  SKILL.md has no front matter (a --- block at the top, "
                                          "closed by a --- line) — fix the skill in its pack "
-                                         "(plain modsys lint reports it as MS062)")
+                                         "(plain segmently-modules lint reports it as MS062)")
 
 
 class PacksConfigAndContractTest(SyncRepo):  # D7 [packs], D10 init starter, P4A-AC-023
     def test_the_packs_section(self):
-        (self.root / ".modsys/config.toml").write_text('[packs]\nagents = "claude"\n')
+        (self.root / ".segmently-modules/config.toml").write_text('[packs]\nagents = "claude"\n')
         code, out, err = run("list", "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
         self.assertIn("[packs] agents: expected a list of strings", err)
@@ -540,7 +540,7 @@ class PacksConfigAndContractTest(SyncRepo):  # D7 [packs], D10 init starter, P4A
         self.assertEqual(tomllib.loads(text), {"packs": {"builtin": ["core"]}})  # P4b D8
         self.assertIn('[packs]\nbuiltin = ["core"]                   # or ["core", "ui", "qa"]\n'
                       '# agents = ["claude", "codex"]\n', text)
-        self.assertIn("modsys packs new ID --role NAME --skill NAME", text)
+        self.assertIn("segmently-modules packs new ID --role NAME --skill NAME", text)
 
     def test_usage_errors(self):
         for argv, needle in [(("sync", "team", "--agent", "claude"), "packs sync takes no ID"),
@@ -554,18 +554,18 @@ class PacksConfigAndContractTest(SyncRepo):  # D7 [packs], D10 init starter, P4A
                 self.assertIn(needle, err)
 
     def test_garbage_config_and_interrupt(self):
-        (self.root / ".modsys/config.toml").write_text("code_map = 5\n")
+        (self.root / ".segmently-modules/config.toml").write_text("code_map = 5\n")
         code, out, err = run("packs", "sync", "--agent", "claude", "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertTrue(err.startswith("modsys: error: "), err)
-        (self.root / ".modsys/config.toml").unlink()
-        with mock.patch("modsys.packs_cmd.apply_plan", side_effect=KeyboardInterrupt):
+        self.assertTrue(err.startswith("segmently-modules: error: "), err)
+        (self.root / ".segmently-modules/config.toml").unlink()
+        with mock.patch("segmently_modules.packs_cmd.apply_plan", side_effect=KeyboardInterrupt):
             self.assertEqual(run("packs", "sync", "--agent", "claude", *self.R),
-                             (130, "", "modsys: interrupted\n"))
+                             (130, "", "segmently-modules: interrupted\n"))
 
 
 class AgentsFromManagedCopiesTest(SyncRepo):  # P5A-AC-009 (D0d)
-    REFUSAL = ("modsys: error: choose --agent claude, codex, cursor, gemini or copilot "
+    REFUSAL = ("segmently-modules: error: choose --agent claude, codex, cursor, gemini or copilot "
                "(repeatable), or set [packs] agents\n")  # P6 D5 (SI-9): the five agents
 
     def agents(self, *argv) -> list[str]:
@@ -583,10 +583,10 @@ class AgentsFromManagedCopiesTest(SyncRepo):  # P5A-AC-009 (D0d)
         self.refused()  # no marker anywhere
         self.sync(agents=("codex",))
         self.assertEqual(self.agents(), ["codex"])
-        (self.root / ".modsys/config.toml").write_text('[packs]\nagents = ["claude"]\n')
+        (self.root / ".segmently-modules/config.toml").write_text('[packs]\nagents = ["claude"]\n')
         self.assertEqual(self.agents(), ["claude"])  # the config wins over the markers
         self.assertEqual(self.agents("--agent", "codex"), ["codex"])  # the flags win
-        (self.root / ".modsys/config.toml").unlink()
+        (self.root / ".segmently-modules/config.toml").unlink()
         self.assertEqual(self.agents(), ["claude", "codex"])  # both hold markers now
         shutil.rmtree(self.root / ".agents")
         self.assertEqual(self.agents("--check"), ["claude"])
@@ -597,8 +597,8 @@ class AgentsFromManagedCopiesTest(SyncRepo):  # P5A-AC-009 (D0d)
         (self.root / ".claude/skills/notes").mkdir(parents=True)
         (self.root / ".claude/skills/notes/SKILL.md").write_text("# by hand\n")
         self.assertEqual(self.agents(), ["codex"])
-        self.dest(".modsys-managed", agent_dir=".agents/skills").write_text("{not json")
-        (self.root / ".claude/skills/notes/.modsys-managed").write_text("[]")
+        self.dest(".segmently-modules-managed", agent_dir=".agents/skills").write_text("{not json")
+        (self.root / ".claude/skills/notes/.segmently-modules-managed").write_text("[]")
         self.refused()
 
     def test_mirrored_agent_directories(self):

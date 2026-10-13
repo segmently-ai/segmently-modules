@@ -1,5 +1,5 @@
 """`[packs] builtin_delivery` (P6 D2): "repo" (the default: `packs sync` copies the built-in
-packs' skills) or "plugin" (the modsys plugins provide them) — the values and layers, one
+packs' skills) or "plugin" (the segmently-modules plugins provide them) — the values and layers, one
 delivery at a time across `packs sync`, `eject`, `agents-md` and lint MS067, and the transitions
 between the two."""
 import json
@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import modsys
+import segmently_modules
 from tests.helpers import copy_fixture, init_git, run, run_json
 
 CORE = ["module-adopt", "module-assistant", "module-create", "module-discover", "module-init",
@@ -16,7 +16,7 @@ CORE = ["module-adopt", "module-assistant", "module-create", "module-discover", 
         "module-sync"]
 BUILTIN = sorted(CORE + ["designer", "qa-acceptance", "qa-acceptance-baseline"])
 SKILL = "---\nname: api-review\ndescription: Reviews API changes.\n---\n\n# api-review\n"
-PLUGINS = "the plugins modsys (core), modsys-qa (qa), modsys-ui (ui)"
+PLUGINS = "the plugins segmently-modules (core), segmently-modules-qa (qa), segmently-modules-ui (ui)"
 REFUSAL = 'builtin_delivery = "plugin" — the plugin provides this skill; eject needs "repo"'
 AGENTS = ("--agent", "claude", "--agent", "codex")
 
@@ -29,7 +29,7 @@ class DeliveryRepo(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = copy_fixture(self._tmp.name)
         self.R = ("--root", str(self.root))
-        team = self.root / ".modsys/packs/team"
+        team = self.root / ".segmently-modules/packs/team"
         (team / "skills/api-review").mkdir(parents=True)
         (team / "pack.toml").write_text('id = "team"\nversion = "0.1.0"\n\n[skills.api-review]\n'
                                         'path = "skills/api-review"\n', encoding="utf-8")
@@ -47,8 +47,8 @@ class DeliveryRepo(unittest.TestCase):
         text = f"[packs]\nbuiltin = {json.dumps(list(builtin))}\n"
         if delivery is not None:
             text += f"builtin_delivery = {delivery}\n"
-        (self.root / ".modsys/config.toml").write_text(text, encoding="utf-8")
-        user_path = self.root / ".modsys/config.user.toml"
+        (self.root / ".segmently-modules/config.toml").write_text(text, encoding="utf-8")
+        user_path = self.root / ".segmently-modules/config.user.toml"
         if user is None:
             user_path.unlink(missing_ok=True)
         else:
@@ -104,17 +104,17 @@ class ValuesAndLayersTest(DeliveryRepo):  # P6-AC-001 (SI-8)
                     name = "config.toml" if layer == "team" else "config.user.toml"
                     code, out, err = run("packs", "sync", "--agent", "claude", *self.R)
                     self.assertEqual((code, out), (2, ""))
-                    self.assertTrue(err.startswith("modsys: error: "), err)
-                    self.assertIn(f".modsys/{name}: [packs] builtin_delivery: {why}", err)
+                    self.assertTrue(err.startswith("segmently-modules: error: "), err)
+                    self.assertIn(f".segmently-modules/{name}: [packs] builtin_delivery: {why}", err)
 
     def test_a_pack_cannot_set_it(self):
-        pack = self.root / ".modsys/packs/team/pack.toml"
+        pack = self.root / ".segmently-modules/packs/team/pack.toml"
         pack.write_text(pack.read_text() + '\n[packs]\nbuiltin_delivery = "plugin"\n')
         code, out, err = run("packs", "sync", "--agent", "claude", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertIn(".modsys/packs/team/pack.toml: [packs] builtin_delivery: a pack cannot "
+        self.assertIn(".segmently-modules/packs/team/pack.toml: [packs] builtin_delivery: a pack cannot "
                       "choose how the built-in skills are delivered — set it in "
-                      ".modsys/config.toml (or config.user.toml)", err)
+                      ".segmently-modules/config.toml (or config.user.toml)", err)
 
 
 class OneDeliveryTest(DeliveryRepo):  # P6-AC-002
@@ -170,7 +170,7 @@ class OneDeliveryTest(DeliveryRepo):  # P6-AC-002
             code, out, err = run("eject", *argv, "--json", *self.R)
             self.assertEqual((code, out), (2, ""))
             self.assertIn(REFUSAL, err)
-        self.assertFalse((self.root / ".modsys/overrides").exists())
+        self.assertFalse((self.root / ".segmently-modules/overrides").exists())
         run("agents-md", "--target", "CLAUDE.md", *self.R)
         plugin_block = (self.root / "CLAUDE.md").read_bytes()
         self.config()  # P81-AC-038: back to repo, the plugin wording is stale; --check writes nothing
@@ -201,17 +201,17 @@ class OneDeliveryTest(DeliveryRepo):  # P6-AC-002
     def test_an_ejected_built_in_skill(self):  # row 6
         self.assertEqual(run("eject", "module-lint", *self.R)[0], 0)
         self.sync(*AGENTS)
-        ejected = self.files(".modsys/overrides")
+        ejected = self.files(".segmently-modules/overrides")
         copies = {top: self.files(f"{top}/skills/module-lint") for top in (".claude", ".agents")}
         self.config('"plugin"')
         data = self.sync(*AGENTS, code=1)
         rows = [r for r in data["skills"] if r["skill"] == "module-lint"]
         self.assertEqual([(r["agent"], r["status"], r["source"]) for r in rows],
                          [("claude", "conflict", "ejected"), ("codex", "conflict", "ejected")])
-        self.assertEqual(rows[0]["reason"], 'ejected to .modsys/overrides/skills/module-lint '
+        self.assertEqual(rows[0]["reason"], 'ejected to .segmently-modules/overrides/skills/module-lint '
                          'while builtin_delivery = "plugin" (the plugin provides this skill) — '
                          'delete the ejected copy, or set [packs] builtin_delivery = "repo"')
-        self.assertEqual(self.files(".modsys/overrides"), ejected)
+        self.assertEqual(self.files(".segmently-modules/overrides"), ejected)
         self.assertEqual({top: self.files(f"{top}/skills/module-lint")
                           for top in (".claude", ".agents")}, copies)
         code, env, err = run_json("eject", "module-lint", "--diff", *self.R)
@@ -219,20 +219,20 @@ class OneDeliveryTest(DeliveryRepo):  # P6-AC-002
         self.assertEqual(self.lint_codes(), [(".agents/skills/module-lint", "info"),
                                              (".claude/skills/module-lint", "info")])
         out = run("packs", "sync", *AGENTS, *self.R)[1]
-        self.assertIn('  ejected to .modsys/overrides/skills/module-lint while builtin_delivery = '
+        self.assertIn('  ejected to .segmently-modules/overrides/skills/module-lint while builtin_delivery = '
                       '"plugin" (the plugin provides this skill) — delete the ejected copy, or '
                       'set [packs] builtin_delivery = "repo"', out.splitlines())
 
     def test_a_repository_pack_with_a_built_in_id(self):  # row 8
         self.config('"plugin"')
-        ui = self.root / ".modsys/packs/ui"
+        ui = self.root / ".segmently-modules/packs/ui"
         code, env, _ = run_json("packs", "list", *self.R)
         shutil.copytree(next(r["dir"] for r in env["data"] if r["id"] == "ui"), ui)
         data = self.sync(*AGENTS)
         self.assertIn(("claude", "designer", "created"), self.rows(data))
         self.assertEqual(self.plugin_notes(data), [
-            'builtin_delivery = "plugin": the built-in skills come from the plugins modsys '
-            '(core), modsys-qa (qa) — packs sync copies none of them'])
+            'builtin_delivery = "plugin": the built-in skills come from the plugins segmently-modules '
+            '(core), segmently-modules-qa (qa) — packs sync copies none of them'])
         self.assertEqual(run("eject", "designer", *self.R)[0], 0)
         run("agents-md", "--target", "CLAUDE.md", *self.R)
         self.assertIn("- `designer` — ", (self.root / "CLAUDE.md").read_text())
@@ -268,7 +268,7 @@ class OneDeliveryTest(DeliveryRepo):  # P6-AC-002
 class PluginTextsTest(DeliveryRepo):  # final review M-14, M-15 (T-9)
     def test_ms067_names_the_sync_that_removes_it(self):
         self.sync(*AGENTS)
-        (self.root / ".modsys/config.toml").write_text(
+        (self.root / ".segmently-modules/config.toml").write_text(
             '[packs]\nbuiltin = ["core", "ui", "qa"]\nbuiltin_delivery = "plugin"\n'
             'agents = ["claude"]\n', encoding="utf-8")
 
@@ -283,8 +283,8 @@ class PluginTextsTest(DeliveryRepo):  # final review M-14, M-15 (T-9)
         messages = found()
         self.assertEqual(len(messages), 28)
         for path, message in messages.items():
-            command = ("modsys packs sync" if path.startswith(".claude/")
-                       else "modsys packs sync --agent codex")  # [packs] agents leaves it out
+            command = ("segmently-modules packs sync" if path.startswith(".claude/")
+                       else "segmently-modules packs sync --agent codex")  # [packs] agents leaves it out
             self.assertTrue(message.endswith(f'(the plugin provides it) — {command} {tail}'),
                             message)
         self.sync()  # the bare sync: claude only
@@ -293,22 +293,22 @@ class PluginTextsTest(DeliveryRepo):  # final review M-14, M-15 (T-9)
         self.assertEqual(found(), {})
 
     def test_nothing_to_copy_says_where_the_skills_come_from(self):
-        shutil.rmtree(self.root / ".modsys/packs/team")
+        shutil.rmtree(self.root / ".segmently-modules/packs/team")
         self.config('"plugin"')
         note = (f'note: builtin_delivery = "plugin": the built-in skills come from {PLUGINS} — '
                 'packs sync copies none of them')  # and no Copilot note: nothing is in two places
         code, out, err = run("packs", "sync", "--agent", "claude", *self.R)
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(out.splitlines(), [
-            'nothing to copy: the built-in skills come from the modsys plugins '
+            'nothing to copy: the built-in skills come from the segmently-modules plugins '
             '(builtin_delivery = "plugin"); a repository pack\'s skills are copied (add one: '
-            'modsys packs new ID --skill NAME)', note,
+            'segmently-modules packs new ID --skill NAME)', note,
             "packs sync: 0 created, 0 updated, 0 unchanged, 0 removed, 0 conflict, 0 invalid"])
         # with codex the agent files are the rows (P8.4 D3: written under either delivery)
         code, out, err = run("packs", "sync", *AGENTS, *self.R)
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(out.splitlines(), [
-            f"created    codex   .codex/agents/{name}.toml  (core {modsys.__version__})"
+            f"created    codex   .codex/agents/{name}.toml  (core {segmently_modules.__version__})"
             for name in ("module-discover-agent", "module-research-agent", "module-scout-agent")
         ] + [note, "packs sync: 0 created, 0 updated, 0 unchanged, 0 removed, 0 conflict, "
                    "0 invalid; agent files: 3 created, 0 updated, 0 unchanged, 0 removed, "
@@ -340,7 +340,7 @@ class TransitionsTest(DeliveryRepo):  # P6-AC-026
         statuses = {r["skill"]: r["status"] for r in data["skills"]}
         self.assertEqual(statuses, {**{s: "removed" for s in CORE}, "module-lint": "conflict",
                                     "api-review": "unchanged"})
-        shutil.rmtree(self.root / ".modsys/overrides/skills/module-lint")
+        shutil.rmtree(self.root / ".segmently-modules/overrides/skills/module-lint")
         data = self.sync("--agent", "claude")
         self.assertEqual({r["skill"]: r["status"] for r in data["skills"]},
                          {"module-lint": "removed", "api-review": "unchanged"})
@@ -353,14 +353,14 @@ class TransitionsTest(DeliveryRepo):  # P6-AC-026
         self.config('"plugin"', builtin=("core",))
         data = self.sync("--agent", "claude")
         self.assertEqual(self.plugin_notes(data), [
-            'builtin_delivery = "plugin": the built-in skills come from the plugins modsys '
+            'builtin_delivery = "plugin": the built-in skills come from the plugins segmently-modules '
             '(core) — packs sync copies none of them'])
         self.config('"plugin"', builtin=("core", "ui"))
         data = self.sync("--agent", "claude")
         self.assertEqual([r["skill"] for r in data["skills"]], ["api-review"])
         self.assertEqual(self.plugin_notes(data), [
-            'builtin_delivery = "plugin": the built-in skills come from the plugins modsys '
-            '(core), modsys-ui (ui) — packs sync copies none of them'])
+            'builtin_delivery = "plugin": the built-in skills come from the plugins segmently-modules '
+            '(core), segmently-modules-ui (ui) — packs sync copies none of them'])
         self.config('"plugin"', builtin=())
         data = self.sync("--agent", "claude")
         self.assertEqual(([r["skill"] for r in data["skills"]], self.plugin_notes(data)),
@@ -375,15 +375,15 @@ class DeliveryContractTest(DeliveryRepo):  # P6-AC-033 (the D2 rows)
             with self.subTest(argv=argv):
                 code, out, err = run(*argv, "--json", *self.R)
                 self.assertEqual((code, out), (2, ""))
-                self.assertTrue(err.startswith("modsys: error: "), err)
-                self.assertIn(".modsys/config.toml: [packs] builtin_delivery: expected a "
+                self.assertTrue(err.startswith("segmently-modules: error: "), err)
+                self.assertIn(".segmently-modules/config.toml: [packs] builtin_delivery: expected a "
                               "string or a table, got 5", err)
                 self.assertNotIn("Traceback", err)
 
 
 class AgentsMdGroupsTest(DeliveryRepo):  # P81 fix round 1: lead-in per skill group
-    PLUGIN = "(the modsys plugins provide these skills):"
-    SYNC = "(`modsys packs sync` copies them into the agents' skill directories):"
+    PLUGIN = "(the segmently-modules plugins provide these skills):"
+    SYNC = "(`segmently-modules packs sync` copies them into the agents' skill directories):"
 
     def block(self):
         run("agents-md", "--target", "CLAUDE.md", *self.R)
@@ -408,7 +408,7 @@ class AgentsMdGroupsTest(DeliveryRepo):  # P81 fix round 1: lead-in per skill gr
         text = self.block()
         self.assertIn(f"Skills from packs {self.SYNC}\n- `api-review` — ", text)
         self.assertNotIn("plugins provide", text)
-        shutil.rmtree(self.root / ".modsys/packs/team")  # no repository skill left
+        shutil.rmtree(self.root / ".segmently-modules/packs/team")  # no repository skill left
         self.config('"plugin"')
         text = self.block()
         self.assertEqual(text.count("Skills from packs"), 1)

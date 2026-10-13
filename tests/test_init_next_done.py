@@ -72,16 +72,16 @@ class NextTest(DriverRepo):  # P5B-AC-005 (init next)
             before = (self.root / WORK / "state.json").read_bytes()
             code, out, err = text(self.root, "init", "next", "--json")
             self.assertEqual((code, out), (2, ""))
-            self.assertIn(f"modsys: error: {WORK}/work/cart.json is missing — {way}", err)
+            self.assertIn(f"segmently-modules: error: {WORK}/work/cart.json is missing — {way}", err)
             self.assertEqual((self.root / WORK / "state.json").read_bytes(), before)
 
-        refused("write the work items again: modsys init fanout")  # nothing claimed yet
+        refused("write the work items again: segmently-modules init fanout")  # nothing claimed yet
         ok(self.root, "init", "fanout")  # the way out it names
         self.assertEqual(self.claim()["item"]["module"], "cart")
         self.setUp()
         ok(self.root, "init", "run", "--executor", executor("--invent-always", "cart"), code=1)
         ok(self.root, "init", "resume")
-        refused("start over: modsys init map --restart")  # the refused problems are kept
+        refused("start over: segmently-modules init map --restart")  # the refused problems are kept
         self.assertEqual(state(self.root)["modules"]["cart"]["problems"], invented("cart"))
         ok(self.root, "init", "fanout", code=2)  # the fan-out has started: not a way out
         ok(self.root, "init", "map", "--restart")  # the way out it names
@@ -104,8 +104,8 @@ class NextTest(DriverRepo):  # P5B-AC-005 (init next)
                 before = (self.root / WORK / "state.json").read_bytes()
                 code, out, err = text(self.root, "init", "next", "--json")
                 self.assertEqual((code, out), (2, ""))
-                self.assertEqual(err, f"modsys: error: {WORK}/work/cart.json: {wrong} — fix it, "
-                                      f"or start over: modsys init map --restart\n")
+                self.assertEqual(err, f"segmently-modules: error: {WORK}/work/cart.json: {wrong} — fix it, "
+                                      f"or start over: segmently-modules init map --restart\n")
                 self.assertEqual((self.root / WORK / "state.json").read_bytes(), before)
                 self.assertFalse((self.root / WORK / "staging/cart").exists())
 
@@ -134,7 +134,7 @@ class DoneTest(DriverRepo):  # P5B-AC-005 (init done, the table)
         lines = err.splitlines()
         if code == 1:
             self.assertEqual(json.dumps(state(self.root)["modules"]["cart"]), before)
-            self.assertEqual(lines, [f"modsys: cart: {p}" for p in data["problems"]])
+            self.assertEqual(lines, [f"segmently-modules: cart: {p}" for p in data["problems"]])
             self.assertEqual(data["status"], "running")
         return code, data["problems"]
 
@@ -188,14 +188,14 @@ class DoneTest(DriverRepo):  # P5B-AC-005 (init done, the table)
         code, out, err = text(self.root, "init", "done", "cart")
         self.assertEqual((code, out), (1, "not done      cart (2 problem(s) on stderr)\n"))
         self.assertEqual(err.splitlines(), [
-            "modsys: cart: missing roles/qa.md",
-            "modsys: cart: at least 5 distinct keywords (a list of non-empty strings)"])
+            "segmently-modules: cart: missing roles/qa.md",
+            "segmently-modules: cart: at least 5 distinct keywords (a list of non-empty strings)"])
 
     def test_its_own_work_item_missing_or_damaged(self):  # final review extension, found item 1
         write_docs(self.root, self.item)
         work_item = self.root / WORK / "work/cart.json"
         before = (self.root / WORK / "state.json").read_bytes()
-        for body, message in ((None, f"{WORK}/work/cart.json is missing — start over: modsys "
+        for body, message in ((None, f"{WORK}/work/cart.json is missing — start over: segmently-modules "
                                      f"init map --restart"),  # the way out of M-2
                               ("{not json", f"{WORK}/work/cart.json: cannot read it as JSON (")):
             with self.subTest(body=body):
@@ -205,7 +205,7 @@ class DoneTest(DriverRepo):  # P5B-AC-005 (init done, the table)
                     work_item.write_text(body)
                 code, out, err = text(self.root, "init", "done", "cart", "--json")
                 self.assertEqual((code, out), (2, ""))
-                self.assertTrue(err.startswith(f"modsys: error: {message}"), err)
+                self.assertTrue(err.startswith(f"segmently-modules: error: {message}"), err)
                 self.assertNotIn("internal error", err)
                 self.assertEqual((self.root / WORK / "state.json").read_bytes(), before)
 
@@ -220,8 +220,8 @@ class DoneTest(DriverRepo):  # P5B-AC-005 (init done, the table)
                 work_item.write_text(json.dumps(body))
                 code, out, err = text(self.root, "init", "done", "cart", "--json")
                 self.assertEqual((code, out), (2, ""))
-                self.assertEqual(err, f"modsys: error: {WORK}/work/cart.json: {wrong} — fix it, "
-                                      f"or start over: modsys init map --restart\n")
+                self.assertEqual(err, f"segmently-modules: error: {WORK}/work/cart.json: {wrong} — fix it, "
+                                      f"or start over: segmently-modules init map --restart\n")
                 self.assertEqual((self.root / WORK / "state.json").read_bytes(), before)
 
     def test_a_failed_item_that_still_has_problems(self):  # Task 5 review M2
@@ -248,7 +248,7 @@ class DoneTest(DriverRepo):  # P5B-AC-005 (init done, the table)
                               f"files into a real directory)"]))
 
     def test_claimed_again_while_it_was_checked(self):  # M-10: the same attempt only
-        from modsys.init_work import Work
+        from segmently_modules.init_work import Work
         write_docs(self.root, self.item)
         real = Work.problems
 
@@ -259,7 +259,7 @@ class DoneTest(DriverRepo):  # P5B-AC-005 (init done, the table)
             (self.root / WORK / "state.json").write_text(json.dumps(s))
             return found
 
-        with mock.patch("modsys.init_work.Work.problems", autospec=True, side_effect=meanwhile):
+        with mock.patch("segmently_modules.init_work.Work.problems", autospec=True, side_effect=meanwhile):
             code, out, err = text(self.root, "init", "done", "cart", "--json")
         data = json.loads(out)["data"]
         self.assertEqual((code, data["status"]), (1, "running"))
@@ -315,7 +315,7 @@ class PlaceholderTest(DriverRepo):  # P5C-AC-012, P5C-AC-013 (D4, SI-11)
         code, out, err = text(self.root, "init", "done", "cart", "--json")
         problems = json.loads(out)["data"]["problems"]
         self.assertEqual((code, err.splitlines()),
-                         (1 if problems else 0, [f"modsys: cart: {p}" for p in problems]))
+                         (1 if problems else 0, [f"segmently-modules: cart: {p}" for p in problems]))
         if not problems:  # back to running for the next row
             s = state(self.root)
             s["modules"]["cart"]["status"] = "running"
@@ -338,7 +338,7 @@ class PlaceholderTest(DriverRepo):  # P5C-AC-012, P5C-AC-013 (D4, SI-11)
         self.assertEqual(self.check("MODULE.md", "\n${title}\n"), [])
 
     def test_a_pack_template(self):  # only the roles of the module's work item count
-        pack = self.root / ".modsys/packs/team"
+        pack = self.root / ".segmently-modules/packs/team"
         (pack / "templates/roles").mkdir(parents=True)
         (pack / "pack.toml").write_text('id = "team"\nversion = "9.0.0"\n')
         (pack / "templates/roles/qa.md").write_text("# ${title} — qa\n\n${pack_hint}\n")
@@ -366,7 +366,7 @@ class PlaceholderTest(DriverRepo):  # P5C-AC-012, P5C-AC-013 (D4, SI-11)
                 finally:
                     override.chmod(0o644)
                 self.assertEqual((code, out), (2, ""))
-                self.assertEqual(err, f"modsys: error: cannot read .modsys/overrides/templates/"
+                self.assertEqual(err, f"segmently-modules: error: cannot read .segmently-modules/overrides/templates/"
                                       f"MODULE.md: {reason}\n")
         override.write_bytes(b"\xe9" + good)
         self.assertEqual(self.check("MODULE.md", "\nNo placeholder.\n"), [])  # never read
@@ -419,7 +419,7 @@ class InventedAtDoneTest(DriverRepo):  # P5C-AC-004…007, 021, 022 (D2, SI-1, S
         data = json.loads(out)["data"]
         self.assertEqual(set(data), {"action", "module", "status", "problems", "message"})
         self.assertEqual((code, err.splitlines()), (1 if data["problems"] else 0,
-                                                    [f"modsys: cart: {p}"
+                                                    [f"segmently-modules: cart: {p}"
                                                      for p in data["problems"]]))
         s = state(root)
         self.assertEqual(s["modules"]["cart"]["status"], "done" if code == 0 else "running")

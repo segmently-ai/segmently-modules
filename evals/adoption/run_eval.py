@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """E-A — deterministic adoption eval. Builds seven repositories in temp dirs and drives the
-modsys CLI of THIS checkout (`python -m modsys`, the checkout on PYTHONPATH):
+segmently-modules CLI of THIS checkout (`python -m segmently_modules`, the checkout on PYTHONPATH):
 
   greenfield  git init -> init -> 3 modules -> code-map add -> a relation -> lint -> coverage
               -> context -> the agent loop (code change -> lint --changed gate fails -> propose
@@ -25,9 +25,9 @@ modsys CLI of THIS checkout (`python -m modsys`, the checkout on PYTHONPATH):
               from the edited copy -> packs new core is refused (a reserved id)
   adopt       a git copy of the bookshop fixture without its declarations (and a reference copy
               with them) -> adopt --dry-run writes nothing and names the role, the field and the
-              code-map rule -> adopt writes .modsys/config.toml -> list / show equal the
+              code-map rule -> adopt writes .segmently-modules/config.toml -> list / show equal the
               reference's -> a second adopt writes adopt.proposed.toml, config.toml kept -> the
-              tree outside .modsys/ is byte-identical to the start
+              tree outside .segmently-modules/ is byte-identical to the start
   init-map    the bookshop_monorepo fixture with its built history -> init -> init map (seven
               candidates) -> exclude one, rename one in proposal.json -> init confirm -> init
               status: gate 3 passed -> init resume runs the fan-out -> a fresh copy: init map
@@ -38,17 +38,17 @@ modsys CLI of THIS checkout (`python -m modsys`, the checkout on PYTHONPATH):
               --non-interactive: every module done once -> init reconcile: the planted
               duplicate and one collision -> init eval-tasks (the canned tasks) -> init verify
               passes -> init finish --open-pr against a local bare remote and a gh stand-in:
-              one commit on modsys/init (its subject = the pull request's title, "docs:
-              module docs for 6 module(s) (modsys init)"), the pull request body holds the
+              one commit on segmently-modules/init (its subject = the pull request's title, "docs:
+              module docs for 6 module(s) (segmently-modules init)"), the pull request body holds the
               verify summary and the routing table
 
 Every step asserts an exit code and a data check. Prints the scorecard JSON
-{scenario: {steps: [{name, ok, detail}], commands, ok}} (commands = modsys invocations) and
+{scenario: {steps: [{name, ok, detail}], commands, ok}} (commands = segmently-modules invocations) and
 exits 1 when any step fails. Stdlib only; no network.
 
 Usage: python3 evals/adoption/run_eval.py
-Test seams: MODSYS_EVAL_FAIL_STEP="<scenario>:<step name>" forces that step to fail;
-MODSYS_EVAL_SCENARIOS="<scenario>,…" runs only those scenarios (an unknown name: exit 2).
+Test seams: SEGMENTLY_MODULES_EVAL_FAIL_STEP="<scenario>:<step name>" forces that step to fail;
+SEGMENTLY_MODULES_EVAL_SCENARIOS="<scenario>,…" runs only those scenarios (an unknown name: exit 2).
 """
 import json
 import os
@@ -61,8 +61,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ENGINE = Path(__file__).resolve().parents[2]
-FAIL_STEP = "MODSYS_EVAL_FAIL_STEP"  # test seam: "<scenario>:<step name>" forces that step to fail
-ONLY = "MODSYS_EVAL_SCENARIOS"  # test seam: "<scenario>,…" runs only those (the time bound)
+FAIL_STEP = "SEGMENTLY_MODULES_EVAL_FAIL_STEP"  # test seam: "<scenario>:<step name>" forces that step to fail
+ONLY = "SEGMENTLY_MODULES_EVAL_SCENARIOS"  # test seam: "<scenario>,…" runs only those (the time bound)
 GIT_IDENTITY = {"GIT_AUTHOR_NAME": "eval", "GIT_AUTHOR_EMAIL": "eval@example.invalid",
                 "GIT_COMMITTER_NAME": "eval", "GIT_COMMITTER_EMAIL": "eval@example.invalid",
                 "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
@@ -78,17 +78,17 @@ class Scenario:
         self.steps: list[dict] = []
         self.commands = 0
         self.env = {k: v for k, v in os.environ.items()
-                    if not k.startswith(("GIT_", "MODSYS_"))}
+                    if not k.startswith(("GIT_", "SEGMENTLY_MODULES_"))}
         self.env.update(GIT_IDENTITY, PYTHONPATH=str(ENGINE))
 
-    def modsys(self, *args: str, expect: int = 0, env: dict | None = None):
+    def cli(self, *args: str, expect: int = 0, env: dict | None = None):
         """Run one verb with --json; returns (data, stderr). Wrong exit code -> StepFailed.
         `env`: extra environment for this one command."""
         self.commands += 1
-        proc = subprocess.run([sys.executable, "-m", "modsys", *args, "--json"], cwd=self.root,
+        proc = subprocess.run([sys.executable, "-m", "segmently_modules", *args, "--json"], cwd=self.root,
                               env={**self.env, **(env or {})}, capture_output=True, text=True)
         if proc.returncode != expect:
-            raise StepFailed(f"modsys {' '.join(args)}: exit {proc.returncode}, expected "
+            raise StepFailed(f"segmently-modules {' '.join(args)}: exit {proc.returncode}, expected "
                              f"{expect}: {proc.stderr.strip()[:300]}")
         data = json.loads(proc.stdout)["data"] if proc.stdout.strip() else None
         return data, proc.stderr
@@ -116,7 +116,7 @@ class Scenario:
     def create(self, name: str, description: str, keywords: list[str], parent: str | None = None):
         argv = ["create", name, "--non-interactive", "--description", description]
         argv += [a for k in keywords for a in ("--keyword", k)]
-        data, _ = self.modsys(*argv, *(["--parent", parent] if parent else []))
+        data, _ = self.cli(*argv, *(["--parent", parent] if parent else []))
         check(data["module"] == (f"{parent}/{name}" if parent else name), f"created {data}")
 
     def step(self, name: str, fn) -> None:
@@ -154,7 +154,7 @@ GREEN_MODULES = {
     "reminders": ("Reminders: schedule and send notifications before a task is due.",
                   ["reminder", "notify", "schedule", "alarm", "snooze"]),
 }
-TRACKED = (".gitignore", ".modsys", "modules", "src")
+TRACKED = (".gitignore", ".segmently-modules", "modules", "src")
 
 
 def ci_statuses(data: dict) -> list[str]:
@@ -168,57 +168,57 @@ def greenfield(sc: Scenario) -> None:
         sc.git("init", "-q", "-b", "main")
 
     def no_registry_names_init():
-        _, err = sc.modsys("list", expect=2)
-        check("run `modsys init`" in err, f"stderr: {err.strip()}")
+        _, err = sc.cli("list", expect=2)
+        check("run `segmently-modules init`" in err, f"stderr: {err.strip()}")
 
     def init():
-        data, _ = sc.modsys("init")
+        data, _ = sc.cli("init")
         statuses = [f["status"] for f in data["files"]]
         check(statuses == ["created"] * 3, f"statuses {statuses}")
         return ", ".join(f["path"] for f in data["files"])
 
     def init_again():
-        data, _ = sc.modsys("init")
+        data, _ = sc.cli("init")
         check({f["status"] for f in data["files"]} == {"exists"}, f"second run {data['files']}")
 
     def add_modules():
         for name, (description, keywords) in GREEN_MODULES.items():
             sc.create(name, description, keywords)
-        data, _ = sc.modsys("list")
+        data, _ = sc.cli("list")
         check(sorted(r["module"] for r in data) == sorted(GREEN_MODULES), f"list {data}")
 
     def wire_code():
         for rel in ("src/tasks/service.py", "src/lists/service.py", "src/reminders/service.py",
                     "src/reminders/scheduler.py"):
             sc.write(rel, "VALUE = 1\n")
-        data, _ = sc.modsys("code-map", "add", "src", "--pattern", "src/{module}/**")
+        data, _ = sc.cli("code-map", "add", "src", "--pattern", "src/{module}/**")
         check(data["block"] == '[[code_map]]\nid = "src"\npattern = "src/{module}/**"\n',
               f"block {data['block']!r}")
-        data, _ = sc.modsys("sync", "--files", "src/reminders/scheduler.py", "--dry-run")
+        data, _ = sc.cli("sync", "--files", "src/reminders/scheduler.py", "--dry-run")
         check(modules_of(data) == {"reminders": ["code_map:src"]}, f"mapped {modules_of(data)}")
 
     def relation():
         edge = {"module": "tasks", "relation": "depends-on",
                 "description": "Reminders fire for task due dates"}
-        data, _ = sc.modsys("registry", "append", "reminders", "related_modules", json.dumps(edge))
+        data, _ = sc.cli("registry", "append", "reminders", "related_modules", json.dumps(edge))
         check(data["changed"] is True, f"changed {data['changed']}")
 
     def writer_refuses_bad_edge():
-        _, err = sc.modsys("registry", "append", "reminders", "related_modules",
+        _, err = sc.cli("registry", "append", "reminders", "related_modules",
                            json.dumps({"module": "tasks", "relation": "depends-on"}), expect=2)
         check("(lint MS007)" in err, f"stderr: {err.strip()}")
 
     def lint_clean():
-        data, _ = sc.modsys("lint")
+        data, _ = sc.cli("lint")
         check(data["summary"] == {"error": 0, "warning": 0, "info": 0}, f"lint {findings(data)}")
 
     def coverage_full():
-        data, _ = sc.modsys("coverage", "--fail-under", "100")
+        data, _ = sc.cli("coverage", "--fail-under", "100")
         check((data["total"], data["share"]) == (4, 1.0), f"coverage {data}")
         return f"share {data['share']} of {data['total']} files"
 
     def context_code_globs():
-        data, _ = sc.modsys("context", "--task", "snooze a reminder", "--role", "developer")
+        data, _ = sc.cli("context", "--task", "snooze a reminder", "--role", "developer")
         rows = {m["module"]: m["code_globs"] for m in data["modules"]}
         check(rows == {"reminders": ["src/reminders/**"]}, f"context {rows}")
 
@@ -229,12 +229,12 @@ def greenfield(sc: Scenario) -> None:
     def drift_gate_fails():
         sc.append("src/tasks/service.py", "DUE_SOON_HOURS = 24\n")
         sc.commit("due soon", "src")
-        data, _ = sc.modsys("lint", "--changed", "--base", base["sha"], "--fail-on", "warning",
+        data, _ = sc.cli("lint", "--changed", "--base", base["sha"], "--fail-on", "warning",
                             expect=1)
         check(findings(data) == [("MS050", "tasks")], f"findings {findings(data)}")
 
     def propose_doc():
-        data, _ = sc.modsys("propose", "--run-id", "run1", "--agent", "builder",
+        data, _ = sc.cli("propose", "--run-id", "run1", "--agent", "builder",
                             "--module", "tasks", "--op", "doc_append",
                             "--doc", "modules/tasks/roles/developer.md",
                             "--value", "## Due soon\n\nA task is due soon 24 hours before its due date.",
@@ -242,7 +242,7 @@ def greenfield(sc: Scenario) -> None:
         check(data["item"]["op"] == "doc_append", f"item {data['item']}")
 
     def sync_applies():
-        data, _ = sc.modsys("sync", "--from-diff", f"{base['sha']}..HEAD", "--apply-proposals")
+        data, _ = sc.cli("sync", "--from-diff", f"{base['sha']}..HEAD", "--apply-proposals")
         check(list(modules_of(data)) == ["tasks"], f"modules {modules_of(data)}")
         check(data["proposals"]["summary"]["applied"] == 1, f"proposals {data['proposals']}")
         doc = (sc.root / "modules/tasks/roles/developer.md").read_text(encoding="utf-8")
@@ -250,17 +250,17 @@ def greenfield(sc: Scenario) -> None:
 
     def gate_passes():
         sc.commit("docs: due soon", *TRACKED)
-        data, _ = sc.modsys("lint", "--changed", "--base", base["sha"], "--fail-on", "warning")
+        data, _ = sc.cli("lint", "--changed", "--base", base["sha"], "--fail-on", "warning")
         check(findings(data) == [], f"findings {findings(data)}")
 
     def ci_passes():
-        data, _ = sc.modsys("ci", "--base", base["sha"], "--fail-under", "100")
+        data, _ = sc.cli("ci", "--base", base["sha"], "--fail-under", "100")
         check(ci_statuses(data) == ["passed", "passed", "passed"], f"ci {ci_statuses(data)}")
 
     def ci_fails_on_drift():
         sc.append("src/lists/service.py", "MAX_ITEMS = 100\n")
         sc.commit("lists: cap", "src")
-        data, _ = sc.modsys("ci", "--base", base["sha"], expect=1)
+        data, _ = sc.cli("ci", "--base", base["sha"], expect=1)
         check(ci_statuses(data) == ["passed", "failed", "report-only"], f"ci {ci_statuses(data)}")
         drift = [(f["code"], f["module"]) for f in data["steps"][1]["findings"]]
         check(drift == [("MS050", "lists")], f"drift {drift}")
@@ -268,25 +268,25 @@ def greenfield(sc: Scenario) -> None:
     def ci_passes_after_docs():
         sc.append("modules/lists/roles/developer.md", "\n## Limits\n\nA list holds 100 tasks.\n")
         sc.commit("docs: lists cap", "modules")
-        data, _ = sc.modsys("ci", "--base", base["sha"])
+        data, _ = sc.cli("ci", "--base", base["sha"])
         check(ci_statuses(data) == ["passed", "passed", "report-only"], f"ci {ci_statuses(data)}")
 
     def child_module():
         sc.create("search", "Full-text search over task titles and notes.", ["search"],
                   parent="tasks")
-        sc.modsys("code-map", "add", "task-search", "--glob", "src/tasks/search/**",
+        sc.cli("code-map", "add", "task-search", "--glob", "src/tasks/search/**",
                   "--module", "tasks/search", "--exclusive")
         sc.write("src/tasks/search/index.py", "INDEX = {}\n")
-        data, _ = sc.modsys("sync", "--files", "src/tasks/search/index.py", "--dry-run")
+        data, _ = sc.cli("sync", "--files", "src/tasks/search/index.py", "--dry-run")
         check(modules_of(data) == {"tasks/search": ["code_map:task-search"]},
               f"mapped {modules_of(data)}")
-        data, _ = sc.modsys("lint")
+        data, _ = sc.cli("lint")
         check(findings(data) == [], f"lint {findings(data)}")
-        data, _ = sc.modsys("coverage", "--fail-under", "100")
+        data, _ = sc.cli("coverage", "--fail-under", "100")
         check(data["modules"].get("tasks/search") == 1, f"coverage {data['modules']}")
 
     for name, fn in [("git init", git_init),
-                     ("no registry: the error names modsys init", no_registry_names_init),
+                     ("no registry: the error names segmently-modules init", no_registry_names_init),
                      ("init", init), ("init again changes nothing", init_again),
                      ("create tasks, lists, reminders", add_modules),
                      ("wire code with code-map add", wire_code),
@@ -380,14 +380,14 @@ def brownfield(sc: Scenario) -> None:
         return f"{len(app)} files"
 
     def init():
-        data, _ = sc.modsys("init")
+        data, _ = sc.cli("init")
         check({f["path"]: f["status"] for f in data["files"]}[".gitignore"] == "updated",
               f"files {data['files']}")
         check("__pycache__/" in (sc.root / ".gitignore").read_text(encoding="utf-8"),
               ".gitignore lost its line")
 
     def baseline():
-        data, _ = sc.modsys("coverage")
+        data, _ = sc.cli("coverage")
         check((data["total"], data["mapped"]) == (len(app) - 1, 0), f"baseline {data}")
         return f"{data['total']} files, none mapped"
 
@@ -397,40 +397,40 @@ def brownfield(sc: Scenario) -> None:
         sc.create(*DB)
 
     def rules_overlap():
-        sc.append(".modsys/config.toml", LAYERED_RULES.replace("exclusive = true\n", ""))
-        data, _ = sc.modsys("lint")
+        sc.append(".segmently-modules/config.toml", LAYERED_RULES.replace("exclusive = true\n", ""))
+        data, _ = sc.cli("lint")
         overlaps = [f["message"] for f in data["findings"] if f["code"] == "MS053"]
         check(len(overlaps) == 2 and "'db' (-> db) and 'repositories'" in overlaps[0]
               and "'db' (-> db) and 'sql'" in overlaps[1], f"MS053 {overlaps}")
         return overlaps[0]
 
     def rules_exclusive():  # the hand edit a user makes: rules are edited by hand
-        config = sc.root / ".modsys" / "config.toml"
+        config = sc.root / ".segmently-modules" / "config.toml"
         text = config.read_text(encoding="utf-8")
         for line in ('pattern = "app/repositories/{module}.py"\n',
                      'pattern = "app/sql/{module}.sql"\n'):
             text = text.replace(line, line + "exclusive = true\n")
         config.write_text(text, encoding="utf-8")
-        data, _ = sc.modsys("lint")
+        data, _ = sc.cli("lint")
         check(data["summary"]["error"] == 0 and not findings(data, "MS052")
               and not findings(data, "MS053"), f"lint {findings(data)}")
 
     def feature_files():
-        data, _ = sc.modsys("code-map", "files", "orders")
+        data, _ = sc.cli("code-map", "files", "orders")
         via = {f["path"]: f["via"] for f in data["files"]}
         check(via.get("app/repositories/orders.py") == ["code_map:repositories"],
               f"orders files {sorted(via)}")
         return f"{data['total']} files map to orders"
 
     def coverage_target():
-        data, _ = sc.modsys("coverage", "--fail-under", "80")
+        data, _ = sc.cli("coverage", "--fail-under", "80")
         check(data["share"] >= 0.8, f"share {data['share']}")
         check(sorted(data["unmapped"]) == ["README.md", "app/main.py", "pyproject.toml",
                                            "tests/conftest.py"], f"unmapped {data['unmapped']}")
         return f"share {data['share']} ({data['mapped']}/{data['total']})"
 
     def exclusive_repository():
-        data, _ = sc.modsys("sync", "--files", "app/repositories/orders.py",
+        data, _ = sc.cli("sync", "--files", "app/repositories/orders.py",
                             "app/repositories/base.py", "--dry-run")
         check(modules_of(data) == {"db": ["code_map:db"], "orders": ["code_map:repositories"]},
               f"mapped {modules_of(data)}")
@@ -438,27 +438,27 @@ def brownfield(sc: Scenario) -> None:
               f"orders files {data['modules'][1]['files']}")
 
     def commit():
-        sc.commit("modules", ".gitignore", ".modsys", "modules")
+        sc.commit("modules", ".gitignore", ".segmently-modules", "modules")
 
     def feature_drift():
         for rel in ("app/repositories/orders.py", "app/routes/orders/api.py", "app/sql/orders.sql"):
             sc.append(rel, "# changed\n")
-        data, _ = sc.modsys("lint", "--changed", "--fail-on", "warning", expect=1)
+        data, _ = sc.cli("lint", "--changed", "--fail-on", "warning", expect=1)
         check(findings(data, "MS050") == [("MS050", "orders")], f"drift {findings(data)}")
-        data, _ = sc.modsys("discover", "--files", "app/repositories/orders.py",
+        data, _ = sc.cli("discover", "--files", "app/repositories/orders.py",
                             "app/routes/orders/api.py", "app/sql/orders.sql")
         usage = {m["module"]: m["usage"] for m in data["modules"]}
         check(usage == {"orders": "modify"}, f"discover {usage}")
 
     def per_module_layout():
-        before["list"], _ = sc.modsys("list")
-        before["match"], _ = sc.modsys("match", "order invoice shipment")
-        data, _ = sc.modsys("index", "split")
+        before["list"], _ = sc.cli("list")
+        before["match"], _ = sc.cli("match", "order invoice shipment")
+        data, _ = sc.cli("index", "split")
         check(len(data["files"]) == len(FEATURES) + 1, f"split {data['files']}")
-        sc.append(".modsys/config.toml", '\n[paths]\nregistry_layout = "per-module"\n')
-        sc.modsys("index", "build", "--check")
-        after_list, _ = sc.modsys("list")
-        after_match, _ = sc.modsys("match", "order invoice shipment")
+        sc.append(".segmently-modules/config.toml", '\n[paths]\nregistry_layout = "per-module"\n')
+        sc.cli("index", "build", "--check")
+        after_list, _ = sc.cli("list")
+        after_match, _ = sc.cli("match", "order invoice shipment")
 
         def by_name(rows):
             return sorted(rows, key=lambda r: r["module"])
@@ -491,15 +491,15 @@ REVIEWS = ("Customer reviews of books: ratings, comments and moderation.",
 def packs(sc: Scenario) -> None:
     claude_md = "# Bookshop\n\nTeam notes: run the tests before every push.\n"
     skill = sc.root / ".claude/skills/api-review/SKILL.md"
-    ejected = sc.root / ".modsys/overrides/skills/api-review/SKILL.md"
-    upstream = sc.root / ".modsys/packs/team/skills/api-review/SKILL.md"
+    ejected = sc.root / ".segmently-modules/overrides/skills/api-review/SKILL.md"
+    upstream = sc.root / ".segmently-modules/packs/team/skills/api-review/SKILL.md"
     kept = {}
 
     def statuses(data: dict) -> list[tuple]:
         return [(r["agent"], r["status"]) for r in data["skills"]]
 
     def sync(expect: int = 0, *flags: str) -> dict:
-        data, _ = sc.modsys("packs", "sync", "--agent", "claude", "--agent", "codex", *flags,
+        data, _ = sc.cli("packs", "sync", "--agent", "claude", "--agent", "codex", *flags,
                             expect=expect)
         return data
 
@@ -509,19 +509,19 @@ def packs(sc: Scenario) -> None:
         sc.commit("bookshop", ".")
 
     def new_pack():
-        data, _ = sc.modsys("packs", "new", "team", "--role", "reviewer", "--skill",
+        data, _ = sc.cli("packs", "new", "team", "--role", "reviewer", "--skill",
                             "api-review", "--description", "Team review conventions")
         check(len(data["files"]) == 3, f"files {data['files']}")
         return ", ".join(data["files"])
 
     def lint_clean():
-        data, _ = sc.modsys("lint")
+        data, _ = sc.cli("lint")
         check(not [f for f in data["findings"] if f["code"].startswith("MS06")],
               f"lint {findings(data)}")
 
     def create_with_role():
         description, keywords = REVIEWS
-        data, _ = sc.modsys("create", "reviews", "--non-interactive", "--description",
+        data, _ = sc.cli("create", "reviews", "--non-interactive", "--description",
                             description, *[a for k in keywords for a in ("--keyword", k)],
                             "--role", "reviewer")
         check("modules/reviews/roles/reviewer.md" in data["files"], f"files {data['files']}")
@@ -529,7 +529,7 @@ def packs(sc: Scenario) -> None:
         check(doc.startswith("# Reviews — reviewer\n"), f"doc {doc[:60]!r}")
 
     def show_role():
-        data, _ = sc.modsys("show", "reviews", "--role", "reviewer")
+        data, _ = sc.cli("show", "reviews", "--role", "reviewer")
         rows = [(r["label"], r["exists"]) for r in data["read"]]
         check(("role:reviewer", True) in rows, f"read {rows}")
 
@@ -554,8 +554,8 @@ def packs(sc: Scenario) -> None:
         sync(0, "--check")
 
     def eject():
-        data, _ = sc.modsys("eject", "api-review")
-        check(data["dir"] == ".modsys/overrides/skills/api-review", f"eject {data}")
+        data, _ = sc.cli("eject", "api-review")
+        check(data["dir"] == ".segmently-modules/overrides/skills/api-review", f"eject {data}")
 
     def sync_from_the_ejected_copy():
         ejected.write_text(ejected.read_text(encoding="utf-8") + "\n5. Check the error codes.\n",
@@ -568,38 +568,38 @@ def packs(sc: Scenario) -> None:
               "the agents' copy is not the ejected copy")
 
     def pack_moves_on():
-        toml = sc.root / ".modsys/packs/team/pack.toml"
+        toml = sc.root / ".segmently-modules/packs/team/pack.toml"
         toml.write_text(toml.read_text(encoding="utf-8").replace('version = "0.1.0"',
                                                                  'version = "0.2.0"'),
                         encoding="utf-8")
         upstream.write_text(upstream.read_text(encoding="utf-8")
                             + "\n5. Check the API version header.\n", encoding="utf-8")
-        data, _ = sc.modsys("lint")
+        data, _ = sc.cli("lint")
         messages = [f["message"] for f in data["findings"] if f["code"] == "MS063"]
         check(messages == ["ejected skill 'api-review' is behind pack 'team' (ejected from "
-                           "0.1.0, pack is now 0.2.0) — review: modsys eject api-review --diff"],
+                           "0.1.0, pack is now 0.2.0) — review: segmently-modules eject api-review --diff"],
               f"MS063 {messages}")
 
     def diff_shows_it():
-        data, _ = sc.modsys("eject", "api-review", "--diff")
+        data, _ = sc.cli("eject", "api-review", "--diff")
         check(data["behind"] and "-5. Check the API version header." in data["diff"],
               f"diff {data['diff'][:200]!r}")
 
     def agents_md():
         sc.write("CLAUDE.md", claude_md)
-        data, _ = sc.modsys("agents-md", "--target", "CLAUDE.md", "--target", "AGENTS.md")
+        data, _ = sc.cli("agents-md", "--target", "CLAUDE.md", "--target", "AGENTS.md")
         rows = [(r["path"], r["status"]) for r in data["targets"]]
         check(rows == [("CLAUDE.md", "added"), ("AGENTS.md", "created")], f"agents-md {rows}")
 
     def agents_md_again():
-        data, _ = sc.modsys("agents-md", "--target", "CLAUDE.md", "--target", "AGENTS.md")
+        data, _ = sc.cli("agents-md", "--target", "CLAUDE.md", "--target", "AGENTS.md")
         check([r["status"] for r in data["targets"]] == ["unchanged", "unchanged"],
               f"agents-md {data['targets']}")
         check((sc.root / "CLAUDE.md").read_text(encoding="utf-8").startswith(claude_md + "\n"),
               "the team's text changed")
 
     def template_provenance():
-        data, _ = sc.modsys("templates", "list")
+        data, _ = sc.cli("templates", "list")
         rows = {r["template"]: r["source"] for r in data}
         check(rows.get("roles/reviewer.md") == "role-template:team", f"templates {rows}")
 
@@ -640,43 +640,43 @@ def skills(sc: Scenario) -> None:
         sc.commit("bookshop", ".")
 
     def enable():
-        sc.write(".modsys/config.toml", '[packs]\nbuiltin = ["core", "ui", "qa"]\n')
-        data, _ = sc.modsys("packs", "list")
+        sc.write(".segmently-modules/config.toml", '[packs]\nbuiltin = ["core", "ui", "qa"]\n')
+        data, _ = sc.cli("packs", "list")
         rows = [(r["id"], r["builtin"]) for r in data]
         check(rows == [("bookshop", False), ("core", True), ("qa", True), ("ui", True)],
               f"packs {rows}")
-        sc.commit("enable the built-in packs", ".modsys")
+        sc.commit("enable the built-in packs", ".segmently-modules")
         base["sha"] = sc.git("rev-parse", "HEAD")
 
     def lint_clean():
-        data, _ = sc.modsys("lint")
+        data, _ = sc.cli("lint")
         check(not [f for f in data["findings"] if f["code"].startswith("MS06")],
               f"lint {findings(data)}")
 
     def sync_created():
-        data, _ = sc.modsys("packs", "sync", "--agent", "claude", "--agent", "codex")
+        data, _ = sc.cli("packs", "sync", "--agent", "claude", "--agent", "codex")
         rows = sorted({r["skill"] for r in data["skills"] if r["status"] == "created"})
         check(len(data["skills"]) == 28 and rows == BUILTIN_SKILLS, f"sync {data['summary']}")
 
     def check_passes():
-        sc.modsys("packs", "sync", "--check", "--agent", "claude", "--agent", "codex")
+        sc.cli("packs", "sync", "--check", "--agent", "claude", "--agent", "codex")
 
     def agents_md():
-        sc.modsys("agents-md", "--target", "AGENTS.md")
+        sc.cli("agents-md", "--target", "AGENTS.md")
         text = (sc.root / "AGENTS.md").read_text(encoding="utf-8")
         missing = [s for s in BUILTIN_SKILLS if f"- `{s}` — " not in text]
         check(not missing, f"AGENTS.md lacks {missing}")
 
     def create_tagged():
         description, keywords = REVIEWS
-        data, _ = sc.modsys("create", "reviews", "--non-interactive", "--description",
+        data, _ = sc.cli("create", "reviews", "--non-interactive", "--description",
                             description, *[a for k in keywords for a in ("--keyword", k)],
                             "--tag", "ui", "--tag", "qa")
         docs = {"modules/reviews/roles/designer.md", "modules/reviews/roles/qa_acceptance.md"}
         check(docs <= set(data["files"]), f"files {data['files']}")
         text = (sc.root / "modules/reviews/roles/designer.md").read_text(encoding="utf-8")
         check("\n## UX invariants\n" in text, f"designer doc {text[:80]!r}")
-        data, _ = sc.modsys("templates", "list")
+        data, _ = sc.cli("templates", "list")
         rows = {r["template"]: r["source"] for r in data}
         check((rows.get("roles/designer.md"), rows.get("roles/qa_acceptance.md"))
               == ("role-template:ui", "role-template:qa"), f"templates {rows}")
@@ -684,7 +684,7 @@ def skills(sc: Scenario) -> None:
     def sync_instructions():
         sc.append("src/catalog/service.py", "\nPAGE_SIZE = 20\n")
         sc.commit("catalog: page size", "src")
-        data, _ = sc.modsys("sync-instructions", "--from-diff", f"{base['sha']}..HEAD")
+        data, _ = sc.cli("sync-instructions", "--from-diff", f"{base['sha']}..HEAD")
         rows = {m["module"]: m for m in data["modules"]}
         check(list(rows) == ["catalog"], f"modules {list(rows)}")
         check([f["code"] for f in rows["catalog"]["drift"]] == ["MS050"],
@@ -693,20 +693,20 @@ def skills(sc: Scenario) -> None:
         check(bool(hints.get("keywords")), f"fields {sorted(hints)}")
 
     def eject():
-        data, _ = sc.modsys("eject", "module-sync")
-        check((data["pack"], data["dir"]) == ("core", ".modsys/overrides/skills/module-sync"),
+        data, _ = sc.cli("eject", "module-sync")
+        check((data["pack"], data["dir"]) == ("core", ".segmently-modules/overrides/skills/module-sync"),
               f"eject {data}")
 
     def sync_from_the_ejected_copy():
-        sc.append(".modsys/overrides/skills/module-sync/SKILL.md", "\nTeam rule: link the PR.\n")
-        data, _ = sc.modsys("packs", "sync", "--agent", "claude", "--agent", "codex")
+        sc.append(".segmently-modules/overrides/skills/module-sync/SKILL.md", "\nTeam rule: link the PR.\n")
+        data, _ = sc.cli("packs", "sync", "--agent", "claude", "--agent", "codex")
         rows = [(r["agent"], r["status"], r["source"]) for r in data["skills"]
                 if r["status"] != "unchanged"]
         check(rows == [("claude", "updated", "ejected"), ("codex", "updated", "ejected")],
               f"sync {rows}")
 
     def reserved_id():
-        _, err = sc.modsys("packs", "new", "core", expect=2)
+        _, err = sc.cli("packs", "new", "core", expect=2)
         check("pack id 'core' is reserved for the engine's built-in pack" in err,
               f"stderr: {err.strip()}")
 
@@ -728,7 +728,7 @@ def skills(sc: Scenario) -> None:
 # --- adopt --------------------------------------------------------------------------------
 
 
-def tree(root: Path, skip: str = ".modsys") -> dict:
+def tree(root: Path, skip: str = ".segmently-modules") -> dict:
     """{path: bytes} of every file outside `skip` and `.git`."""
     return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*"))
             if p.is_file() and p.relative_to(root).parts[0] not in (skip, ".git")}
@@ -744,16 +744,16 @@ def adopt(sc: Scenario) -> None:
             for rel in ("src/checkout/cart.py", "src/payments/gateway.py"):
                 (root / rel).parent.mkdir(parents=True, exist_ok=True)
                 (root / rel).write_text("VALUE = 1\n", encoding="utf-8")
-        (ref / ".modsys/config.toml").write_text('[[code_map]]\nid = "src"\n'
+        (ref / ".segmently-modules/config.toml").write_text('[[code_map]]\nid = "src"\n'
                                                 'pattern = "src/{module}/**"\n')
-        shutil.rmtree(sc.root / ".modsys")
+        shutil.rmtree(sc.root / ".segmently-modules")
         sc.git("init", "-q", "-b", "main")
         sc.commit("bookshop, declarations removed", ".")
         start["tree"] = tree(sc.root)
 
     def dry_run():
-        data, _ = sc.modsys("adopt", "--dry-run")
-        check(not (sc.root / ".modsys").exists() and tree(sc.root) == start["tree"],
+        data, _ = sc.cli("adopt", "--dry-run")
+        check(not (sc.root / ".segmently-modules").exists() and tree(sc.root) == start["tree"],
               "adopt --dry-run wrote something")
         i = data["inferred"]
         found = ([r["name"] for r in i["roles"]], [f["name"] for f in i["fields"]],
@@ -761,32 +761,32 @@ def adopt(sc: Scenario) -> None:
         check(found == (["designer"], ["file_paths"], "src/{module}/**"), f"inferred {found}")
 
     def write():
-        data, _ = sc.modsys("adopt")
-        check(data["config_path"] == ".modsys/config.toml"
-              and (sc.root / ".modsys/config.toml").is_file(), f"adopt {data['config_path']}")
+        data, _ = sc.cli("adopt")
+        check(data["config_path"] == ".segmently-modules/config.toml"
+              and (sc.root / ".segmently-modules/config.toml").is_file(), f"adopt {data['config_path']}")
 
     def same_as_reference():
         for argv in (("list",), ("show", "catalog", "--all-roles")):
-            mine, _ = sc.modsys(*argv)
-            theirs, _ = sc.modsys(*argv, "--root", str(ref))
+            mine, _ = sc.cli(*argv)
+            theirs, _ = sc.cli(*argv, "--root", str(ref))
             check(mine == theirs, f"{' '.join(argv)} differs from the reference copy")
 
     def again():
-        config = (sc.root / ".modsys/config.toml").read_bytes()
-        data, _ = sc.modsys("adopt")
-        check(data["config_path"] == ".modsys/adopt.proposed.toml"
-              and (sc.root / ".modsys/adopt.proposed.toml").is_file(), f"{data['config_path']}")
-        check((sc.root / ".modsys/config.toml").read_bytes() == config, "config.toml changed")
+        config = (sc.root / ".segmently-modules/config.toml").read_bytes()
+        data, _ = sc.cli("adopt")
+        check(data["config_path"] == ".segmently-modules/adopt.proposed.toml"
+              and (sc.root / ".segmently-modules/adopt.proposed.toml").is_file(), f"{data['config_path']}")
+        check((sc.root / ".segmently-modules/config.toml").read_bytes() == config, "config.toml changed")
 
     def untouched():
-        check(tree(sc.root) == start["tree"], "a file outside .modsys/ changed")
+        check(tree(sc.root) == start["tree"], "a file outside .segmently-modules/ changed")
 
     for name, fn in [("a copy without declarations and a reference copy", copies),
                      ("adopt --dry-run writes nothing and names the declarations", dry_run),
-                     ("adopt writes .modsys/config.toml", write),
+                     ("adopt writes .segmently-modules/config.toml", write),
                      ("list and show equal the reference copy's", same_as_reference),
                      ("a second adopt writes adopt.proposed.toml", again),
-                     ("the tree outside .modsys/ is unchanged", untouched)]:
+                     ("the tree outside .segmently-modules/ is unchanged", untouched)]:
         sc.step(name, fn)
 
 
@@ -807,7 +807,7 @@ CANDIDATES = ["storefront", "cart", "catalog", "ui-kit", "payments", "recommenda
 
 
 def init_map(sc: Scenario) -> None:
-    work = sc.root / ".modsys/init"
+    work = sc.root / ".segmently-modules/init"
     first = {}
 
     def outputs() -> tuple[bytes, bytes]:
@@ -818,11 +818,11 @@ def init_map(sc: Scenario) -> None:
         monorepo_builder()(sc.root)
 
     def init():
-        data, _ = sc.modsys("init")
+        data, _ = sc.cli("init")
         check([f["status"] for f in data["files"]] == ["created"] * 3, f"init {data['files']}")
 
     def map_it():
-        data, _ = sc.modsys("init", "map")
+        data, _ = sc.cli("init", "map")
         check(data["candidates"] == CANDIDATES, f"candidates {data['candidates']}")
         check((data["unassigned"], data["hints"]) == (0, 2), f"{data}")
         first["outputs"] = outputs()
@@ -835,27 +835,27 @@ def init_map(sc: Scenario) -> None:
         (work / "proposal.json").write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
     def confirm():
-        data, _ = sc.modsys("init", "confirm")
+        data, _ = sc.cli("init", "confirm")
         check((data["status"], data["excluded"], "design-kit" in data["included"])
               == ("confirmed", ["storefront"], True), f"confirm {data}")
 
     def status():
-        data, _ = sc.modsys("init", "status")
+        data, _ = sc.cli("init", "status")
         check("gate 3 passed" in data["next"], f"status {data['next']}")
 
     def resume():
-        data, _ = sc.modsys("init", "resume")
+        data, _ = sc.cli("init", "resume")
         check(data["ran"] == ["fanout"] and (work / "work/design-kit.json").is_file(),
               f"resume {data}")
 
     def interrupted():
         fresh = sc.root.parent / "fresh"
         monorepo_builder()(fresh)
-        sc.modsys("init", "map", "--root", str(fresh), expect=130,
-                  env={"MODSYS_INIT_TEST_STOP": "map"})
-        data, _ = sc.modsys("init", "resume", "--root", str(fresh))
+        sc.cli("init", "map", "--root", str(fresh), expect=130,
+                  env={"SEGMENTLY_MODULES_INIT_TEST_STOP": "map"})
+        data, _ = sc.cli("init", "resume", "--root", str(fresh))
         check(data["ran"] == ["map"], f"resume ran {data['ran']}")
-        again = tuple((fresh / ".modsys/init" / n).read_bytes()
+        again = tuple((fresh / ".segmently-modules/init" / n).read_bytes()
                       for n in ("preflight.json", "proposal.json"))
         root = str(sc.root).encode()
         check(again == tuple(o.replace(root, str(fresh).encode()) for o in first["outputs"]),
@@ -891,7 +891,7 @@ def fake_writer(*flags: str) -> str:
 
 
 def init_flow(sc: Scenario) -> None:
-    work, tmp = sc.root / ".modsys/init", sc.root.parent
+    work, tmp = sc.root / ".segmently-modules/init", sc.root.parent
     log, prs, remote = tmp / "writer.jsonl", tmp / "gh.jsonl", tmp / "remote.git"
     seen = {}
 
@@ -911,26 +911,26 @@ def init_flow(sc: Scenario) -> None:
         seen["base"] = sc.git("rev-parse", "HEAD")
 
     def map_it():
-        data, _ = sc.modsys("init", "map")
+        data, _ = sc.cli("init", "map")
         check(data["candidates"] == CANDIDATES, f"candidates {data['candidates']}")
         doc = json.loads((work / "proposal.json").read_text(encoding="utf-8"))
         for candidate in doc["candidates"]:
             candidate["include"] = candidate["name"] != "tools"
         (work / "proposal.json").write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
-        sc.append(".modsys/config.toml", "\n[init]\nmax_parallel = 1\n")
+        sc.append(".segmently-modules/config.toml", "\n[init]\nmax_parallel = 1\n")
 
     def confirm():
-        data, _ = sc.modsys("init", "confirm")
+        data, _ = sc.cli("init", "confirm")
         check((data["status"], sorted(data["included"]), data["excluded"])
               == ("confirmed", SIX, ["tools"]), f"confirm {data}")
 
     def fanout():
-        sc.modsys("init", "fanout")
+        sc.cli("init", "fanout")
         items = sorted(p.stem for p in (work / "work").glob("*.json"))
         check(items == SIX and set(statuses().values()) == {"pending"}, f"work items {items}")
 
     def killed():  # the fake writer SIGKILLs `init run` on its third call
-        sc.modsys("init", "run", "--executor",
+        sc.cli("init", "run", "--executor",
                   fake_writer("--record", str(log), "--stop-after", "2"), expect=-9)
         got = statuses()
         check(sorted(got.values()) == ["done", "done", "pending", "pending", "pending",
@@ -938,7 +938,7 @@ def init_flow(sc: Scenario) -> None:
         seen["done"], seen["starts"] = {m for m, s in got.items() if s == "done"}, len(starts())
 
     def resume():
-        data, err = sc.modsys("init", "resume", "--executor", fake_writer("--record", str(log)),
+        data, err = sc.cli("init", "resume", "--executor", fake_writer("--record", str(log)),
                               "--non-interactive")
         check(data["ran"] == ["run", "reconcile", "eval-tasks", "verify"]
               and "retrying once" not in err, f"resume {data} {err}")
@@ -949,7 +949,7 @@ def init_flow(sc: Scenario) -> None:
         seen["registry"] = (work / "staging/registry.json").read_bytes()
 
     def reconcile():
-        data, _ = sc.modsys("init", "reconcile", "--force")
+        data, _ = sc.cli("init", "reconcile", "--force")
         duplicates = [(d["name"], [x["module"] for x in d["definitions"]])
                       for d in data["duplicates"]]
         collisions = [(c["keyword"], c["owner"], c["removed"]) for c in data["collisions"]]
@@ -964,12 +964,12 @@ def init_flow(sc: Scenario) -> None:
               "the rebuilt staging registry differs from the resumed run's")
 
     def eval_tasks():
-        data, _ = sc.modsys("init", "eval-tasks", "--executor", fake_writer(), "--force")
+        data, _ = sc.cli("init", "eval-tasks", "--executor", fake_writer(), "--force")
         check((data["status"], data["tasks"], set(data["per_module"].values()))
               == ("written", 30, {5}), f"eval-tasks {data}")
 
     def verify():
-        data, _ = sc.modsys("init", "verify")
+        data, _ = sc.cli("init", "verify")
         routing = data["routing"]
         check((data["passed"], data["invented"], routing["hits"], routing["tasks"])
               == (True, [], 30, 30), f"verify {data['lint']['summary']} {routing}")
@@ -981,21 +981,21 @@ def init_flow(sc: Scenario) -> None:
         shim.parent.mkdir()
         shim.write_text(GH_SHIM.format(python=sys.executable, log=str(prs)), encoding="utf-8")
         shim.chmod(0o755)
-        data, _ = sc.modsys("init", "finish", "--open-pr",
+        data, _ = sc.cli("init", "finish", "--open-pr",
                             env={"PATH": f"{shim.parent}{os.pathsep}{sc.env.get('PATH', '')}"})
         check(data["pr"] == "https://example.invalid/bookshop/pull/1", f"finish {data}")
-        count = sc.git("rev-list", "--count", f"{seen['base']}..modsys/init")
-        pushed = sc.git("--git-dir", str(remote), "rev-parse", "modsys/init")
-        check((count, pushed) == ("1", sc.git("rev-parse", "modsys/init")),
-              f"modsys/init: {count} commit(s) on the base, pushed {pushed}")
+        count = sc.git("rev-list", "--count", f"{seen['base']}..segmently-modules/init")
+        pushed = sc.git("--git-dir", str(remote), "rev-parse", "segmently-modules/init")
+        check((count, pushed) == ("1", sc.git("rev-parse", "segmently-modules/init")),
+              f"segmently-modules/init: {count} commit(s) on the base, pushed {pushed}")
         calls = lines(prs)
         body = calls[0]["body"] if calls else ""
         check(len(calls) == 1 and calls[0]["argv"][:2] == ["pr", "create"]
               and "## Verify" in body and "- routing: hit rate 1.0 (30/30" in body
               and "| Module | Hits | Tasks |" in body, f"gh calls {calls}")
-        argv, subject = calls[0]["argv"], sc.git("log", "-1", "--format=%s", "modsys/init")
+        argv, subject = calls[0]["argv"], sc.git("log", "-1", "--format=%s", "segmently-modules/init")
         title = argv[argv.index("--title") + 1] if "--title" in argv else None
-        check(subject == title == "docs: module docs for 6 module(s) (modsys init)",
+        check(subject == title == "docs: module docs for 6 module(s) (segmently-modules init)",
               f"commit subject {subject!r}, pull request title {title!r}")  # Conventional
 
     for name, fn in [("the bookshop monorepo with its history", fixture),
@@ -1016,7 +1016,7 @@ SCENARIOS = {"greenfield": greenfield, "brownfield": brownfield, "packs": packs,
 
 
 def run_scenario(name: str, build) -> dict:
-    with tempfile.TemporaryDirectory(prefix=f"modsys-eval-{name}-") as tmp:
+    with tempfile.TemporaryDirectory(prefix=f"segmently-modules-eval-{name}-") as tmp:
         sc = Scenario(name, Path(tmp) / name)
         sc.root.mkdir()
         try:

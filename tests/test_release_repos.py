@@ -31,8 +31,8 @@ class CloneTest(ReleaseRepo):  # final review I-3: a fresh clone of the publish 
         self.notes("- The next release.")  # the first one dated the notes (D6)
         proc = self.release("stable", pub=clone)  # the next release, on top of what is published
         self.assert_ok(proc)
-        self.assertEqual(self.log(clone, "stable"), [f"release modsys {NXT} (stable)",
-                                                     f"release modsys {REL} (stable)", "root"])
+        self.assertEqual(self.log(clone, "stable"), [f"release segmently-modules {NXT} (stable)",
+                                                     f"release segmently-modules {REL} (stable)", "root"])
         self.assertEqual(git(clone, "rev-parse", "stable~1"),
                          git(clone, "rev-parse", "origin/stable"))
         self.assertEqual(git(clone, "config", "branch.stable.merge").strip(),
@@ -66,7 +66,7 @@ class NoopTest(ReleaseRepo):  # P6-AC-029
         after = self.log(self.pub, "dev")
         self.assertEqual(after[1:], first)
         self.assertNotEqual(after[0], first[0])
-        self.assertRegex(after[0], rf"^release modsys {re.escape(REL)}-dev\.h[0-9a-f]{{8}} \(dev\)$")
+        self.assertRegex(after[0], rf"^release segmently-modules {re.escape(REL)}-dev\.h[0-9a-f]{{8}} \(dev\)$")
 
     def test_stable_again_is_refused(self):
         self.assert_ok(self.release("stable"))

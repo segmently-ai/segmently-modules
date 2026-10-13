@@ -99,18 +99,18 @@ class OverlapConfigTest(unittest.TestCase):  # P32-AC-015, P32-AC-016 (git calls
         self.assertEqual(code, 1)
         self.assertEqual([f["severity"] for f in env["data"]["findings"] if f["code"] == "MS053"],
                          ["error"])
-        (root / ".modsys/config.toml").write_text(self.OVERLAP + '[lint]\noverlap_severity = '
+        (root / ".segmently-modules/config.toml").write_text(self.OVERLAP + '[lint]\noverlap_severity = '
                                                                  '"info"\n')
         _, env, _ = run_json("lint", "--root", str(root))
         self.assertEqual([f["severity"] for f in env["data"]["findings"] if f["code"] == "MS053"],
                          ["info"])
-        (root / ".modsys/config.toml").write_text('[lint]\noverlap_severity = "loud"\n')
+        (root / ".segmently-modules/config.toml").write_text('[lint]\noverlap_severity = "loud"\n')
         code, out, err = run("lint", "--root", str(root))
         self.assertEqual((code, out), (2, ""))
         self.assertIn("config.toml: [lint] overlap_severity: expected info, warning or error", err)
 
     def git_calls(self, root, *argv) -> list:
-        with mock.patch("modsys.changes.subprocess.run", wraps=subprocess.run) as spy:
+        with mock.patch("segmently_modules.changes.subprocess.run", wraps=subprocess.run) as spy:
             code, env, err = run_json("lint", "--fail-on", "never", *argv, "--root", str(root))
         self.assertEqual((code, err), (0, ""))
         return [c.args[0][3:5] for c in spy.call_args_list]

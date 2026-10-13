@@ -3,7 +3,7 @@
 import tempfile
 import unittest
 
-from modsys.match import near_misses
+from segmently_modules.match import near_misses
 from tests.helpers import make_repo, run, run_json
 
 WEIGHTS = {"keyword_weight": 3, "combination_weight": 2, "negative_weight": -5}
@@ -101,10 +101,10 @@ class WhereTheHintAppearsTest(unittest.TestCase):  # P32-AC-003
         code, out, _ = run("context", "--task", "send reminders", *self.R)
         lines = out.splitlines()
         self.assertEqual(code, 0)
-        self.assertEqual(lines[0], "no module matched (try domain terms, or: modsys list)")
+        self.assertEqual(lines[0], "no module matched (try domain terms, or: segmently-modules list)")
         self.assertTrue(lines[1].startswith("near  todo"), lines)
         self.assertIn("reminder ~ reminders", lines[1])
-        self.assertIn("modsys show todo", lines[2])
+        self.assertIn("segmently-modules show todo", lines[2])
 
     def test_match_text_hint_and_json_unchanged(self):
         code, out, _ = run("match", "send reminders", *self.R)
@@ -113,9 +113,9 @@ class WhereTheHintAppearsTest(unittest.TestCase):  # P32-AC-003
         self.assertEqual(lines[0], "no keyword matches (try rephrasing with domain terms, or use: "
                                    "list)")
         self.assertIn("reminder ~ reminders", lines[1])
-        self.assertIn("modsys show todo", lines[2])
+        self.assertIn("segmently-modules show todo", lines[2])
         self.assertEqual(run_json("match", "send reminders", *self.R)[1],
-                         {"schema": "modsys.match/1", "data": []})
+                         {"schema": "segmently-modules.match/1", "data": []})
 
 
 class ShowKeywordsTest(unittest.TestCase):  # P32-AC-004

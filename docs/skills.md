@@ -3,9 +3,9 @@
 > Start here: [README](../README.md). Packs in general: [writing-a-pack.md](writing-a-pack.md).
 > Every config key: [configuration.md](configuration.md).
 
-modsys ships agent skills in three built-in packs. A skill is a directory with a `SKILL.md`
+Segmently Modules ships agent skills in three built-in packs. A skill is a directory with a `SKILL.md`
 (the Agent Skills format) that Claude Code reads from `.claude/skills/<skill>/` and Codex from
-`.agents/skills/<skill>/`. Each one drives the modsys CLI — it asks `modsys` for modules, docs
+`.agents/skills/<skill>/`. Each one drives the Segmently Modules CLI — it asks `segmently-modules` for modules, docs
 and roles instead of assuming a layout — and none of them edits code or commits: the writers
 edit module docs and registry fields, then ask you to review and commit.
 
@@ -17,7 +17,7 @@ edit module docs and registry fields, then ask you to review and commit.
 
 ## Enable them
 
-A built-in pack is active only when the team config lists it. `modsys init` writes
+A built-in pack is active only when the team config lists it. `segmently-modules init` writes
 `builtin = ["core"]` into its starter config; a repository set up earlier adds it by hand:
 
 ```toml
@@ -29,13 +29,13 @@ agents = ["claude", "codex"]     # where packs sync writes skills
 Then copy the skills where the agents read them, tell the agents about them, and commit both:
 
 ```bash
-modsys packs list                                          # core, qa, ui … built-in
-modsys packs sync --agent claude --agent codex             # 14 skills × 2 agents: created
-modsys agents-md --target CLAUDE.md --target AGENTS.md     # the managed block lists the skills
+segmently-modules packs list                                          # core, qa, ui … built-in
+segmently-modules packs sync --agent claude --agent codex             # 14 skills × 2 agents: created
+segmently-modules agents-md --target CLAUDE.md --target AGENTS.md     # the managed block lists the skills
 git add .claude/skills .agents/skills .codex/agents CLAUDE.md AGENTS.md
 ```
 
-`modsys packs sync --check --agent claude --agent codex` in CI fails when a copy is stale. An
+`segmently-modules packs sync --check --agent claude --agent codex` in CI fails when a copy is stale. An
 enabled built-in pack is a pack layer below every repository pack (its roles and fields merge
 first, so a team pack and the team config override them). Removing an id from `builtin` and
 syncing again removes that pack's skills from the agents' directories — unless a copy was edited
@@ -46,10 +46,10 @@ locally (a conflict, left in place) or ejected (below).
 The built-in skills reach an agent one of two ways — never both, or the agent sees every skill
 twice and cannot tell which to trigger:
 
-- **`builtin_delivery = "repo"`** (the default): `modsys packs sync` copies them into
+- **`builtin_delivery = "repo"`** (the default): `segmently-modules packs sync` copies them into
   `.claude/skills/` and `.agents/skills/`, and the team commits the copies.
-- **`builtin_delivery = "plugin"`**: the modsys plugins provide them — `core` in the plugin
-  `modsys`, `ui` in `modsys-ui`, `qa` in `modsys-qa` (install the ones whose packs `builtin`
+- **`builtin_delivery = "plugin"`**: the Segmently Modules plugins provide them — `core` in the plugin
+  `segmently-modules`, `ui` in `segmently-modules-ui`, `qa` in `segmently-modules-qa` (install the ones whose packs `builtin`
   enables). Set it when the team installs the plugins:
 
   ```toml
@@ -58,10 +58,10 @@ twice and cannot tell which to trigger:
   builtin_delivery = "plugin"   # the plugins provide the built-in skills
   ```
 
-  `modsys packs sync` then copies no built-in skill, removes the copies it made earlier (an
+  `segmently-modules packs sync` then copies no built-in skill, removes the copies it made earlier (an
   edited copy is a conflict and stays) and prints a `note:` naming the plugins; plain `lint`
   reports each copy still there (MS067, info) with the sync that removes it (`--agent <agent>`
-  when `[packs] agents` leaves that directory out). `modsys eject` of a built-in skill is refused
+  when `[packs] agents` leaves that directory out). `segmently-modules eject` of a built-in skill is refused
   (ejecting means owning a copy: that needs `"repo"`), and a skill ejected earlier is a `packs
   sync` conflict until the copy is deleted or the delivery goes back to `"repo"`. The built-in
   packs' roles and templates and every repository pack's skills are the same under both;
@@ -77,7 +77,7 @@ twice and cannot tell which to trigger:
 
 The engine cannot see which plugins an agent has installed: installing the plugin in a
 repository that keeps `"repo"` delivery gives the agent each built-in skill twice — set
-`"plugin"` there, or leave the plugin out. Cursor, Gemini CLI and GitHub Copilot have no modsys
+`"plugin"` there, or leave the plugin out. Cursor, Gemini CLI and GitHub Copilot have no Segmently Modules
 plugin: they get the built-in skills only with `"repo"` delivery (`packs sync` says so).
 
 `module-discover`, `module-scout` and `module-research` run in the user's conversation, like the
@@ -94,16 +94,16 @@ request's words carry it).
 ## Other agents
 
 ```bash
-modsys packs sync --agent cursor                   # Cursor
-modsys packs sync --agent gemini --agent copilot   # Gemini CLI and GitHub Copilot: one write
-modsys packs sync --agent cursor --remove          # take the copies out again
+segmently-modules packs sync --agent cursor                   # Cursor
+segmently-modules packs sync --agent gemini --agent copilot   # Gemini CLI and GitHub Copilot: one write
+segmently-modules packs sync --agent cursor --remove          # take the copies out again
 ```
 
-`modsys packs sync --agent cursor`, `--agent gemini` and `--agent copilot` write the skills into
+`segmently-modules packs sync --agent cursor`, `--agent gemini` and `--agent copilot` write the skills into
 `.agents/skills/` — the directory Codex reads too, written once however many of these agents
 sync. GitHub Copilot also reads `.claude/skills/`: a repository that syncs for `claude` and for
 an agent of `.agents/skills` gives Copilot every skill twice (`packs sync` prints a note) — where
-Copilot works, keep one of the two directories. `modsys packs sync --agent cursor --remove`
+Copilot works, keep one of the two directories. `segmently-modules packs sync --agent cursor --remove`
 takes the copies out again: every copy `packs sync` made in that directory is removed, an edited
 copy stays (a conflict), and nothing else there is touched; it refuses while `[packs] agents`
 lists another agent that reads the same directory, and a note says when `[packs] agents` still
@@ -127,7 +127,7 @@ lists the agent (the next `packs sync` copies its skills again).
 
 A typical task: `module-scout` while it is discussed, `module-discover` once it is agreed,
 the work, then `module-sync`; `module-roles` when a role is new, `module-create`,
-`module-split` and `module-lint` when the registry itself needs work; `module-init` or `module-adopt` once, to start; `module-assistant` when you do not know which of them, or what the repository needs now (`modsys next`). The writers never edit a frozen `*.legacy.md` file. `module-sync`
+`module-split` and `module-lint` when the registry itself needs work; `module-init` or `module-adopt` once, to start; `module-assistant` when you do not know which of them, or what the repository needs now (`segmently-modules next`). The writers never edit a frozen `*.legacy.md` file. `module-sync`
 decides on its own and asks only in four cases (an update that fits two children equally, new
 work that may be a new module or a child, a change that contradicts a doc claim nobody
 confirmed, text whose only home is a frozen file); `module-create` and `module-split` stop for a
@@ -146,25 +146,25 @@ drift and the `sync_hint` of every field ([configuration.md](configuration.md#fi
 
 ```bash
 BASE=$(git merge-base main HEAD)   # where the branch left main — never main itself
-modsys sync-instructions --from-diff "$BASE..HEAD" --json
+segmently-modules sync-instructions --from-diff "$BASE..HEAD" --json
 ```
 
-Before it edits, `module-sync` saves the gate (`modsys ci --base "$BASE" --json` to a file
+Before it edits, `module-sync` saves the gate (`segmently-modules ci --base "$BASE" --json` to a file
 outside the repository) and checks its own result with
-`modsys ci --base "$BASE" --baseline <that file> --json`: a finding the saved gate already holds
+`segmently-modules ci --base "$BASE" --baseline <that file> --json`: a finding the saved gate already holds
 is `known` and only reported, unless the change itself caused it (a moved or deleted path) — that
 one it fixes. MS050 and MS051 are never `known`: they describe the change since the base.
 
 ## Choosing modules by meaning
 
 Four skills (`module-scout`, `module-discover`, `module-research`, `module-sync`) share one
-module-choice step. The skill runs `modsys catalog --json`, reads `match.mode` and `search` (the
+module-choice step. The skill runs `segmently-modules catalog --json`, reads `match.mode` and `search` (the
 models and the depth), then:
 
 - **By meaning** (`semantic` or `hybrid`): the skill writes the text, verbatim and in any
-  language, to a task file. In Claude Code, `modsys choose --task-file <task file> > <order file>`
+  language, to a task file. In Claude Code, `segmently-modules choose --task-file <task file> > <order file>`
   writes the work order's text form (one line per card), and the skill gives the order file's path
-  to the `modsys:module-chooser` agent with `model: <search.claude_model>`; when that agent is not
+  to the `segmently-modules:module-chooser` agent with `model: <search.claude_model>`; when that agent is not
   available, to a subagent told "this file is your whole task; answer with its JSON only; change
   nothing". In Codex the same command adds `--json`, its `answer_schema` goes to a schema file,
   and
@@ -172,7 +172,7 @@ models and the depth), then:
   answers it (`<reasoning>` is `low`, `medium` or `high` for the depth `quick`, `standard` or
   `deep`; add `--skip-git-repo-check` outside a git repository). Elsewhere (no subagent, no
   `codex exec`, or it fails, as inside a sandbox) the skill answers the order itself, every card read, by its rules. Every path ends
-  in `modsys choose --apply - --json`, which prints the picks with the docs to read (`--apply`
+  in `segmently-modules choose --apply - --json`, which prints the picks with the docs to read (`--apply`
   takes the answer itself or the agent's JSON envelope, as `--run` does). How much the chooser
   reads is one of the order's rules, set by the depth (see the `choose/rules.md` template below).
 - **By keyword** (`lexical`, `hybrid`): the keyword half — short English queries (the registry's
@@ -180,56 +180,56 @@ models and the depth), then:
   `context --task-file`. In `hybrid` the skill merges both lists; a module found both ways ranks
   first.
 
-Every task text reaches modsys through a file (`--task-file`), never as a quoted argument: an
+Every task text reaches Segmently Modules through a file (`--task-file`), never as a quoted argument: an
 apostrophe, a `$name` or a backtick in it arrives as written.
 
 **Hybrid is the default**: the mode is `hybrid` unless you say otherwise ("only lexical", "by
 meaning", in any language) or `match.mode` is `semantic`. A `lexical` config — the engine's own
 default `[match] mode = "lexical"` too — is only the command line's default and never skips the
-search by meaning, which needs no setting (the mode a plain `modsys match` uses and the mode of
+search by meaning, which needs no setting (the mode a plain `segmently-modules match` uses and the mode of
 the skills are separate: a skill always has your agent). Say "use opus" for the model (the Agent
 tool's `model:`, `codex exec -m`) and "search deep" for the depth: the skill adds
-`--effort deep` to `modsys choose`, and on the Codex path `<reasoning>` follows it. Set the models
+`--effort deep` to `segmently-modules choose`, and on the Codex path `<reasoning>` follows it. Set the models
 and the depth once in the team or personal config (`[search] claude_model`, `codex_model`,
 `effort`; `claude_model` is a Claude Code subagent model alias — `sonnet`, `opus` or `haiku` — as
 a subagent takes no full model id; see
 [configuration.md](configuration.md#the-agent-command-and-search)).
 `[match] mode = "semantic"` makes meaning-only the skills' default. A plain CLI `match`, `context`
-or `discover --task` call runs it only with `MODSYS_AGENT_ALLOW_REPO_MODE=1` in the user's
+or `discover --task` call runs it only with `SEGMENTLY_MODULES_AGENT_ALLOW_REPO_MODE=1` in the user's
 environment (without it the run is lexical, with one stderr note; with it and without
-`MODSYS_AGENT_COMMAND` the call refuses, exit 2). It never stops a skill: the skills' keyword
+`SEGMENTLY_MODULES_AGENT_COMMAND` the call refuses, exit 2). It never stops a skill: the skills' keyword
 commands always pass `--match lexical` (`module-create` and `qa-acceptance` too, and the
-`agents-md` block), and the by-meaning half goes through `modsys choose`, which needs no agent
+`agents-md` block), and the by-meaning half goes through `segmently-modules choose`, which needs no agent
 command in the environment.
 The engine holds no model, key or network code and ships no model: the agent that chooses is the
 one you already run, under your own credentials.
 
-**The choosing agent.** The `modsys` plugin ships one read-only Claude Code subagent,
-`module-chooser` (`modsys:module-chooser`; tools Read, Grep, Glob), and the skills hand it the
-file of a `modsys choose` work order, calling it with `model: <search.claude_model>`. Its own
+**The choosing agent.** The `segmently-modules` plugin ships one read-only Claude Code subagent,
+`module-chooser` (`segmently-modules:module-chooser`; tools Read, Grep, Glob), and the skills hand it the
+file of a `segmently-modules choose` work order, calling it with `model: <search.claude_model>`. Its own
 `model: sonnet` line covers only a call without a model (an @-mention): the Agent tool's `model`
 wins, and `inherit` is not used, so the chooser never costs as much as the session model. The agent
 is thin; the rules it follows are in the work order. The agent reads the whole work order in its own
 context: on a registry of about 170 modules (an 80 KB order) a call costs about 55k tokens with the
 plugin's agent and about 47k with `codex exec` (measured 2026-10-03). To change how modules are chosen, use
-`modsys templates override choose/rules.md`, not the agent file: every plugin update replaces the
+`segmently-modules templates override choose/rules.md`, not the agent file: every plugin update replaces the
 agent file in the plugin cache.
 
-**The skills' agents.** In all, the `modsys` plugin ships four agents: `module-chooser` above,
+**The skills' agents.** In all, the `segmently-modules` plugin ships four agents: `module-chooser` above,
 and `module-discover-agent`, `module-scout-agent` and `module-research-agent`
-(`modsys:module-discover-agent`, …; tools Read, Grep, Glob, Bash, Agent, Skill; `model: sonnet`).
+(`segmently-modules:module-discover-agent`, …; tools Read, Grep, Glob, Bash, Agent, Skill; `model: sonnet`).
 The plugin build generates each of the three from the agent table: its front matter preloads its
-skill (`skills: [modsys:module-<x>]`), and its body only runs that skill on the handed task and
+skill (`skills: [segmently-modules:module-<x>]`), and its body only runs that skill on the handed task and
 returns the skill's output unchanged (if the skill's text is not in its context, it loads it with
 the Skill tool first) — so a read-heavy skill can run in the agent's own context and hand back
 only its report. Codex gets the same three agents from
-`modsys packs sync` and `modsys setup`, whenever the agents they sync for include `codex` (under
+`segmently-modules packs sync` and `segmently-modules setup`, whenever the agents they sync for include `codex` (under
 either delivery: a plugin cannot place them): `.codex/agents/module-discover-agent.toml`,
 `module-scout-agent.toml` and `module-research-agent.toml`, each with `name`, `description` and
 `developer_instructions` (run the skill, return its output; only when the skill is not available
 to it, read `.agents/skills/module-<x>/SKILL.md` and follow it) and no `sandbox_mode`, so the agent runs in the
 session's own sandbox. They are managed files, like the skill copies: the first line is a
-`# modsys-managed:` marker (pack, skill, version and the SHA-256 of the rest),
+`# segmently-modules-managed:` marker (pack, skill, version and the SHA-256 of the rest),
 `packs sync --check` reports one that is stale, `data.agent_files` lists them in `--json`, and a
 skill that no enabled pack declares any more (or `packs sync --remove --agent codex`) takes its
 file away. A locally edited file and a file without the marker are conflicts that are never
@@ -242,7 +242,7 @@ under `.codex/` is read or changed. A run that names its agents without `codex` 
 `.codex/`; a bare run under `builtin_delivery = "plugin"` reads `.codex/agents/` only to infer
 codex. An ejected skill's agent runs the ejected copy, so editing the copy never changes the
 agent file. Claude Code with `builtin_delivery = "repo"` has no agent — only the plugin ships
-them — and needs none: the skills run in the conversation. `modsys next` names an agent file that is
+them — and needs none: the skills run in the conversation. `segmently-modules next` names an agent file that is
 not in sync, as it names a stale skill copy.
 
 Also in these skills: `module-discover` goes from the verified modules to their docs
@@ -254,7 +254,7 @@ keyword or the description covers yet, never a code identifier and never one per
 
 ## The ui and qa packs
 
-- **`ui`** adds the role `designer` (`standard = false`, `applies_when = "ui"`): `modsys create
+- **`ui`** adds the role `designer` (`standard = false`, `applies_when = "ui"`): `segmently-modules create
   NAME … --tag ui` (or `--role designer`) scaffolds `roles/designer.md` with the sections Surface
   map, UX invariants (numbered, each with its reason), interaction states, layout and
   accessibility, visual patterns, Key flows, tokens and colour schemes, Anti-patterns and an
@@ -266,7 +266,7 @@ keyword or the description covers yet, never a code identifier and never one per
   tool it asks the user for them — checked in thirteen categories with the flow patterns
   FP-1…FP-11; `DESIGN_REVIEW.md` always written, ending `PASS` or `BLOCKED: N must-fix` — a UI
   task is not done while a Must fix is open). Its artifacts go to `<artifacts>/<feature>/`. The
-  team names its design settings once in a `[ui]` table of `.modsys/config.toml` (or
+  team names its design settings once in a `[ui]` table of `.segmently-modules/config.toml` (or
   `config.user.toml`), which the skill reads — the engine does not check it:
 
   ```toml
@@ -292,10 +292,10 @@ keyword or the description covers yet, never a code identifier and never one per
   decomposition rules, criterion quality, a self-check and a Quality Score.
 
 ```bash
-modsys create reviews --non-interactive --tag ui --tag qa \
+segmently-modules create reviews --non-interactive --tag ui --tag qa \
   --description "Customer reviews of books: ratings, comments and moderation." \
   --keywords "review, rating, stars, comment, moderation"
-modsys templates list   # roles/designer.md  role-template:ui  …/defaults/packs/ui/roles/designer.md
+segmently-modules templates list   # roles/designer.md  role-template:ui  …/defaults/packs/ui/roles/designer.md
 ```
 
 ## Skills with more than one scenario
@@ -322,8 +322,8 @@ skill, like every other file of it.
 
 ## Keeping them current
 
-A built-in pack has no version of its own: its version is the engine's (`modsys --version`).
-The managed marker records the version, so after an upgrade of modsys `modsys packs sync`
+A built-in pack has no version of its own: its version is the engine's (`segmently-modules --version`).
+The managed marker records the version, so after an upgrade of Segmently Modules `segmently-modules packs sync`
 reports every copy as `updated` — a skill whose files did not change gets a new marker — and
 `packs sync --check` is stale until it has run. That is intended: each agent copy names the
 engine it came from. A copy edited in an agent's directory stays a conflict, and an ejected
@@ -332,19 +332,19 @@ skill is left alone.
 ## Owning one skill: eject
 
 ```bash
-modsys eject module-sync         # copies it to .modsys/overrides/skills/module-sync/
-modsys packs sync --agent claude --agent codex
-modsys eject module-sync --diff  # later: what the engine changed since
-modsys eject module-sync --rebase   # after taking that change by hand: MS063 clears
+segmently-modules eject module-sync         # copies it to .segmently-modules/overrides/skills/module-sync/
+segmently-modules packs sync --agent claude --agent codex
+segmently-modules eject module-sync --diff  # later: what the engine changed since
+segmently-modules eject module-sync --rebase   # after taking that change by hand: MS063 clears
 ```
 
 Edit the ejected copy: the agents get it and the engine never overwrites it. When a later
-engine changes the skill's files, plain `modsys lint` reports MS063 (`ejected skill
+engine changes the skill's files, plain `segmently-modules lint` reports MS063 (`ejected skill
 'module-sync' is behind pack 'core' (the pack's files changed since the eject) …`); an engine
 upgrade alone, with the skill's files unchanged, does not. Review the change with
-`modsys eject module-sync --diff`, take what the team wants into the ejected copy by hand, then
-run `modsys eject module-sync --rebase`: it records the engine's current version and file hashes
-in the copy's `.modsys-ejected` (never touching the copy's files), so `--diff` says up to date
+`segmently-modules eject module-sync --diff`, take what the team wants into the ejected copy by hand, then
+run `segmently-modules eject module-sync --rebase`: it records the engine's current version and file hashes
+in the copy's `.segmently-modules-ejected` (never touching the copy's files), so `--diff` says up to date
 and MS063 clears. Or delete the copy and run `packs sync` — the agents get the engine's version
 again. An ejected copy stays the skill's source even when its pack is disabled. The rules are the same as for any pack skill ([writing-a-pack.md](writing-a-pack.md)).
 
@@ -354,11 +354,11 @@ A repository pack with a built-in id replaces that built-in pack — enabled or 
 like any repository pack. Copy the directory its `packs list` row names:
 
 ```bash
-modsys packs list --json                  # the built-in row's "dir"
-cp -R <that dir> .modsys/packs/ui         # then edit .modsys/packs/ui/
+segmently-modules packs list --json                  # the built-in row's "dir"
+cp -R <that dir> .segmently-modules/packs/ui         # then edit .segmently-modules/packs/ui/
 ```
 
-The ids `core`, `qa` and `ui` are reserved: `modsys packs new ui` is refused and says how to
+The ids `core`, `qa` and `ui` are reserved: `segmently-modules packs new ui` is refused and says how to
 enable the built-in pack instead. A team pack that declares a skill with a core skill's name
 shadows it (plain `lint` reports MS065 for the built-in one); a hand-written
 `.claude/skills/module-scout/` is a `packs sync` conflict and is never overwritten.
@@ -366,7 +366,7 @@ shadows it (plain `lint` reports MS065 for the built-in one); a hand-written
 ## Evals
 
 Whether the skills fire on the requests they are written for is measured with `claude plugin
-eval`: `evals/skills/` in the modsys repository holds a trigger case per skill, an outcome case
+eval`: `evals/skills/` in the Segmently Modules repository holds a trigger case per skill, an outcome case
 per writer (`module-sync`, `module-create`, `module-split`) and a negative case, and
 `evals/skills/run.py` runs them against a plugin assembled from the built-in packs — see
 `evals/skills/README.md` there. Every run is a billed model call, so that suite is run by hand,

@@ -9,7 +9,7 @@ from pathlib import Path
 from tests.helpers import git, run, run_json
 
 AGENTS = Path(__file__).resolve().parents[1] / "evals" / "adoption" / "agents"
-BROWNFIELD_SHA256 = "89d72954459985c3018f749dd281e5bbf3aaa2d570a60b38c399220b6ff2c89e"
+BROWNFIELD_SHA256 = "0322ae65b02d5605a2f2c3bd1dc83ecdacb7d43a436d336719935df909ef10f3"  # moved once: the rename to Segmently Modules
 
 
 class AgentFixturesTest(unittest.TestCase):
@@ -43,9 +43,9 @@ class AgentFixturesTest(unittest.TestCase):
         self.assertIn("## pack-author", rubric)
         self.assertIn("**PASS (pack-author)** = all 5 goal steps verified, 0 source peeks, "
                       "0 blockers, commands ≤ 35.", rubric)
-        for check in ("modsys packs sync --check --agent claude --agent codex",
-                      "no MS060–MS065 error", "modsys show … --role <role>",
-                      ".modsys/overrides/skills/<skill>/", "exactly one `<!-- modsys:begin` line"):
+        for check in ("segmently-modules packs sync --check --agent claude --agent codex",
+                      "no MS060–MS065 error", "segmently-modules show … --role <role>",
+                      ".segmently-modules/overrides/skills/<skill>/", "exactly one `<!-- segmently-modules:begin` line"):
             self.assertIn(check, rubric)
 
     def test_the_adopter_prompt_and_its_rubric(self):  # P5A-AC-040 (fixtures)
@@ -53,7 +53,7 @@ class AgentFixturesTest(unittest.TestCase):
         for needle in ("{WORKDIR}", "{VENV}", "{DOCS}", "adopter_repo.py", "source peek",
                        "--help", "about 35 commands", "FRICTION.md", "## Log", "## Summary",
                        "blocker", "major", "minor", "4. ", "without rewriting it",
-                       "`modsys lint` clean"):
+                       "`segmently-modules lint` clean"):
             self.assertIn(needle, text)
         self.assertNotIn("5. ", text)
         rubric = " ".join(self.read("rubric.md").split())
@@ -61,22 +61,22 @@ class AgentFixturesTest(unittest.TestCase):
         self.assertIn("**PASS (adopter)** = all 4 goal steps verified, 0 source peeks, "
                       "0 blockers, commands ≤ 35.", rubric)
         for check in ("git diff --quiet <the first commit> -- modules",
-                      "git ls-files --error-unmatch .modsys/config.toml",
-                      "modsys lint --fail-on warning", "modsys show inventory --json",
+                      "git ls-files --error-unmatch .segmently-modules/config.toml",
+                      "segmently-modules lint --fail-on warning", "segmently-modules show inventory --json",
                       "`src/inventory/` under `code`"):
             self.assertIn(check, rubric)
-        self.assertIn("whether it used `modsys init map`", rubric)
+        self.assertIn("whether it used `segmently-modules init map`", rubric)
 
     def test_the_brownfield_prompt_is_pinned(self):  # P5B-AC-036: D11's goal steps 5 and 6
         import hashlib
         text = " ".join(self.read("brownfield.md").split())
-        for needle in ("5. The registry is lint-clean: `modsys lint --fail-on warning` exits 0",
+        for needle in ("5. The registry is lint-clean: `segmently-modules lint --fail-on warning` exits 0",
                        "6. Measure the routing: write a tasks file yourself",
-                       "whether you used `modsys init`", "about 45 commands"):
+                       "whether you used `segmently-modules init`", "about 45 commands"):
             self.assertIn(needle, text)
         rubric = " ".join(self.read("rubric.md").split())
         for needle in ("(greenfield: 5, brownfield: 6)", "PASS needs 6/6",
-                       "`modsys eval routing --tasks <file>` or `modsys init verify`"):
+                       "`segmently-modules eval routing --tasks <file>` or `segmently-modules init verify`"):
             self.assertIn(needle, rubric)
         self.assertEqual(hashlib.sha256((AGENTS / "brownfield.md").read_bytes()).hexdigest(),
                          BROWNFIELD_SHA256)
@@ -101,7 +101,7 @@ class AdopterRepoTest(unittest.TestCase):  # P5A-AC-040: the builder, checked by
             root = self.build(Path(tmp) / "warehouse")
             again = self.build(Path(tmp) / "again")
             self.assertEqual(git(root, "rev-parse", "HEAD"), git(again, "rev-parse", "HEAD"))
-            self.assertFalse((root / ".modsys").exists())
+            self.assertFalse((root / ".segmently-modules").exists())
             raw = json.loads((root / "modules/registry.json").read_text())
             self.assertEqual((raw["last_modified"], sorted(raw["modules"])),
                              ("2026-02-01T09:30:00Z", ["inventory", "loyalty", "orders",

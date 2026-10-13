@@ -2,9 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from modsys.config import enabled_roles, load_config
-from modsys.merge import merge
-from modsys.output import UsageError
+from segmently_modules.config import enabled_roles, load_config
+from segmently_modules.merge import merge
+from segmently_modules.output import UsageError
 
 
 def write(path: Path, text: str) -> None:
@@ -30,7 +30,7 @@ class MergeTest(unittest.TestCase):
 class LoadConfigTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
-        self.cfg = Path(self._tmp.name) / ".modsys"
+        self.cfg = Path(self._tmp.name) / ".segmently-modules"
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -83,7 +83,7 @@ class LoadConfigTest(unittest.TestCase):
 class LayerValidationTest(unittest.TestCase):  # per-layer config + pack meta validation
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
-        self.cfg = Path(self._tmp.name) / ".modsys"
+        self.cfg = Path(self._tmp.name) / ".segmently-modules"
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -129,20 +129,20 @@ class InitConfigTest(unittest.TestCase):  # P5A-AC-032 (the keys; their effect: 
         self._tmp.cleanup()
 
     def test_defaults_and_the_layers_add_up(self):
-        from modsys.preflight import list_files
-        self.assertEqual(load_config(self.root / ".modsys")["init"],
+        from segmently_modules.preflight import list_files
+        self.assertEqual(load_config(self.root / ".segmently-modules")["init"],
                          {"exclude": [], "co_change_commits": 500, "max_parallel": 4,
                           "routing_min_hit_rate": 0.8})  # P5B-AC-009 (D1), P5B-AC-017 (D3)
-        write(self.root / ".modsys/config.toml", '[init]\nexclude = ["a/**"]\n')
-        write(self.root / ".modsys/config.user.toml", '[init]\nexclude = ["b/**"]\n')
+        write(self.root / ".segmently-modules/config.toml", '[init]\nexclude = ["a/**"]\n')
+        write(self.root / ".segmently-modules/config.user.toml", '[init]\nexclude = ["b/**"]\n')
         for rel in ("a/x.py", "b/y.py", "c/z.py", "tools/t.py"):
             write(self.root / rel, "x = 1\n")
-        config = load_config(self.root / ".modsys")
+        config = load_config(self.root / ".segmently-modules")
         self.assertEqual(config["init"]["exclude"], ["a/**", "b/**"])
         files = list_files(self.root, config)
         self.assertEqual([f for f in files if not f.startswith(".")], ["c/z.py", "tools/t.py"])
-        write(self.root / ".modsys/config.user.toml", '[init]\nexclude = ["tools/**"]\n')
-        self.assertNotIn("tools/t.py", list_files(self.root, load_config(self.root / ".modsys")))
+        write(self.root / ".segmently-modules/config.user.toml", '[init]\nexclude = ["tools/**"]\n')
+        self.assertNotIn("tools/t.py", list_files(self.root, load_config(self.root / ".segmently-modules")))
 
     def test_bad_values_are_config_errors(self):
         from tests.helpers import run
@@ -152,9 +152,9 @@ class InitConfigTest(unittest.TestCase):  # P5A-AC-032 (the keys; their effect: 
                           ('co_change_commits = "500"', "co_change_commits"),
                           ("co_change_commits = 1.5", "co_change_commits")]:
             with self.subTest(text=text):
-                write(self.root / ".modsys/config.toml", f"[init]\n{text}\n")
+                write(self.root / ".segmently-modules/config.toml", f"[init]\n{text}\n")
                 with self.assertRaises(UsageError) as caught:
-                    load_config(self.root / ".modsys")
+                    load_config(self.root / ".segmently-modules")
                 self.assertIn(f"config.toml: [init] {key}", str(caught.exception))
                 for argv in (("init", "status"), ("adopt", "--dry-run"),
                              ("eject", "notes", "--rebase"), ("lint",)):  # P5A-AC-046

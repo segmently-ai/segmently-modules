@@ -1,5 +1,5 @@
 """Golden headless contract: malformed config, packs, registry or docs never produce a
-traceback. Errors are exit 2 with `modsys: error: …` on stderr and nothing on stdout;
+traceback. Errors are exit 2 with `segmently-modules: error: …` on stderr and nothing on stdout;
 malformed registry entries are lint's job to report, read verbs tolerate them."""
 import json
 import os
@@ -46,14 +46,14 @@ class ContractTest(unittest.TestCase):
     def assertUsageError(self, code, out, err):
         self.assertEqual(code, 2, err)
         self.assertEqual(out, "")
-        self.assertTrue(err.startswith("modsys: error:"), err)
+        self.assertTrue(err.startswith("segmently-modules: error:"), err)
         self.assertNotIn("Traceback", err)
 
     def test_invalid_config_layers_are_usage_errors(self):
         for text in CONFIG_CASES:
             with tempfile.TemporaryDirectory() as tmp:
                 root = copy_fixture(tmp)
-                (root / ".modsys" / "config.toml").write_text(text, encoding="utf-8")
+                (root / ".segmently-modules" / "config.toml").write_text(text, encoding="utf-8")
                 for verb in VERBS:
                     with self.subTest(config=text, verb=verb[0]):
                         code, out, err = run_verb(verb, root, "--json")
@@ -66,7 +66,7 @@ class ContractTest(unittest.TestCase):
     def test_invalid_pack_meta_is_usage_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(tmp)
-            pack = root / ".modsys" / "packs" / "bad" / "pack.toml"
+            pack = root / ".segmently-modules" / "packs" / "bad" / "pack.toml"
             pack.parent.mkdir(parents=True)
             pack.write_text('id = "bad"\npriority = "high"\n', encoding="utf-8")
             for verb in VERBS:
@@ -84,7 +84,7 @@ class ContractTest(unittest.TestCase):
                     code, out, err = run_verb(("lint", "--fail-on", "never"), root, "--json")
                     self.assertEqual(code, 0, err)
                     env = json.loads(out)
-                    self.assertEqual(env["schema"], "modsys.lint/1")
+                    self.assertEqual(env["schema"], "segmently-modules.lint/1")
                     self.assertIn("MS013", {f["code"] for f in env["data"]["findings"]})
                 for verb in VERBS[:-1]:
                     for extra in (("--json",), ()):
@@ -155,14 +155,14 @@ class ContractTest(unittest.TestCase):
     def test_unexpected_exception_is_exit_2_without_traceback(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(tmp)
-            with mock.patch("modsys.query.list_modules", side_effect=RuntimeError("boom")):
+            with mock.patch("segmently_modules.query.list_modules", side_effect=RuntimeError("boom")):
                 with mock.patch.dict(os.environ):
-                    os.environ.pop("MODSYS_DEBUG", None)
+                    os.environ.pop("SEGMENTLY_MODULES_DEBUG", None)
                     code, out, err = run("list", "--root", str(root))
                 self.assertEqual((code, out), (2, ""))
                 self.assertIn("internal error: RuntimeError: boom", err)
                 self.assertNotIn("Traceback", err)
-                with mock.patch.dict(os.environ, {"MODSYS_DEBUG": "1"}):
+                with mock.patch.dict(os.environ, {"SEGMENTLY_MODULES_DEBUG": "1"}):
                     with self.assertRaises(RuntimeError):
                         run("list", "--root", str(root))
 

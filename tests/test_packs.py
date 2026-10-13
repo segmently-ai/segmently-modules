@@ -1,4 +1,4 @@
-"""`modsys packs new|list` (D4, D5): the scaffold of a working pack, its names and refusals,
+"""`segmently-modules packs new|list` (D4, D5): the scaffold of a working pack, its names and refusals,
 and the list of installed packs."""
 import builtins
 import shutil
@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys.skills import front_matter, source_problem
+from segmently_modules.skills import front_matter, source_problem
 from tests.helpers import copy_fixture, make_repo, run, run_json
 
 DESC = ["--description", "Customer reviews of books: ratings, comments and moderation."]
@@ -28,27 +28,27 @@ class PacksRepo(unittest.TestCase):
 
     def ok(self, *argv) -> dict:
         code, env, err = run_json(*argv, *self.R)
-        self.assertEqual((code, err, env["schema"]), (0, "", f"modsys.{argv[0]}/1"))
+        self.assertEqual((code, err, env["schema"]), (0, "", f"segmently-modules.{argv[0]}/1"))
         return env["data"]
 
     def pack_toml(self, pack_id: str) -> dict:
-        return tomllib.loads((self.root / f".modsys/packs/{pack_id}/pack.toml")
+        return tomllib.loads((self.root / f".segmently-modules/packs/{pack_id}/pack.toml")
                              .read_text(encoding="utf-8"))
 
     def skill_md(self, pack_id: str, skill: str) -> str:
-        return (self.root / f".modsys/packs/{pack_id}/skills/{skill}/SKILL.md").read_text(
+        return (self.root / f".segmently-modules/packs/{pack_id}/skills/{skill}/SKILL.md").read_text(
             encoding="utf-8")
 
 
 class PacksNewTest(PacksRepo):  # P4A-AC-009
     def test_one_role_and_one_skill(self):
         data = self.ok(*TEAM)
-        self.assertEqual(data, {"pack": "team", "dir": ".modsys/packs/team", "dry_run": False,
-                                "files": [".modsys/packs/team/pack.toml",
-                                          ".modsys/packs/team/roles/reviewer.md",
-                                          ".modsys/packs/team/skills/api-review/SKILL.md"]})
-        self.assertEqual(sorted(p.relative_to(self.root / ".modsys/packs/team").as_posix()
-                                for p in (self.root / ".modsys/packs/team").rglob("*")
+        self.assertEqual(data, {"pack": "team", "dir": ".segmently-modules/packs/team", "dry_run": False,
+                                "files": [".segmently-modules/packs/team/pack.toml",
+                                          ".segmently-modules/packs/team/roles/reviewer.md",
+                                          ".segmently-modules/packs/team/skills/api-review/SKILL.md"]})
+        self.assertEqual(sorted(p.relative_to(self.root / ".segmently-modules/packs/team").as_posix()
+                                for p in (self.root / ".segmently-modules/packs/team").rglob("*")
                                 if p.is_file()),
                          ["pack.toml", "roles/reviewer.md", "skills/api-review/SKILL.md"])
         self.assertEqual(self.pack_toml("team"), {
@@ -62,12 +62,12 @@ class PacksNewTest(PacksRepo):  # P4A-AC-009
         meta = front_matter(text)
         self.assertEqual(meta["name"], "api-review")
         self.assertTrue(0 < len(meta["description"]) <= 1024)
-        self.assertIn("modsys context --task-file <the task in one sentence, in a temporary file "
+        self.assertIn("segmently-modules context --task-file <the task in one sentence, in a temporary file "
                       "outside the repository> --role "
                       "reviewer --match lexical --json", text)  # P8.1 fix wave: a file, lexical
-        self.assertIn("modsys show <module> --role reviewer", text)
-        self.assertIsNone(source_problem(self.root / ".modsys/packs/team/skills/api-review",
-                                         "api-review", self.root / ".modsys/packs/team"))
+        self.assertIn("segmently-modules show <module> --role reviewer", text)
+        self.assertIsNone(source_problem(self.root / ".segmently-modules/packs/team/skills/api-review",
+                                         "api-review", self.root / ".segmently-modules/packs/team"))
         lint = self.ok("lint")
         self.assertEqual((lint["summary"], [f for f in lint["findings"]
                                             if f["code"].startswith("MS06")]),
@@ -96,7 +96,7 @@ class PacksNewTest(PacksRepo):  # P4A-AC-009
         self.assertEqual([r["label"] for r in shown], ["universal", "role:reviewer"])
         rows = {r["template"]: r for r in self.ok("templates", "list")}
         self.assertEqual((rows["roles/reviewer.md"]["source"], rows["roles/reviewer.md"]["path"]),
-                         ("role-template:team", ".modsys/packs/team/roles/reviewer.md"))
+                         ("role-template:team", ".segmently-modules/packs/team/roles/reviewer.md"))
 
     def test_a_or_an_before_the_role(self):  # fix wave F7
         self.ok("packs", "new", "team", "--role", "api-reviewer", "--role", "reviewer")
@@ -104,7 +104,7 @@ class PacksNewTest(PacksRepo):  # P4A-AC-009
         self.assertEqual([roles[r]["description"] for r in ("api-reviewer", "reviewer")],
                          ["What an api-reviewer needs to know about a module",
                           "What a reviewer needs to know about a module"])
-        templates = {r: (self.root / f".modsys/packs/team/roles/{r}.md").read_text(
+        templates = {r: (self.root / f".segmently-modules/packs/team/roles/{r}.md").read_text(
             encoding="utf-8") for r in ("api-reviewer", "reviewer")}
         self.assertIn("to what\nan ${role} needs for this module", templates["api-reviewer"])
         self.assertIn("to what\na ${role} needs for this module", templates["reviewer"])
@@ -125,13 +125,13 @@ class PacksNewTest(PacksRepo):  # P4A-AC-009
                          {"one": ["alpha", "beta"], "two": ["alpha", "beta"]})
         text = self.skill_md("duo", "two")
         for role in ("alpha", "beta"):
-            self.assertIn(f"modsys show <module> --role {role}", text)
+            self.assertIn(f"segmently-modules show <module> --role {role}", text)
         self.assertIn("Read each module's alpha and beta docs:", text)
 
     def test_a_bare_pack(self):
         data = self.ok("packs", "new", "bare")
-        self.assertEqual(data["files"], [".modsys/packs/bare/pack.toml"])
-        text = (self.root / ".modsys/packs/bare/pack.toml").read_text(encoding="utf-8")
+        self.assertEqual(data["files"], [".segmently-modules/packs/bare/pack.toml"])
+        text = (self.root / ".segmently-modules/packs/bare/pack.toml").read_text(encoding="utf-8")
         self.assertIn("# [roles.NAME]", text)
         self.assertIn("# [skills.NAME]", text)
         self.assertEqual(set(self.pack_toml("bare")), {"id", "version", "priority",
@@ -144,46 +144,46 @@ class PacksNewTest(PacksRepo):  # P4A-AC-009
         self.ok("packs", "new", "team2", "--skill", "notes")
         self.assertEqual(self.pack_toml("team2")["skills"]["notes"]["reads_roles"], [])
         text = self.skill_md("team2", "notes")
-        self.assertIn("modsys context --task-file <the task in one sentence, in a temporary "
+        self.assertIn("segmently-modules context --task-file <the task in one sentence, in a temporary "
                       "file outside the repository> --match lexical --json", text)
-        self.assertIn("modsys show <module>`", text)
+        self.assertIn("segmently-modules show <module>`", text)
         self.assertNotIn("--role", text)
 
     def test_dry_run_writes_nothing(self):
         data = self.ok(*TEAM, "--dry-run")
         self.assertEqual((data["dry_run"], len(data["files"])), (True, 3))
-        self.assertFalse((self.root / ".modsys/packs/team").exists())
+        self.assertFalse((self.root / ".segmently-modules/packs/team").exists())
         out = run(*TEAM, "--dry-run", *self.R)[1].splitlines()
         self.assertEqual(out[:3], [f"would create  {f}" for f in data["files"]])
 
     def test_a_root_without_a_config_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp, {"tasks": ["task"]})
-            shutil.rmtree(root / ".modsys")
+            shutil.rmtree(root / ".segmently-modules")
             code, env, err = run_json("packs", "new", "team", "--role", "reviewer",
                                       "--root", str(root))
             self.assertEqual((code, err), (0, ""))
-            self.assertTrue((root / ".modsys/packs/team/roles/reviewer.md").is_file())
+            self.assertTrue((root / ".segmently-modules/packs/team/roles/reviewer.md").is_file())
 
     def test_text_output(self):
         out = run(*TEAM, *self.R)[1].splitlines()
-        self.assertEqual(out, ["created  .modsys/packs/team/pack.toml",
-                               "created  .modsys/packs/team/roles/reviewer.md",
-                               "created  .modsys/packs/team/skills/api-review/SKILL.md",
-                               "next: modsys create NAME … --role reviewer (a module with the "
-                               "reviewer doc); then modsys packs sync --agent claude --agent "
+        self.assertEqual(out, ["created  .segmently-modules/packs/team/pack.toml",
+                               "created  .segmently-modules/packs/team/roles/reviewer.md",
+                               "created  .segmently-modules/packs/team/skills/api-review/SKILL.md",
+                               "next: segmently-modules create NAME … --role reviewer (a module with the "
+                               "reviewer doc); then segmently-modules packs sync --agent claude --agent "
                                "codex (the skills into the agents' skill directories)"])
 
 
     def test_the_next_line_names_only_role_templates(self):  # fix wave F8
-        bare = ("next: edit pack.toml (roles, fields, [[code_map]] rules, skills); then modsys "
+        bare = ("next: edit pack.toml (roles, fields, [[code_map]] rules, skills); then segmently-modules "
                 "packs sync --agent claude --agent codex (the skills into the agents' skill "
                 "directories)")
         for argv in (("roles", "--skill", "notes"), ("team", "--skill", "roles")):
             with self.subTest(argv=argv):
                 self.assertEqual(run("packs", "new", *argv, *self.R)[1].splitlines()[-1], bare)
         out = run("packs", "new", "roles2", "--role", "roles", "--skill", "one", *self.R)[1]
-        self.assertEqual(out.splitlines()[-1].split(";")[0], "next: modsys create NAME … --role "
+        self.assertEqual(out.splitlines()[-1].split(";")[0], "next: segmently-modules create NAME … --role "
                                                               "roles (a module with the roles doc)")
 
 
@@ -191,10 +191,10 @@ class PacksRefusalTest(PacksRepo):  # P4A-AC-010
     def refused(self, argv, needle, pack_id):
         code, out, err = run("packs", "new", *argv, "--json", *self.R)
         self.assertEqual((code, out), (2, ""), err)
-        self.assertTrue(err.startswith("modsys: error: "), err)
+        self.assertTrue(err.startswith("segmently-modules: error: "), err)
         self.assertIn(needle, err)
         if pack_id != "bookshop":
-            self.assertFalse((self.root / ".modsys/packs" / pack_id).exists())
+            self.assertFalse((self.root / ".segmently-modules/packs" / pack_id).exists())
 
     def test_pack_ids(self):
         for pack_id in ("t" * 48, "team-2"):
@@ -206,19 +206,19 @@ class PacksRefusalTest(PacksRepo):  # P4A-AC-010
                                         f"'-' (max 48)", pack_id)
 
     def test_existing_pack_directory_and_id(self):
-        self.refused(["bookshop"], ".modsys/packs/bookshop/ already exists", "bookshop")
-        (self.root / ".modsys/packs/other").mkdir()
-        (self.root / ".modsys/packs/other/pack.toml").write_text('id = "team"\n')
+        self.refused(["bookshop"], ".segmently-modules/packs/bookshop/ already exists", "bookshop")
+        (self.root / ".segmently-modules/packs/other").mkdir()
+        (self.root / ".segmently-modules/packs/other/pack.toml").write_text('id = "team"\n')
         self.refused(["team"], "pack id 'team' is already installed "
-                               "(.modsys/packs/other/pack.toml)", "team")
+                               "(.segmently-modules/packs/other/pack.toml)", "team")
 
     def test_roles(self):
         self.refused(["team", "--role", "developer"],
                      "role 'developer' is already configured (engine defaults) — to change its "
-                     "doc template: modsys templates override roles/developer.md", "team")
+                     "doc template: segmently-modules templates override roles/developer.md", "team")
         self.refused(["team", "--role", "designer"],
                      "role 'designer' is already configured (pack 'bookshop')", "team")
-        (self.root / ".modsys/config.toml").write_text('[roles.security]\norder = 60\n')
+        (self.root / ".segmently-modules/config.toml").write_text('[roles.security]\norder = 60\n')
         self.refused(["team", "--role", "security"],
                      "role 'security' is already configured (the team config)", "team")
         for role in ("Reviewer", "1st", "a" * 49, "qa lead"):
@@ -231,7 +231,7 @@ class PacksRefusalTest(PacksRepo):  # P4A-AC-010
         self.assertEqual(run("packs", "new", "team", "--skill", "api-review", *self.R)[0], 0)
         self.refused(["other", "--skill", "api-review"],
                      "skill 'api-review' is already declared by pack 'team' "
-                     "(.modsys/packs/team/pack.toml)", "other")
+                     "(.segmently-modules/packs/team/pack.toml)", "other")
         for skill in ("API", "s" * 65, "api_review"):
             with self.subTest(skill=skill):
                 self.refused(["other", "--skill", skill], f"skill {skill!r}: 1–64 characters: "
@@ -246,17 +246,17 @@ class PacksRefusalTest(PacksRepo):  # P4A-AC-010
 
 class PacksListTest(PacksRepo):  # P4A-AC-011
     def test_no_packs(self):
-        shutil.rmtree(self.root / ".modsys/packs/bookshop")
+        shutil.rmtree(self.root / ".segmently-modules/packs/bookshop")
         self.assertEqual(self.ok("packs", "list"), [])
         self.assertEqual(run("packs", "list", *self.R)[1],
-                         "no packs (create one: modsys packs new ID)\n")
+                         "no packs (create one: segmently-modules packs new ID)\n")
 
     def test_rows_in_precedence_order(self):
         self.ok(*TEAM)
         rows = self.ok("packs", "list")
         self.assertEqual([r["id"] for r in rows], ["bookshop", "team"])
         self.assertEqual(rows[0], {"id": "bookshop", "version": "0.1.0", "priority": 50,
-                                   "builtin": False, "dir": ".modsys/packs/bookshop",
+                                   "builtin": False, "dir": ".segmently-modules/packs/bookshop",
                                    "description": "Fixture pack: a custom role, a code-pointer "
                                                   "field, a deprecated field",
                                    "roles": ["designer"], "skills": []})
@@ -267,15 +267,15 @@ class PacksListTest(PacksRepo):  # P4A-AC-011
         self.assertEqual(skill["description"],
                          front_matter(self.skill_md("team", "api-review"))["description"])
         self.assertEqual(run("packs", "list", *self.R)[1].splitlines(), [
-            "bookshop 0.1.0 priority 50  .modsys/packs/bookshop",
+            "bookshop 0.1.0 priority 50  .segmently-modules/packs/bookshop",
             "  Fixture pack: a custom role, a code-pointer field, a deprecated field",  # P5a D0d
-            "  role   designer", "team 0.1.0 priority 50  .modsys/packs/team",
+            "  role   designer", "team 0.1.0 priority 50  .segmently-modules/packs/team",
             "  Team review conventions", "  role   reviewer", "  skill  api-review  reads reviewer"])
 
     def test_an_ejected_copy_and_an_unreadable_skill(self):
         self.ok(*TEAM)
-        (self.root / ".modsys/overrides/skills/api-review").mkdir(parents=True)
-        md = self.root / ".modsys/packs/team/skills/api-review/SKILL.md"
+        (self.root / ".segmently-modules/overrides/skills/api-review").mkdir(parents=True)
+        md = self.root / ".segmently-modules/packs/team/skills/api-review/SKILL.md"
         md.write_text("# no front matter\n", encoding="utf-8")
         skill = self.ok("packs", "list")[1]["skills"][0]
         self.assertEqual((skill["ejected"], skill["description"]), (True, None))
@@ -293,20 +293,20 @@ class PacksContractTest(PacksRepo):  # P4A-AC-023
                 self.assertIn(needle, err)
 
     def test_garbage_config_and_interrupt(self):
-        (self.root / ".modsys/config.toml").write_text("code_map = 5\n")
+        (self.root / ".segmently-modules/config.toml").write_text("code_map = 5\n")
         for argv in (("list",), ("new", "team")):
             with self.subTest(argv=argv):
                 code, out, err = run("packs", *argv, "--json", *self.R)
                 self.assertEqual((code, out), (2, ""))
-                self.assertTrue(err.startswith("modsys: error: "), err)
+                self.assertTrue(err.startswith("segmently-modules: error: "), err)
                 self.assertNotIn("Traceback", err)
-        (self.root / ".modsys/config.toml").unlink()
-        with mock.patch("modsys.packs_cmd.pack_rows", side_effect=KeyboardInterrupt):
-            self.assertEqual(run("packs", "list", *self.R), (130, "", "modsys: interrupted\n"))
-        with mock.patch("modsys.packs_cmd.pack_rows", side_effect=RuntimeError("boom")):
+        (self.root / ".segmently-modules/config.toml").unlink()
+        with mock.patch("segmently_modules.packs_cmd.pack_rows", side_effect=KeyboardInterrupt):
+            self.assertEqual(run("packs", "list", *self.R), (130, "", "segmently-modules: interrupted\n"))
+        with mock.patch("segmently_modules.packs_cmd.pack_rows", side_effect=RuntimeError("boom")):
             code, out, err = run("packs", "list", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertTrue(err.startswith("modsys: internal error: RuntimeError: boom"), err)
+        self.assertTrue(err.startswith("segmently-modules: internal error: RuntimeError: boom"), err)
         calls = []
 
         def second_open_interrupts(*args, **kwargs):
@@ -315,35 +315,35 @@ class PacksContractTest(PacksRepo):  # P4A-AC-023
                 raise KeyboardInterrupt
             return builtins.open(*args, **kwargs)
 
-        with mock.patch("modsys.packs_cmd.open", create=True,
+        with mock.patch("segmently_modules.packs_cmd.open", create=True,
                         side_effect=second_open_interrupts):
-            self.assertEqual(run(*TEAM, *self.R), (130, "", "modsys: interrupted\n"))
+            self.assertEqual(run(*TEAM, *self.R), (130, "", "segmently-modules: interrupted\n"))
         self.assertEqual(len(calls), 2)
-        self.assertFalse((self.root / ".modsys/packs/team").exists())  # the first file is gone
+        self.assertFalse((self.root / ".segmently-modules/packs/team").exists())  # the first file is gone
 
 
 class DescriptionsTest(PacksRepo):  # P5A-AC-010 (D0d, M-10)
     def test_packs_list_shows_the_first_line(self):
         self.ok(*TEAM)
-        pack = self.root / ".modsys/packs/team/pack.toml"
+        pack = self.root / ".segmently-modules/packs/team/pack.toml"
         pack.write_text(pack.read_text().replace('description = "Team review conventions"',
                                                  'description = """Team review conventions\n'
                                                  'Second line."""'))
-        (self.root / ".modsys/packs/bare").mkdir()
-        (self.root / ".modsys/packs/bare/pack.toml").write_text('id = "bare"\n')
+        (self.root / ".segmently-modules/packs/bare").mkdir()
+        (self.root / ".segmently-modules/packs/bare/pack.toml").write_text('id = "bare"\n')
         lines = run("packs", "list", *self.R)[1].splitlines()
-        self.assertEqual(lines[:2], ["bare (no version) priority 50  .modsys/packs/bare",
-                                     "bookshop 0.1.0 priority 50  .modsys/packs/bookshop"])
+        self.assertEqual(lines[:2], ["bare (no version) priority 50  .segmently-modules/packs/bare",
+                                     "bookshop 0.1.0 priority 50  .segmently-modules/packs/bookshop"])
         self.assertEqual(lines[2], "  Fixture pack: a custom role, a code-pointer field, a "
                                    "deprecated field")
-        self.assertEqual(lines[lines.index("team 0.1.0 priority 50  .modsys/packs/team") + 1],
+        self.assertEqual(lines[lines.index("team 0.1.0 priority 50  .segmently-modules/packs/team") + 1],
                          "  Team review conventions")
         self.assertNotIn("None", "\n".join(lines))
         self.assertNotIn("Second line.", "\n".join(lines))
 
     def test_multi_line_quoted_skill_descriptions_lose_their_quotes(self):
         self.ok(*TEAM)
-        md = self.root / ".modsys/packs/team/skills/api-review/SKILL.md"
+        md = self.root / ".segmently-modules/packs/team/skills/api-review/SKILL.md"
         body = md.read_text().split("\n---\n", 1)[1]
         for front, want in (('description: "Use when reviewing\n  API changes"',
                              "Use when reviewing API changes"),

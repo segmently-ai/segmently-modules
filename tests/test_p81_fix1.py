@@ -8,7 +8,7 @@ import time
 import unittest
 from unittest import mock
 
-from modsys import agent as agent_mod
+from segmently_modules import agent as agent_mod
 from tests import SENTINEL_LOG
 from tests.agent_helpers import AgentRepo, picks
 from tests.helpers import git, run, run_json
@@ -18,7 +18,7 @@ from tests.test_p81_agent import ENGINE, MATCH_TASK, TASK, rows_of
 
 class Base(AgentRepo, unittest.TestCase):
     def commit_user_config(self):
-        git(self.root, "add", "-f", ".modsys/config.user.toml")
+        git(self.root, "add", "-f", ".segmently-modules/config.user.toml")
         git(self.root, "commit", "-q", "-m", "oops")
 
 
@@ -33,7 +33,7 @@ class PersonalConfigTest(Base):
         git(repo, "init", "-q")
         self.assertEqual(run("init", "--root", str(repo))[0], 0)
         lines = (repo / ".gitignore").read_text(encoding="utf-8").splitlines()
-        self.assertIn(".modsys/config.user.toml", lines)
+        self.assertIn(".segmently-modules/config.user.toml", lines)
         before = (repo / ".gitignore").read_bytes()
         self.assertEqual(run("init", "--root", str(repo))[0], 0)
         self.assertEqual((repo / ".gitignore").read_bytes(), before)
@@ -55,8 +55,8 @@ class SearchModelTest(Base):  # M2
 
 
 class NestedTest(Base):  # I2
-    def test_an_agent_that_runs_modsys_gets_the_lexical_rows(self):
-        nested = [sys.executable, "-m", "modsys", "match", MATCH_TASK, "--match", "hybrid",
+    def test_an_agent_that_runs_segmently_modules_gets_the_lexical_rows(self):
+        nested = [sys.executable, "-m", "segmently_modules", "match", MATCH_TASK, "--match", "hybrid",
                   *self.R]
         self.agent(answer=picks(("payments", 0.9)), nested=nested, cwd=str(ENGINE),
                    nested_env={"PYTHONPATH": str(ENGINE)})
@@ -69,7 +69,7 @@ class NestedTest(Base):  # I2
 
     def test_nested_semantic_and_run_are_refused_and_catalog_says_false(self):
         self.agent(answer=picks())
-        with mock.patch.dict(os.environ, {"MODSYS_WORK_ORDER": "/x"}):
+        with mock.patch.dict(os.environ, {"SEGMENTLY_MODULES_WORK_ORDER": "/x"}):
             for argv in (("match", MATCH_TASK, "--match", "semantic"),
                          ("choose", "--task", TASK, "--run")):
                 code, out, err = run(*argv, *self.R)

@@ -1,10 +1,10 @@
 [
   {
-    "query": "We have a large Python monorepo with no module docs at all; generate a module registry and docs for it with modsys.",
+    "query": "We have a large Python monorepo with no module docs at all; generate a module registry and docs for it with segmently-modules.",
     "should_trigger": true
   },
   {
-    "query": "Set up modsys on this existing codebase from scratch — figure out the modules from the code and document each one.",
+    "query": "Set up segmently-modules on this existing codebase from scratch — figure out the modules from the code and document each one.",
     "should_trigger": true
   },
   {
@@ -12,11 +12,11 @@
     "should_trigger": true
   },
   {
-    "query": "Can you run the modsys init flow on this repository? There is no registry yet, just the code.",
+    "query": "Can you run the segmently-modules init flow on this repository? There is no registry yet, just the code.",
     "should_trigger": true
   },
   {
-    "query": "The modsys init we started yesterday stopped halfway through the fan-out; please continue it from where it was.",
+    "query": "The segmently-modules init we started yesterday stopped halfway through the fan-out; please continue it from where it was.",
     "should_trigger": true
   },
   {
@@ -36,7 +36,7 @@
     "should_trigger": true
   },
   {
-    "query": "Generate the initial modsys registry for this repository, check routing works, and show me before anything lands.",
+    "query": "Generate the initial segmently-modules registry for this repository, check routing works, and show me before anything lands.",
     "should_trigger": true
   },
   {
@@ -44,11 +44,11 @@
     "should_trigger": false
   },
   {
-    "query": "CI says modsys lint failed with MS004 and MS015 on the catalog module; explain the findings and fix the safe ones.",
+    "query": "CI says segmently-modules lint failed with MS004 and MS015 on the catalog module; explain the findings and fix the safe ones.",
     "should_trigger": false
   },
   {
-    "query": "We already have a module registry written by another tool; make modsys read it without changing anything.",
+    "query": "We already have a module registry written by another tool; make segmently-modules read it without changing anything.",
     "should_trigger": false
   },
   {

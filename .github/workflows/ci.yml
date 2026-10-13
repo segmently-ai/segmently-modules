@@ -1,4 +1,4 @@
-# modsys CI: the unit suite on two Pythons, the adoption eval, a reproducible plugin build, the
+# segmently-modules CI: the unit suite on two Pythons, the adoption eval, a reproducible plugin build, the
 # launcher under dash, and Claude Code's own validator with a throw-away install of the built
 # plugins. No model call and no credential: Claude Code is installed as it comes and only its
 # `plugin validate`, `plugin marketplace add`, `plugin install` and `plugin list` commands run;
@@ -51,22 +51,22 @@ jobs:
           CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude-config
         run: |
           python tools/publish.py --channel dev --out "$RUNNER_TEMP/publish"
-          for plugin in modsys modsys-ui modsys-qa; do
+          for plugin in segmently-modules segmently-modules-ui segmently-modules-qa; do
             claude plugin validate --strict "$RUNNER_TEMP/publish/plugins/$plugin"
           done
           claude plugin validate --strict "$RUNNER_TEMP/publish"
           claude plugin marketplace add "$RUNNER_TEMP/publish"
-          claude plugin install modsys-ui@modsys-dev --scope user
-          claude plugin install modsys-qa@modsys-dev --scope user
+          claude plugin install segmently-modules-ui@segmently-modules-dev --scope user
+          claude plugin install segmently-modules-qa@segmently-modules-dev --scope user
           set -o pipefail
           claude plugin list --json | python -c '
           import json, subprocess, sys
           enabled = {r["id"]: r["installPath"] for r in json.load(sys.stdin) if r.get("enabled")}
-          wanted = [f"{name}@modsys-dev" for name in ("modsys", "modsys-ui", "modsys-qa")]
+          wanted = [f"{name}@segmently-modules-dev" for name in ("segmently-modules", "segmently-modules-ui", "segmently-modules-qa")]
           missing = [w for w in wanted if w not in enabled]
           if missing:
               sys.exit(f"not installed and enabled: {missing}")
-          launcher = enabled["modsys@modsys-dev"] + "/bin/modsys"
+          launcher = enabled["segmently-modules@segmently-modules-dev"] + "/bin/segmently-modules"
           print(subprocess.run([launcher, "--version"], check=True, capture_output=True,
                                text=True).stdout.strip())
           '

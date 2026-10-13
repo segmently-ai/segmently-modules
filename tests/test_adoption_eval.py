@@ -55,22 +55,22 @@ class AdoptionEvalTest(unittest.TestCase):
             "commands": 0, "ok": False})
 
     def test_a_failing_scenario_is_reported_and_the_other_still_runs(self):  # P32-AC-029
-        env = {**os.environ, "MODSYS_EVAL_FAIL_STEP": "greenfield:init",  # the test seams
-               "MODSYS_EVAL_SCENARIOS": "greenfield,brownfield"}  # P5b D10: under 60 s
+        env = {**os.environ, "SEGMENTLY_MODULES_EVAL_FAIL_STEP": "greenfield:init",  # the test seams
+               "SEGMENTLY_MODULES_EVAL_SCENARIOS": "greenfield,brownfield"}  # P5b D10: under 60 s
         proc = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True,
                               timeout=300, env=env)
         card = json.loads(proc.stdout)
         self.assertEqual(proc.returncode, 1)
         self.assertEqual(card["greenfield"]["steps"][-1],
                          {"name": "init", "ok": False,
-                          "detail": "forced by MODSYS_EVAL_FAIL_STEP (test seam)"})
+                          "detail": "forced by SEGMENTLY_MODULES_EVAL_FAIL_STEP (test seam)"})
         self.assertFalse(card["greenfield"]["ok"])
         self.assertTrue(card["brownfield"]["ok"])
         self.assertGreater(len(card["brownfield"]["steps"]), 5)
 
     def test_a_failing_packs_step_fails_only_that_scenario(self):  # P4A-AC-024
-        env = {**os.environ, "MODSYS_EVAL_FAIL_STEP": "packs:eject api-review",
-               "MODSYS_EVAL_SCENARIOS": "greenfield,brownfield,packs"}  # P5b D10
+        env = {**os.environ, "SEGMENTLY_MODULES_EVAL_FAIL_STEP": "packs:eject api-review",
+               "SEGMENTLY_MODULES_EVAL_SCENARIOS": "greenfield,brownfield,packs"}  # P5b D10
         proc = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True,
                               timeout=300, env=env)
         card = json.loads(proc.stdout)
@@ -82,8 +82,8 @@ class AdoptionEvalTest(unittest.TestCase):
         self.assertIn("adoption eval: packs FAILED (10 steps, ", proc.stderr)
 
     def test_a_failing_skills_step_fails_only_that_scenario(self):  # P4B-AC-021
-        env = {**os.environ, "MODSYS_EVAL_FAIL_STEP": "skills:eject module-sync",
-               "MODSYS_EVAL_SCENARIOS": "greenfield,brownfield,packs,skills"}  # P5b D10
+        env = {**os.environ, "SEGMENTLY_MODULES_EVAL_FAIL_STEP": "skills:eject module-sync",
+               "SEGMENTLY_MODULES_EVAL_SCENARIOS": "greenfield,brownfield,packs,skills"}  # P5b D10
         proc = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True,
                               timeout=300, env=env)
         card = json.loads(proc.stdout)
@@ -96,22 +96,22 @@ class AdoptionEvalTest(unittest.TestCase):
     def test_a_failing_adopt_or_init_map_step_stops_that_scenario(self):  # P5A-AC-038/039
         run_eval = load_eval()  # in-process: the seam is the same, the other scenarios idle
         for step, build, last in (
-                ("adopt:adopt writes .modsys/config.toml", run_eval.adopt,
+                ("adopt:adopt writes .segmently-modules/config.toml", run_eval.adopt,
                  ["adopt --dry-run writes nothing and names the declarations",
-                  "adopt writes .modsys/config.toml"]),
+                  "adopt writes .segmently-modules/config.toml"]),
                 ("init-map:init confirm", run_eval.init_map,
                  ["exclude one candidate, rename another", "init confirm"])):
             with self.subTest(step=step), \
-                    mock.patch.dict(os.environ, {"MODSYS_EVAL_FAIL_STEP": step}):
+                    mock.patch.dict(os.environ, {"SEGMENTLY_MODULES_EVAL_FAIL_STEP": step}):
                 result = run_eval.run_scenario(step.split(":")[0], build)
                 self.assertEqual((result["ok"], [s["name"] for s in result["steps"]][-2:]),
                                  (False, last))
                 self.assertEqual(result["steps"][-1]["detail"],
-                                 "forced by MODSYS_EVAL_FAIL_STEP (test seam)")
+                                 "forced by SEGMENTLY_MODULES_EVAL_FAIL_STEP (test seam)")
 
     def test_a_failing_init_step_fails_only_that_scenario(self):  # P5B-AC-035
-        env = {**os.environ, "MODSYS_EVAL_FAIL_STEP": "init:init fanout: six work items",
-               "MODSYS_EVAL_SCENARIOS": "adopt, init"}  # the test seams (names are stripped)
+        env = {**os.environ, "SEGMENTLY_MODULES_EVAL_FAIL_STEP": "init:init fanout: six work items",
+               "SEGMENTLY_MODULES_EVAL_SCENARIOS": "adopt, init"}  # the test seams (names are stripped)
         proc = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True,
                               timeout=300, env=env)
         card = json.loads(proc.stdout)
@@ -119,14 +119,14 @@ class AdoptionEvalTest(unittest.TestCase):
         self.assertEqual([s["name"] for s in card["init"]["steps"]][-2:],
                          ["init confirm: six modules", "init fanout: six work items"])
         self.assertEqual((card["init"]["steps"][-1]["detail"], card["init"]["commands"]),
-                         ("forced by MODSYS_EVAL_FAIL_STEP (test seam)", 2))
+                         ("forced by SEGMENTLY_MODULES_EVAL_FAIL_STEP (test seam)", 2))
         self.assertTrue(card["adopt"]["ok"])
         self.assertIn("adoption eval: init FAILED (4 steps, 2 commands)", proc.stderr)
-        env["MODSYS_EVAL_SCENARIOS"] = "init,nosuch"
+        env["SEGMENTLY_MODULES_EVAL_SCENARIOS"] = "init,nosuch"
         proc = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True,
                               timeout=60, env=env)
         self.assertEqual((proc.returncode, proc.stdout), (2, ""))
-        self.assertIn("unknown scenario(s) in MODSYS_EVAL_SCENARIOS: nosuch", proc.stderr)
+        self.assertIn("unknown scenario(s) in SEGMENTLY_MODULES_EVAL_SCENARIOS: nosuch", proc.stderr)
 
     def test_an_unexpected_error_is_a_failed_step(self):
         run_eval = load_eval()

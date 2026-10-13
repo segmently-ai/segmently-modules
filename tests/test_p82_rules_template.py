@@ -10,13 +10,13 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys.create import engine_templates
+from segmently_modules.create import engine_templates
 from tests.agent_helpers import AgentRepo, picks
 from tests.helpers import changelog_since_first_release, run, run_json
 
 TASK = "refund payment catalog"
-REL = ".modsys/overrides/templates/choose/rules.md"
-ENGINE_FILE = Path(__file__).resolve().parents[1] / "modsys/defaults/templates/choose/rules.md"
+REL = ".segmently-modules/overrides/templates/choose/rules.md"
+ENGINE_FILE = Path(__file__).resolve().parents[1] / "segmently_modules/defaults/templates/choose/rules.md"
 DEPTH = {
     "quick": "Choose from the cards only; do not open any file.",
     "standard": "Choose from the cards, and also open the INDEX or the head of MODULE.md of up "
@@ -24,16 +24,16 @@ DEPTH = {
     "deep": "Choose from the cards, and also read the candidates' docs and confirm the choice "
             "in their code before you answer.",
 }
-NOTES = ["# The rules of the modsys choose work order",
-         "The instruction the agent", "modsys templates override choose/rules.md"]
-D3_TEXT = """# The rules of the modsys choose work order
+NOTES = ["# The rules of the segmently-modules choose work order",
+         "The instruction the agent", "segmently-modules templates override choose/rules.md"]
+D3_TEXT = """# The rules of the segmently-modules choose work order
 
-The instruction the agent that picks modules by meaning follows: the modsys plugin's
-module-chooser agent, `codex exec`, or your own agent command (MODSYS_AGENT_COMMAND).
+The instruction the agent that picks modules by meaning follows: the Segmently Modules plugin's
+module-chooser agent, `codex exec`, or your own agent command (SEGMENTLY_MODULES_AGENT_COMMAND).
 Every line that starts with "- " is one rule, sent as written; the other lines (these) are
 notes for you and are not sent. Placeholders: $max_picks (the most picks the order allows)
 and $depth (the sentence for [search] effort). Change the rules in your copy:
-modsys templates override choose/rules.md
+segmently-modules templates override choose/rules.md
 
 - Read every card before you choose: the cards are the whole catalog. Never filter them by the task's words — a module may describe the task in other words or in another language.
 - Choose the modules this task needs by meaning, in any language the task is written in.
@@ -77,9 +77,9 @@ class Base(AgentRepo, unittest.TestCase):
         return self.write(REL, data)
 
     def pack(self, pid: str, data, priority: int = 50) -> str:
-        self.write(f".modsys/packs/{pid}/pack.toml",
+        self.write(f".segmently-modules/packs/{pid}/pack.toml",
                    f'id = "{pid}"\nversion = "0.1.0"\npriority = {priority}\n')
-        rel = f".modsys/packs/{pid}/templates/choose/rules.md"
+        rel = f".segmently-modules/packs/{pid}/templates/choose/rules.md"
         self.write(rel, data)
         return rel
 
@@ -221,10 +221,10 @@ class ResolutionTest(Base):
         self.assertEqual(self.row()["source"], "engine")
 
     def test_a_role_template_key_never_applies(self):  # P82-AC-004
-        self.write(".modsys/packs/team/pack.toml",
+        self.write(".segmently-modules/packs/team/pack.toml",
                    'id = "team"\nversion = "0.1.0"\n\n[roles.reviewer]\norder = 100\n'
                    'description = "What a reviewer checks"\ntemplate = "roles/reviewer.md"\n')
-        self.write(".modsys/packs/team/roles/reviewer.md", "- from role template\n")
+        self.write(".segmently-modules/packs/team/roles/reviewer.md", "- from role template\n")
         rows = {r["template"]: r for r in run_json("templates", "list", *self.R)[1]["data"]}
         self.assertEqual(rows["roles/reviewer.md"]["source"], "role-template:team")
         self.assertEqual(self.rules(), DEFAULT_RULES)
@@ -238,7 +238,7 @@ class BrokenTemplateTest(Base):
     def refuses(self, argv, message: str) -> None:
         code, out, err = run(*argv, *self.R)
         self.assertEqual((code, out), (2, ""), argv)
-        self.assertEqual(err, f"modsys: error: {message}\n", argv)
+        self.assertEqual(err, f"segmently-modules: error: {message}\n", argv)
         self.assertNotIn("Traceback", err)
 
     def verbs(self):
@@ -253,7 +253,7 @@ class BrokenTemplateTest(Base):
 
     def layers(self, data):
         yield "override", REL, lambda: self.override(data)
-        yield "pack", ".modsys/packs/team/templates/choose/rules.md", \
+        yield "pack", ".segmently-modules/packs/team/templates/choose/rules.md", \
             lambda: self.root / self.pack("team", data)
 
     def check(self, data, message_for):
@@ -291,7 +291,7 @@ class BrokenTemplateTest(Base):
         self.pack("team", b"", 10)
         self.pack("extra", "- from extra\n", 50)
         self.refuses(("choose", "--task-file", str(self.task)),
-                     f".modsys/packs/team/templates/choose/rules.md: {NO_RULE}")
+                     f".segmently-modules/packs/team/templates/choose/rules.md: {NO_RULE}")
 
     def test_lexical_and_other_verbs_never_read_it(self):  # P82-AC-005
         argvs = [("match", TASK), ("match", TASK, "--match", "lexical"),
@@ -316,10 +316,10 @@ class NoEngineFallbackTest(Base):
         copy = self.tmp / "engine-templates"
         shutil.copytree(engine_templates(), copy)
         (copy / "choose/rules.md").unlink()
-        with mock.patch("modsys.create.engine_templates", return_value=copy):
+        with mock.patch("segmently_modules.create.engine_templates", return_value=copy):
             code, out, err = run("choose", "--task-file", str(self.task), *self.R)
             self.assertEqual((code, out), (2, ""))
-            self.assertIn(f"modsys: error: cannot read {copy / 'choose/rules.md'}: ", err)
+            self.assertIn(f"segmently-modules: error: cannot read {copy / 'choose/rules.md'}: ", err)
             self.assertNotIn("Traceback", err)
             code, env, err = run_json("templates", "list", *self.R)
             self.assertEqual((code, err), (0, ""))
@@ -359,7 +359,7 @@ class OverrideTest(Base):
         self.assertEqual(out.splitlines()[0],
                          f"would create  {REL}  (a copy of the engine template)")
         self.assertEqual(out.splitlines()[1], "next: edit it — from now on it wins over every "
-                         "pack and engine template (modsys templates list)")
+                         "pack and engine template (segmently-modules templates list)")
         code, env, err = run_json("templates", "override", "choose/rules.md", "--dry-run",
                                   *self.R)
         self.assertEqual(env["data"], {"template": "choose/rules.md", "file": REL,
@@ -381,7 +381,7 @@ class OverrideTest(Base):
         edited = copy.read_bytes()
         code, out, err = run("templates", "override", "choose/rules.md", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertEqual(err, f"modsys: error: {REL} already exists — edit it\n")
+        self.assertEqual(err, f"segmently-modules: error: {REL} already exists — edit it\n")
         self.assertEqual(copy.read_bytes(), edited)
         code, out, err = run("templates", "override", "choose/nosuch.md", *self.R)
         self.assertEqual((code, out), (2, ""))
@@ -405,15 +405,15 @@ class OverrideUnreadableSourceTest(Base):
                     code, out, err = run("templates", "override", "choose/rules.md", *dry,
                                          *form, *self.R)
                     self.assertEqual((code, out), (2, ""))
-                    self.assertEqual(err, f"modsys: error: cannot read {path_text}: {reason}\n")
+                    self.assertEqual(err, f"segmently-modules: error: cannot read {path_text}: {reason}\n")
         self.assertEqual(sorted(self.root.rglob("*")), tree)
-        self.assertFalse((self.root / ".modsys/overrides/templates/choose").exists())
+        self.assertFalse((self.root / ".segmently-modules/overrides/templates/choose").exists())
 
     def test_a_missing_engine_file_is_refused(self):  # P82-AC-042, SI-P82-2
         copy = self.tmp / "engine-templates"
         shutil.copytree(engine_templates(), copy)
         (copy / "choose/rules.md").unlink()
-        with mock.patch("modsys.create.engine_templates", return_value=copy):
+        with mock.patch("segmently_modules.create.engine_templates", return_value=copy):
             self.refuses(str(copy / "choose/rules.md"), "No such file or directory")
 
     @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root reads mode 000")
@@ -421,7 +421,7 @@ class OverrideUnreadableSourceTest(Base):
         path = self.root / self.pack("team", "- ok\n")
         path.chmod(0)
         self.addCleanup(path.chmod, 0o644)
-        self.refuses(".modsys/packs/team/templates/choose/rules.md", "Permission denied")
+        self.refuses(".segmently-modules/packs/team/templates/choose/rules.md", "Permission denied")
 
 
 class DocsTest(unittest.TestCase):  # P82-AC-014 (the template items; 1b adds the cap and --effort)
@@ -433,7 +433,7 @@ class DocsTest(unittest.TestCase):  # P82-AC-014 (the template items; 1b adds th
     def test_configuration_documents_the_template(self):
         text = self.doc("docs/configuration.md")
         for needle in ("choose/rules.md", 'starts with\n`- `', "is not sent", "`$max_picks`",
-                       "`$depth`", "`$$`", "modsys templates override choose/rules.md"):
+                       "`$depth`", "`$$`", "segmently-modules templates override choose/rules.md"):
             self.assertIn(needle, text)
         flat = " ".join(text.split())  # final review M-3: an override without `$depth`
         self.assertIn("An override without a `- $depth` rule drops the depth: `[search] effort` "
@@ -489,7 +489,7 @@ class PackagingTest(unittest.TestCase):
         data = tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml")
                              .read_text(encoding="utf-8"))
         self.assertIn("defaults/templates/choose/*.md",
-                      data["tool"]["setuptools"]["package-data"]["modsys"])
+                      data["tool"]["setuptools"]["package-data"]["segmently_modules"])
 
 
 if __name__ == "__main__":

@@ -12,15 +12,15 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import modsys
-from modsys import skill_sync
-from modsys.config import core_defaults
+import segmently_modules
+from segmently_modules import skill_sync
+from segmently_modules.config import core_defaults
 from tests.helpers import changelog_release, run, run_json
 from tests.test_next import nxt, rows
 from tests.test_p84_codex_agents import ENGINE, NAMES, CodexRepo, snap
 from tests.test_split_signals import SHELF, ReferencesTest, ShelfRepo, skill_text
 
-REFUSAL = ("modsys: error: choose --agent claude, codex, cursor, gemini or copilot "
+REFUSAL = ("segmently-modules: error: choose --agent claude, codex, cursor, gemini or copilot "
            "(repeatable), or set [packs] agents\n")
 NO_AGENT = ("skills: no agent to check: [packs] agents is not set and no agent's skill "
             "directory holds a copy packs sync made")
@@ -90,7 +90,7 @@ class GlobNamesTest(ReferencesTest):  # P85-AC-019 (reuses the shelf fixture and
         (copy / "SKILL.md").write_text(skill_text(300) + "\nreferences/missing.md references/y?.md "
                                        "references/[ab].md references/route-*\n")
         found = [f[3] for f in self.ms062() if "ejected" in f[3] and "SKILL.md names" in f[3]]
-        self.assertEqual(found, ["ejected skill 'stock-check' (.modsys/overrides/skills/"
+        self.assertEqual(found, ["ejected skill 'stock-check' (.segmently-modules/overrides/skills/"
                                  "stock-check): SKILL.md names references/missing.md, which "
                                  "does not exist"])
 
@@ -117,10 +117,10 @@ class SplitSignalReadTest(unittest.TestCase):  # P85-AC-021
         patched["budgets"]["skill_split_signal"] = 1
         code = ("import unittest, sys\n"
                 "from unittest import mock\n"
-                "import modsys.config as c\n"
+                "import segmently_modules.config as c\n"
                 "real = c.core_defaults()\n"
                 "real['budgets']['skill_split_signal'] = 1\n"
-                "with mock.patch('modsys.config.core_defaults', return_value=real):\n"
+                "with mock.patch('segmently_modules.config.core_defaults', return_value=real):\n"
                 "    from tests import test_p84_routing as t\n"
                 "    print(t.SPLIT_SIGNAL)\n")
         proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
@@ -155,7 +155,7 @@ class SplitSignalReadTest(unittest.TestCase):  # P85-AC-021
         self.assertIn("decision_key(", text.split("def crossings", 1)[1])
 
     def test_the_split_signals_stay(self):
-        self.assertIn("S, P = 9000, 60000",
+        self.assertIn("S, P = 9000, 64000",
                       (ENGINE / "tests/test_split_signals.py").read_text(encoding="utf-8"))
 
 
@@ -195,7 +195,7 @@ class AgentFileInferenceTest(CodexRepo):  # P85-AC-022…025
             "empty": lambda: self.agents_dir(),
             "foreign": lambda: (self.agents_dir() / "x.toml").write_text("name = 'x'\n"),
             "damaged": lambda: (self.agents_dir() / "m.toml").write_bytes(
-                b'# modsys-managed: {"schema": 1\nname = "x"\n'),
+                b'# segmently-modules-managed: {"schema": 1\nname = "x"\n'),
             "subdirectory": lambda: ((self.agents_dir() / "sub").mkdir(),
                                      (self.agents_dir() / "sub/m.toml").write_bytes(
                                          self.marked())),
@@ -272,7 +272,7 @@ class AgentFileInferenceTest(CodexRepo):  # P85-AC-022…025
         stale = snap(self.root)
         self.assertEqual(self.skill_items(), [
             ("skills", "agent files not in sync (.codex/agents): stale module-discover-agent",
-             "modsys packs sync")])
+             "segmently-modules packs sync")])
         self.assertEqual(snap(self.root), stale)  # next never writes
         self.assertEqual(run("packs", "sync", "--check", "--json", *self.R)[0], 1)
         data = self.bare()
@@ -288,7 +288,7 @@ class AgentFileInferenceTest(CodexRepo):  # P85-AC-022…025
         path.write_bytes(path.read_bytes() + b"# edit\n")
         self.assertEqual(self.skill_items(), [
             ("skills", "agent files not in sync (.codex/agents): in conflict module-scout-agent",
-             "modsys packs sync")])
+             "segmently-modules packs sync")])
         edited = path.read_bytes()
         data = self.bare(code=1)
         self.assertEqual({r["name"]: r["status"] for r in data["agent_files"]}["module-scout-agent"],
@@ -299,7 +299,7 @@ class AgentFileInferenceTest(CodexRepo):  # P85-AC-022…025
         self.config('[packs]\nbuiltin = []\nbuiltin_delivery = "plugin"\n')
         self.assertEqual(self.skill_items(), [
             ("skills", "agent files not in sync (.codex/agents): to remove module-discover-agent, "
-             "module-research-agent, module-scout-agent", "modsys packs sync")])
+             "module-research-agent, module-scout-agent", "segmently-modules packs sync")])
         data = self.bare()
         self.assertEqual([r["status"] for r in data["agent_files"]], ["removed"] * 3)
         self.refused()  # no marked file left: the bdc9f9b refusal
@@ -330,7 +330,7 @@ class AgentFileInferenceTest(CodexRepo):  # P85-AC-022…025
         (self.root / ".codex/agents").chmod(0o555)
         got, out, err = run("packs", "sync", "--json", *self.R)
         self.assertEqual((got, out), (2, ""))
-        self.assertTrue(err.startswith("modsys: error: cannot write .codex/agents/"), err)
+        self.assertTrue(err.startswith("segmently-modules: error: cannot write .codex/agents/"), err)
         self.assertEqual(err.count("\n"), 1)
         self.assertIn("stale module-discover-agent", self.skill_items()[0][1])
         got, out, err = run("packs", "sync", "--check", "--dry-run", "--json", *self.R)
@@ -354,8 +354,8 @@ class AgentFileInferenceTest(CodexRepo):  # P85-AC-022…025
         self.config(PLUGIN)
         claude = self.root / ".claude/skills/stock-check"
         claude.mkdir(parents=True)
-        (claude / ".modsys-managed").write_text(json.dumps(
-            {"schema": "modsys.managed/1", "pack": "shelf", "skill": "stock-check",
+        (claude / ".segmently-modules-managed").write_text(json.dumps(
+            {"schema": "segmently-modules.managed/1", "pack": "shelf", "skill": "stock-check",
              "version": "1", "files": {}}), encoding="utf-8")
         with mock.patch.object(skill_sync, "read_marker", side_effect=lambda d: d.parent.parent
                                .name == ".claude" or None):
@@ -383,7 +383,7 @@ class AgentFileInferenceTest(CodexRepo):  # P85-AC-022…025
     def test_named_agents_without_codex_never_open_codex(self):  # AC-024, final review M-5
         (self.agents_dir() / "module-scout-agent.toml").write_bytes(self.marked())
         with mock.patch.object(skill_sync, "_marked_agent_file") as probe, \
-                mock.patch("modsys.packs_cmd.plan_agent_files") as plan:
+                mock.patch("segmently_modules.packs_cmd.plan_agent_files") as plan:
             self.bare("--check", "--agent", "claude")  # named by the flag
             self.config(PLUGIN + 'agents = ["claude"]\n')  # named by `[packs] agents`
             self.assertEqual(self.bare("--check")["agents"], ["claude"])
@@ -395,14 +395,14 @@ class AgentFileInferenceTest(CodexRepo):  # P85-AC-022…025
         for n in NAMES:
             (self.agents_dir() / f"{n}.toml").write_bytes(self.marked(n))
         env = {**os.environ, "PYTHONPATH": str(ENGINE)}
-        env.pop("MODSYS_DEBUG", None)
+        env.pop("SEGMENTLY_MODULES_DEBUG", None)
         before = snap(self.root)
         for argv in (["packs", "sync", "--check"], ["next"]):
-            proc = subprocess.run([sys.executable, "-m", "modsys", *argv, "--json", *self.R],
+            proc = subprocess.run([sys.executable, "-m", "segmently_modules", *argv, "--json", *self.R],
                                   capture_output=True, text=True, env=env, cwd=self.tmp)
             self.assertIn(proc.returncode, (0, 1), proc.stderr)
             self.assertEqual(proc.stderr, "")
-            self.assertEqual(json.loads(proc.stdout)["schema"].split("/")[0][:7], "modsys.")
+            self.assertEqual(json.loads(proc.stdout)["schema"].split("/")[0][:18], "segmently-modules.")
         self.assertEqual(snap(self.root), before)
 
 
@@ -422,8 +422,8 @@ class DocsTest(unittest.TestCase):  # P85-AC-026, AC-020
         self.assertIn("else `claude` and `codex`", self.flat("docs/cli-contract.md"))
         for obj in (skill_sync.managed_agents, ):
             self.assertIn(".codex/agents", obj.__doc__)
-        import modsys.next_cmd as nc
-        import modsys.packs_cmd as pc
+        import segmently_modules.next_cmd as nc
+        import segmently_modules.packs_cmd as pc
         self.assertIn(".codex/agents/", pc.__doc__)
         self.assertIn(".codex/agents/", nc.skill_copies.__doc__)
 
@@ -437,20 +437,20 @@ class DocsTest(unittest.TestCase):  # P85-AC-026, AC-020
                  'infer codex')
         named = "names its agents without"
         files = ("docs/skills.md", "CHANGELOG.md", "docs/configuration.md",
-                 "modsys/skill_sync.py", "modsys/packs_cmd.py", "modsys/next_cmd.py")
+                 "segmently_modules/skill_sync.py", "segmently_modules/packs_cmd.py", "segmently_modules/next_cmd.py")
         texts = {rel: " ".join(re.sub(r"\n\s*# ", "\n", self.doc(rel)).split()) for rel in files}
         for rel, text in texts.items():
             with self.subTest(file=rel):
                 self.assertEqual([s for s in stale if s in text], [])
-        for rel in ("docs/skills.md", "CHANGELOG.md", "modsys/skill_sync.py",
-                    "modsys/packs_cmd.py"):
+        for rel in ("docs/skills.md", "CHANGELOG.md", "segmently_modules/skill_sync.py",
+                    "segmently_modules/packs_cmd.py"):
             with self.subTest(file=rel):
                 self.assertEqual(texts[rel].count(claim), 1)
                 self.assertEqual(texts[rel].count(named), 1)
         row = texts["docs/configuration.md"].split("| `agents` | unset |", 1)[1].split(" | ", 1)[0]
         self.assertLess(row.index('under `builtin_delivery = "plugin"`'),
                         row.index("a bare `packs sync` and `next`"))
-        import modsys.next_cmd as nc
+        import segmently_modules.next_cmd as nc
         self.assertIn("no `.agents/skills` copy holds a marker", " ".join(
             nc.skill_copies.__doc__.split()))
 
@@ -458,7 +458,7 @@ class DocsTest(unittest.TestCase):  # P85-AC-026, AC-020
         for rel in ("docs/configuration.md", "docs/writing-a-pack.md"):
             with self.subTest(doc=rel):
                 self.assertIn("a name holding `*`, `?` or `[` is a pattern", self.flat(rel))
-        import modsys.lint as lint
+        import segmently_modules.lint as lint
         self.assertIn("pattern", Path(lint.__file__).read_text(encoding="utf-8")
                       .split("_REFERENCE")[0][-700:])
 

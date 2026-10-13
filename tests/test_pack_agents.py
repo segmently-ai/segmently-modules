@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys import skill_sync
+from segmently_modules import skill_sync
 from tests.helpers import copy_fixture, run, run_json
 
 SKILL = "---\nname: {sid}\ndescription: The {sid} skill.\n---\n\n# {sid}\n"
@@ -23,7 +23,7 @@ class AgentsRepo(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = copy_fixture(self._tmp.name)
         self.R = ("--root", str(self.root))
-        team = self.root / ".modsys/packs/team"
+        team = self.root / ".segmently-modules/packs/team"
         text = 'id = "team"\nversion = "0.1.0"\n'
         for sid in ("api-review", "notes"):
             (team / "skills" / sid).mkdir(parents=True)
@@ -38,11 +38,11 @@ class AgentsRepo(unittest.TestCase):
         argv = [a for agent in agents for a in ("--agent", agent)]
         got, env, err = run_json("packs", "sync", *argv, *flags, *self.R)
         self.assertEqual((got, err), (code, ""), env)
-        self.assertEqual(env["schema"], "modsys.packs/1")
+        self.assertEqual(env["schema"], "segmently-modules.packs/1")
         return env["data"]
 
     def config(self, text: str) -> None:
-        (self.root / ".modsys/config.toml").write_text(text)
+        (self.root / ".segmently-modules/config.toml").write_text(text)
 
 
 class FiveAgentsTest(AgentsRepo):  # P6-AC-003
@@ -54,7 +54,7 @@ class FiveAgentsTest(AgentsRepo):  # P6-AC-003
                 self.assertEqual([(r["agent"], r["dir"], r["status"]) for r in data["skills"]],
                                  [(agent, ".agents/skills/api-review", "created"),
                                   (agent, ".agents/skills/notes", "created")])
-                marker = (self.root / ".agents/skills/notes/.modsys-managed").read_text()
+                marker = (self.root / ".agents/skills/notes/.segmently-modules-managed").read_text()
                 self.assertNotIn(agent, marker)  # the marker carries no agent
 
     def test_all_five_write_each_file_once(self):
@@ -109,7 +109,7 @@ class FiveAgentsTest(AgentsRepo):  # P6-AC-003
                 self.assertIn("unknown agent 'windsurf' (agents: claude, codex, cursor, gemini, "
                               "copilot)", err)
                 if how == "config":
-                    self.assertIn(".modsys/config.toml: [packs] agents: ", err)
+                    self.assertIn(".segmently-modules/config.toml: [packs] agents: ", err)
 
     def test_a_local_edit_under_agents_skills(self):  # P4A-AC-014/015 hold for cursor
         self.sync("cursor")
@@ -154,7 +154,7 @@ class InferredAgentsTest(AgentsRepo):  # P6-AC-027 (SI-9)
     def test_the_decision_table(self):
         code, out, err = run("packs", "sync", "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertEqual(err, "modsys: error: choose --agent claude, codex, cursor, gemini or "
+        self.assertEqual(err, "segmently-modules: error: choose --agent claude, codex, cursor, gemini or "
                               "copilot (repeatable), or set [packs] agents\n")
         self.sync("cursor")
         got, env, err = run_json("packs", "sync", *self.R)
@@ -167,14 +167,14 @@ class InferredAgentsTest(AgentsRepo):  # P6-AC-027 (SI-9)
 
     def test_the_hints_keep_claude_and_codex(self):
         code, out, err = run("eject", "api-review", *self.R)
-        self.assertEqual(out.splitlines()[-1], "next: modsys packs sync --agent claude --agent "
+        self.assertEqual(out.splitlines()[-1], "next: segmently-modules packs sync --agent claude --agent "
                                                "codex (or set [packs] agents once)")
         self.sync("claude")
-        (self.root / ".modsys/packs/team/skills/notes/SKILL.md").write_text(
+        (self.root / ".segmently-modules/packs/team/skills/notes/SKILL.md").write_text(
             SKILL.format(sid="notes").replace("The notes skill.", "Changed."))
-        shutil.rmtree(self.root / ".modsys/overrides")
+        shutil.rmtree(self.root / ".segmently-modules/overrides")
         code, out, err = run("packs", "sync", "--check", "--agent", "claude", *self.R)
-        self.assertTrue(out.splitlines()[-1].endswith("stale — run modsys packs sync --agent "
+        self.assertTrue(out.splitlines()[-1].endswith("stale — run segmently-modules packs sync --agent "
                                                       "claude"), out)
         self.assertIn("--agent claude --agent codex", run("eject", "--help")[1].replace("\n",
                                                                                        " "))
@@ -186,12 +186,12 @@ class NoPluginAgentsTest(AgentsRepo):  # P6-AC-002 row 7 (SI-7)
         data = self.sync("claude", "cursor")
         self.assertEqual({r["skill"] for r in data["skills"]}, {"api-review", "notes"})
         self.assertEqual(data["notes"], [
-            'builtin_delivery = "plugin": the built-in skills come from the plugins modsys '
-            '(core), modsys-qa (qa), modsys-ui (ui) — packs sync copies none of them',
-            'cursor gets no built-in skills: no modsys plugin exists for it — set [packs] '
+            'builtin_delivery = "plugin": the built-in skills come from the plugins segmently-modules '
+            '(core), segmently-modules-qa (qa), segmently-modules-ui (ui) — packs sync copies none of them',
+            'cursor gets no built-in skills: no segmently-modules plugin exists for it — set [packs] '
             'builtin_delivery = "repo" to sync the built-in skills for it', COPILOT])
         data = self.sync("gemini", "copilot")
-        self.assertIn('gemini, copilot get no built-in skills: no modsys plugin exists for them '
+        self.assertIn('gemini, copilot get no built-in skills: no segmently-modules plugin exists for them '
                       '— set [packs] builtin_delivery = "repo" to sync the built-in skills for '
                       'them', data["notes"])
 

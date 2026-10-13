@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from modsys.config import builtin_packs_root
+from segmently_modules.config import builtin_packs_root
 from tests.helpers import (SPLIT_FIXTURE, changelog_since_first_release, copy_fixture, init_git,
                            mutate_registry, run)
 from tests.test_builtin_skills import commands, section, skill_files, uses
@@ -57,8 +57,8 @@ class Fixture(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.root = copy_fixture(self._tmp.name)
-        (self.root / ".modsys").mkdir(exist_ok=True)
-        (self.root / ".modsys/config.toml").write_text(CONFIG, encoding="utf-8")
+        (self.root / ".segmently-modules").mkdir(exist_ok=True)
+        (self.root / ".segmently-modules/config.toml").write_text(CONFIG, encoding="utf-8")
         (self.root / CATALOG_DOC).parent.mkdir(parents=True, exist_ok=True)
         (self.root / CATALOG_DOC).write_text(DOC, encoding="utf-8")
         self.R = ("--root", str(self.root))
@@ -91,7 +91,7 @@ class EngineReportsTest(Fixture):  # P85-AC-008 (PRE-004)
         self.assertEqual(([(f["code"], f["severity"], f["module"], f["path"])
                            for f in lint["findings"]], lint["failed"]),
                          ([("MS016", "warning", "catalog", CATALOG_DOC)], False))
-        self.assertIn("modsys roles add qa_acceptance catalog registers it",
+        self.assertIn("segmently-modules roles add qa_acceptance catalog registers it",
                       lint["findings"][0]["message"])
         row = next(r for r in self.ok("roles", "list")["roles"] if r["name"] == "qa_acceptance")
         self.assertIn("catalog", row["missing"])  # SI-P85-7: `missing`, though the file exists
@@ -114,8 +114,8 @@ class SkillCommandsTest(Fixture):  # P85-AC-011
         twin_dir = tempfile.TemporaryDirectory()
         self.addCleanup(twin_dir.cleanup)
         twin = copy_fixture(twin_dir.name)
-        (twin / ".modsys").mkdir(exist_ok=True)
-        (twin / ".modsys/config.toml").write_text(CONFIG, encoding="utf-8")
+        (twin / ".segmently-modules").mkdir(exist_ok=True)
+        (twin / ".segmently-modules/config.toml").write_text(CONFIG, encoding="utf-8")
         (twin / CATALOG_DOC).parent.mkdir(parents=True, exist_ok=True)
         (twin / CATALOG_DOC).write_text(DOC, encoding="utf-8")
 
@@ -160,8 +160,8 @@ class SplitChildTest(unittest.TestCase):  # P85-AC-012
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.root = copy_fixture(self._tmp.name, SPLIT_FIXTURE)
-        (self.root / ".modsys").mkdir(exist_ok=True)
-        (self.root / ".modsys/config.toml").write_text(CONFIG, encoding="utf-8")
+        (self.root / ".segmently-modules").mkdir(exist_ok=True)
+        (self.root / ".segmently-modules/config.toml").write_text(CONFIG, encoding="utf-8")
         for rel, text in (("modules/orders/roles/qa_acceptance.md", "# Orders baseline\n"),
                           (CHILD_DOC, "# Refunds baseline\n")):
             (self.root / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -231,7 +231,7 @@ class SkillTextTest(unittest.TestCase):  # P85-AC-009, AC-010, AC-013 (the pins)
                 "A `child role:qa_acceptance` row with `exists: true` is a split child's own doc",
                 "A `parent baseline role:qa_acceptance` row is the parent's doc, not this "
                 "module's",
-                "`modsys roles add qa_acceptance <module> --dry-run --json`",
+                "`segmently-modules roles add qa_acceptance <module> --dry-run --json`",
                 # each status of the dry run has a meaning
                 "Status `registered` means the module's `roles/qa_acceptance.md` is on disk and "
                 "the registry does not list it: that file is the doc to refresh, so read it, "
@@ -249,7 +249,7 @@ class SkillTextTest(unittest.TestCase):  # P85-AC-009, AC-010, AC-013 (the pins)
         line = flat(self.step1)
         self.assertEqual(line.count(
             "Without a `role:qa_acceptance` or `child role:qa_acceptance` row with `exists: true` "
-            "(a `parent baseline` row does not count), run `modsys roles add qa_acceptance "
+            "(a `parent baseline` row does not count), run `segmently-modules roles add qa_acceptance "
             "<module> --dry-run --json`, which writes nothing, and read its status."), 1)
         self.assertEqual(line.count("a `parent baseline` row does not count"), 1)
         self.assertNotIn("Without one of those rows", line)
@@ -264,8 +264,8 @@ class SkillTextTest(unittest.TestCase):  # P85-AC-009, AC-010, AC-013 (the pins)
         # the dry run reports that `path`: the registered one, wherever it points
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(tmp)
-            (root / ".modsys").mkdir(exist_ok=True)
-            (root / ".modsys/config.toml").write_text(CONFIG, encoding="utf-8")
+            (root / ".segmently-modules").mkdir(exist_ok=True)
+            (root / ".segmently-modules/config.toml").write_text(CONFIG, encoding="utf-8")
             where = "modules/catalog/docs/baseline.md"
             mutate_registry(root, lambda d: d["modules"]["catalog"]["context_files"]
                             .setdefault("roles", {}).update(qa_acceptance=where))
@@ -295,12 +295,12 @@ class SkillTextTest(unittest.TestCase):  # P85-AC-009, AC-010, AC-013 (the pins)
     def test_refresh_registers_after_gate_3_and_create_keeps_registry_set(self):
         refresh, create = flat(self.files["references/refresh.md"]), flat(
             self.files["references/create.md"])
-        self.assertEqual(refresh.count("`modsys roles add qa_acceptance <module> --json`"), 1)
+        self.assertEqual(refresh.count("`segmently-modules roles add qa_acceptance <module> --json`"), 1)
         self.assertIn("after Gate 3", refresh)
-        self.assertLess(refresh.index("`modsys roles add"),
+        self.assertLess(refresh.index("`segmently-modules roles add"),
                         refresh.index("It exists: edit it in place, block by block"))
         self.assertNotIn("roles add", create)
-        self.assertEqual(create.count("modsys registry set <module> context_files"), 2)
+        self.assertEqual(create.count("segmently-modules registry set <module> context_files"), 2)
         self.assertIn("Check the dry run's diff changes nothing else.", create)
         for name in ("create", "refresh"):
             text = self.files[f"references/{name}.md"]
@@ -310,7 +310,7 @@ class SkillTextTest(unittest.TestCase):  # P85-AC-009, AC-010, AC-013 (the pins)
 
     def test_what_stays_byte_identical(self):
         flat_skill = flat(self.skill)
-        for needle in ("If a `modsys` command exits 1 or 2, read `references/exit-codes.md`.",
+        for needle in ("If a `segmently-modules` command exits 1 or 2, read `references/exit-codes.md`.",
                        "6. Write the doc. Follow the scenario's file (the Route above).",  # P8.8: step 5 assembles
                        "Three, never skipped: Gate 1 (understanding), Gate 2 (each block's "
                        "requirements), Gate 3 (the criteria, per block or per batch). Nothing is "

@@ -36,16 +36,16 @@ class EnvelopeTest(ContractRepo):
     def test_one_envelope_per_action(self):
         tasks = self.base / "tasks.json"
         tasks.write_text(json.dumps([{"task": "the isbn of a book", "module": "catalog"}]))
-        steps = [(("init", "fanout"), "modsys.init/1"), (("init", "next"), "modsys.init/1"),
-                 (("init", "status"), "modsys.init/1"),
-                 (("init", "run", "--executor", executor()), "modsys.init/1"),
-                 (("init", "reconcile"), "modsys.init/1"),
-                 (("eval", "routing", "--tasks", str(tasks)), "modsys.eval/1"),
-                 (("eval", "routing", "--prompt"), "modsys.eval/1"),
-                 (("init", "eval-tasks", "--executor", executor()), "modsys.init/1"),
-                 (("init", "verify"), "modsys.init/1"), (("init", "resume"), "modsys.init/1"),
-                 (("init", "finish"), "modsys.init/1"),
-                 (("init", "done", "cart"), "modsys.init/1")]
+        steps = [(("init", "fanout"), "segmently-modules.init/1"), (("init", "next"), "segmently-modules.init/1"),
+                 (("init", "status"), "segmently-modules.init/1"),
+                 (("init", "run", "--executor", executor()), "segmently-modules.init/1"),
+                 (("init", "reconcile"), "segmently-modules.init/1"),
+                 (("eval", "routing", "--tasks", str(tasks)), "segmently-modules.eval/1"),
+                 (("eval", "routing", "--prompt"), "segmently-modules.eval/1"),
+                 (("init", "eval-tasks", "--executor", executor()), "segmently-modules.init/1"),
+                 (("init", "verify"), "segmently-modules.init/1"), (("init", "resume"), "segmently-modules.init/1"),
+                 (("init", "finish"), "segmently-modules.init/1"),
+                 (("init", "done", "cart"), "segmently-modules.init/1")]
         for argv, schema in steps:
             with self.subTest(argv=argv[:2]):
                 code, out, err = self.call(*argv, "--json")
@@ -62,19 +62,19 @@ class EnvelopeTest(ContractRepo):
             with self.subTest(argv=argv):
                 code, out, err = self.call(*argv, "--json")
                 self.assertEqual((code, out), (2, ""))
-                self.assertTrue(err.startswith("modsys: error: "), err)
+                self.assertTrue(err.startswith("segmently-modules: error: "), err)
 
 
 class GarbageConfigTest(ContractRepo):
     def test_a_garbage_max_parallel(self):
-        config = self.root / ".modsys/config.toml"
+        config = self.root / ".segmently-modules/config.toml"
         config.write_text(config.read_text() + '\n[init]\nmax_parallel = "x"\n')
         for argv in (("init", "run", "--executor", executor()), ("init", "status"),
                      ("eval", "routing", "--prompt"), ("lint",)):
             with self.subTest(argv=argv[:2]):
                 code, out, err = self.call(*argv, "--json")
                 self.assertEqual((code, out), (2, ""))
-                self.assertIn(".modsys/config.toml: [init] max_parallel must be an integer >= 1",
+                self.assertIn(".segmently-modules/config.toml: [init] max_parallel must be an integer >= 1",
                               err)
                 self.assertNotIn("Traceback", err)
 
@@ -82,20 +82,20 @@ class GarbageConfigTest(ContractRepo):
 class InterruptTest(ContractRepo):
     def interrupted(self, target: str, *argv: str) -> None:
         with mock.patch(target, side_effect=KeyboardInterrupt):
-            self.assertEqual(self.call(*argv), (130, "", "modsys: interrupted\n"))
+            self.assertEqual(self.call(*argv), (130, "", "segmently-modules: interrupted\n"))
         json.loads((self.root / WORK / "state.json").read_text())
 
     def test_ctrl_c_in_next_reconcile_and_finish(self):
         ok(self.root, "init", "fanout")
-        self.interrupted("modsys.init_work.Work.item", "init", "next")
+        self.interrupted("segmently_modules.init_work.Work.item", "init", "next")
         ok(self.root, "init", "run", "--executor", executor())
-        self.interrupted("modsys.init_reconcile.Reconcile.duplicates", "init", "reconcile")
+        self.interrupted("segmently_modules.init_reconcile.Reconcile.duplicates", "init", "reconcile")
         self.assertFalse((self.root / WORK / "staging/registry.json").exists())
         ok(self.root, "init", "reconcile")
         ok(self.root, "init", "verify")
         (self.root / "CLAUDE.md").write_text("# notes\n")
         before = protected_sha(self.root)
-        self.interrupted("modsys.agents_md_cmd.atomic_write", "init", "finish")  # the block
+        self.interrupted("segmently_modules.agents_md_cmd.atomic_write", "init", "finish")  # the block
         self.assertEqual(protected_sha(self.root), before)  # all or nothing
         self.assertFalse((self.root / "modules/cart").exists())
         self.assertEqual(state(self.root)["phases"]["finish"]["status"], "running")
@@ -113,14 +113,14 @@ class InterruptTest(ContractRepo):
 
     def test_ctrl_c_after_the_writes(self):  # I-1: the state saved as finished is the last step
         before = self.verified()
-        self.interrupted("modsys.init_finish.Finish.git_add", "init", "finish")
+        self.interrupted("segmently_modules.init_finish.Finish.git_add", "init", "finish")
         self.assertEqual(protected_sha(self.root), before)
         self.assertTrue((self.root / "CLAUDE.md").is_symlink())  # I-2: put back through the link
         self.assertEqual((self.root / "AGENTS.md").read_text(), "# agents\n")
         self.assertFalse((self.root / "modules/cart").exists())
         self.assertEqual(state(self.root)["phases"]["finish"]["status"], "running")
         nxt = ok(self.root, "init", "status")["next"]
-        self.assertIn("init finish was interrupted: run modsys init finish again", nxt)
+        self.assertIn("init finish was interrupted: run segmently-modules init finish again", nxt)
         self.assertNotIn("nothing kept", nxt)
         data = ok(self.root, "init", "finish")
         self.assertEqual(data["agents_md"], [{"path": "CLAUDE.md", "status": "added"},
@@ -128,7 +128,7 @@ class InterruptTest(ContractRepo):
         self.assertTrue((self.root / "CLAUDE.md").is_symlink())
 
     def test_a_state_save_that_fails_at_the_commit_point(self):
-        from modsys.init_flow import InitFlow
+        from segmently_modules.init_flow import InitFlow
         before = self.verified()
         real = InitFlow.save_state
 
@@ -137,15 +137,15 @@ class InterruptTest(ContractRepo):
                 raise KeyboardInterrupt  # the last step of finish
             return real(flow, s)
 
-        with mock.patch("modsys.init_flow.InitFlow.save_state", autospec=True, side_effect=save):
-            self.assertEqual(self.call("init", "finish"), (130, "", "modsys: interrupted\n"))
+        with mock.patch("segmently_modules.init_flow.InitFlow.save_state", autospec=True, side_effect=save):
+            self.assertEqual(self.call("init", "finish"), (130, "", "segmently-modules: interrupted\n"))
         self.assertEqual(protected_sha(self.root), before)
         self.assertEqual(state(self.root)["phases"]["finish"]["status"], "running")
         ok(self.root, "init", "finish")
         self.assertEqual(state(self.root)["phase"], "finished")
 
     def test_ctrl_c_right_after_the_commit_point(self):  # N-7: the state says finished: kept
-        from modsys.init_flow import InitFlow
+        from segmently_modules.init_flow import InitFlow
         before = self.verified()
         real = InitFlow.save_state
 
@@ -154,24 +154,24 @@ class InterruptTest(ContractRepo):
             if s["phases"]["finish"]["status"] == "done":
                 raise KeyboardInterrupt  # renamed into place, before apply() returns
 
-        with mock.patch("modsys.init_flow.InitFlow.save_state", autospec=True, side_effect=save):
-            self.assertEqual(self.call("init", "finish"), (130, "", "modsys: interrupted\n"))
+        with mock.patch("segmently_modules.init_flow.InitFlow.save_state", autospec=True, side_effect=save):
+            self.assertEqual(self.call("init", "finish"), (130, "", "segmently-modules: interrupted\n"))
         self.assertEqual(state(self.root)["phase"], "finished")
         self.assertNotEqual(protected_sha(self.root), before)  # the writes stand
         self.assertTrue((self.root / "modules/cart/MODULE.md").is_file())
-        self.assertIn("modsys:begin", (self.root / "AGENTS.md").read_text())
+        self.assertIn("segmently-modules:begin", (self.root / "AGENTS.md").read_text())
         self.assertTrue((self.root / "CLAUDE.md").is_symlink())
         self.assertIn("init is finished", ok(self.root, "init", "status")["next"])
         self.assertEqual(len(ok(self.root, "list")), 6)
 
     def test_an_unexpected_error(self):
         ok(self.root, "init", "fanout")
-        with mock.patch("modsys.init_work.Work.claim", side_effect=RuntimeError("boom")), \
+        with mock.patch("segmently_modules.init_work.Work.claim", side_effect=RuntimeError("boom")), \
                 mock.patch.dict(os.environ):
-            os.environ.pop("MODSYS_DEBUG", None)
+            os.environ.pop("SEGMENTLY_MODULES_DEBUG", None)
             code, out, err = self.call("init", "next")
         self.assertEqual((code, out), (2, ""))
-        self.assertIn("modsys: internal error: RuntimeError: boom", err)
+        self.assertIn("segmently-modules: internal error: RuntimeError: boom", err)
         self.assertNotIn("Traceback", err)
 
 
@@ -190,11 +190,11 @@ class RetryContractTest(ContractRepo):  # P5C-AC-021 (D3): the retry and a P5b s
                 ok(self.root, "init", "fanout")
                 got, out, err = self.call("init", "run", "--executor", executor(*flags), "--json")
                 self.assertEqual((got, json.loads(out)["data"]["failed"]), (code, bool(code)))
-                self.assertIn("modsys: payments: refused — retrying once", err.splitlines())
+                self.assertIn("segmently-modules: payments: refused — retrying once", err.splitlines())
                 self.assertNotIn("Traceback", err)
 
     def test_a_state_write_that_fails_during_a_retry(self):
-        from modsys import init_flow
+        from segmently_modules import init_flow
         ok(self.root, "init", "fanout")
         real = init_flow.os.replace
 
@@ -203,10 +203,10 @@ class RetryContractTest(ContractRepo):  # P5C-AC-021 (D3): the retry and a P5b s
                 raise PermissionError(13, "Permission denied")
             return real(src, dst)
 
-        with mock.patch("modsys.init_flow.os.replace", side_effect=replace):
+        with mock.patch("segmently_modules.init_flow.os.replace", side_effect=replace):
             got = self.call("init", "run", "--executor", executor("--invent", "cart"), "--json")
         self.assertEqual(got[:2], (2, ""))
-        self.assertIn("modsys: error: cannot write .modsys/init/state.json: Permission denied",
+        self.assertIn("segmently-modules: error: cannot write .segmently-modules/init/state.json: Permission denied",
                       got[2])
         self.assertNotIn("Traceback", got[2])
         self.assertNotIn("problems", state(self.root)["modules"]["cart"])
@@ -220,9 +220,9 @@ class RetryContractTest(ContractRepo):  # P5C-AC-021 (D3): the retry and a P5b s
             with self.subTest(action=action):
                 code, out, err = self.call("init", action, "--json")
                 self.assertEqual((code, out), (2, ""))
-                self.assertEqual(err, f"modsys: error: {WORK}/state.json: not a valid init state "
+                self.assertEqual(err, f"segmently-modules: error: {WORK}/state.json: not a valid init state "
                                       f"(module 'cart': problems is not a list of strings — "
-                                      f"remove it, or start over: modsys init map --restart)\n")
+                                      f"remove it, or start over: segmently-modules init map --restart)\n")
         del s["modules"]["cart"]["problems"]  # the way out it names first
         (self.root / WORK / "state.json").write_text(json.dumps(s))
         self.assertEqual(ok(self.root, "init", "next")["item"]["module"], "cart")
@@ -231,7 +231,7 @@ class RetryContractTest(ContractRepo):  # P5C-AC-021 (D3): the retry and a P5b s
         code, out, err = self.call("init", "status", "--json")
         self.assertEqual((code, out), (2, ""))
         self.assertIn(f"{WORK}/state.json: not a valid init state (module 'payments') — start "
-                      f"over: modsys init map --restart", err)
+                      f"over: segmently-modules init map --restart", err)
 
 
 class ActionsTest(ContractRepo):  # P5B-AC-004 (the action list)

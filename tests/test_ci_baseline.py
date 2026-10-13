@@ -1,4 +1,4 @@
-"""`modsys ci --baseline FILE|-`: a finding of lint or drift that an earlier run already held is
+"""`segmently-modules ci --baseline FILE|-`: a finding of lint or drift that an earlier run already held is
 `known`, and a step fails only on findings that are not (P83-AC-001 … 009)."""
 import io
 import json
@@ -94,7 +94,7 @@ class CiBaselineCase(unittest.TestCase):
                           {"name": "drift", "findings": list(drift)}]}
         data.update(extra or {})
         path = self.work / name
-        path.write_text(json.dumps({"schema": "modsys.ci/1", "data": data}), encoding="utf-8")
+        path.write_text(json.dumps({"schema": "segmently-modules.ci/1", "data": data}), encoding="utf-8")
         return path
 
 
@@ -139,12 +139,12 @@ class KnownTest(CiBaselineCase):  # P83-AC-001
                                                             ("MS040", "catalog", False)])
 
     def test_a_null_path_against_a_baseline_path_is_not_known(self):  # row 3, reversed (review M-3)
-        (self.root / ".modsys/config.toml").write_text(
+        (self.root / ".segmently-modules/config.toml").write_text(
             CONFIG + '\n[[code_map]]\nid = "x"\nglobs = ["lib/**"]\nmodule = "nosuch"\n',
             encoding="utf-8")  # MS052: a config-level finding, its path null
         ms052 = next(f for f in self.findings(self.ci_json(), "lint") if f["code"] == "MS052")
         self.assertIsNone(ms052["path"])
-        with_path = dict(ms052, path=".modsys/config.toml")
+        with_path = dict(ms052, path=".segmently-modules/config.toml")
         for held, want in ((with_path, False), (ms052, True)):
             with self.subTest(baseline_path=held["path"]):
                 data = self.ci_json("--baseline", str(self.write_baseline(lint=[held])))
@@ -200,7 +200,7 @@ class KnownTest(CiBaselineCase):  # P83-AC-001
 
 class FailTest(CiBaselineCase):  # P83-AC-002
     def test_known_findings_only_pass_even_with_errors(self):
-        (self.root / ".modsys/config.toml").write_text(
+        (self.root / ".segmently-modules/config.toml").write_text(
             CONFIG.replace("module_doc_split_signal = 3",
                            "module_doc_split_signal = 3\nmodule_doc_hard_stop = 5"),
             encoding="utf-8")  # catalog's 9 lines: MS031, an error
@@ -225,7 +225,7 @@ class FailTest(CiBaselineCase):  # P83-AC-002
                 self.assertEqual(data["failed"], want == "failed")
 
     def test_unknown_error_fails_at_error_and_warning(self):
-        (self.root / ".modsys/config.toml").write_text(
+        (self.root / ".segmently-modules/config.toml").write_text(
             CONFIG.replace("module_doc_split_signal = 3",
                            "module_doc_split_signal = 3\nmodule_doc_hard_stop = 5"),
             encoding="utf-8")  # catalog's 9 lines is now MS031, an error
@@ -237,7 +237,7 @@ class FailTest(CiBaselineCase):  # P83-AC-002
                 self.assertEqual(data["steps"][0]["status"], want)
 
     def test_unknown_info_never_fails(self):
-        (self.root / ".modsys/config.toml").write_text(
+        (self.root / ".segmently-modules/config.toml").write_text(
             CONFIG.replace("module_doc_split_signal = 3",
                            "module_doc_split_signal = 30\nkeyword_shared_warn = 2"),
             encoding="utf-8")
@@ -291,7 +291,7 @@ class JsonFormTest(CiBaselineCase):  # P83-AC-003, P83-AC-005
                 if given == "-":
                     data = self.ci_json("--baseline", "-", stdin=path.read_bytes())
                 elif given == "b.json":
-                    with mock.patch("modsys.pipeline.Path") as P:  # the shared reader
+                    with mock.patch("segmently_modules.pipeline.Path") as P:  # the shared reader
                         P.return_value.read_bytes.return_value = path.read_bytes()
                         data = self.ci_json("--baseline", "b.json")
                 else:
@@ -325,8 +325,8 @@ class JsonFormTest(CiBaselineCase):  # P83-AC-003, P83-AC-005
         self.assertEqual((code, err), (1, ""))
 
     def test_the_baseline_is_read_before_any_step(self):
-        with mock.patch("modsys.ci_cmd.lint_registry") as lint, \
-                mock.patch("modsys.ci_cmd.require_work_tree") as tree:
+        with mock.patch("segmently_modules.ci_cmd.lint_registry") as lint, \
+                mock.patch("segmently_modules.ci_cmd.require_work_tree") as tree:
             code, out, err = run("ci", "--baseline", str(self.work / "none.json"), *self.R)
         self.assertEqual((code, out), (2, ""))
         lint.assert_not_called()
@@ -423,11 +423,11 @@ class RefusalTest(CiBaselineCase):  # P83-AC-006
                                                                    side_effect=spy):
                     code, out, err = self.ci("--baseline", source, *extra, stdin=stdin)
                 self.assertEqual((code, out, git_calls), (2, "", []))
-                self.assertEqual(err, f"modsys: error: {expect}\n")
+                self.assertEqual(err, f"segmently-modules: error: {expect}\n")
                 self.assertNotIn("Traceback", err)
 
     def not_ci(self, source):
-        return f"--baseline {source}: not the --json output of modsys ci (schema modsys.ci/1)"
+        return f"--baseline {source}: not the --json output of segmently-modules ci (schema segmently-modules.ci/1)"
 
     def test_unreadable(self):
         missing = str(self.work / "none.json")
@@ -455,10 +455,10 @@ class RefusalTest(CiBaselineCase):  # P83-AC-006
                             encoding="utf-8")
             return str(path)
 
-        ci = "modsys.ci/1"
+        ci = "segmently-modules.ci/1"
         finding_no_path = {"code": "MS040", "severity": "warning", "module": "m", "message": "x"}
         cases = {
-            "empty": "", "bracket": "[", "lint-schema": {"schema": "modsys.lint/1", "data": {}},
+            "empty": "", "bracket": "[", "lint-schema": {"schema": "segmently-modules.lint/1", "data": {}},
             "no-data": {"schema": ci}, "data-list": {"schema": ci, "data": []},
             "no-steps": {"schema": ci, "data": {}},
             "steps-object": {"schema": ci, "data": {"steps": {}}},
@@ -485,7 +485,7 @@ class SubprocessTest(CiBaselineCase):  # P83-AC-005, P83-AC-035 (real pipes)
         env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1",
                    GIT_CEILING_DIRECTORIES=os.environ["GIT_CEILING_DIRECTORIES"],
                    PYTHONDONTWRITEBYTECODE="1", PYTHONPATH=str(ENGINE), **NO_AUTO_MAINTENANCE)
-        return subprocess.run([sys.executable, "-m", "modsys", *argv], input=stdin,
+        return subprocess.run([sys.executable, "-m", "segmently_modules", *argv], input=stdin,
                               capture_output=True, env=env, cwd=str(ENGINE))
 
     def test_stdin_and_refusals_with_real_pipes(self):
@@ -496,9 +496,9 @@ class SubprocessTest(CiBaselineCase):  # P83-AC-005, P83-AC-035 (real pipes)
         self.assertEqual((done.returncode, done.stderr, data["baseline"]), (1, b"", "-"))
         self.assertEqual(self.marks(data, "lint"), [("MS030", "catalog", True),
                                                     ("MS040", "catalog", True)])
-        for stdin, line in ((b"\xff", b"modsys: error: cannot read <stdin>: not valid UTF-8\n"),
-                            (b"[", b"modsys: error: --baseline -: not the --json output of "
-                                   b"modsys ci (schema modsys.ci/1)\n")):
+        for stdin, line in ((b"\xff", b"segmently-modules: error: cannot read <stdin>: not valid UTF-8\n"),
+                            (b"[", b"segmently-modules: error: --baseline -: not the --json output of "
+                                   b"segmently-modules ci (schema segmently-modules.ci/1)\n")):
             done = self.cli("ci", "--base", "HEAD~1", "--baseline", "-", "--json", *self.R,
                             stdin=stdin)
             self.assertEqual((done.returncode, done.stdout, done.stderr), (2, b"", line))
@@ -509,11 +509,11 @@ class SubprocessTest(CiBaselineCase):  # P83-AC-005, P83-AC-035 (real pipes)
         for argv in (("ci", "--baseline", "-"),
                      ("context", "--task-file", "-", "--match", "lexical")):
             done = subprocess.run(["/bin/sh", "-c", 'exec "$@" 0<&-', "sh", sys.executable, "-m",
-                                   "modsys", *argv, *self.R],
+                                   "segmently_modules", *argv, *self.R],
                                   capture_output=True, env=env, cwd=str(ENGINE))
             self.assertEqual((done.returncode, done.stdout), (2, b""), argv)
             got[argv[0]] = done.stderr
-        self.assertTrue(got["ci"].startswith(b"modsys: error: cannot read <stdin>: "), got)
+        self.assertTrue(got["ci"].startswith(b"segmently-modules: error: cannot read <stdin>: "), got)
         self.assertEqual(got["ci"].count(b"\n"), 1)
         self.assertNotIn(b"internal error", got["ci"])
         self.assertEqual(got["ci"], got["context"])  # the same words as every `-` reader
@@ -531,14 +531,14 @@ class SubprocessTest(CiBaselineCase):  # P83-AC-005, P83-AC-035 (real pipes)
                     self.assertEqual(self.marks(json.loads(out)["data"], "lint"),
                                      [("MS030", "catalog", True), ("MS040", "catalog", True)])
                 else:
-                    self.assertEqual((out, err), ("", "modsys: error: --baseline -: not the "
-                                                      "--json output of modsys ci (schema "
-                                                      "modsys.ci/1)\n"))
+                    self.assertEqual((out, err), ("", "segmently-modules: error: --baseline -: not the "
+                                                      "--json output of segmently-modules ci (schema "
+                                                      "segmently-modules.ci/1)\n"))
 
     def test_a_closed_stdin(self):
         env = dict(os.environ, PYTHONPATH=str(ENGINE), PYTHONDONTWRITEBYTECODE="1")
         done = subprocess.run(
-            [sys.executable, "-m", "modsys", "ci", "--baseline", "-", *self.R],
+            [sys.executable, "-m", "segmently_modules", "ci", "--baseline", "-", *self.R],
             stdin=subprocess.DEVNULL, capture_output=True, env=env, cwd=str(ENGINE))
         self.assertEqual((done.returncode, done.stdout), (2, b""))
         self.assertEqual(done.stderr.count(b"\n"), 1)
@@ -588,12 +588,12 @@ class DocsTest(unittest.TestCase):  # P83-AC-009
     def test_the_contract_row_and_the_changelog(self):
         doc = (ENGINE / "docs/cli-contract.md").read_text(encoding="utf-8")
         row = next(line for line in doc.splitlines() if line.startswith("| `ci` |"))
-        for needle in ("`--baseline FILE\\|-`", "modsys.ci/1", "MS050 and MS051 are never known",
+        for needle in ("`--baseline FILE\\|-`", "segmently-modules.ci/1", "MS050 and MS051 are never known",
                        "`known: true\\|false`", "`known: <n>`", 'baseline: "<FILE as given>"',
                        "(<n> known from the baseline)", "(known)",
                        "`cannot read <FILE>: <reason>`", "`<stdin>`", "not valid UTF-8",
-                       "--baseline <FILE>: not the --json output of modsys ci "
-                       "(schema modsys.ci/1)", "same `code`, `module`, `path` and `message`",
+                       "--baseline <FILE>: not the --json output of segmently-modules ci "
+                       "(schema segmently-modules.ci/1)", "same `code`, `module`, `path` and `message`",
                        "run of ASCII digits"):
             self.assertIn(needle, row)
         log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")

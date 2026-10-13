@@ -1,6 +1,6 @@
-# modsys configuration
+# Segmently Modules configuration
 
-Start with `modsys init`: it writes a commented starter `.modsys/config.toml` with a worked
+Start with `segmently-modules init`: it writes a commented starter `.segmently-modules/config.toml` with a worked
 example for the most-used sections below (it has none for `[budgets]`, `[match]`, `[lint]` or
 `[roles.<name>]`). This page is the reference for every section and key.
 
@@ -8,15 +8,15 @@ example for the most-used sections below (it has none for `[budgets]`, `[match]`
 
 The effective config is merged from, lowest precedence first:
 
-1. **engine defaults** — `modsys/defaults/config.toml` (shipped with the engine);
+1. **engine defaults** — `segmently_modules/defaults/config.toml` (shipped with the engine);
 2. **built-in packs** — the engine's packs that `[packs] builtin` enables (`core`, `qa`, `ui`),
    by id, below every repository pack;
-3. **packs** — `.modsys/packs/<id>/pack.toml`, lower `priority` wins (see [Packs](#packs));
-4. **team config** — `.modsys/config.toml` (commit it);
-5. **user config** — `.modsys/config.user.toml` (personal; git-ignore it).
+3. **packs** — `.segmently-modules/packs/<id>/pack.toml`, lower `priority` wins (see [Packs](#packs));
+4. **team config** — `.segmently-modules/config.toml` (commit it);
+5. **user config** — `.segmently-modules/config.user.toml` (personal; git-ignore it).
 
-Every file layer is optional: with no `.modsys/config.toml` on disk (and no user config), the
-engine defaults apply, packs under `.modsys/packs/<id>/` load as usual and every verb works —
+Every file layer is optional: with no `.segmently-modules/config.toml` on disk (and no user config), the
+engine defaults apply, packs under `.segmently-modules/packs/<id>/` load as usual and every verb works —
 only what a missing file would set is absent (e.g. `[packs] builtin`, so no built-in pack is
 enabled).
 
@@ -32,7 +32,7 @@ Known keys are type-checked, and a wrong type is an error naming the file — bu
 `[fields.<name>]` declaration, where an unknown key is refused (exit 2, `unknown key '…'`) — see
 the `[fields.<name>]` section below.
 
-`--config-dir DIR` points every verb at another config directory (default `<root>/.modsys`).
+`--config-dir DIR` points every verb at another config directory (default `<root>/.segmently-modules`).
 
 ## `[paths]`
 
@@ -40,10 +40,10 @@ the `[fields.<name>]` section below.
 |---|---|---|
 | `modules_dir` | `"modules"` | where module directories live: `<modules_dir>/<name>/MODULE.md`, children under `<name>/submodules/<child>/` |
 | `registry` | `"modules/registry.json"` | the registry file (the generated index in the per-module layout) |
-| `registry_layout` | `"single"` | `"single"`: one registry file · `"per-module"`: `<modules_dir>/<name>/<module_entry>` per module plus a generated index (`modsys index split` converts, `modsys index build` regenerates) |
+| `registry_layout` | `"single"` | `"single"`: one registry file · `"per-module"`: `<modules_dir>/<name>/<module_entry>` per module plus a generated index (`segmently-modules index split` converts, `segmently-modules index build` regenerates) |
 | `module_doc` | `"MODULE.md"` | a module's main doc |
 | `module_entry` | `"module.json"` | a module's entry file in the per-module layout |
-| `proposals_dir` | `".modsys/proposals"` | the proposals queue; `done/` keeps processed files |
+| `proposals_dir` | `".segmently-modules/proposals"` | the proposals queue; `done/` keeps processed files |
 
 ## `[registry]`
 
@@ -71,7 +71,7 @@ stub_pattern = 'status:?\**\s*\**(retired|merged|migrated|superseded)'
 | `keywords_soft` | `40` | keywords above this on a module without children: MS020 |
 | `keyword_shared_warn` | `4` | a keyword shared by this many modules or more: MS021 |
 | `skill_split_signal` | `9000` | characters of a pack's `SKILL.md` or of one `references/*.md` file above this: MS068 (route its scenarios or split the skill; a signal, not a cap). An integer >= 1; any layer (a pack, `config.toml`, `config.user.toml`) |
-| `pack_split_signal` | `60000` | characters of a pack's `SKILL.md` files together above this: MS069 (route, split a skill out, or split the pack). An integer >= 1; any layer. Both apply to every pack (built-in, repository, user) |
+| `pack_split_signal` | `64000` | characters of a pack's `SKILL.md` files together above this: MS069 (route, split a skill out, or split the pack). An integer >= 1; any layer. Both apply to every pack (built-in, repository, user) |
 
 ## `[match]`
 
@@ -84,7 +84,7 @@ Module routing used by `match`, `context` and `discover --task`: keyword routing
 | `negative_weight` | `-5` | score per matched `negative_keywords` phrase |
 | `min_score` | `3` | rows below this are dropped |
 | `top` | `8` | at most this many rows (`--top` overrides) |
-| `mode` | `"lexical"` | `"lexical"`, `"semantic"` or `"hybrid"` (`--match` overrides); `semantic` and `hybrid` ask the user's own agent command (`MODSYS_AGENT_COMMAND`, below): `semantic` without one is refused (exit 2), `hybrid` without one runs lexically with a note; any other value is exit 2 naming the key. A mode from a config file (team, personal or pack) takes effect for `match`, `context` and `discover --task` only when the user opts in with `MODSYS_AGENT_ALLOW_REPO_MODE=1` (below); without it the run is lexical, its stdout byte-identical to `--match lexical`, with one stderr note. `--match` is the user's own choice and needs no opt-in. Every keyword call of the shipped skills, of the `agents-md` block and of a skill `packs new` scaffolds passes `--match lexical` (the skills still read the key to pick their own mode) |
+| `mode` | `"lexical"` | `"lexical"`, `"semantic"` or `"hybrid"` (`--match` overrides); `semantic` and `hybrid` ask the user's own agent command (`SEGMENTLY_MODULES_AGENT_COMMAND`, below): `semantic` without one is refused (exit 2), `hybrid` without one runs lexically with a note; any other value is exit 2 naming the key. A mode from a config file (team, personal or pack) takes effect for `match`, `context` and `discover --task` only when the user opts in with `SEGMENTLY_MODULES_AGENT_ALLOW_REPO_MODE=1` (below); without it the run is lexical, its stdout byte-identical to `--match lexical`, with one stderr note. `--match` is the user's own choice and needs no opt-in. Every keyword call of the shipped skills, of the `agents-md` block and of a skill `packs new` scaffolds passes `--match lexical` (the skills still read the key to pick their own mode) |
 
 `lexical` (the default) is the keyword routing described below and changes nothing in any output.
 `semantic` takes the rows from the user's own agent alone; `hybrid` fuses the keyword rows and the
@@ -102,7 +102,7 @@ a longer token there — `.epub` matches inside `notebook.epub`, `c++` matches i
 module with no matched keyword never gets a row, no matter what `negative_weight` alone would
 score; a row below `min_score` is dropped even with matched keywords. When nothing reaches
 `min_score`, `match` prints `no keyword matches (try rephrasing with domain terms, or use: list)` and
-`context` prints `no module matched (try domain terms, or: modsys list)`; `discover --task` with
+`context` prints `no module matched (try domain terms, or: segmently-modules list)`; `discover --task` with
 no match simply omits the module (no message). Register every form a task is likely to use
 (singular AND plural, synonyms) rather than relying on this to generalize.
 
@@ -112,30 +112,30 @@ that almost matched — a keyword that is not an exact hit but has a word sharin
 letters with a word of the task (`reminder` ~ `reminders`, `schedule` ~ `scheduling`: the first
 5 letters, or all of the shorter word; both words at least 4 letters, so `api` and `tag` match
 exactly only), or exact hits whose score a negative keyword pulled below `min_score`. The text
-ends with `re-run with the module's own keyword in the task text, or read it directly: modsys
-show <module>`; `modsys show <module>` prints the module's keywords on its `keys` line.
+ends with `re-run with the module's own keyword in the task text, or read it directly: segmently-modules
+show <module>`; `segmently-modules show <module>` prints the module's keywords on its `keys` line.
 
 ## The agent command and `[search]`
 
 The engine holds no model, no API key and no network code. `semantic` / `hybrid` matching and
-`modsys choose --run` run a command the user configured, with the work order of `modsys choose`
-on its stdin (compact JSON; also as the files `MODSYS_WORK_ORDER` and `MODSYS_SCHEMA`), and read
+`segmently-modules choose --run` run a command the user configured, with the work order of `segmently-modules choose`
+on its stdin (compact JSON; also as the files `SEGMENTLY_MODULES_WORK_ORDER` and `SEGMENTLY_MODULES_SCHEMA`), and read
 its answer from stdout. A registry without modules, or `--top 0`, asks nothing.
 
 Why an environment variable and not a config file: a command in a file the repository commits
 (a team config, or a pack someone installs) would let a commit put an agent command on every
 contributor's machine. So the command is read ONLY from the process environment of the user who
-runs modsys; an `[agent]` table in any config file is refused (exit 2 naming the file), whatever
+runs Segmently Modules; an `[agent]` table in any config file is refused (exit 2 naming the file), whatever
 file it is in. A repository cannot choose or change the command, and it cannot make `match`,
 `context` or `discover --task` run it: a `[match] mode` from any config file (team, personal or
 pack) runs the agent command only with your opt-in,
-`MODSYS_AGENT_ALLOW_REPO_MODE=1` in your environment (card text the repository wrote would reach
+`SEGMENTLY_MODULES_AGENT_ALLOW_REPO_MODE=1` in your environment (card text the repository wrote would reach
 your agent: prompt injection, and one agent call per run). Without it the run is lexical and says
-so in one stderr line (`modsys: note: [match] mode "hybrid" is set in a config file; it runs your
-agent command only with MODSYS_AGENT_ALLOW_REPO_MODE=1 (or pass --match hybrid) — ran lexical`);
+so in one stderr line (`segmently-modules: note: [match] mode "hybrid" is set in a config file; it runs your
+agent command only with SEGMENTLY_MODULES_AGENT_ALLOW_REPO_MODE=1 (or pass --match hybrid) — ran lexical`);
 `--match` and `choose --run` are your own requests and need no opt-in. A repository can still
 run commands of its own: a `[[hooks.post_sync]]` hook (in the team config or a pack) runs on
-`modsys sync` with your environment, the agent variables included, so it can start your agent
+`segmently-modules sync` with your environment, the agent variables included, so it can start your agent
 command too; `sync --dry-run` runs no hook. So set the opt-in per CI job or per shell session in
 repositories you trust, not in your shell profile, and keep the command's own permissions
 read-only. The agent uses the user's own credentials (the
@@ -143,12 +143,12 @@ engine reads none), and the engine ships, installs and suggests no model.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `MODSYS_AGENT_COMMAND` | unset | the argv list of the agent command, a JSON array of strings, read ONLY from this environment variable (`catalog` reports `match.semantic` true only for a valid one outside an agent run; with a malformed value, or a bad `MODSYS_AGENT_TIMEOUT`, `catalog` exits 0 with `match.semantic` false and one stderr note, while the verbs that run the agent refuse it with exit 2); items may use `{claude_model}`, `{codex_model}`, `{effort}` and `{reasoning}` (`quick` → `low`, `standard` → `medium`, `deep` → `high`), `{{` / `}}` are literal braces; run without a shell. An `[agent]` table in any config file (team, personal or a pack) is refused (exit 2 naming the file): a repository could commit it. Inside an agent run (`MODSYS_WORK_ORDER` set) the command is unavailable: `semantic` and `choose --run` are refused, `hybrid` runs lexically with a note |
-| `MODSYS_AGENT_ALLOW_REPO_MODE` | unset | environment only (never a config file): `1` lets a `[match] mode` from a config file run your agent command; unset, empty or `0` = off (the run is lexical, with one stderr note, and `MODSYS_AGENT_COMMAND` / `MODSYS_AGENT_TIMEOUT` are not read); anything else (`true`, `" 1 "`) is exit 2 `MODSYS_AGENT_ALLOW_REPO_MODE: expected 1 or 0, got '<value>'` (at most 40 characters shown). Validated only when a config file sets a non-lexical mode and no `--match` is given; `catalog` and `choose` never read it |
-| `MODSYS_AGENT_TIMEOUT` | `300` | seconds: an integer from 1 to 3600 written with at most 4 digits (`0300` is accepted, `00300` is not; spaces around it are ignored); anything else is exit 2 naming the variable |
+| `SEGMENTLY_MODULES_AGENT_COMMAND` | unset | the argv list of the agent command, a JSON array of strings, read ONLY from this environment variable (`catalog` reports `match.semantic` true only for a valid one outside an agent run; with a malformed value, or a bad `SEGMENTLY_MODULES_AGENT_TIMEOUT`, `catalog` exits 0 with `match.semantic` false and one stderr note, while the verbs that run the agent refuse it with exit 2); items may use `{claude_model}`, `{codex_model}`, `{effort}` and `{reasoning}` (`quick` → `low`, `standard` → `medium`, `deep` → `high`), `{{` / `}}` are literal braces; run without a shell. An `[agent]` table in any config file (team, personal or a pack) is refused (exit 2 naming the file): a repository could commit it. Inside an agent run (`SEGMENTLY_MODULES_WORK_ORDER` set) the command is unavailable: `semantic` and `choose --run` are refused, `hybrid` runs lexically with a note |
+| `SEGMENTLY_MODULES_AGENT_ALLOW_REPO_MODE` | unset | environment only (never a config file): `1` lets a `[match] mode` from a config file run your agent command; unset, empty or `0` = off (the run is lexical, with one stderr note, and `SEGMENTLY_MODULES_AGENT_COMMAND` / `SEGMENTLY_MODULES_AGENT_TIMEOUT` are not read); anything else (`true`, `" 1 "`) is exit 2 `SEGMENTLY_MODULES_AGENT_ALLOW_REPO_MODE: expected 1 or 0, got '<value>'` (at most 40 characters shown). Validated only when a config file sets a non-lexical mode and no `--match` is given; `catalog` and `choose` never read it |
+| `SEGMENTLY_MODULES_AGENT_TIMEOUT` | `300` | seconds: an integer from 1 to 3600 written with at most 4 digits (`0300` is accepted, `00300` is not; spaces around it are ignored); anything else is exit 2 naming the variable |
 | `[search] claude_model` | `"sonnet"` | the model the Claude Code skill's subagent uses: a Claude Code subagent model alias (`sonnet`, `opus`, `haiku`) — the subagent takes no full model id; a full model id works only where your agent command passes the value to `claude -p --model`; 1–100 characters of letters, digits and `. _ : / @ + -`, starting with a letter or digit (the value becomes an item of your agent command) |
 | `[search] codex_model` | `"gpt-5.6-luna"` | the model `codex exec -m` uses; same rule |
-| `[search] effort` | `"standard"` | `quick` (choose from the cards only), `standard` (also open the INDEX of up to 3 candidates), `deep` (also read the candidates' docs and the code). Team or user config; the user's wins per key; any other value is exit 2; `modsys choose --effort quick\|standard\|deep` overrides it for one run |
+| `[search] effort` | `"standard"` | `quick` (choose from the cards only), `standard` (also open the INDEX of up to 3 candidates), `deep` (also read the candidates' docs and the code). Team or user config; the user's wins per key; any other value is exit 2; `segmently-modules choose --effort quick\|standard\|deep` overrides it for one run |
 | `[search] card_keywords` | `10` | an integer >= 0: a work-order card carries the first N keywords of its module, in registry order (`0` = none, a card with fewer keeps them all). Team, personal or pack config; the personal value wins per key; `true`, `false`, a string, a fraction or a negative number is exit 2 naming the file. It caps the work order only (`choose`, `choose --apply` / `--run`, `--match semantic` / `hybrid`); `catalog` keeps every keyword; the `search` object of `catalog` and of the work order keeps its three keys. `catalog_digest` is computed over the capped cards, so a change of the cap changes the digest (`choose --apply` then notes `catalog changed since the work order`); `--effort` and the task do not change it |
 
 ## `[lint]`
@@ -171,7 +171,7 @@ engine reads none), and the engine ships, installs and suggests no model.
 | `default_status` | `"planned"` | status of a new module when none is given |
 
 `create` also checks the keywords it is given and warns — it never refuses and never changes
-what it writes (`--non-interactive` included; `modsys: warning: …` lines on stderr — one per
+what it writes (`--non-interactive` included; `segmently-modules: warning: …` lines on stderr — one per
 short or generic keyword, and ONE line for all the plural hints of the run, naming their count
 and the first three pairs —, with `--json` the list `data.warnings`, one entry per keyword). It warns about a keyword of 3 characters or fewer (`api`,
 `ui`), a generic word (`common`, `data`, `helper`, `info`, `item`, `list`, `misc`, `stuff`,
@@ -184,7 +184,7 @@ suggests a generic word (`utils` gets no "add `util`").
 
 ## `[coverage]`
 
-`modsys coverage` counts every git-tracked file plus every new file git does not ignore,
+`segmently-modules coverage` counts every git-tracked file plus every new file git does not ignore,
 relative to the root. The modules dir, the config dir, the registry file and its `.lock`, the
 proposals dir (`[paths]`) and dotfiles or dot-directories at any level never count. `share` is mapped / total rounded down to 3 decimals, so it never overstates;
 `--fail-under PCT` compares the reported percent (`share` × 100, one decimal).
@@ -197,7 +197,7 @@ proposals dir (`[paths]`) and dotfiles or dot-directories at any level never cou
 
 ## `[ci]`
 
-`modsys ci` — one gate: `lint` (plain), `drift` (`lint --changed` against `base`) and
+`segmently-modules ci` — one gate: `lint` (plain), `drift` (`lint --changed` against `base`) and
 `coverage`; every step always runs and the command exits 1 when any step failed. A flag
 overrides each key (`--fail-on`, `--base`, `--fail-under`).
 
@@ -211,9 +211,9 @@ overrides each key (`--fail-on`, `--base`, `--fail-under`).
 
 | Key | Default | Meaning |
 |---|---|---|
-| `agents` | unset | the agents `modsys packs sync` writes pack skills for when no `--agent` flag is given: `claude` (`.claude/skills/`), `codex`, `cursor`, `gemini`, `copilot` (all four read `.agents/skills/`, written once however many of them are listed); `codex` also gets the agents of `module-discover`, `module-scout` and `module-research` in `.codex/agents/` (`<name>.toml`, managed files — [skills.md](skills.md)); any other name is refused (exit 2 naming the file). With no agent named, under `builtin_delivery = "plugin"`, a `.codex/agents/` holding a marked agent file means codex (a regular file directly in it whose first line is a valid `# modsys-managed:` marker; a symlinked `.codex/agents` holding one infers too, so `next` shows its conflict rows; a symlinked file, a subdirectory or a non-directory does not; `setup`'s choice is unchanged). Only there do a bare `packs sync` and `next` read `.codex/agents/` to infer codex; a run that names its agents without `codex` never opens `.codex/`. Like every array, a higher layer ADDS to a lower one's list; `--agent` flags replace it. `packs sync --remove --agent A` refuses while another agent listed here reads A's directory |
-| `builtin` | `[]` | the engine's built-in packs to enable: `core` (the core agent skills), `ui` (a `designer` role and the `designer` skill), `qa` (a `qa_acceptance` role and acceptance-criteria skills). Set it in `config.toml` or `config.user.toml` (the two lists add up; a repeated id counts once; a pack cannot set it); an unknown id is refused (exit 2 naming the file and the known ids). An enabled built-in pack is a pack layer below every repository pack; its version is the engine version. A repository pack with the same id (`.modsys/packs/ui/`) replaces it, enabled or not |
-| `builtin_delivery` | `"repo"` | where the agents get the enabled built-in packs' skills: `"repo"` — `modsys packs sync` copies them into the agents' skill directories — or `"plugin"` — the modsys plugins provide them (`core` → `modsys`, `ui` → `modsys-ui`, `qa` → `modsys-qa`): `packs sync` copies none of them (it still writes `codex`'s agent files in `.codex/agents/`, which no plugin can place) and removes the copies it made earlier (an edited copy is a conflict and stays), `modsys eject` of a built-in skill is refused (`eject needs "repo"`), an ejected built-in skill is a `packs sync` conflict, and plain `lint` reports each copy still there (MS067, info). A table gives each agent its own value — `builtin_delivery = { claude = "plugin", codex = "repo" }`: Claude Code from the plugin, Codex as copies (Codex enables a plugin only for the user, in every repository). An agent the table leaves out takes the value of an agent that reads the same directory, else `"repo"`; agents that share `.agents/skills` need the same value. `packs sync` copies the built-in skills only for the `"repo"` agents and a repository pack's skills for every agent; MS067 looks only where a plugin delivers; `eject` of a built-in skill needs `"repo"` for every agent. The built-in packs' roles and templates and a repository pack's skills (any id) are the same under both; the `agents-md` block words the skill list's lead-in by delivery. Set it in `config.toml` or `config.user.toml` (a scalar: the user's wins); a pack cannot set it (exit 2 naming its `pack.toml`); any other value is exit 2 naming the file and `repo, plugin` |
+| `agents` | unset | the agents `segmently-modules packs sync` writes pack skills for when no `--agent` flag is given: `claude` (`.claude/skills/`), `codex`, `cursor`, `gemini`, `copilot` (all four read `.agents/skills/`, written once however many of them are listed); `codex` also gets the agents of `module-discover`, `module-scout` and `module-research` in `.codex/agents/` (`<name>.toml`, managed files — [skills.md](skills.md)); any other name is refused (exit 2 naming the file). With no agent named, under `builtin_delivery = "plugin"`, a `.codex/agents/` holding a marked agent file means codex (a regular file directly in it whose first line is a valid `# segmently-modules-managed:` marker; a symlinked `.codex/agents` holding one infers too, so `next` shows its conflict rows; a symlinked file, a subdirectory or a non-directory does not; `setup`'s choice is unchanged). Only there do a bare `packs sync` and `next` read `.codex/agents/` to infer codex; a run that names its agents without `codex` never opens `.codex/`. Like every array, a higher layer ADDS to a lower one's list; `--agent` flags replace it. `packs sync --remove --agent A` refuses while another agent listed here reads A's directory |
+| `builtin` | `[]` | the engine's built-in packs to enable: `core` (the core agent skills), `ui` (a `designer` role and the `designer` skill), `qa` (a `qa_acceptance` role and acceptance-criteria skills). Set it in `config.toml` or `config.user.toml` (the two lists add up; a repeated id counts once; a pack cannot set it); an unknown id is refused (exit 2 naming the file and the known ids). An enabled built-in pack is a pack layer below every repository pack; its version is the engine version. A repository pack with the same id (`.segmently-modules/packs/ui/`) replaces it, enabled or not |
+| `builtin_delivery` | `"repo"` | where the agents get the enabled built-in packs' skills: `"repo"` — `segmently-modules packs sync` copies them into the agents' skill directories — or `"plugin"` — the Segmently Modules plugins provide them (`core` → `segmently-modules`, `ui` → `segmently-modules-ui`, `qa` → `segmently-modules-qa`): `packs sync` copies none of them (it still writes `codex`'s agent files in `.codex/agents/`, which no plugin can place) and removes the copies it made earlier (an edited copy is a conflict and stays), `segmently-modules eject` of a built-in skill is refused (`eject needs "repo"`), an ejected built-in skill is a `packs sync` conflict, and plain `lint` reports each copy still there (MS067, info). A table gives each agent its own value — `builtin_delivery = { claude = "plugin", codex = "repo" }`: Claude Code from the plugin, Codex as copies (Codex enables a plugin only for the user, in every repository). An agent the table leaves out takes the value of an agent that reads the same directory, else `"repo"`; agents that share `.agents/skills` need the same value. `packs sync` copies the built-in skills only for the `"repo"` agents and a repository pack's skills for every agent; MS067 looks only where a plugin delivers; `eject` of a built-in skill needs `"repo"` for every agent. The built-in packs' roles and templates and a repository pack's skills (any id) are the same under both; the `agents-md` block words the skill list's lead-in by delivery. Set it in `config.toml` or `config.user.toml` (a scalar: the user's wins); a pack cannot set it (exit 2 naming its `pack.toml`); any other value is exit 2 naming the file and `repo, plugin` |
 
 ## `[ui]`
 
@@ -233,14 +233,14 @@ and `config.user.toml` (a list in both adds up; for any other key the user file 
 
 ## `[init]`
 
-`modsys init` — start from existing code: preflight, map, the fan-out, reconcile, verify,
+`segmently-modules init` — start from existing code: preflight, map, the fan-out, reconcile, verify,
 finish (every phase: [init.md](init.md)).
 
 | Key | Default | Meaning |
 |---|---|---|
 | `exclude` | `[]` | globs (the `[[code_map]]` grammar) of files the init file set leaves out — preflight counts, candidates, `unassigned` and the file claims `init confirm` checks; a list of strings (anything else is exit 2 naming the file and the key); like every array, the user config's list adds to the team's |
 | `co_change_commits` | `500` | how many recent commits `init map` reads for the co-change signal (`git log`); an integer `>= 0` (`0` turns the signal off: no `git log` runs); `true` / `false`, text or a fraction is exit 2 naming the file and the key |
-| `routing_min_hit_rate` | `0.8` | the lowest routing hit rate `init verify` and `modsys eval routing` pass (`--min-hit-rate` overrides it for `eval routing`): a number from `0` to `1` (anything else is exit 2 naming the file and the key); a run passes when hits ≥ this × tasks, unrounded |
+| `routing_min_hit_rate` | `0.8` | the lowest routing hit rate `init verify` and `segmently-modules eval routing` pass (`--min-hit-rate` overrides it for `eval routing`): a number from `0` to `1` (anything else is exit 2 naming the file and the key); a run passes when hits ≥ this × tasks, unrounded |
 | `max_parallel` | `4` | how many work items `init run --executor` (and the `module-init` skill's subagents) write at a time; an integer `>= 1`, no upper bound (never more than the pending items); `0`, a negative number, `true` / `false`, a fraction or text is exit 2 `[init] max_parallel must be an integer >= 1` naming the file |
 
 Preflight (`<config_dir>/init/preflight.json`) lists the file set — `git ls-files --cached
@@ -299,7 +299,7 @@ directories and `git: {head, commits}` (`null` outside git).
 
 ## Adopting an existing registry
 
-`modsys adopt` reads a registry written by other tooling as it is and infers the config the
+`segmently-modules adopt` reads a registry written by other tooling as it is and infers the config the
 engine needs to read it (the README walks through it; every verb's JSON: `cli-contract.md`).
 Every key it writes is followed by `# adopt:` lines with the evidence; the rules, all computed
 in integers:
@@ -351,7 +351,7 @@ the role's own pack `template` → `<pack>/templates/<path>` in pack precedence 
 engine's defaults: `MODULE.md`, one template per standard role (`roles/developer.md`,
 `roles/qa.md`, `roles/po.md`, `roles/architect.md` — each with a few headed sections for that
 audience) and the generic `roles/_role.md` for any other role. `agents-md.md` — the text of the
-managed block `modsys agents-md` keeps in agent instruction files (`${modules_dir}`,
+managed block `segmently-modules agents-md` keeps in agent instruction files (`${modules_dir}`,
 `${registry}`, `${roles}`, `${skills}`, `${version}`) — resolves the same way. A candidate that
 does not exist falls through to the next layer; one that exists but cannot be read stops the verb
 with exit 2 and `cannot read <path>: <reason>`, writing nothing — and so does a template that is
@@ -361,38 +361,38 @@ not UTF-8 where a verb renders it ([cli-contract.md](cli-contract.md)). Template
 
 **A role added after modules exist.** `create` only scaffolds docs for new modules. Once a role
 is declared (here, in a pack, or by a newer engine), give the EXISTING modules its doc with
-`modsys roles add ROLE --all` — run it with `--dry-run` first (for the role above:
-`modsys roles add security --all --dry-run`, then `modsys roles add security --all`); it renders
+`segmently-modules roles add ROLE --all` — run it with `--dry-run` first (for the role above:
+`segmently-modules roles add security --all --dry-run`, then `segmently-modules roles add security --all`); it renders
 the doc as `create` would, registers it, never overwrites a file that is already there, and
 writes nothing when nothing is missing. `--recreate` writes the doc of a registered role whose file is gone.
-`modsys roles list` shows, per role, the modules that have its doc and those that do not;
-`modsys next` names a standard role with missing docs (for instance after an upgrade) together
+`segmently-modules roles list` shows, per role, the modules that have its doc and those that do not;
+`segmently-modules next` names a standard role with missing docs (for instance after an upgrade) together
 with the command. Fill each new doc with what that role needs for that module.
 
 **Children and the parent's role docs.** A child (`parent/child`) without a doc of its own for a
-role is covered by its parent's doc — `show` reads it that way — so `modsys roles list` reports
-it as `inherited` (a status of its own, neither `docs` nor `missing`), `modsys next` does not ask
+role is covered by its parent's doc — `show` reads it that way — so `segmently-modules roles list` reports
+it as `inherited` (a status of its own, neither `docs` nor `missing`), `segmently-modules next` does not ask
 for it and `roles add ROLE --all` does not create it. Naming the child (`roles add ROLE
 parent/child`) creates its own doc.
 
 **A module that does not need a role.** Some modules need no doc for a standard role — a
 backend module and a designer role, a build tool and a product-owner role. Say so once:
-`modsys roles skip ROLE MODULE… [--note "why"]` writes the mark into the registry,
+`segmently-modules roles skip ROLE MODULE… [--note "why"]` writes the mark into the registry,
 `context_files.roles.<role>` = `false`, or `{"skip": "why"}` with a note. `roles list` counts
-such a module as `skipped` (the text: `not needed N`), not `missing`; `modsys next` stops asking
+such a module as `skipped` (the text: `not needed N`), not `missing`; `segmently-modules next` stops asking
 for it; `roles add ROLE --all` leaves it alone; `show --role ROLE` names the role as not needed,
 with the note. A module that has the role's doc on disk is refused (delete the doc first). To
-lift the mark, give the module its doc: `modsys roles add ROLE MODULE`. A role that no module
+lift the mark, give the module its doc: `segmently-modules roles add ROLE MODULE`. A role that no module
 needs is turned off instead: `[roles.<role>] enabled = false`.
 
-`modsys templates list` prints every template with the layer that wins (`override`,
+`segmently-modules templates list` prints every template with the layer that wins (`override`,
 `role-template:<pack>`, `pack:<pack>`, `engine`, or `engine-fallback` for a role rendered from
-`roles/_role.md`) and its file. `modsys templates override roles/qa.md` copies the winning
-template to `.modsys/overrides/templates/roles/qa.md` once; edit that copy — it wins from then
+`roles/_role.md`) and its file. `segmently-modules templates override roles/qa.md` copies the winning
+template to `.segmently-modules/overrides/templates/roles/qa.md` once; edit that copy — it wins from then
 on (the engine never rewrites it, and a later upstream change to the template does not reach it).
 
-**The rules of `modsys choose`.** The instruction of the choose work order is the template
-`choose/rules.md` (`modsys templates list` shows it last, after the init prompts). It resolves
+**The rules of `segmently-modules choose`.** The instruction of the choose work order is the template
+`choose/rules.md` (`segmently-modules templates list` shows it last, after the init prompts). It resolves
 through the same chain (override → a pack's `templates/choose/rules.md` → the engine's), but a
 missing engine file is never replaced by a role template. Format: every line that starts with
 `- ` (at column 0) is one rule, sent as written without the `- ` and without trailing
@@ -402,8 +402,8 @@ Placeholders (as in every template): `$max_picks` (the most picks the order allo
 written. An override without a `- $depth` rule drops the depth: `[search] effort` and
 `choose --effort` then no longer reach the chooser of the text form, which has no `search` line
 (only the JSON order's `search.effort` and `--run`'s `{effort}` / `{reasoning}` still carry it)
-— keep `$depth` in your copy. To change the rules: `modsys templates override choose/rules.md`,
-then edit `.modsys/overrides/templates/choose/rules.md`. A template without a rule is exit 2
+— keep `$depth` in your copy. To change the rules: `segmently-modules templates override choose/rules.md`,
+then edit `.segmently-modules/overrides/templates/choose/rules.md`. A template without a rule is exit 2
 (`<path>: no rule in choose/rules.md (a rule is a line starting with "- ")`), an unreadable or
 non-UTF-8 one is exit 2 (`cannot read <path>: <reason>`). Only a run that builds a work order
 reads it (`choose`, including `--apply` and `--run`, and `match` / `context` / `discover --task`
@@ -412,7 +412,7 @@ in semantic or hybrid mode); lexical runs, `catalog` and the other verbs never d
 ## `[fields.<name>]`
 
 Every registry field beyond the core ones is declared once; the declaration drives validation
-(lint, writers), the JSON Schema (`modsys schema`), `show` output and `create` prompts. Core
+(lint, writers), the JSON Schema (`segmently-modules schema`), `show` output and `create` prompts. Core
 fields (always present, never redeclared): `name`, `description`, `status`, `keywords`,
 `context_files`, `related_modules`, `submodules`, `negative_keywords`, `required_combinations`.
 
@@ -426,7 +426,7 @@ fields (always present, never redeclared): `name`, `description`, `status`, `key
 | `ask_on_create` | `false` | `create` asks for it (answers key = field name) |
 | `deprecated` | `""` | non-empty = deprecated; the text is the migration hint (MS011; writers refuse it) |
 | `used_by` | `[]` | informational: which features read it |
-| `sync_hint` | `""` | when to update the field after a change, in plain words — `modsys sync-instructions` lists it for every module a change touches |
+| `sync_hint` | `""` | when to update the field after a change, in plain words — `segmently-modules sync-instructions` lists it for every module a change touches |
 
 The core fields carry these `sync_hint`s (`name` has none: the engine keeps it equal to the
 registry key). A layer may set a core field's `sync_hint` and nothing else —
@@ -448,7 +448,7 @@ After a change, one command lists per touched module the docs to update, the dri
 hints:
 
 ```bash
-modsys sync-instructions --from-diff "$BASE..HEAD"   # or --files PATH …, or --module M …
+segmently-modules sync-instructions --from-diff "$BASE..HEAD"   # or --files PATH …, or --module M …
 ```
 
 An undeclared field in the registry is MS012; writing one is refused with
@@ -468,17 +468,17 @@ Rules that map code files to modules. `sync`, `discover`, `lint --changed` (MS05
 and the `code_globs` of `show` / `context` all use them (together with module docs, which map
 to their own module, and `code_pointer` fields).
 
-Add rules with `modsys code-map add` (the preferred way): it APPENDS one rule to the team
-config `.modsys/config.toml` — one write, never a rewrite, so comments, the file mode, a
+Add rules with `segmently-modules code-map add` (the preferred way): it APPENDS one rule to the team
+config `.segmently-modules/config.toml` — one write, never a rewrite, so comments, the file mode, a
 symlink and the file's `\n` / `\r\n` style stay — after re-parsing and validating the
 combined text; `--dry-run` shows the block. It refuses (exit `2`, nothing written) when
-`config.toml` does not exist (run `modsys init`), when the id already exists in any layer (a
+`config.toml` does not exist (run `segmently-modules init`), when the id already exists in any layer (a
 repeated id would deep-merge into that rule), when `--module` names no registry module or
 child, and a `--pattern` without `{module}`. Editing or removing a rule is done by hand.
 
 ```bash
-modsys code-map add src --pattern "src/{module}/**"
-modsys code-map add catalog-search --glob "src/catalog/search/**" --module catalog/search --exclusive
+segmently-modules code-map add src --pattern "src/{module}/**"
+segmently-modules code-map add catalog-search --glob "src/catalog/search/**" --module catalog/search --exclusive
 ```
 
 | Key | Meaning |
@@ -497,8 +497,8 @@ then overrides the value the segment would have captured, per the row above). `p
 ["docs/**"] and module = "tasks"` (`module = "NAME"` when the rule has none). An empty
 `module = ""` is refused too (`module must be a non-empty module or parent/child name`).
 
-`modsys code-map list` prints the effective rules (every layer merged; `--module TARGET` keeps
-the ones that route files to TARGET) and `modsys code-map files TARGET` every repository file
+`segmently-modules code-map list` prints the effective rules (every layer merged; `--module TARGET` keeps
+the ones that route files to TARGET) and `segmently-modules code-map files TARGET` every repository file
 that maps to TARGET with how it maps (`docs`, `code_pointer:<field>`, `code_map:<id>`) — the
 resolved file list that `code_globs` is not.
 
@@ -512,8 +512,8 @@ characters within one segment, `?` one character. `**/` needs at least one direc
 `**/*.md` does not match a root-level `README.md` (there is no `/` before it) — to include root
 files too, list both (`*.md` and `**/*.md`). A rule whose `module` names no registry module or
 child maps nothing and is reported as MS052 — a config-level finding (module `*`, like MS021)
-that only plain `modsys lint` shows; `lint --changed` narrows to the changed modules and drops
-it — run `modsys ci` (or plain `modsys lint --fail-on warning`) to catch it: `modsys ci`
+that only plain `segmently-modules lint` shows; `lint --changed` narrows to the changed modules and drops
+it — run `segmently-modules ci` (or plain `segmently-modules lint --fail-on warning`) to catch it: `segmently-modules ci`
 already runs plain lint at `[ci] fail_on` (default `warning`), unlike plain `lint`'s own
 default `fail_on = "error"`, which exits 0 on a warning-level finding like MS052. `show` /
 `context` list each target's rules as `code_globs` (a
@@ -528,7 +528,7 @@ unmapped unless another rule, a `code_pointer` field or its docs location maps i
 
 ## `[[hooks.post_sync]]`
 
-Commands `modsys sync` runs after it maps a change (skipped with `--dry-run`).
+Commands `segmently-modules sync` runs after it maps a change (skipped with `--dry-run`).
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -539,19 +539,19 @@ Commands `modsys sync` runs after it maps a change (skipped with `--dry-run`).
 | `timeout_s` | `60` | seconds |
 
 A hook runs in the root with the event as JSON on stdin
-(`{changed_modules, changed_files, diff_range}`) and `MODSYS_ROOT`, `MODSYS_EVENT`,
-`MODSYS_HOOK_ID`, `MODSYS_RUN_ID` in its environment. It may print
+(`{changed_modules, changed_files, diff_range}`) and `SEGMENTLY_MODULES_ROOT`, `SEGMENTLY_MODULES_EVENT`,
+`SEGMENTLY_MODULES_HOOK_ID`, `SEGMENTLY_MODULES_RUN_ID` in its environment. It may print
 `{"proposals": [{op, module, field|doc, value, reason}], "messages": ["…"]}`; the proposals are
-validated like `modsys propose` and queued under agent `hook-<id>`. A crash, a timeout or
+validated like `segmently-modules propose` and queued under agent `hook-<id>`. A crash, a timeout or
 garbage output fails that hook alone. A hook reads a changed module's docs and its declared
-fields with `modsys show <module> --json` (`read`, `fields`) instead of parsing the registry.
+fields with `segmently-modules show <module> --json` (`read`, `fields`) instead of parsing the registry.
 
 A hook is a command the repository or a pack commits: it runs with your environment, the agent
 variables included — in a repository you do not trust, `sync --dry-run` runs none.
 
 ## Packs
 
-A pack is a directory `.modsys/packs/<id>/` with a `pack.toml`: a reusable bundle of config for
+A pack is a directory `.segmently-modules/packs/<id>/` with a `pack.toml`: a reusable bundle of config for
 a stack or a team. Meta keys: `id` (default: the directory name), `version`, `priority`
 (default `50`; a LOWER number takes precedence over other packs), `requires`, `description`,
 `skills`, `agents`. Every other key is a config layer, like `config.toml`: a pack may declare
@@ -564,11 +564,11 @@ A pack's agent skills are `[skills.<id>]` tables (the `skills` meta key — neve
 config): `path` (required, the skill directory relative to the pack: a `SKILL.md` in the Agent
 Skills format plus any other files) and `reads_roles` (optional, a list of role names). A
 malformed table is a config error naming the `pack.toml`; when two packs declare one skill id,
-the higher-precedence pack's skill wins. `modsys packs new ID --role NAME --skill NAME`
-scaffolds a pack, `modsys packs list` lists the installed ones and `modsys packs sync --agent
+the higher-precedence pack's skill wins. `segmently-modules packs new ID --role NAME --skill NAME`
+scaffolds a pack, `segmently-modules packs list` lists the installed ones and `segmently-modules packs sync --agent
 claude --agent codex` copies every skill to `.claude/skills/<skill>/` and
-`.agents/skills/<skill>/` (the `[packs] agents` list when no `--agent` is given). `modsys eject
-SKILL` copies a skill to `.modsys/overrides/skills/SKILL/` for the team to own: `packs sync`
+`.agents/skills/<skill>/` (the `[packs] agents` list when no `--agent` is given). `segmently-modules eject
+SKILL` copies a skill to `.segmently-modules/overrides/skills/SKILL/` for the team to own: `packs sync`
 then materializes it from that copy and the pack never overwrites it — the whole workflow is in
 [writing-a-pack.md](writing-a-pack.md).
 
@@ -577,11 +577,11 @@ then materializes it from that copy and the pack never overwrites it — the who
 `lint` checks the registry, fields, docs and config; `lint --changed` narrows the report to the
 modules a change touches and adds the drift checks. Config-level findings carry module `*`
 (MS021, MS052, MS053, MS056 and the pack checks MS06x) — `lint --changed` drops them along with every other finding outside the
-touched modules, so they show up ONLY in plain `modsys lint` (and `modsys ci`). A CI gate built only on `lint --changed`
+touched modules, so they show up ONLY in plain `segmently-modules lint` (and `segmently-modules ci`). A CI gate built only on `lint --changed`
 never sees a shared-keyword note (MS021, severity `info` — report-only, it never fails a gate at
-any `--fail-on` setting) or a typo'd `[[code_map]]` rule (MS052, severity `warning`); `modsys ci`
+any `--fail-on` setting) or a typo'd `[[code_map]]` rule (MS052, severity `warning`); `segmently-modules ci`
 catches both without a separate plain `lint` call, since its default `[ci] fail_on` is
-`warning` — a gate that runs plain `modsys lint` with no `--fail-on` override never actually
+`warning` — a gate that runs plain `segmently-modules lint` with no `--fail-on` override never actually
 fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 
 | Code | Severity | Finding |
@@ -622,11 +622,11 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS060 | warning | an unknown key in a pack's `pack.toml` — at the top level (neither a meta key nor a config section), in a `[roles.<name>]` or in a `[skills.<id>]` table (plain `lint` only) |
 | MS061 | error | a pack role's `template` file does not exist in the pack, or resolves outside the pack directory (plain `lint` only) |
 | MS062 | error | a pack skill, or an ejected copy in `<config_dir>/overrides/skills/<skill>/` (the one `packs sync` then copies), agents cannot load: its `path` does not exist, is not a directory or is outside the pack; it contains a symlink; it has no `SKILL.md`; the front matter is missing, has no `name` or one that differs from the skill id, has an unquoted `name` / `description` value that agents' strict YAML loaders reject (a `: ` inside, a trailing `:`, or a leading `@`, `%`, `*`, `&`, `!`, `[`, `{` or backtick), or has no `description` of 1–1024 characters; or a file it names — each `references/<file>` written in its `SKILL.md` or in one of its `references/*.md` files (one level of chaining) — does not exist or lies outside the skill directory (a name holding `*`, `?` or `[` is a pattern and is not checked — `references/route-*`, `references/[ab].md`; the message names the naming file, whose path is the finding's; `packs sync` and `eject` do not look at names; `argument-hint` and `arguments` are accepted in any form) (plain `lint` only) |
-| MS063 | warning / info | an ejected skill (`modsys eject`) is behind its pack — the pack's files, or a repository pack's version, changed since the eject (a built-in pack's version is the engine's: an upgrade alone does not count) (warning; `modsys eject <skill> --diff` shows the change); a pack file it cannot read (warning, naming the file); a symlink at the ejected path (warning: it is in the way, never an ejected copy — remove it) — or no pack declares it any more (info: the ejected copy is its only source) (plain `lint` only) |
+| MS063 | warning / info | an ejected skill (`segmently-modules eject`) is behind its pack — the pack's files, or a repository pack's version, changed since the eject (a built-in pack's version is the engine's: an upgrade alone does not count) (warning; `segmently-modules eject <skill> --diff` shows the change); a pack file it cannot read (warning, naming the file); a symlink at the ejected path (warning: it is in the way, never an ejected copy — remove it) — or no pack declares it any more (info: the ejected copy is its only source) (plain `lint` only) |
 | MS064 | warning | a skill's `reads_roles` names a role no layer configures, or a disabled one (plain `lint` only) |
 | MS065 | warning | two packs declare the same skill id: the lower-precedence one is shadowed (plain `lint` only) |
 | MS066 | info | a repository pack takes a built-in pack's id (`core`, `qa`, `ui`) and replaces that built-in pack, enabled or not; info never fails a gate (plain `lint` only) |
-| MS067 | info | `[packs] builtin_delivery = "plugin"` and an agent directory still holds a copy `packs sync` made of a built-in skill (its `.modsys-managed` marker): the plugin provides the skill, so the agent sees it twice — `modsys packs sync` removes an unedited copy (the message says `--agent <agent>` when `[packs] agents` leaves that directory out; an edited copy or an ejected skill's copy stays a conflict); path = the copy's directory; info never fails a gate (plain `lint` only) |
+| MS067 | info | `[packs] builtin_delivery = "plugin"` and an agent directory still holds a copy `packs sync` made of a built-in skill (its `.segmently-modules-managed` marker): the plugin provides the skill, so the agent sees it twice — `segmently-modules packs sync` removes an unedited copy (the message says `--agent <agent>` when `[packs] agents` leaves that directory out; an edited copy or an ejected skill's copy stays a conflict); path = the copy's directory; info never fails a gate (plain `lint` only) |
 | MS068 | warning | a pack skill's `SKILL.md`, or one `*.md` file directly in its `references/` (an ejected copy's too), is longer than `[budgets] skill_split_signal` characters: `<skill>[/<file>]: N characters > skill split signal S — route its scenarios or split the skill`; path = the file (plain `lint` only) |
 | MS069 | warning | a pack's `SKILL.md` files together (never `references/`, never ejected copies) are longer than `[budgets] pack_split_signal` characters: `pack '<pack>': N characters of skills > pack split signal P — route, split a skill out, or split the pack`; path = its `pack.toml` (plain `lint` only) |
 
@@ -643,4 +643,4 @@ skipped silently). Lint asks git at most once per run whether the root is a work
 for the file list, shared by MS043, MS053 and MS054; without a `[[code_map]]` rule and without
 a backticked repository path in the docs it runs no git command at all. Only the rules are compared:
 a file's docs location and `code_pointer` fields never make a pair. Plain `lint` and the lint
-step of `modsys ci` compute it; `lint --changed` does not (it would drop the finding anyway).
+step of `segmently-modules ci` compute it; `lint --changed` does not (it would drop the finding anyway).

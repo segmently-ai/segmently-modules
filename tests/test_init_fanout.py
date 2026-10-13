@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys.create import engine_templates
+from segmently_modules.create import engine_templates
 from tests.helpers import git, run_json
 from tests.init_helpers import ROLES, SIX, WORK, ok, shop, state, text, tree_sha
 
@@ -205,7 +205,7 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
         for name in ("init/module_prompt.md", "init/routing_prompt.md"):
             self.assertEqual((rows[name]["role"], rows[name]["source"], Path(rows[name]["path"])),
                              (None, "engine", engine_templates() / name))
-        pack = root / ".modsys/packs/team"
+        pack = root / ".segmently-modules/packs/team"
         (pack / "templates/init").mkdir(parents=True)
         (pack / "pack.toml").write_text('id = "team"\nversion = "9.0.0"\n')
         (pack / "templates/init/module_prompt.md").write_text("Pack prompt for ${module}: "
@@ -252,7 +252,7 @@ class ExistingModulesTest(FanoutRepo):  # P5B-AC-051 (D15(d), SI-30)
         code, env, err = run_json("init", "fanout", "--root", str(root))
         self.assertEqual((code, env), (2, None))
         self.assertIn("modules/catalog/ exist(s) without a registry entry — register it with "
-                      "modsys create, or move it away", err)
+                      "segmently-modules create, or move it away", err)
         self.assertFalse((root / WORK / "work").exists())
         self.assertEqual((root / WORK / "state.json").read_bytes(), before)
 
@@ -276,7 +276,7 @@ class ExistingModulesTest(FanoutRepo):  # P5B-AC-051 (D15(d), SI-30)
                 self.assertEqual((code, env), (2, None))
                 self.assertIn("modules/registry.json already has 1 module(s), created by hand "
                               "during init — init map (and --restart) starts only from code "
-                              "without modules: continue with modsys init resume", err)
+                              "without modules: continue with segmently-modules init resume", err)
         self.assertEqual((root / WORK / "state.json").read_bytes(), before)
 
 
@@ -295,7 +295,7 @@ class StaleItemTest(FanoutRepo):  # Task 4 review M2: a failed removal is a name
         with mock.patch.object(Path, "unlink", autospec=True, side_effect=unlink):
             code, env, err = run_json("init", "fanout", "--root", str(root))
         self.assertEqual((code, env), (2, None))
-        self.assertIn(f"modsys: error: cannot write {WORK}/work/zz-gone.json: Permission denied",
+        self.assertIn(f"segmently-modules: error: cannot write {WORK}/work/zz-gone.json: Permission denied",
                       err)
         self.assertNotIn("internal error", err)
 
@@ -319,8 +319,8 @@ class StaleItemTest(FanoutRepo):  # Task 4 review M2: a failed removal is a name
                 before = (root / WORK / "state.json").read_bytes()
                 code, out, err = text(root, "init", "fanout", "--json")
                 self.assertEqual((code, out), (2, ""))
-                self.assertEqual(err, f"modsys: error: cannot read {WORK}/work/cart.json: "
-                                      f"{reason} — remove it, then run modsys init fanout; "
+                self.assertEqual(err, f"segmently-modules: error: cannot read {WORK}/work/cart.json: "
+                                      f"{reason} — remove it, then run segmently-modules init fanout; "
                                       f"nothing written\n")
                 self.assertEqual((root / WORK / "state.json").read_bytes(), before)
                 cart.rmdir() if kind == "directory" else cart.unlink()  # the way out it names

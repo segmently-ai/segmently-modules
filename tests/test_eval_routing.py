@@ -1,4 +1,4 @@
-"""`modsys eval routing` (D3, verb 27): `--tasks` — hits with `context`'s scoring, the threshold
+"""`segmently-modules eval routing` (D3, verb 27): `--tasks` — hits with `context`'s scoring, the threshold
 and `--top`, input errors; `--prompt` — what the task writer sees (never the keywords); the
 staging overlay while `init` runs."""
 import json
@@ -7,8 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from modsys.cli import build_parser
-from modsys.match import term_pattern
+from segmently_modules.cli import build_parser
+from segmently_modules.match import term_pattern
 from tests.helpers import git, make_repo, run, run_json
 from tests.init_helpers import executor, ok, shop
 from tests.test_cli_contract import DOC as CONTRACT, GOLDEN
@@ -48,7 +48,7 @@ class RoutingRepo(unittest.TestCase):
     def evaluate(self, *argv, code=0) -> dict:
         got, env, err = run_json("eval", "routing", *argv, *self.R)
         self.assertEqual((got, err), (code, ""))
-        self.assertEqual(env["schema"], "modsys.eval/1")
+        self.assertEqual(env["schema"], "segmently-modules.eval/1")
         return env["data"]
 
 
@@ -99,7 +99,7 @@ class ThresholdTest(RoutingRepo):  # P5B-AC-017 (SI-14)
         self.assertEqual(self.measure(3, 2, "--min-hit-rate", "0.667", code=1), 0.666)
         self.assertEqual(self.measure(30, 30, "--min-hit-rate", "1.0", code=0), 1.0)
         self.assertEqual(self.measure(30, 0, "--min-hit-rate", "0", code=0), 0.0)
-        (self.root / ".modsys/config.toml").write_text("[init]\nrouting_min_hit_rate = 0.81\n")
+        (self.root / ".segmently-modules/config.toml").write_text("[init]\nrouting_min_hit_rate = 0.81\n")
         self.assertEqual(self.measure(100, 80, code=1), 0.8)
         self.assertEqual(self.measure(100, 81, code=0), 0.81)
 
@@ -120,14 +120,14 @@ class ThresholdTest(RoutingRepo):  # P5B-AC-017 (SI-14)
         path = self.tasks([self.HIT])
         for value in ("1.01", "-0.1", '"high"', "true"):
             with self.subTest(config=value):
-                (self.root / ".modsys/config.toml").write_text(
+                (self.root / ".segmently-modules/config.toml").write_text(
                     f"[init]\nrouting_min_hit_rate = {value}\n")
                 for argv in (("eval", "routing", "--tasks", str(path)), ("lint",)):
                     code, out, err = run(*argv, "--json", *self.R)
                     self.assertEqual((code, out), (2, ""))
-                    self.assertIn(".modsys/config.toml: [init] routing_min_hit_rate must be a "
+                    self.assertIn(".segmently-modules/config.toml: [init] routing_min_hit_rate must be a "
                                   "number from 0 to 1", err)
-        (self.root / ".modsys/config.toml").unlink()
+        (self.root / ".segmently-modules/config.toml").unlink()
         code, out, err = run("eval", "routing", "--tasks", str(path), "--min-hit-rate", "1.5",
                              "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
@@ -138,7 +138,7 @@ class InputErrorsTest(RoutingRepo):  # P5B-AC-018 (SI-14)
     def refused(self, *argv) -> str:
         code, out, err = run("eval", *argv, "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertTrue(err.startswith(("modsys: error: ", "usage: ")), err)
+        self.assertTrue(err.startswith(("segmently-modules: error: ", "usage: ")), err)
         self.assertNotIn("Traceback", err)
         return err
 
@@ -187,7 +187,7 @@ class PromptTest(RoutingRepo):  # P5B-AC-019 (SI-13, SI-14)
         (self.root / "modules/catalog/MODULE.md").write_text(
             "# Catalog\n\n> Zqx catalog description sentence here\n\n## Purpose\n\n"
             "<!-- a comment -->\nBooks, authors and search.\n\nMore text.\n")
-        (self.root / ".modsys/config.toml").write_text(
+        (self.root / ".segmently-modules/config.toml").write_text(
             '[[code_map]]\nid = "src"\npattern = "src/{module}/**"\n')
         for rel in ("src/catalog/books.py", "src/catalog/search.py", "src/cart/lines.py"):
             (self.root / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -239,7 +239,7 @@ class PromptTest(RoutingRepo):  # P5B-AC-019 (SI-13, SI-14)
                 self.assertEqual((code, out), (2, ""))
         code, out, _ = run("eval", "routing", "--tasks", "t.json", "--per-module", "2", *self.R)
         self.assertEqual((code, out), (2, ""))
-        override = self.root / ".modsys/overrides/templates/init/routing_prompt.md"
+        override = self.root / ".segmently-modules/overrides/templates/init/routing_prompt.md"
         override.parent.mkdir(parents=True)
         override.write_text("Team: ${per_module} per module for ${count} modules.\n")
         self.assertEqual(self.evaluate("--prompt")["prompt"],

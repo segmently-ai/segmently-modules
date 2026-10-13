@@ -9,7 +9,7 @@ from pathlib import Path
 
 from tests.helpers import changelog_since_first_release, copy_fixture, run, run_json
 
-S, P = 9000, 60000
+S, P = 9000, 64000
 SHELF = "stock-check"
 
 
@@ -24,7 +24,7 @@ class ShelfRepo(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.root = copy_fixture(self._tmp.name)
-        self.cfg = self.root / ".modsys"
+        self.cfg = self.root / ".segmently-modules"
         self.R = ("--root", str(self.root))
 
     def pack(self, skills: dict, pack_id: str = "shelf", body: str = "") -> Path:
@@ -66,7 +66,7 @@ class Ms068Test(ShelfRepo):  # P84-AC-031
         self.pack({SHELF: {"SKILL.md": skill_text(S + 1)}})
         self.assertEqual(self.codes("MS068"), [
             ("MS068", "warning", "*", self.msg(SHELF, 9001),
-             ".modsys/packs/shelf/skills/stock-check/SKILL.md")])
+             ".segmently-modules/packs/shelf/skills/stock-check/SKILL.md")])
 
     def test_route_file_at_and_over_the_boundary(self):
         self.pack({SHELF: {"SKILL.md": skill_text(500), "references/restock.md": "y" * S}})
@@ -74,7 +74,7 @@ class Ms068Test(ShelfRepo):  # P84-AC-031
         self.pack({SHELF: {"SKILL.md": skill_text(500), "references/restock.md": "y" * (S + 1)}})
         self.assertEqual(self.codes("MS068"), [
             ("MS068", "warning", "*", self.msg("stock-check/restock", 9001),
-             ".modsys/packs/shelf/skills/stock-check/references/restock.md")])
+             ".segmently-modules/packs/shelf/skills/stock-check/references/restock.md")])
 
     def test_nested_and_non_markdown_files_are_not_measured(self):
         self.pack({SHELF: {"SKILL.md": skill_text(500), "references/deep/x.md": "y" * 20000,
@@ -142,13 +142,13 @@ class Ms069Test(ShelfRepo):  # P84-AC-032
         self.assertEqual(self.codes("MS069"), [])
         self.pack(self.skills(P + 1))
         self.assertEqual(self.codes("MS069"), [
-            ("MS069", "warning", "*", "pack 'shelf': 60001 characters of skills > pack split "
-             "signal 60000 — route, split a skill out, or split the pack",
-             ".modsys/packs/shelf/pack.toml")])
+            ("MS069", "warning", "*", "pack 'shelf': 64001 characters of skills > pack split "
+             "signal 64000 — route, split a skill out, or split the pack",
+             ".segmently-modules/packs/shelf/pack.toml")])
 
     def test_the_signal_is_configurable(self):
         self.pack(self.skills(P + 1))
-        self.config("[budgets]\npack_split_signal = 60001\n")
+        self.config("[budgets]\npack_split_signal = 64001\n")
         self.assertEqual(self.codes("MS069"), [])
         self.config("[budgets]\npack_split_signal = 100\n")
         self.assertIn("pack split signal 100", self.codes("MS069")[0][3])
@@ -186,12 +186,12 @@ class EveryPackTest(ShelfRepo):  # P84-AC-033
         found = self.codes("MS068", "MS069")
         self.assertEqual(found, [("MS068", "warning", "*", f"{SHELF}: 9001 characters > skill "
                                   f"split signal 9000 — route its scenarios or split the skill",
-                                  ".modsys/overrides/skills/stock-check/SKILL.md")])
+                                  ".segmently-modules/overrides/skills/stock-check/SKILL.md")])
         self.config("[budgets]\npack_split_signal = 1\n")
         self.assertEqual([f for f in self.codes("MS069")], [
             ("MS069", "warning", "*", "pack 'shelf': 500 characters of skills > pack split "
              "signal 1 — route, split a skill out, or split the pack",
-             ".modsys/packs/shelf/pack.toml")])
+             ".segmently-modules/packs/shelf/pack.toml")])
 
 
 class BudgetKeysTest(ShelfRepo):  # P84-AC-034
@@ -229,19 +229,19 @@ class BudgetKeysTest(ShelfRepo):  # P84-AC-034
                         for verb in (["lint"], ["list"], ["catalog"]):
                             code, out, err = run(*verb, *self.R)
                             self.assertEqual((code, out), (2, ""), verb)
-                            self.assertRegex(err, r"\A" + re.escape("modsys: error: ")
+                            self.assertRegex(err, r"\A" + re.escape("segmently-modules: error: ")
                                              + r"[^\n]*\.toml: " + re.escape(
                                                  f"[budgets] {key}: expected an integer >= 1, "
                                                  f"got {shown}") + r"\n\Z")
                             self.assertNotIn("Traceback", err)
 
     def test_the_defaults_file_holds_both_keys(self):
-        from modsys.config import core_defaults
+        from segmently_modules.config import core_defaults
         b = core_defaults()["budgets"]
-        self.assertEqual((b["skill_split_signal"], b["pack_split_signal"]), (9000, 60000))
+        self.assertEqual((b["skill_split_signal"], b["pack_split_signal"]), (9000, 64000))
 
     def test_the_starter_config_of_init_is_unchanged(self):
-        from modsys.init_cmd import starter_config
+        from segmently_modules.init_cmd import starter_config
         for layout in ("single", "per-module"):
             self.assertNotIn("skill_split_signal", starter_config(layout))
             self.assertNotIn("pack_split_signal", starter_config(layout))
@@ -266,7 +266,7 @@ class ReferencesTest(ShelfRepo):  # P84-AC-029
         self.assertEqual(self.ms062(), [
             ("MS062", "error", "*", "skill 'stock-check' of pack 'shelf': SKILL.md names "
              "references/missing.md, which does not exist",
-             ".modsys/packs/shelf/skills/stock-check/SKILL.md")])
+             ".segmently-modules/packs/shelf/skills/stock-check/SKILL.md")])
 
     def test_name_outside_the_skill_directory(self):
         self.refs(skill_md="\nSee (references/../../outside.md).\n")
@@ -281,7 +281,7 @@ class ReferencesTest(ShelfRepo):  # P84-AC-029
         self.assertEqual(self.ms062(), [
             ("MS062", "error", "*", "skill 'stock-check' of pack 'shelf': references/restock.md "
              "names references/missing.md, which does not exist",
-             ".modsys/packs/shelf/skills/stock-check/references/restock.md")])
+             ".segmently-modules/packs/shelf/skills/stock-check/references/restock.md")])
 
     def test_placeholders_and_globs_in_prose_name_no_file(self):
         self.refs(skill_md="\nOne file per scenario in references/<scenario>.md, i.e. "
@@ -316,9 +316,9 @@ class ReferencesTest(ShelfRepo):  # P84-AC-029
         (copy / "SKILL.md").write_text(skill_text(300) + "\nRead references/missing.md\n")
         found = [f for f in self.ms062() if "ejected" in f[3]]
         self.assertEqual(found, [
-            ("MS062", "error", "*", "ejected skill 'stock-check' (.modsys/overrides/skills/"
+            ("MS062", "error", "*", "ejected skill 'stock-check' (.segmently-modules/overrides/skills/"
              "stock-check): SKILL.md names references/missing.md, which does not exist",
-             ".modsys/overrides/skills/stock-check/SKILL.md")])
+             ".segmently-modules/overrides/skills/stock-check/SKILL.md")])
 
     def test_changed_mode_raises_none(self):
         self.refs(skill_md="\nRead references/missing.md\n")
@@ -431,7 +431,7 @@ class DocsTest(unittest.TestCase):  # P84-AC-037
 
     def test_configuration_reference(self):
         text = self.doc("docs/configuration.md")
-        for needle in ("| `skill_split_signal` | `9000` |", "| `pack_split_signal` | `60000` |",
+        for needle in ("| `skill_split_signal` | `9000` |", "| `pack_split_signal` | `64000` |",
                        "An integer >= 1", "| MS068 | warning |", "| MS069 | warning |",
                        "`references/*.md`", "(plain `lint` only)"):
             self.assertIn(needle, text)
@@ -448,9 +448,9 @@ class DocsTest(unittest.TestCase):  # P84-AC-037
             self.assertIn(needle, text)
 
     def test_lint_docstring_and_changelog(self):
-        import modsys.lint
-        self.assertIn("MS068", modsys.lint.__doc__)
-        self.assertIn("MS069", modsys.lint.__doc__)
+        import segmently_modules.lint
+        self.assertIn("MS068", segmently_modules.lint.__doc__)
+        self.assertIn("MS069", segmently_modules.lint.__doc__)
         changelog = changelog_since_first_release(self.doc("CHANGELOG.md"))
         for needle in ("MS068", "MS069", "skill_split_signal", "pack_split_signal", "SPLIT_DECISIONS"):
             self.assertIn(needle, changelog)

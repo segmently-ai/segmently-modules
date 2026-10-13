@@ -40,13 +40,13 @@ class KillAndResumeTest(unittest.TestCase):  # P5B-AC-010
         self.log = self.base / "calls.jsonl"
 
     def config(self, max_parallel: int) -> None:
-        path = self.root / ".modsys/config.toml"
+        path = self.root / ".segmently-modules/config.toml"
         path.write_text(path.read_text() + f"\n[init]\nmax_parallel = {max_parallel}\n")
 
     def killed_run(self, switch: str = "--stop-after") -> dict:
         """`init run` in a session of its own, killed by the fake on its third call (with
         `--stop-group`: together with every executor it runs); the module statuses after."""
-        proc = subprocess.run([sys.executable, "-m", "modsys", "init", "run", "--executor",
+        proc = subprocess.run([sys.executable, "-m", "segmently_modules", "init", "run", "--executor",
                                executor("--record", str(self.log), switch, "2"),
                                "--root", str(self.root)], capture_output=True, text=True,
                               env={**os.environ, "PYTHONPATH": str(ENGINE)},
@@ -85,7 +85,7 @@ class KillAndResumeTest(unittest.TestCase):  # P5B-AC-010
         self.assertTrue((self.root / WORK / "staging/payments/partial.tmp").is_file())
         out = text(self.root, "init", "status")[1].splitlines()
         self.assertIn("modules    2 done, 1 running, 3 pending, 0 failed", out)  # P5B-AC-027
-        self.assertTrue(out[-1].startswith("next: modsys init resume"), out[-1])
+        self.assertTrue(out[-1].startswith("next: segmently-modules init resume"), out[-1])
         self.finish("init", "resume", "--non-interactive")
         calls = self.events("start")
         self.assertEqual({m: calls.count(m) for m in SIX},

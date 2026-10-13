@@ -1,5 +1,5 @@
 ---
 type: tool_used
 tool: Bash
-input_match: 'modsys sync-instructions'
+input_match: 'segmently-modules sync-instructions'
 ---

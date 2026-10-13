@@ -9,9 +9,9 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from modsys.agents_md_cmd import render_block
-from modsys.config import BUILTIN_PACKS, builtin_packs_root
-from modsys.skills import read_front_matter
+from segmently_modules.agents_md_cmd import render_block
+from segmently_modules.config import BUILTIN_PACKS, builtin_packs_root
+from segmently_modules.skills import read_front_matter
 from tests.helpers import copy_fixture, run, run_json
 from tests.test_builtin_skills import argv, command_guard, commands, section, skill_files
 
@@ -23,21 +23,21 @@ DESCRIPTIONS_MAX = 7_000
 OLD_DESCRIPTIONS_TOTAL = 6_003
 
 # the `## A new role` section of module-sync as the previous task shipped it (951 characters)
-OLD_SECTION = """When the team (or a newer modsys) adds a role, the existing modules lack its doc.
+OLD_SECTION = """When the team (or a newer Segmently Modules) adds a role, the existing modules lack its doc.
 
-If `modsys roles list --json` does not list the role, declare it first: a [roles.ROLE] table with
+If `segmently-modules roles list --json` does not list the role, declare it first: a [roles.ROLE] table with
 order, standard = true (every module gets the doc) and a one-line description in the team config,
-.modsys/config.toml, or in a pack the team owns — ask the user what the role is for when unclear.
+.segmently-modules/config.toml, or in a pack the team owns — ask the user what the role is for when unclear.
 Then continue with step 1.
 
-1. `modsys roles add ROLE --all --dry-run` — show the user the docs it would create or register and
+1. `segmently-modules roles add ROLE --all --dry-run` — show the user the docs it would create or register and
    the registered ones missing on disk.
-2. `modsys roles add ROLE --all --json` — writes them, never over an existing doc; `--recreate`
+2. `segmently-modules roles add ROLE --all --json` — writes them, never over an existing doc; `--recreate`
    only for a registered doc whose file is gone.
 3. Fill each new doc with what that role needs for that module, from its code and docs — one module
    at a time, never inventing components.
-4. `modsys lint --json` — fix what the new docs caused.
-5. `modsys next --json` — report what is left.
+4. `segmently-modules lint --json` — fix what the new docs caused.
+5. `segmently-modules next --json` — report what is left.
 """
 OLD_NOT_TO_USE = [  # P8.7 D5: the first one also covers a session that only learned something
     "- Nothing was done or learned yet: use `module-scout` or `module-discover`.",
@@ -138,23 +138,23 @@ class MovedWordForWordTest(unittest.TestCase):  # P84-AC-018
 
     def test_the_old_text_is_in_module_roles_verbatim_apart_from_the_upgrade_line(self):
         steps = section(ROLES.read_text("utf-8"), "## Steps")
-        upgrade = steps.split("\n\nIf `modsys roles list --json`", 1)[0].split(
+        upgrade = steps.split("\n\nIf `segmently-modules roles list --json`", 1)[0].split(
             "\n\n", 1)[1]
-        self.assertIn("modsys next --json", upgrade)
+        self.assertIn("segmently-modules next --json", upgrade)
         self.assertIn("start at step 1", upgrade)
         without = steps.replace(upgrade + "\n\n", "", 1)
         self.assertEqual(flat(without), flat(OLD_SECTION))
 
     def test_the_upgrade_case_is_one_line_naming_next_and_roles_add(self):
         steps = flat(section(ROLES.read_text("utf-8"), "## Steps"))
-        self.assertIn("When `modsys next --json` names the roles add command with --all for a role "
+        self.assertIn("When `segmently-modules next --json` names the roles add command with --all for a role "
                       "(the upgrade brought the role), the role is declared already — start at "
                       "step 1.", steps)
 
     def test_nothing_of_it_is_left_in_module_sync(self):
         text = SYNC.read_text("utf-8")
         self.assertNotIn("## A new role", text)
-        self.assertNotIn("modsys roles", text)
+        self.assertNotIn("segmently-modules roles", text)
         for sentence in sentences(OLD_SECTION):
             self.assertNotIn(sentence, flat(text))
 
@@ -174,8 +174,8 @@ class RolesRunsOnTheFixtureTest(unittest.TestCase):  # P84-AC-019
         self.addCleanup(self._tmp.cleanup)
         self.root = copy_fixture(Path(self._tmp.name).resolve())
         self.R = ("--root", str(self.root))
-        (self.root / ".modsys").mkdir(exist_ok=True)
-        (self.root / ".modsys/config.toml").write_text(
+        (self.root / ".segmently-modules").mkdir(exist_ok=True)
+        (self.root / ".segmently-modules/config.toml").write_text(
             '[roles.reviewer]\norder = 60\nstandard = true\n'
             'description = "What a reviewer checks in a change to the module"\n', "utf-8")
         planted = self.root / "modules/catalog/roles/reviewer.md"
@@ -209,7 +209,7 @@ class RolesRunsOnTheFixtureTest(unittest.TestCase):  # P84-AC-019
                          self.PLANTED)  # never over an existing doc
         self.assertEqual(self.step("lint")["failed"], False)
         items = self.step("next")["items"]
-        self.assertNotIn("modsys roles add reviewer --all", [i["command"] for i in items])
+        self.assertNotIn("segmently-modules roles add reviewer --all", [i["command"] for i in items])
         self.assertEqual(self.step("roles", "list")["roles"][-1]["missing"], [])
 
     def test_the_skill_commands_all_parse(self):
@@ -221,7 +221,7 @@ class RolesRunsOnTheFixtureTest(unittest.TestCase):  # P84-AC-019
 
 class KeywordBulletTest(unittest.TestCase):  # P84-AC-020
     def shipped_files(self):
-        roots = (ENGINE / "modsys/defaults", ENGINE / "docs", ENGINE / "README.md",
+        roots = (ENGINE / "segmently_modules/defaults", ENGINE / "docs", ENGINE / "README.md",
                  ENGINE / "evals")
         for root in roots:
             files = [root] if root.is_file() else sorted(root.rglob("*"))
@@ -259,7 +259,7 @@ class ModuleSyncShapeTest(unittest.TestCase):  # P84-AC-021, as P8.7 D5 rewrote 
         self.assertEqual(set(read_front_matter(SYNC)), {"name", "description"})
         self.assertEqual(sorted(p.name for p in (SYNC.parent / "references").iterdir()),
                          ["choose.md", "placement.md", "report.md", "session.md"])
-        for path in (ENGINE / "modsys/defaults/agents").rglob("*"):
+        for path in (ENGINE / "segmently_modules/defaults/agents").rglob("*"):
             if path.is_file():
                 self.assertNotIn("module-sync", path.read_text("utf-8"), path)
 
@@ -271,8 +271,8 @@ class ThirteenSkillsTest(unittest.TestCase):  # P84-AC-022
     def test_the_core_pack_lists_and_counts_ten(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(Path(tmp).resolve())
-            (root / ".modsys").mkdir(exist_ok=True)
-            (root / ".modsys/config.toml").write_text('[packs]\nbuiltin = ["core"]\n', "utf-8")
+            (root / ".segmently-modules").mkdir(exist_ok=True)
+            (root / ".segmently-modules/config.toml").write_text('[packs]\nbuiltin = ["core"]\n', "utf-8")
             code, env, err = run_json("packs", "list", "--root", str(root))
         self.assertEqual((code, err), (0, ""))
         core = next(r for r in env["data"] if r["id"] == "core")
@@ -283,8 +283,8 @@ class ThirteenSkillsTest(unittest.TestCase):  # P84-AC-022
     def test_the_agents_md_block_lists_thirteen_lines_and_stays_small(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(Path(tmp).resolve())
-            (root / ".modsys").mkdir(exist_ok=True)
-            (root / ".modsys/config.toml").write_text(
+            (root / ".segmently-modules").mkdir(exist_ok=True)
+            (root / ".segmently-modules/config.toml").write_text(
                 '[packs]\nbuiltin = ["core", "ui", "qa"]\n', "utf-8")
             code, _, err = run("agents-md", "--target", "AGENTS.md", "--root", str(root))
             self.assertEqual((code, err), (0, ""))
@@ -293,7 +293,7 @@ class ThirteenSkillsTest(unittest.TestCase):  # P84-AC-022
         self.assertEqual(len(lines), 14)
         first = flat(read_front_matter(ROLES)["description"]).split(". ")[0].rstrip(".") + "."
         self.assertIn(("module-roles", first), lines)
-        self.assertLess(len(text), 3_200)
+        self.assertLess(len(text), 3_300)  # 3_200 before the 11 characters longer name
 
     def test_docs_name_it(self):
         skills = flat((ENGINE / "docs/skills.md").read_text("utf-8"))
@@ -323,8 +323,8 @@ class SkillEvalCaseTest(unittest.TestCase):  # P84-AC-023
                          "  scaffold_script: scaffold.sh\n")
         fired = (self.CASE / "graders/skill-fired.md").read_text("utf-8")
         self.assertIn("module-roles", fired)
-        ran = (self.CASE / "graders/ran-modsys.md").read_text("utf-8")
-        self.assertIn("input_match: 'modsys roles\\b'", ran)
+        ran = (self.CASE / "graders/ran-segmently-modules.md").read_text("utf-8")
+        self.assertIn("input_match: 'segmently-modules roles\\b'", ran)
         seed = (self.CASE / "seed.sh").read_text("utf-8")
         self.assertIn("[roles.reviewer]", seed)
 

@@ -4,8 +4,8 @@ import sys
 import tempfile
 import unittest
 
-from modsys.hooks import run_hooks
-from modsys.workspace import Workspace
+from segmently_modules.hooks import run_hooks
+from segmently_modules.workspace import Workspace
 from tests.helpers import copy_fixture, run, run_json
 
 SCRIPTS = {
@@ -33,7 +33,7 @@ class HooksTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = copy_fixture(self._tmp.name)
-        self.pack = self.root / ".modsys" / "packs" / "notify"
+        self.pack = self.root / ".segmently-modules" / "packs" / "notify"
         (self.pack / "hooks").mkdir(parents=True)
         for name, body in SCRIPTS.items():
             (self.pack / "hooks" / name).write_text(body, encoding="utf-8")
@@ -54,7 +54,7 @@ class HooksTest(unittest.TestCase):
                 lines.append(f"timeout_s = {[r for r in rest if r.isdigit()][0]}")
         (self.pack / "pack.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
         if team:
-            (self.root / ".modsys" / "config.toml").write_text(team, encoding="utf-8")
+            (self.root / ".segmently-modules" / "config.toml").write_text(team, encoding="utf-8")
         return Workspace.load(self.root)
 
     def fire(self, ws):
@@ -66,7 +66,7 @@ class HooksTest(unittest.TestCase):
         hook = report["hooks"][0]
         self.assertEqual((hook["status"], hook["queued"], hook["owner"]), ("ok", 1, "notify"))
         self.assertEqual(hook["messages"], ["saw catalog,checkout"])
-        queued = json.loads((self.root / ".modsys/proposals/r1-hook-tag.json").read_text())
+        queued = json.loads((self.root / ".segmently-modules/proposals/r1-hook-tag.json").read_text())
         self.assertEqual(queued["items"][0]["value"], "hooked")
         self.assertFalse(report["failed_required"])
 
@@ -79,7 +79,7 @@ class HooksTest(unittest.TestCase):
         self.assertIn("bad output", errors["c"])
         self.assertIn("unknown field 'owner_team'", errors["d"])
         self.assertFalse(report["failed_required"])
-        self.assertFalse((self.root / ".modsys/proposals/r1-hook-d.json").exists())
+        self.assertFalse((self.root / ".segmently-modules/proposals/r1-hook-d.json").exists())
 
     def test_garbage_output_fails_that_hook_only_and_sync_still_exits_0(self):
         self.use("a:docint.py", "b:fieldlist.py", "c:nonutf8.py", "tag:ok.py")
@@ -91,7 +91,7 @@ class HooksTest(unittest.TestCase):
             with self.subTest(hook=hid):
                 self.assertEqual(hooks[hid]["status"], "failed")
                 self.assertIn("bad output", hooks[hid]["error"])
-                self.assertFalse((self.root / f".modsys/proposals/r1-hook-{hid}.json").exists())
+                self.assertFalse((self.root / f".segmently-modules/proposals/r1-hook-{hid}.json").exists())
         self.assertIn("not valid UTF-8", hooks["c"]["error"])
         self.assertEqual((hooks["tag"]["status"], hooks["tag"]["queued"]), ("ok", 1))
         self.assertFalse(env["data"]["hooks"]["failed_required"])
@@ -110,10 +110,10 @@ class HooksTest(unittest.TestCase):
                 bad = '[[hooks.post_sync]]\nid = "bad id/x"\nrun = ["true"]\n'
                 if where == "team":
                     (self.pack / "pack.toml").write_text('id = "notify"\n', encoding="utf-8")
-                    (self.root / ".modsys" / "config.toml").write_text(bad, encoding="utf-8")
+                    (self.root / ".segmently-modules" / "config.toml").write_text(bad, encoding="utf-8")
                     source = "config.toml"
                 else:
-                    (self.root / ".modsys" / "config.toml").write_text("", encoding="utf-8")
+                    (self.root / ".segmently-modules" / "config.toml").write_text("", encoding="utf-8")
                     (self.pack / "pack.toml").write_text('id = "notify"\n' + bad,
                                                          encoding="utf-8")
                     source = "pack.toml"
@@ -153,7 +153,7 @@ class HooksTest(unittest.TestCase):
                  ('[[hooks.post_sync]]\nid = "x"\nrequired = "yes"\n', "expected a boolean")]
         for text, needle in cases:
             with self.subTest(needle=needle):
-                (self.root / ".modsys" / "config.toml").write_text(text, encoding="utf-8")
+                (self.root / ".segmently-modules" / "config.toml").write_text(text, encoding="utf-8")
                 code, _, err = run("hooks", "list", "--root", str(self.root))
                 self.assertEqual(code, 2)
                 self.assertIn("config.toml", err)

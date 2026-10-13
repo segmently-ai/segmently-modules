@@ -9,8 +9,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from modsys.init_verify import invented
-from modsys.workspace import Workspace
+from segmently_modules.init_verify import invented
+from segmently_modules.workspace import Workspace
 from tests.helpers import run
 from tests.init_helpers import WORK, executor, ok, protected_sha, shop, state
 
@@ -106,7 +106,7 @@ import x from `packages/catalog/src/fenced.ts`;
             (5, "path", "../repo/packages/catalog/src/books.ts")])
 
     def test_the_text_lines(self):  # final review M-7: the words init done uses (SI-2)
-        from modsys.init_cmd import _render_verify
+        from segmently_modules.init_cmd import _render_verify
         data = {"lint": {"summary": {"error": 0, "warning": 0, "info": 0}, "findings": []},
                 "invented": [{"doc": "modules/cart/MODULE.md", "line": n, "kind": k, "token": t}
                              for n, k, t in ((12, "path", "src/lines.ts"),
@@ -216,7 +216,7 @@ class VerifyTest(VerifyRepo):  # P5B-AC-022 (SI-16, SI-17)
         (self.root / WORK / "state.json").write_text(json.dumps(s))
         code, out, err = run("init", "verify", "--json", "--root", str(self.root))
         self.assertEqual((code, out), (2, ""))
-        self.assertIn("modsys init reconcile", err)
+        self.assertIn("segmently-modules init reconcile", err)
 
     def refused(self, *argv: str) -> str:
         code, out, err = run(*argv, "--json", "--root", str(self.root))
@@ -234,7 +234,7 @@ class VerifyTest(VerifyRepo):  # P5B-AC-022 (SI-16, SI-17)
                 tasks.write_text(text)
                 err = self.refused("init", "verify")
                 self.assertIn(problem, err)
-                self.assertIn("— fix it, or modsys init eval-tasks --force", err)
+                self.assertIn("— fix it, or segmently-modules init eval-tasks --force", err)
 
     def test_a_broken_staging_registry(self):  # M-1: a hand edit gone wrong
         for text in ('{"modules": {,', '{"modules": []}'):
@@ -243,11 +243,11 @@ class VerifyTest(VerifyRepo):  # P5B-AC-022 (SI-16, SI-17)
                 with self.subTest(text=text, argv=argv):
                     err = self.refused(*argv)
                     self.assertIn(f"{WORK}/staging/registry.json", err)
-                    self.assertIn("fix it, or rebuild it from the entry.json files: modsys init "
+                    self.assertIn("fix it, or rebuild it from the entry.json files: segmently-modules init "
                                   "reconcile --force", err)
 
     def test_a_symlink_added_to_staging_after_verify(self):  # Task 9 review C1 (M-8)
-        from modsys.init_verify import tree_sha
+        from segmently_modules.init_verify import tree_sha
         self.assertEqual(self.verify()[0], 0)
         staging = self.root / WORK / "staging"
         before = tree_sha(staging)

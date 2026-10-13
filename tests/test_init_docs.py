@@ -20,11 +20,11 @@ class InitDocsTest(unittest.TestCase):  # P5B-AC-037
         for needle in ("| 4 | fan-out |", "| 5 | reconcile |", "| 6 | verify |", "gate 3",
                        "gate 7", "`pending` → `running` (claimed) → `done` or `failed`",
                        "`files_total`", "`init/module_prompt.md`", "`init/routing_prompt.md`",
-                       "modsys templates override init/module_prompt.md",
-                       "`MODSYS_INIT_MODULE`, `MODSYS_INIT_STAGING` and `MODSYS_INIT_WORK`",
+                       "segmently-modules templates override init/module_prompt.md",
+                       "`SEGMENTLY_MODULES_INIT_MODULE`, `SEGMENTLY_MODULES_INIT_STAGING` and `SEGMENTLY_MODULES_INIT_WORK`",
                        "1. **lint**", "2. **invented components**", "3. **routing**",
-                       "modsys eval routing --prompt", "modsys init finish --open-pr",
-                       "modsys init resume --non-interactive --executor", "`[init] max_parallel`",
+                       "segmently-modules eval routing --prompt", "segmently-modules init finish --open-pr",
+                       "segmently-modules init resume --non-interactive --executor", "`[init] max_parallel`",
                        "`[init] routing_min_hit_rate`", "never the tasks", "never a commit",
                        # the P5b follow-up: a documentation-only agent stops at gate 3 (G11)
                        "An agent that drives init stops after `init map`: it shows the "
@@ -34,9 +34,9 @@ class InitDocsTest(unittest.TestCase):  # P5B-AC-037
     def test_the_readme(self):
         start = flat("README.md").split("## Start from existing code", 1)[1].split(" ## ", 1)[0]
         for needle in ("**The `module-init` skill**", "**One agent, one module at a time**",
-                       "**CI**", 'modsys init run --executor "<command>"',
-                       'modsys init resume --non-interactive --executor "my-writer" --open-pr',
-                       "modsys init reconcile", "modsys init verify", "modsys init finish",
+                       "**CI**", 'segmently-modules init run --executor "<command>"',
+                       'segmently-modules init resume --non-interactive --executor "my-writer" --open-pr',
+                       "segmently-modules init reconcile", "segmently-modules init verify", "segmently-modules init finish",
                        "(docs/init.md)"):
             self.assertIn(needle, start)
         self.assertNotIn("arrives with a later engine version", start)
@@ -46,7 +46,7 @@ class InitDocsTest(unittest.TestCase):  # P5B-AC-037
         for needle in ("| `init fanout\\|next\\|done` |", "| `init run --executor CMD` |",
                        "| `init reconcile` |", "| `init eval-tasks --executor CMD` |",
                        "| `init verify` |", "| `init finish` |", "| `eval routing` |",
-                       "`MODSYS_INIT_TASKS`", "`work/<module>.json`", "`staging/registry.json`",
+                       "`SEGMENTLY_MODULES_INIT_TASKS`", "`work/<module>.json`", "`staging/registry.json`",
                        "`reconcile.json`", "`routing-tasks.json`", "`verify.json`",
                        "`state.json.lock`", "`pr-body.md`"):
             self.assertIn(needle, contract)
@@ -99,7 +99,7 @@ class InitDocsTest(unittest.TestCase):  # P5B-AC-037
 
     def test_the_retry_and_the_note(self):  # P5C-AC-015 (D3, SI-5)
         text = flat("docs/init.md")
-        for needle in ("retried once in the same run", "`modsys: <module>: refused — retrying "
+        for needle in ("retried once in the same run", "`segmently-modules: <module>: refused — retrying "
                        "once`", "`previous_problems`", "`## The previous attempt was refused`",
                        "it may quote a `${…}` from a problem line", "no retry"):
             self.assertIn(needle, text)
@@ -108,7 +108,7 @@ class InitDocsTest(unittest.TestCase):  # P5B-AC-037
             "| `init map\\|confirm\\|status\\|resume` |")}
         self.assertIn("`previous_problems: [problem]`", rows["| `init fanout\\|next\\|done` |"])
         run_row = rows["| `init run --executor CMD` |"]
-        for needle in ("retried once in this run", "`modsys: <module>: refused — retrying once`",
+        for needle in ("retried once in this run", "`segmently-modules: <module>: refused — retrying once`",
                        "`problems`"):
             self.assertIn(needle, run_row)
         self.assertIn("existing?, problems?}", rows["| `init map\\|confirm\\|status\\|resume` |"])

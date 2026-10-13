@@ -12,8 +12,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys.config import builtin_packs_root, core_defaults
-from modsys.skills import file_hashes, front_matter, read_front_matter, sha256_file
+from segmently_modules.config import builtin_packs_root, core_defaults
+from segmently_modules.skills import file_hashes, front_matter, read_front_matter, sha256_file
 from tests.helpers import changelog_since_first_release, copy_fixture, run_json
 from tests.plugin_helpers import copy_engine, run_tool
 from tests.test_budgets import SPLIT_DECISIONS, decision_key
@@ -58,13 +58,13 @@ ASSISTANT = {"module-assistant"}
 STEP_ROUTED_EXTRA = {"module-sync": ["references/choose.md"]}  # named by step 4, not a route
 LEAD = ("the scenario named by the invocation (`$scenario`) when one is given, else by the "
         "user's words", "read it, then follow it")
-IF_LINE = "If a `modsys` command exits 1 or 2, read `references/exit-codes.md`."
+IF_LINE = "If a `segmently-modules` command exits 1 or 2, read `references/exit-codes.md`."
 HINT_LINE, ARGUMENTS_LINE = 'argument-hint: "[module] [scenario] [block]"', "arguments: module scenario block"
 ROUTE_FILES = sorted(f"references/{n}.md" for n in ["create", "refresh", "block", "exit-codes", "method",
                                                      "techniques"])
 STEP_6 = "Write the doc. Follow the scenario's file (the Route above)."  # step 5 until P8.8
 SPLIT_SIGNAL = core_defaults()["budgets"]["skill_split_signal"]  # MS068's default, read from the engine
-DESCRIPTION_SHA = "2a0efce95123748f"  # sha256[:16] of the description: unchanged
+DESCRIPTION_SHA = "a14b60b636d19605"  # sha256[:16] of the description: unchanged
 # old sentences rewritten on purpose — P8.4 moved every one; P8.8 (D10) rewrote Gate 1's content,
 # the requirement form, the criterion fields and the in-place edit (blocks, not tiers)
 REPLACED: list[str] = [
@@ -99,7 +99,7 @@ ADDED = {
         "A `parent baseline role:qa_acceptance` row is the parent's doc, not this module's.",
         # P8.5 final review I-2: the antecedent names the rows; the parent's does not count
         "Without a `role:qa_acceptance` or `child role:qa_acceptance` row with `exists: true` "
-        "(a `parent baseline` row does not count), run `modsys roles add qa_acceptance <module> "
+        "(a `parent baseline` row does not count), run `segmently-modules roles add qa_acceptance <module> "
         "--dry-run --json`, which writes nothing, and read its status.",
         "Status `registered` means the module's `roles/qa_acceptance.md` is on disk and the "
         "registry does not list it: that file is the doc to refresh, so read it, note the "
@@ -126,7 +126,7 @@ ADDED = {
         "or the doc its dry run reported as `registered` or `exists`) and you noted its highest "
         "`AC-NNN` (when step 1 names no doc to refresh, follow `references/create.md` instead).",
         "The doc is not in the registry (step 1's dry run said `registered`): after Gate 3, "
-        "run `modsys roles add qa_acceptance <module> --json`.",
+        "run `segmently-modules roles add qa_acceptance <module> --json`.",
         "It adds the registry entry, status `registered`, and never writes the file."],
     "references/exit-codes.md": []}
 # the body of `qa-acceptance-baseline/SKILL.md` after its front matter as shipped before the
@@ -156,16 +156,16 @@ Writes: the module's `qa_acceptance` doc, and its entry in the module's registry
 `context_files` when the doc is new. It never edits code or another doc, never edits a
 `*.legacy.md` file, and never commits.
 
-If `modsys` is not found, tell the user how to install it — the `modsys` plugin for Claude Code, `uv tool install git+ssh://git@github.com/<owner>/<repo>.git`, or `pipx install git+ssh://git@github.com/<owner>/<repo>.git` — and stop until it runs.
+If `segmently-modules` is not found, tell the user how to install it — the `segmently-modules` plugin for Claude Code, `uv tool install git+https://github.com/segmently-ai/segmently-modules.git`, or `pipx install git+https://github.com/segmently-ai/segmently-modules.git` — and stop until it runs.
 
 ## Steps
 
 1. Load the module.
 
    ```bash
-   modsys show <module> --all-roles --json
-   modsys show <module> --role qa_acceptance --json
-   modsys code-map files <module> --json
+   segmently-modules show <module> --all-roles --json
+   segmently-modules show <module> --role qa_acceptance --json
+   segmently-modules code-map files <module> --json
    ```
 
    Exit 2 "unknown role 'qa_acceptance'": the `qa` pack is not enabled — tell the user
@@ -199,12 +199,12 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 
    - It exists: edit it in place, section by section (P0, P1, P2, Retired).
    - It does not: start from the file of the `roles/qa_acceptance.md` row of
-     `modsys templates list --json`, fill it, save it next to the module's other role docs,
+     `segmently-modules templates list --json`, fill it, save it next to the module's other role docs,
      and add it to the module's `context_files`:
 
      ```bash
-     modsys registry set <module> context_files '<the object with roles.qa_acceptance added>' --dry-run
-     modsys registry set <module> context_files '<the object with roles.qa_acceptance added>' --json
+     segmently-modules registry set <module> context_files '<the object with roles.qa_acceptance added>' --dry-run
+     segmently-modules registry set <module> context_files '<the object with roles.qa_acceptance added>' --json
      ```
 
      Build the object from `show --all-roles`: `universal` is the universal row, each
@@ -214,8 +214,8 @@ If `modsys` is not found, tell the user how to install it — the `modsys` plugi
 7. Check it.
 
    ```bash
-   modsys lint --json
-   modsys show <module> --role qa_acceptance --json
+   segmently-modules lint --json
+   segmently-modules show <module> --role qa_acceptance --json
    ```
 
    No finding for the doc; the `role:qa_acceptance` row exists. Report the criteria added,
@@ -525,7 +525,7 @@ class ReferencesCarriedTest(unittest.TestCase):  # P84-AC-030 (+ AC-002's ruled 
         self._tmp = tempfile.TemporaryDirectory()
         self.root = copy_fixture(self._tmp.name)
         self.R = ("--root", str(self.root))
-        (self.root / ".modsys/config.toml").write_text('[packs]\nbuiltin = ["qa"]\n')
+        (self.root / ".segmently-modules/config.toml").write_text('[packs]\nbuiltin = ["qa"]\n')
         self.routes = sorted(p.relative_to(BASELINE).as_posix()
                              for p in (BASELINE / "references").glob("*.md"))
 
@@ -551,7 +551,7 @@ class ReferencesCarriedTest(unittest.TestCase):  # P84-AC-030 (+ AC-002's ruled 
             self.assertEqual(rows[(agent, BASELINE_ID)]["status"], "created")
             self.assertEqual(rows[(agent, BASELINE_ID)]["files"], ["SKILL.md", *self.routes])
         for dest in self.copies():
-            marker = json.loads((dest / ".modsys-managed").read_text())
+            marker = json.loads((dest / ".segmently-modules-managed").read_text())
             for rel in ["SKILL.md", *self.routes]:
                 with self.subTest(copy=dest.parent.name, file=rel):
                     self.assertEqual((dest / rel).read_bytes(), (BASELINE / rel).read_bytes())
@@ -568,7 +568,7 @@ class ReferencesCarriedTest(unittest.TestCase):  # P84-AC-030 (+ AC-002's ruled 
 
     def test_eject_and_eject_diff_carry_the_routes(self):
         self.ok("eject", BASELINE_ID)
-        ejected = self.root / ".modsys/overrides/skills" / BASELINE_ID
+        ejected = self.root / ".segmently-modules/overrides/skills" / BASELINE_ID
         for rel in self.routes:
             self.assertEqual((ejected / rel).read_bytes(), (BASELINE / rel).read_bytes())
         data = self.ok("eject", BASELINE_ID, "--diff")
@@ -583,7 +583,7 @@ class ReferencesCarriedTest(unittest.TestCase):  # P84-AC-030 (+ AC-002's ruled 
     def test_a_route_the_pack_drops_is_deleted_from_the_copies(self):
         tree = Path(self._tmp.name) / "builtins"
         shutil.copytree(builtin_packs_root(), tree)
-        with mock.patch("modsys.config.builtin_packs_root", side_effect=lambda: tree):
+        with mock.patch("segmently_modules.config.builtin_packs_root", side_effect=lambda: tree):
             self.sync()
             (tree / "qa/skills" / BASELINE_ID / "references/refresh.md").unlink()
             rows = self.sync()
@@ -594,7 +594,7 @@ class ReferencesCarriedTest(unittest.TestCase):  # P84-AC-030 (+ AC-002's ruled 
                                  ("updated", ["references/refresh.md"]))
                 self.assertFalse((dest / "references/refresh.md").exists())
                 self.assertTrue((dest / "references/create.md").is_file())
-                marker = json.loads((dest / ".modsys-managed").read_text())
+                marker = json.loads((dest / ".segmently-modules-managed").read_text())
                 self.assertNotIn("references/refresh.md", marker["files"])
 
     def test_an_edited_route_in_a_copy_is_a_conflict(self):
@@ -616,7 +616,7 @@ class PluginCarriesRoutesTest(unittest.TestCase):  # P84-AC-030 (the builder)
             engine = copy_engine(base / "engine")
             proc = run_tool(engine, "build_plugins", "--out", str(base / "out"))
             self.assertEqual(proc.returncode, 0, proc.stderr)
-            built = base / "out/modsys-qa/skills" / BASELINE_ID
+            built = base / "out/segmently-modules-qa/skills" / BASELINE_ID
             self.assertEqual(file_hashes(built), file_hashes(BASELINE))
             self.assertEqual(sorted(p.relative_to(built).as_posix()
                                     for p in (built / "references").iterdir()),

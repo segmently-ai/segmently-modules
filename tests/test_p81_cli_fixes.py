@@ -171,16 +171,16 @@ class InitHintTest(unittest.TestCase):
             root = make_repo(tmp, {"catalog": ["book"]})
             code, out, err = run("init", "--root", str(root))
             self.assertEqual((code, err), (0, ""))
-            self.assertIn("next: modsys next\n", out)
-            self.assertNotIn("modsys create NAME", out)
+            self.assertIn("next: segmently-modules next\n", out)
+            self.assertNotIn("segmently-modules create NAME", out)
 
     def test_empty_registry_keeps_the_first_module_hint(self):
         with tempfile.TemporaryDirectory() as tmp:
             code, out, _ = run("init", "--root", tmp)
             self.assertEqual(code, 0)
-            self.assertIn("next: modsys create NAME", out)
+            self.assertIn("next: segmently-modules create NAME", out)
             code, out, _ = run("init", "--root", tmp)  # re-init of the still empty registry
-            self.assertIn("next: modsys create NAME", out)
+            self.assertIn("next: segmently-modules create NAME", out)
 
 
 class IgnoredTargetNoteTest(unittest.TestCase):
@@ -192,7 +192,7 @@ class IgnoredTargetNoteTest(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = copy_fixture(self._tmp.name)
         self.R = ("--root", str(self.root))
-        d = self.root / ".modsys/packs/team"
+        d = self.root / ".segmently-modules/packs/team"
         (d / "skills/api-review").mkdir(parents=True)
         (d / "pack.toml").write_text('id = "team"\nversion = "9.0.0"\npriority = 50\n'
                                      '[skills.api-review]\npath = "skills/api-review"\n')
@@ -228,7 +228,7 @@ class IgnoredTargetNoteTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(tmp)
             (root / ".gitignore").write_text(".agents/\n")
-            d = root / ".modsys/packs/team"
+            d = root / ".segmently-modules/packs/team"
             (d / "skills/api-review").mkdir(parents=True)
             (d / "pack.toml").write_text('id = "team"\nversion = "9.0.0"\npriority = 50\n'
                                          '[skills.api-review]\npath = "skills/api-review"\n')

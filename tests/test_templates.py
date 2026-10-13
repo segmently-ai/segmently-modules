@@ -1,13 +1,13 @@
 """Templates as files (D1): per-role engine templates, the provenance of every template, and
-`modsys templates list|override` (D2)."""
+`segmently-modules templates list|override` (D2)."""
 import string
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys.config import core_defaults
-from modsys.create import engine_templates
+from segmently_modules.config import core_defaults
+from segmently_modules.create import engine_templates
 from tests.helpers import copy_fixture, make_repo, run, run_json
 
 DESC = ["--description", "Customer reviews of books: ratings, comments and moderation."]
@@ -41,13 +41,13 @@ class Fixture(unittest.TestCase):
         return (self.root / f"modules/reviews/roles/{role}.md").read_text(encoding="utf-8")
 
     def team_pack(self) -> None:
-        write(self.root / ".modsys/packs/team/pack.toml", TEAM_PACK)
-        write(self.root / ".modsys/packs/team/roles/reviewer.md",
+        write(self.root / ".segmently-modules/packs/team/pack.toml", TEAM_PACK)
+        write(self.root / ".segmently-modules/packs/team/roles/reviewer.md",
               "# ${title} — ${role} (team)\n\n> ${role_description}\n")
 
     def rows(self) -> list[dict]:
         code, env, err = run_json("templates", "list", *self.R)
-        self.assertEqual((code, err, env["schema"]), (0, "", "modsys.templates/1"))
+        self.assertEqual((code, err, env["schema"]), (0, "", "segmently-modules.templates/1"))
         return env["data"]
 
 
@@ -83,7 +83,7 @@ class PerRoleTemplatesTest(Fixture):  # P4A-AC-004
                          "code, don't copy it. -->\n")
 
     def test_an_override_still_wins(self):
-        write(self.root / ".modsys/overrides/templates/roles/qa.md", "# ${title} QA (team)\n")
+        write(self.root / ".segmently-modules/overrides/templates/roles/qa.md", "# ${title} QA (team)\n")
         self.create()
         self.assertEqual(self.doc("qa"), "# Reviews QA (team)\n")
 
@@ -122,9 +122,9 @@ class ProvenanceTest(Fixture):  # P4A-AC-005
 
     def test_every_layer_names_itself(self):
         self.team_pack()
-        write(self.root / ".modsys/packs/bookshop/templates/roles/qa.md", "# ${title} qa\n")
-        write(self.root / ".modsys/overrides/templates/MODULE.md", "# ${title} (team)\n")
-        write(self.root / ".modsys/config.toml", "[roles.po]\nenabled = false\n")
+        write(self.root / ".segmently-modules/packs/bookshop/templates/roles/qa.md", "# ${title} qa\n")
+        write(self.root / ".segmently-modules/overrides/templates/MODULE.md", "# ${title} (team)\n")
+        write(self.root / ".segmently-modules/config.toml", "[roles.po]\nenabled = false\n")
         rows = self.by_template()
         self.assertEqual(list(rows), ["MODULE.md", "roles/developer.md", "roles/qa.md",
                                       "roles/architect.md", "roles/designer.md",
@@ -133,13 +133,13 @@ class ProvenanceTest(Fixture):  # P4A-AC-005
                                       "choose/rules.md"])
         self.assertEqual({t: (r["source"], r["path"]) for t, r in rows.items()
                           if r["source"] not in ("engine", "engine-fallback")}, {
-            "MODULE.md": ("override", ".modsys/overrides/templates/MODULE.md"),
-            "roles/qa.md": ("pack:bookshop", ".modsys/packs/bookshop/templates/roles/qa.md"),
-            "roles/reviewer.md": ("role-template:team", ".modsys/packs/team/roles/reviewer.md")})
+            "MODULE.md": ("override", ".segmently-modules/overrides/templates/MODULE.md"),
+            "roles/qa.md": ("pack:bookshop", ".segmently-modules/packs/bookshop/templates/roles/qa.md"),
+            "roles/reviewer.md": ("role-template:team", ".segmently-modules/packs/team/roles/reviewer.md")})
 
     def test_create_renders_exactly_the_file_the_row_names(self):
         self.team_pack()
-        write(self.root / ".modsys/packs/bookshop/templates/roles/qa.md", "# ${title} qa\n")
+        write(self.root / ".segmently-modules/packs/bookshop/templates/roles/qa.md", "# ${title} qa\n")
         rows = self.by_template()
         self.create("--role", "reviewer")
         for template in ("roles/developer.md", "roles/qa.md", "roles/reviewer.md"):
@@ -157,7 +157,7 @@ class ProvenanceTest(Fixture):  # P4A-AC-005
         self.team_pack()
         out = run("templates", "list", *self.R)[1].splitlines()
         self.assertEqual(out[6].split(), ["roles/reviewer.md", "role-template:team",
-                                          ".modsys/packs/team/roles/reviewer.md"])
+                                          ".segmently-modules/packs/team/roles/reviewer.md"])
         self.assertEqual(len(out), 11)  # P5B-AC-002 + P82-AC-007: the init prompts, choose/rules.md
 
 
@@ -169,9 +169,9 @@ class OverrideTest(Fixture):  # P4A-AC-006
 
     def test_copy_the_engine_template_then_it_wins(self):
         data, err = self.override("roles/qa.md")
-        target = self.root / ".modsys/overrides/templates/roles/qa.md"
+        target = self.root / ".segmently-modules/overrides/templates/roles/qa.md"
         self.assertEqual((data, err), ({"template": "roles/qa.md",
-                                        "file": ".modsys/overrides/templates/roles/qa.md",
+                                        "file": ".segmently-modules/overrides/templates/roles/qa.md",
                                         "from": "engine", "dry_run": False}, ""))
         self.assertEqual(target.read_bytes(), (engine_templates() / "roles/qa.md").read_bytes())
         self.assertEqual({r["template"]: r["source"] for r in self.rows()}["roles/qa.md"],
@@ -185,21 +185,21 @@ class OverrideTest(Fixture):  # P4A-AC-006
         data, _ = self.override("roles/reviewer.md")
         self.assertEqual(data["from"], "role-template:team")
         self.assertEqual((self.root / data["file"]).read_bytes(),
-                         (self.root / ".modsys/packs/team/roles/reviewer.md").read_bytes())
+                         (self.root / ".segmently-modules/packs/team/roles/reviewer.md").read_bytes())
 
     def test_dry_run_writes_nothing(self):
         data, _ = self.override("MODULE.md", "--dry-run")
         self.assertEqual((data["dry_run"], data["from"]), (True, "engine"))
-        self.assertFalse((self.root / ".modsys/overrides").exists())
+        self.assertFalse((self.root / ".segmently-modules/overrides").exists())
         self.assertEqual(run("templates", "override", "MODULE.md", "--dry-run", *self.R)[1],
-                         "would create  .modsys/overrides/templates/MODULE.md  (a copy of the "
+                         "would create  .segmently-modules/overrides/templates/MODULE.md  (a copy of the "
                          "engine template)\nnext: edit it — from now on it wins over every pack "
-                         "and engine template (modsys templates list)\n")
+                         "and engine template (segmently-modules templates list)\n")
 
     def test_refusals_write_nothing(self):
         self.override("roles/qa.md")
-        before = (self.root / ".modsys/overrides/templates/roles/qa.md").read_bytes()
-        cases = [(("roles/qa.md",), ".modsys/overrides/templates/roles/qa.md already exists — "
+        before = (self.root / ".segmently-modules/overrides/templates/roles/qa.md").read_bytes()
+        cases = [(("roles/qa.md",), ".segmently-modules/overrides/templates/roles/qa.md already exists — "
                                     "edit it"),
                  (("roles/nosuch.md",), "unknown template 'roles/nosuch.md' (templates: "
                                         "MODULE.md, roles/developer.md, roles/qa.md, roles/po.md, "
@@ -212,11 +212,11 @@ class OverrideTest(Fixture):  # P4A-AC-006
             with self.subTest(argv=argv):
                 code, out, err = run("templates", "override", *argv, "--json", *self.R)
                 self.assertEqual((code, out), (2, ""))
-                self.assertTrue(err.startswith("modsys: error: "), err)
+                self.assertTrue(err.startswith("segmently-modules: error: "), err)
                 self.assertIn(needle, err)
-        self.assertEqual((self.root / ".modsys/overrides/templates/roles/qa.md").read_bytes(),
+        self.assertEqual((self.root / ".segmently-modules/overrides/templates/roles/qa.md").read_bytes(),
                          before)
-        self.assertEqual(sorted(p.name for p in (self.root / ".modsys/overrides/templates")
+        self.assertEqual(sorted(p.name for p in (self.root / ".segmently-modules/overrides/templates")
                                 .rglob("*")), ["qa.md", "roles"])
         self.assertFalse((self.root.parent / "x.md").exists())
 
@@ -232,21 +232,21 @@ class TemplatesContractTest(Fixture):  # P4A-AC-023
                 self.assertIn(needle, err)
 
     def test_garbage_config_and_interrupt(self):
-        write(self.root / ".modsys/config.toml", "code_map = 5\n")
+        write(self.root / ".segmently-modules/config.toml", "code_map = 5\n")
         for action in (("list",), ("override", "roles/qa.md")):
             with self.subTest(action=action):
                 code, out, err = run("templates", *action, "--json", *self.R)
                 self.assertEqual((code, out), (2, ""))
-                self.assertTrue(err.startswith("modsys: error: "), err)
+                self.assertTrue(err.startswith("segmently-modules: error: "), err)
                 self.assertNotIn("Traceback", err)
-        (self.root / ".modsys/config.toml").unlink()
+        (self.root / ".segmently-modules/config.toml").unlink()
         for action in (("list",), ("override", "roles/qa.md")):
             with self.subTest(interrupted=action), mock.patch(
-                    "modsys.templates_cmd.resolve_template_source",
+                    "segmently_modules.templates_cmd.resolve_template_source",
                     side_effect=KeyboardInterrupt):
                 self.assertEqual(run("templates", *action, *self.R),
-                                 (130, "", "modsys: interrupted\n"))
-        self.assertFalse((self.root / ".modsys/overrides").exists())
+                                 (130, "", "segmently-modules: interrupted\n"))
+        self.assertFalse((self.root / ".segmently-modules/overrides").exists())
 
 
 if __name__ == "__main__":

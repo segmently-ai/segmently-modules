@@ -1,4 +1,4 @@
-"""`modsys roles list` / `roles add` (P6.1 W3, D1, D3, SI-P61-1…3): every configured role with
+"""`segmently-modules roles list` / `roles add` (P6.1 W3, D1, D3, SI-P61-1…3): every configured role with
 its owner and the targets that have (or lack) its doc; a role doc added to EXISTING modules —
 rendered exactly as `create` renders it, registered in either layout, all or nothing."""
 import contextlib
@@ -13,10 +13,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys import roles_cmd
-from modsys.output import UsageError
-from modsys.store import file_lock
-from modsys.workspace import Workspace
+from segmently_modules import roles_cmd
+from segmently_modules.output import UsageError
+from segmently_modules.store import file_lock
+from segmently_modules.workspace import Workspace
 from tests.helpers import copy_fixture, make_repo, mutate_registry, run, run_json
 from tests.plugin_helpers import copy_engine, default_signals
 from tests.test_layout import convert
@@ -34,7 +34,7 @@ LOCK = "modules/registry.json.lock"
 
 
 def add_pack(root: Path, text: str = PACK, pack: str = "reviews") -> Path:
-    path = root / ".modsys/packs" / pack / "pack.toml"
+    path = root / ".segmently-modules/packs" / pack / "pack.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     return path.parent
@@ -100,7 +100,7 @@ class Repo(unittest.TestCase):
         code, env, err = run_json(*argv, "--root", str(root or self.root))
         self.assertEqual((code, err), (0, ""), err)
         self.assertEqual(set(env), {"schema", "data"})
-        self.assertEqual(env["schema"], "modsys.roles/1")
+        self.assertEqual(env["schema"], "segmently-modules.roles/1")
         return env["data"]
 
     def refused(self, *argv, root: Path | None = None) -> str:
@@ -108,7 +108,7 @@ class Repo(unittest.TestCase):
         for extra in ((), ("--json",)):
             code, out, err = run(*argv, *extra, "--root", str(root or self.root))
             self.assertEqual((code, out), (2, ""), err)
-            self.assertTrue(err.startswith("modsys: error: "), err)
+            self.assertTrue(err.startswith("segmently-modules: error: "), err)
             self.assertNotIn("Traceback", err)
         return err
 
@@ -116,7 +116,7 @@ class Repo(unittest.TestCase):
 class RolesListTest(Repo):  # P61-AC-005
     def setUp(self):
         super().setUp()
-        write(self.root / ".modsys/config.toml", "[roles.po]\nenabled = false\n")
+        write(self.root / ".segmently-modules/config.toml", "[roles.po]\nenabled = false\n")
 
     def test_every_role_with_its_source_and_its_doc_counts(self):
         before = snap(self.root)
@@ -165,10 +165,10 @@ class RolesListTest(Repo):  # P61-AC-005
         self.assertEqual(qa["inherited"], ["payments/refunds"])  # covered by payments' doc
 
     def test_owner_is_the_layer_that_declares_the_role(self):
-        write(self.root / ".modsys/config.toml",
+        write(self.root / ".segmently-modules/config.toml",
               '[roles.po]\nenabled = false\n\n[roles.security]\norder = 70\n'
               'description = "Threats"\n\n[roles.reviewer]\ndescription = "Team wording"\n')
-        write(self.root / ".modsys/config.user.toml", '[roles.oncall]\norder = 80\n')
+        write(self.root / ".segmently-modules/config.user.toml", '[roles.oncall]\norder = 80\n')
         rows = {r["name"]: r for r in self.ok("roles", "list")["roles"]}
         self.assertEqual({n: rows[n]["owner"] for n in ("security", "oncall", "reviewer")},
                          {"security": "team", "oncall": "user", "reviewer": "reviews"})
@@ -227,7 +227,7 @@ class StatusTest(unittest.TestCase):  # P61-AC-006
     def add(self, root: Path, *flags: str):
         code, env, err = run_json("roles", "add", "reviewer", *self.TARGETS, *flags,
                                   "--root", str(root))
-        self.assertEqual((code, err, env["schema"]), (0, "", "modsys.roles/1"))
+        self.assertEqual((code, err, env["schema"]), (0, "", "segmently-modules.roles/1"))
         self.assertEqual(set(env["data"]), {"role", "dry_run", "results"})
         self.assertEqual(env["data"]["role"], "reviewer")
         return env["data"]
@@ -252,9 +252,9 @@ class StatusTest(unittest.TestCase):  # P61-AC-006
                     self.assertEqual(set(r), keys)
                 if not recreate:
                     self.assertEqual(data["results"][3]["command"],
-                                     "modsys roles add reviewer payments --recreate")
+                                     "segmently-modules roles add reviewer payments --recreate")
                     self.assertEqual(data["results"][4]["command"],
-                                     "modsys roles add reviewer payments/refunds --recreate")
+                                     "segmently-modules roles add reviewer payments/refunds --recreate")
                 after = snap(root, drop_lock=True)
                 changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
                 new_docs = {self.PATHS["catalog"], "modules/catalog/roles/"}
@@ -301,7 +301,7 @@ class StatusTest(unittest.TestCase):  # P61-AC-006
                           ["exists", "orders"], ["missing", "payments"],
                           ["missing", "payments/refunds"]])
         self.assertIn(self.PATHS["catalog"], lines[0])
-        self.assertIn("modsys roles add reviewer payments --recreate", lines[3])
+        self.assertIn("segmently-modules roles add reviewer payments --recreate", lines[3])
         self.assertEqual(lines[5], "reviewer: 1 created, 1 registered, 1 exists, 2 missing")
         self.assertEqual(len(lines), 6)
         code, out, _ = run("roles", "add", "reviewer", "catalog", "--root", str(root))
@@ -316,7 +316,7 @@ class StatusTest(unittest.TestCase):  # P61-AC-006
     def test_nothing_to_do_is_exit_0(self):
         root = self.tmp / "empty"
         write(root / "modules/registry.json", '{"modules": {}}\n')
-        write(root / ".modsys/config.toml", TEAM_REVIEWER)
+        write(root / ".segmently-modules/config.toml", TEAM_REVIEWER)
         data = self.ok_all(root)
         self.assertEqual(data["results"], [])
         code, out, _ = run("roles", "add", "reviewer", "--all", "--root", str(root))
@@ -355,7 +355,7 @@ class RenderLikeCreateTest(unittest.TestCase):  # P61-AC-007
         pack = PACK + ('template = "tpl/reviewer.md"\n' if "role-template:reviews" in layers
                        else "")
         pack_dir = add_pack(root, pack)
-        files = {"override": root / ".modsys/overrides/templates/roles/reviewer.md",
+        files = {"override": root / ".segmently-modules/overrides/templates/roles/reviewer.md",
                  "role-template:reviews": pack_dir / "tpl/reviewer.md",
                  "pack:reviews": pack_dir / "templates/roles/reviewer.md"}
         for layer in layers[:-1]:
@@ -542,7 +542,7 @@ class UpgradeTest(unittest.TestCase):  # P61-AC-010 (steps 1, 3, 4; Task 4 adds 
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp).resolve()
             root = copy_fixture(tmp / "repo")
-            write(root / ".modsys/config.toml", '[lint]\nfail_on = "error"\n')
+            write(root / ".segmently-modules/config.toml", '[lint]\nfail_on = "error"\n')
             code, _, err = run("create", "reviews", "--description", DESC, *KW,
                                "--non-interactive", "--root", str(root))  # the base engine
             self.assertEqual(code, 0, err)
@@ -550,13 +550,13 @@ class UpgradeTest(unittest.TestCase):  # P61-AC-010 (steps 1, 3, 4; Task 4 adds 
             self.assertNotIn("security", [r["name"] for r in run_json(
                 "roles", "list", "--root", str(root))[1]["data"]["roles"]])
             engine = copy_engine(tmp / "engine")
-            defaults = engine / "modsys/defaults/config.toml"
+            defaults = engine / "segmently_modules/defaults/config.toml"
             defaults.write_text(defaults.read_text(encoding="utf-8") + self.SECURITY,
                                 encoding="utf-8")
 
             def new_engine(*argv):
                 proc = subprocess.run(
-                    [sys.executable, "-P", "-m", "modsys", *argv, "--json", "--root", str(root)],
+                    [sys.executable, "-P", "-m", "segmently_modules", *argv, "--json", "--root", str(root)],
                     capture_output=True, text=True, cwd=tmp, preexec_fn=default_signals,
                     env={**os.environ, "PYTHONPATH": str(engine)})
                 return proc.returncode, json.loads(proc.stdout), proc.stderr
@@ -611,7 +611,7 @@ class EdgesTest(unittest.TestCase):  # P61-AC-028
         for extra in ((), ("--json",)):
             code, out, err = run(*argv, *extra, *self.R)
             self.assertEqual((code, out), (2, ""), err)
-            self.assertTrue(err.startswith("modsys: error: "), err)
+            self.assertTrue(err.startswith("segmently-modules: error: "), err)
             self.assertNotIn("Traceback", err)
         self.assertEqual(snap(self.root), before)
         return err
@@ -649,7 +649,7 @@ class EdgesTest(unittest.TestCase):  # P61-AC-028
     def test_non_ascii_text_stays_utf8(self):
         text = "Bücher und Regale — für Leserinnen: Übersicht, Größe, ½ Preis"
         mutate_registry(self.root, lambda d: d["modules"]["shelf"].update(description=text))
-        write(self.root / ".modsys/overrides/templates/roles/reviewer.md",
+        write(self.root / ".segmently-modules/overrides/templates/roles/reviewer.md",
               "# ${title} — ${role}\n\n${description}\n")
         reg = (self.root / "modules/registry.json").read_bytes()
         code, _, err = run("roles", "add", "reviewer", "shelf", *self.R)
@@ -697,12 +697,12 @@ class EdgesTest(unittest.TestCase):  # P61-AC-028
         code, env, err = run_json("roles", "add", "reviewer", "shelf/", *self.R)
         self.assertEqual(env["data"]["results"], [
             {"module": "shelf", "status": "missing", "path": "modules/shelf/roles/reviewer.md",
-             "command": "modsys roles add reviewer shelf --recreate"}])
+             "command": "segmently-modules roles add reviewer shelf --recreate"}])
         code, out, err = run("roles", "add", "reviewer", "shelf//", *self.R)
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(out.splitlines()[0],
                          "missing        shelf                            modules/shelf/roles/"
-                         "reviewer.md  — modsys roles add reviewer shelf --recreate")
+                         "reviewer.md  — segmently-modules roles add reviewer shelf --recreate")
 
     def test_two_targets_writing_one_doc_path_are_refused(self):  # final review M-4
         shared = "modules/shared/reviewer.md"  # registered for both, missing on disk
@@ -714,7 +714,7 @@ class EdgesTest(unittest.TestCase):  # P61-AC-028
                 with self.subTest(argv=argv + dry):
                     err = self.refused("roles", "add", "reviewer", *argv, "--recreate", *dry)
                     first, second = ("shelf", "orders") if argv == ("--all",) else argv
-                    self.assertEqual(err, f"modsys: error: '{first}' and '{second}' would both "
+                    self.assertEqual(err, f"segmently-modules: error: '{first}' and '{second}' would both "
                                           f"write {shared} — a role doc path belongs to one "
                                           f"target; nothing written\n")
         mutate_registry(self.root, lambda d: (  # shelf's doc at orders' own (unregistered) path
@@ -737,12 +737,12 @@ class RefusalsTest(Repo):  # P61-AC-033
         return err
 
     def test_every_refusal_writes_nothing(self):
-        rows = [(("roles", "add", "x", "catalog"), "modsys: error: unknown role 'x'"),
+        rows = [(("roles", "add", "x", "catalog"), "segmently-modules: error: unknown role 'x'"),
                 (("roles", "add", "reviewer", "nope"), "unknown module 'nope'"),
                 (("roles", "add", "reviewer", "payments/nope"), "unknown module 'payments/nope'"),
                 (("roles", "add", "reviewer"),
-                 "usage: modsys roles add ROLE (--all | TARGET…) [--recreate] [--dry-run]"),
-                (("roles", "add"), "usage: modsys roles add ROLE (--all | TARGET…)"),
+                 "usage: segmently-modules roles add ROLE (--all | TARGET…) [--recreate] [--dry-run]"),
+                (("roles", "add"), "usage: segmently-modules roles add ROLE (--all | TARGET…)"),
                 (("roles", "add", "reviewer", "--all", "catalog"), "--all takes no target"),
                 (("roles", "add", "reviewer", "catalog", "--all"), "--all takes no target"),
                 (("roles", "add", "reviewer", "legacy-search"),
@@ -752,16 +752,16 @@ class RefusalsTest(Repo):  # P61-AC-033
                 self.assertIn(needle, self.refused_clean(*argv))
 
     def test_a_disabled_role_names_the_layer_that_disabled_it_last(self):
-        cases = [({".modsys/config.toml": "[roles.reviewer]\nenabled = false\n"},
-                  ".modsys/config.toml"),
-                 ({".modsys/config.toml": "[roles.reviewer]\nenabled = false\n",
-                   ".modsys/config.user.toml": "[roles.reviewer]\nenabled = false\n"},
-                  ".modsys/config.user.toml"),
-                 ({".modsys/packs/reviews/pack.toml": PACK + "enabled = false\n"},
-                  "pack 'reviews' (.modsys/packs/reviews/pack.toml)")]
+        cases = [({".segmently-modules/config.toml": "[roles.reviewer]\nenabled = false\n"},
+                  ".segmently-modules/config.toml"),
+                 ({".segmently-modules/config.toml": "[roles.reviewer]\nenabled = false\n",
+                   ".segmently-modules/config.user.toml": "[roles.reviewer]\nenabled = false\n"},
+                  ".segmently-modules/config.user.toml"),
+                 ({".segmently-modules/packs/reviews/pack.toml": PACK + "enabled = false\n"},
+                  "pack 'reviews' (.segmently-modules/packs/reviews/pack.toml)")]
         for files, layer in cases:
             with self.subTest(layer=layer):
-                for rel in (".modsys/config.toml", ".modsys/config.user.toml"):
+                for rel in (".segmently-modules/config.toml", ".segmently-modules/config.user.toml"):
                     (self.root / rel).unlink(missing_ok=True)
                 add_pack(self.root)
                 for rel, text in files.items():
@@ -771,14 +771,14 @@ class RefusalsTest(Repo):  # P61-AC-033
                               f"in {layer}", err)
         add_pack(self.root, PACK.replace("[roles.reviewer]", "[roles.po]\nenabled = false\n\n"
                                                              "[roles.reviewer]"))
-        for rel in (".modsys/config.toml", ".modsys/config.user.toml"):
+        for rel in (".segmently-modules/config.toml", ".segmently-modules/config.user.toml"):
             (self.root / rel).unlink(missing_ok=True)
         self.assertIn("role 'po' is disabled: [roles.po] enabled = false in pack 'reviews'",
                       self.refused_clean("roles", "add", "po", "catalog"))
 
     def test_the_lock_held_past_the_timeout(self):
         with file_lock(self.root / "modules/registry.json"), \
-                mock.patch("modsys.roles_cmd.LOCK_TIMEOUT_S", 0.2):
+                mock.patch("segmently_modules.roles_cmd.LOCK_TIMEOUT_S", 0.2):
             err = self.refused_clean("roles", "add", "reviewer", "--all")
         self.assertIn("locked by another writer", err)
         self.assertIn("modules/registry.json.lock", err)
@@ -800,7 +800,7 @@ class AllOrNothingTest(unittest.TestCase):  # P61-AC-034
 
     def per_module(self) -> None:
         convert(self.root)
-        write(self.root / ".modsys/config.toml",
+        write(self.root / ".segmently-modules/config.toml",
               '[paths]\nregistry_layout = "per-module"\n\n' + TEAM_REVIEWER)
 
     def failing(self, target: str, effect, code: int = 2) -> str:
@@ -826,7 +826,7 @@ class AllOrNothingTest(unittest.TestCase):  # P61-AC-034
 
     def test_the_registry_changed_on_disk_after_it_was_read(self):
         before = snap(self.root)
-        err = self.failing("modsys.roles_cmd.write_new_doc", self.edit_after(
+        err = self.failing("segmently_modules.roles_cmd.write_new_doc", self.edit_after(
             3, lambda: mutate_registry(self.root, lambda d: d.update(note="edited meanwhile"))))
         self.assertIn("modules/registry.json changed since it was read", err)
         edited = (self.root / "modules/registry.json").read_bytes()
@@ -837,12 +837,12 @@ class AllOrNothingTest(unittest.TestCase):  # P61-AC-034
 
     def test_a_registry_write_that_fails(self):
         before = snap(self.root)
-        err = self.failing("modsys.store.atomic_write", OSError(
+        err = self.failing("segmently_modules.store.atomic_write", OSError(
             errno.ENOSPC, "No space left on device"))
         self.assertIn("cannot write modules/registry.json: No space left on device", err)
         self.assertEqual(snap(self.root, drop_lock=True), before)
         temp = str(self.root / "modules/.registry.json.x1y2.tmp")  # a real failure names it
-        err = self.failing("modsys.store.os.replace", OSError(errno.EXDEV, "Cross-device link",
+        err = self.failing("segmently_modules.store.os.replace", OSError(errno.EXDEV, "Cross-device link",
                                                               temp))
         self.assertIn("cannot write modules/registry.json: Cross-device link", err)
         self.assertEqual(snap(self.root, drop_lock=True), before)
@@ -851,7 +851,7 @@ class AllOrNothingTest(unittest.TestCase):  # P61-AC-034
         self.per_module()
         before = snap(self.root)
         entry = self.root / "modules/orders/module.json"
-        err = self.failing("modsys.roles_cmd.write_new_doc", self.edit_after(
+        err = self.failing("segmently_modules.roles_cmd.write_new_doc", self.edit_after(
             3, lambda: entry.write_text(entry.read_text() + " \n")))
         self.assertIn("modules/orders/module.json changed since it was read", err)
         self.assertEqual(snap(self.root, drop_lock=True),
@@ -861,7 +861,7 @@ class AllOrNothingTest(unittest.TestCase):  # P61-AC-034
     def test_per_module_a_write_that_fails_halfway_puts_every_entry_back(self):
         self.per_module()
         before = snap(self.root)
-        from modsys import layout
+        from segmently_modules import layout
         real, calls = layout.atomic_write, []
 
         def second_fails(path, text):
@@ -869,11 +869,11 @@ class AllOrNothingTest(unittest.TestCase):  # P61-AC-034
             if len(calls) == 2:
                 raise OSError(errno.EIO, "Input/output error")
             real(path, text)
-        err = self.failing("modsys.layout.atomic_write", second_fails)
+        err = self.failing("segmently_modules.layout.atomic_write", second_fails)
         self.assertIn("cannot write modules/checkout/module.json, modules/orders/module.json, "
                       "modules/shelf/module.json: Input/output error; nothing written", err)
         self.assertEqual(snap(self.root, drop_lock=True), before)
-        err = self.failing("modsys.roles_cmd.build_index", OSError(
+        err = self.failing("segmently_modules.roles_cmd.build_index", OSError(
             errno.EIO, "Input/output error"))  # the index, after every entry file
         self.assertIn("cannot write modules/registry.json: Input/output error", err)
         self.assertEqual(snap(self.root, drop_lock=True), before)
@@ -881,18 +881,18 @@ class AllOrNothingTest(unittest.TestCase):  # P61-AC-034
     def test_ctrl_c_during_the_lock_wait_and_after_the_docs(self):
         with file_lock(self.root / "modules/registry.json"):
             before = snap(self.root)
-            err = self.failing("modsys.store.time.sleep", KeyboardInterrupt, 130)
-            self.assertIn("modsys: interrupted", err)
+            err = self.failing("segmently_modules.store.time.sleep", KeyboardInterrupt, 130)
+            self.assertIn("segmently-modules: interrupted", err)
             self.assertEqual(snap(self.root), before)
         before = snap(self.root)
-        self.failing("modsys.roles_cmd._register", KeyboardInterrupt, 130)  # docs written
+        self.failing("segmently_modules.roles_cmd._register", KeyboardInterrupt, 130)  # docs written
         self.assertEqual(snap(self.root), before)
-        self.failing("modsys.store.RegistryStore.commit", KeyboardInterrupt, 130)
+        self.failing("segmently_modules.store.RegistryStore.commit", KeyboardInterrupt, 130)
         self.assertEqual(snap(self.root), before)
 
 
     def test_ctrl_c_after_the_commit_point_keeps_every_write(self):
-        with mock.patch("modsys.store._unlock", side_effect=KeyboardInterrupt):
+        with mock.patch("segmently_modules.store._unlock", side_effect=KeyboardInterrupt):
             code, out, err = run("roles", "add", "reviewer", "--all", *self.R)
         self.assertEqual((code, out), (130, ""), err)
         self.assertTrue(all((self.root / p).is_file() for p in self.DOCS))
@@ -922,7 +922,7 @@ class AllOrNothingTest(unittest.TestCase):  # P61-AC-034
 
         with mock.patch.object(Path, "unlink", spy(real_unlink)), \
                 mock.patch.object(Path, "rmdir", spy(real_rmdir)):
-            self.failing("modsys.roles_cmd._register", KeyboardInterrupt, 130)
+            self.failing("segmently_modules.roles_cmd._register", KeyboardInterrupt, 130)
         dirs = [p.rsplit("/", 1)[0] for p in reversed(self.DOCS)]  # deepest, last made first
         self.assertEqual(seen, [(p, True) for p in self.DOCS + dirs])
         self.assertEqual([d for d in dirs if (self.root / d).exists()], [])
@@ -930,7 +930,7 @@ class AllOrNothingTest(unittest.TestCase):  # P61-AC-034
 
 class SurfaceTest(Repo):  # P61-AC-026, P61-AC-037 (the `roles` part)
     def test_the_verb_and_its_help(self):
-        from modsys.cli import build_parser
+        from segmently_modules.cli import build_parser
         self.assertIn("roles", build_parser()._subparsers._group_actions[0].choices)
         code, out, _ = run("roles", "--help")
         self.assertEqual(code, 0)
@@ -954,22 +954,22 @@ class SurfaceTest(Repo):  # P61-AC-026, P61-AC-037 (the `roles` part)
                 code, out, err = run(*argv, "--json", *self.R)
                 self.assertEqual((code, err), (0, ""))
                 env, end = json.JSONDecoder().raw_decode(out)
-                self.assertEqual((out[end:].strip(), env["schema"]), ("", "modsys.roles/1"))
+                self.assertEqual((out[end:].strip(), env["schema"]), ("", "segmently-modules.roles/1"))
 
     def test_an_internal_failure(self):
         with mock.patch.dict(os.environ):
-            os.environ.pop("MODSYS_DEBUG", None)
+            os.environ.pop("SEGMENTLY_MODULES_DEBUG", None)
             for argv, seam in ((("roles", "list"), "role_rows"),
                                (("roles", "add", "reviewer", "--all"), "plan_add")):
                 with self.subTest(argv=argv), \
-                        mock.patch(f"modsys.roles_cmd.{seam}", side_effect=RuntimeError("boom")):
+                        mock.patch(f"segmently_modules.roles_cmd.{seam}", side_effect=RuntimeError("boom")):
                     code, out, err = run(*argv, "--json", *self.R)
                     self.assertEqual((code, out), (2, ""))
-                    self.assertTrue(err.startswith("modsys: internal error: RuntimeError: boom"),
+                    self.assertTrue(err.startswith("segmently-modules: internal error: RuntimeError: boom"),
                                     err)
                     self.assertNotIn("Traceback", err)
-            os.environ["MODSYS_DEBUG"] = "1"
-            with mock.patch("modsys.roles_cmd.role_rows", side_effect=RuntimeError("boom")), \
+            os.environ["SEGMENTLY_MODULES_DEBUG"] = "1"
+            with mock.patch("segmently_modules.roles_cmd.role_rows", side_effect=RuntimeError("boom")), \
                     self.assertRaises(RuntimeError):
                 run("roles", "list", *self.R)
 

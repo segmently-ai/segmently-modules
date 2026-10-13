@@ -1,4 +1,4 @@
-"""`modsys registry OP TARGET context_files.<key> [VALUE]`: one doc key of a module's
+"""`segmently-modules registry OP TARGET context_files.<key> [VALUE]`: one doc key of a module's
 `context_files` — a supplementary doc registered in one command, without rewriting universal and
 roles. `universal` is one path (set / unset); `roles` belongs to `roles add` / `roles skip`; a new
 path must exist on disk (lint MS004)."""
@@ -79,7 +79,7 @@ class DocKeyTest(unittest.TestCase):
                  "context_files.supplementary: modules/catalog/nope.md is missing on disk "
                  "(lint MS004) — write the doc first"),
                 (("set", "catalog", "context_files.roles", '{"qa": false}'),
-                 "role docs are written by modsys roles add ROLE TARGET"),
+                 "role docs are written by segmently-modules roles add ROLE TARGET"),
                 (("append", "catalog", "context_files.universal", '"modules/catalog/api.md"'),
                  "context_files.universal is one path; use set"),
                 (("set", "catalog", "context_files.universal", '["modules/catalog/api.md"]'),

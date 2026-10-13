@@ -1,4 +1,4 @@
-"""`modsys ci`: one gate — lint, drift since --base, coverage — always all three steps; and
+"""`segmently-modules ci`: one gate — lint, drift since --base, coverage — always all three steps; and
 the docs describe the whole P3.2 surface."""
 import re
 import tempfile
@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys.cli import build_parser
+from segmently_modules.cli import build_parser
 from tests.helpers import git, init_git, make_repo, run, run_json
 from tests.test_cli_contract import GOLDEN
 
@@ -30,14 +30,14 @@ class CiRepo(unittest.TestCase):
 
     def ci(self, *argv, code=0) -> dict:
         got, env, err = run_json("ci", *argv, *self.R)
-        self.assertEqual((got, err, env["schema"]), (code, "", "modsys.ci/1"))
+        self.assertEqual((got, err, env["schema"]), (code, "", "segmently-modules.ci/1"))
         return env["data"]
 
     def statuses(self, data) -> list:
         return [s["status"] for s in data["steps"]]
 
     def config(self, text: str) -> None:
-        (self.root / ".modsys/config.toml").write_text(RULE + text, encoding="utf-8")
+        (self.root / ".segmently-modules/config.toml").write_text(RULE + text, encoding="utf-8")
 
     def touch(self, *rels) -> None:
         for rel in rels:
@@ -100,7 +100,7 @@ class CiStepsTest(CiRepo):  # P32-AC-018
                              (("--base=-x",), "may not start with '-'"),
                              ((f"--base=--output={injected}",), "may not start with '-'"),
                              (("--fail-under", "101"), "--fail-under must be between 0 and 100")]:
-            with self.subTest(argv=argv), mock.patch("modsys.ci_cmd.lint_registry") as lint:
+            with self.subTest(argv=argv), mock.patch("segmently_modules.ci_cmd.lint_registry") as lint:
                 code, out, err = run("ci", *argv, "--json", *self.R)
                 self.assertEqual((code, out), (2, ""))
                 self.assertIn(needle, err)
@@ -190,7 +190,7 @@ class CiOptionsTest(CiRepo):  # P32-AC-019
         for path in unmapped[:5]:
             self.assertIn(f"  {path}", out.splitlines())
         self.assertNotIn(unmapped[5], out)
-        self.assertIn("run modsys coverage for the full list", out)
+        self.assertIn("run segmently-modules coverage for the full list", out)
 
     def test_text_mode_note_and_no_changes_summary(self):  # M-10
         code, out, _ = run("ci", *self.R)
@@ -259,12 +259,12 @@ class CiConfigTest(CiRepo):  # P32-AC-020, P32-AC-022
                 self.assertIn(run("ci", *self.R)[0], (0, 1))
 
     def test_garbage_config_and_interrupt(self):
-        (self.root / ".modsys/config.toml").write_text("code_map = 5\n")
+        (self.root / ".segmently-modules/config.toml").write_text("code_map = 5\n")
         code, out, err = run("ci", "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
         self.assertNotIn("Traceback", err)
         self.config("")
-        with mock.patch("modsys.ci_cmd.lint_registry", side_effect=KeyboardInterrupt):
+        with mock.patch("segmently_modules.ci_cmd.lint_registry", side_effect=KeyboardInterrupt):
             self.assertEqual(run("ci", *self.R)[0], 130)
 
 
@@ -289,14 +289,14 @@ class DocsAndVerbsTest(unittest.TestCase):  # P32-AC-021
         contract, config = self.doc("docs/cli-contract.md"), self.doc("docs/configuration.md")
         for needle in ("`code-map list\\|add\\|files`", "| `ci` |", "near_misses: [{module, score",
                        "keywords, read:", "missing_files", "files: [{path, modules: [target]}]",
-                       "every `score` are `null`", "defaults to `$MODSYS_AGENT`, else `cli`"):
+                       "every `score` are `null`", "defaults to `$SEGMENTLY_MODULES_AGENT`, else `cli`"):
             self.assertIn(needle, contract)
         for needle in ("## `[ci]`", "| `overlap_severity` |", "| MS053 |",
                        'has no {module} segment — for a fixed module use globs = ["docs/**"]',
                        "routes nothing for that file", "-> (no module)",
-                       "Add rules with `modsys code-map add` (the preferred way)"):
+                       "Add rules with `segmently-modules code-map add` (the preferred way)"):
             self.assertIn(needle, config)
-        self.assertIn("modsys ci --base origin/main", self.doc("README.md"))
+        self.assertIn("segmently-modules ci --base origin/main", self.doc("README.md"))
 
 
 if __name__ == "__main__":

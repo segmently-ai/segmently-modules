@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from modsys.cli import build_parser
+from segmently_modules.cli import build_parser
 from tests.helpers import copy_fixture, init_git, run_json
 
 DOC = Path(__file__).resolve().parents[1] / "docs" / "cli-contract.md"
@@ -86,7 +86,7 @@ class CliContractTest(unittest.TestCase):
                     code, env, err = run_json(*argv, "--root", str(root))
                     self.assertEqual((code, err), (0, ""))
                     self.assertEqual(set(env), {"schema", "data"})
-                    self.assertEqual(env["schema"], f"modsys.{argv[0]}/1")
+                    self.assertEqual(env["schema"], f"segmently-modules.{argv[0]}/1")
                     if keys is None:
                         self.assertIsInstance(env["data"], list)
                     else:
@@ -114,7 +114,7 @@ class CliContractTest(unittest.TestCase):
         self.assertIn("its skill copies and agent files fold into one status", setup)
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(tmp)
-            (root / ".modsys/config.toml").write_text('[packs]\nbuiltin = ["core"]\n',
+            (root / ".segmently-modules/config.toml").write_text('[packs]\nbuiltin = ["core"]\n',
                                                       encoding="utf-8")
             code, env, err = run_json("packs", "sync", "--agent", "codex", "--dry-run",
                                       "--root", str(root))
@@ -156,7 +156,7 @@ class CliContractTest(unittest.TestCase):
                     code, env, err = run_json("init", action, "--root", str(root))
                     self.assertEqual((code, err), (0, ""))
                     self.assertEqual((set(env), env["schema"]), ({"schema", "data"},
-                                                                 "modsys.init/1"))
+                                                                 "segmently-modules.init/1"))
                     self.assertEqual(set(env["data"]), keys[action])
 
     def test_every_verb_is_documented_and_covered(self):

@@ -1,5 +1,5 @@
 ---
 type: tool_used
 tool: Bash
-input_match: 'modsys create wishlist'
+input_match: 'segmently-modules create wishlist'
 ---

@@ -45,7 +45,7 @@ class FilesChecksTest(Repo):  # P32-AC-005
 
     def test_a_directory_is_refused_and_no_hook_runs(self):
         marker = self.root / "ran.txt"
-        (self.root / ".modsys/config.toml").write_text(
+        (self.root / ".segmently-modules/config.toml").write_text(
             RULES + f'\n[[hooks.post_sync]]\nid = "mark"\nrun = [{json.dumps(sys.executable)}, '
                     f'"-c", "open(\'ran.txt\', \'w\').write(\'1\')"]\n', encoding="utf-8")
         for arg in ("src/tasks", "src/tasks/"):
@@ -53,7 +53,7 @@ class FilesChecksTest(Repo):  # P32-AC-005
                 with self.subTest(arg=arg, verb=verb[0]):
                     code, out, err = run(*verb, "--files", arg, "src/lists/b.py", *self.R)
                     self.assertEqual((code, out), (2, ""))
-                    self.assertEqual(err, "modsys: error: src/tasks: is a directory — list its "
+                    self.assertEqual(err, "segmently-modules: error: src/tasks: is a directory — list its "
                                           "files (e.g. git ls-files src/tasks)\n")
         self.assertFalse(marker.exists())
         self.assertEqual(run("sync", "--files", "src/lists/b.py", *self.R)[0], 0)

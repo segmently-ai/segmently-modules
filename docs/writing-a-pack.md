@@ -3,16 +3,16 @@
 > Start here: [README](../README.md). Every config key: [configuration.md](configuration.md).
 > Every verb's JSON: [cli-contract.md](cli-contract.md).
 
-A pack bundles what a team (or a stack) adds to modsys: roles with their doc templates, agent
+A pack bundles what a team (or a stack) adds to Segmently Modules: roles with their doc templates, agent
 skills that read those role docs, and any config layer — fields, `[[code_map]]` rules, hooks. A
-pack lives in the repository at `.modsys/packs/<id>/` and is committed with it. The engine also
+pack lives in the repository at `.segmently-modules/packs/<id>/` and is committed with it. The engine also
 ships three built-in packs — `core`, `ui`, `qa` — that a team enables instead of writing
 ([Built-in packs](#built-in-packs-and-reserved-ids)).
 
 ## Layout
 
 ```text
-.modsys/packs/team/
+.segmently-modules/packs/team/
 ├── pack.toml                  # meta keys, [roles.*], [skills.*], any config section
 ├── roles/reviewer.md          # the template of a role's per-module doc
 ├── templates/                 # optional: MODULE.md or roles/<role>.md for every module
@@ -31,7 +31,7 @@ description = "Team review conventions"
 
 [roles.reviewer]
 order = 100                      # sort order in show / context
-standard = false                 # true: `modsys create` writes roles/reviewer.md for every module
+standard = false                 # true: `segmently-modules create` writes roles/reviewer.md for every module
 description = "What a reviewer checks in a module"
 template = "roles/reviewer.md"   # relative to the pack directory
 
@@ -41,7 +41,7 @@ reads_roles = ["reviewer"]       # the roles whose module docs the skill reads
 ```
 
 - **Meta keys:** `id`, `version`, `priority`, `requires`, `description`, `skills`, `agents`.
-  Every other top-level key is a config layer, exactly like `.modsys/config.toml`
+  Every other top-level key is a config layer, exactly like `.segmently-modules/config.toml`
   ([configuration.md](configuration.md)); the team config overrides every pack.
 - **`[roles.<name>]`:** `order`, `enabled`, `standard`, `description`, `applies_when`,
   `template`. A role name is lowercase letters, digits and `_`, words joined by `-`.
@@ -57,18 +57,18 @@ reads_roles = ["reviewer"]       # the roles whose module docs the skill reads
 
 ## Role templates
 
-A role's template is rendered by `modsys create` into `modules/<module>/roles/<role>.md` (or a
+A role's template is rendered by `segmently-modules create` into `modules/<module>/roles/<role>.md` (or a
 child's `…/submodules/<child>/roles/<role>.md`). Placeholders: `${title}`, `${role}`,
 `${role_description}`, `${name}`, `${description}`, `${status}`, `${keywords}`, `${parent}`,
 `${article}` (`a` or `an` before the role name: `What ${article} ${role} checks`).
-`modsys templates list` shows which file wins for each role; the team can still override any
-template with `modsys templates override roles/<role>.md`.
+`segmently-modules templates list` shows which file wins for each role; the team can still override any
+template with `segmently-modules templates override roles/<role>.md`.
 
 **Existing modules.** A pack that declares a role only affects modules created afterwards.
-For modules that already exist, run `modsys roles add ROLE --all` (`--dry-run` first): it
+For modules that already exist, run `segmently-modules roles add ROLE --all` (`--dry-run` first): it
 renders this template for each module and registers the doc, never overwrites a file that is
 already there, and `--recreate` rewrites the doc of a registered role whose file is gone.
-`modsys roles list` shows which modules have the role's doc and which do not, and `modsys next`
+`segmently-modules roles list` shows which modules have the role's doc and which do not, and `segmently-modules next`
 names a standard role without docs, with the command to run, after an upgrade. Then fill each
 new doc with what the role needs for that module.
 
@@ -77,21 +77,21 @@ new doc with what the role needs for that module.
 Scaffold a pack with one role and one skill that reads it:
 
 ```bash
-modsys packs new team --role reviewer --skill api-review --description "Team review conventions"
+segmently-modules packs new team --role reviewer --skill api-review --description "Team review conventions"
 ```
 
-It writes `.modsys/packs/team/pack.toml`, `roles/reviewer.md` and
+It writes `.segmently-modules/packs/team/pack.toml`, `roles/reviewer.md` and
 `skills/api-review/SKILL.md`, and the pack is part of the config at once. Edit the role
 template (what a reviewer checks) and the skill (its description and steps), then create a
 module that has the role:
 
 ```bash
-modsys create reviews --non-interactive --role reviewer \
+segmently-modules create reviews --non-interactive --role reviewer \
   --description "Customer reviews of books: ratings, comments and moderation." \
   --keywords "review, rating, stars, comment, moderation"
-modsys show reviews --role reviewer   # the reviewer doc of the module: what the skill reads
-modsys templates list                 # roles/reviewer.md  role-template:team  .modsys/packs/team/roles/reviewer.md
-modsys packs list                     # the pack, its role and its skill
+segmently-modules show reviews --role reviewer   # the reviewer doc of the module: what the skill reads
+segmently-modules templates list                 # roles/reviewer.md  role-template:team  .segmently-modules/packs/team/roles/reviewer.md
+segmently-modules packs list                     # the pack, its role and its skill
 ```
 
 `create --role reviewer` adds the pack role to what every module gets: the standard roles'
@@ -102,13 +102,13 @@ Copy the skills where the agents read them — Claude Code from `.claude/skills/
 from `.agents/skills/<skill>/` — and commit the copies:
 
 ```bash
-modsys packs sync --agent claude --agent codex   # created  claude  .claude/skills/api-review  (team 0.1.0) …
+segmently-modules packs sync --agent claude --agent codex   # created  claude  .claude/skills/api-review  (team 0.1.0) …
 git add .claude/skills .agents/skills && git commit -m "skills: api-review"
-modsys packs sync --check --agent claude --agent codex   # in CI: exit 1 when a copy is stale
+segmently-modules packs sync --check --agent claude --agent codex   # in CI: exit 1 when a copy is stale
 ```
 
 Put the agents in the team config once (`[packs] agents = ["claude", "codex"]`) and a bare
-`modsys packs sync` does the same. Each copy holds a `.modsys-managed` marker (the pack, its
+`segmently-modules packs sync` does the same. Each copy holds a `.segmently-modules-managed` marker (the pack, its
 version, the source and a hash per file). Edit the skill in the pack and run `packs sync` again:
 the copies are `updated`; a file the pack no longer has is deleted; a skill the pack no longer
 declares is `removed` from the agents' directories.
@@ -122,7 +122,7 @@ would replace a file that is not managed. The other skills still sync. Resolve i
 the local edit (`git checkout -- .claude/skills/api-review`) and sync again, or move a
 hand-written skill away, or eject the skill (next section) when the team wants to own its
 changes. To keep a local edit, eject the skill and copy the edit into
-`.modsys/overrides/skills/<skill>/` before syncing — the ejected copy starts as the pack's files,
+`.segmently-modules/overrides/skills/<skill>/` before syncing — the ejected copy starts as the pack's files,
 so ejecting alone leaves the edit a conflict. A source agents cannot load (MS062) is `invalid`
 and never copied.
 
@@ -132,39 +132,39 @@ When the team needs its own version of a pack skill (a skill from someone else's
 it wants to freeze), eject it:
 
 ```bash
-modsys eject api-review                          # copies it to .modsys/overrides/skills/api-review/
-modsys packs sync --agent claude --agent codex   # the agents' copies now come from the ejected copy
-modsys eject api-review --diff                   # later: what the pack changed since the eject
-modsys eject api-review --rebase                 # after taking what you want by hand: MS063 clears
+segmently-modules eject api-review                          # copies it to .segmently-modules/overrides/skills/api-review/
+segmently-modules packs sync --agent claude --agent codex   # the agents' copies now come from the ejected copy
+segmently-modules eject api-review --diff                   # later: what the pack changed since the eject
+segmently-modules eject api-review --rebase                 # after taking what you want by hand: MS063 clears
 ```
 
 Edit the ejected copy and run `packs sync`: both agents get it (`updated`, `source` `ejected`).
-The pack never overwrites an ejected skill, even at a new version; plain `modsys lint` then
+The pack never overwrites an ejected skill, even at a new version; plain `segmently-modules lint` then
 reports MS063 — `ejected skill 'api-review' is behind pack 'team' (ejected from 0.1.0, pack is
 now 0.2.0)` — and `eject api-review --diff` shows the upstream change as a unified diff. For a
 repository pack a new version alone flags the copy; for a built-in pack only changed files do
 (its version is the engine's). Review the change, take what the team wants into the ejected
-copy by hand, then `modsys eject api-review --rebase` records the pack's current version and
-file hashes in `.modsys-ejected` — the copy's files are never touched — and MS063 clears
+copy by hand, then `segmently-modules eject api-review --rebase` records the pack's current version and
+file hashes in `.segmently-modules-ejected` — the copy's files are never touched — and MS063 clears
 (`--diff` then says up to date). Or delete the copy and sync again (below). If the pack drops
 the skill, the ejected copy stays the skill's only source (MS063 info). To go back to the pack's version, delete
-`.modsys/overrides/skills/api-review/` and run `modsys packs sync --agent claude --agent codex`.
+`.segmently-modules/overrides/skills/api-review/` and run `segmently-modules packs sync --agent claude --agent codex`.
 
 ## Tell the agents: the managed block
 
 Agents read `CLAUDE.md` (Claude Code) and `AGENTS.md` (Codex). One command keeps a block there
-that says how to use modsys in this repository, which roles exist and which skills the packs
+that says how to use Segmently Modules in this repository, which roles exist and which skills the packs
 add:
 
 ```bash
-modsys agents-md --target CLAUDE.md --target AGENTS.md          # added / created
-modsys agents-md --target CLAUDE.md --target AGENTS.md --check  # in CI: exit 1 when stale
+segmently-modules agents-md --target CLAUDE.md --target AGENTS.md          # added / created
+segmently-modules agents-md --target CLAUDE.md --target AGENTS.md --check  # in CI: exit 1 when stale
 ```
 
-The block sits between `<!-- modsys:begin v1 -->` and `<!-- modsys:end -->`; every byte outside
+The block sits between `<!-- segmently-modules:begin v1 -->` and `<!-- segmently-modules:end -->`; every byte outside
 it is the team's and is never touched (a file without the markers gets the block appended after
 one blank line). Run it again after adding a skill or a role: only the block changes. The text
-comes from the `agents-md.md` template — `modsys templates override agents-md.md` gives the team
+comes from the `agents-md.md` template — `segmently-modules templates override agents-md.md` gives the team
 its own copy to edit. When `AGENTS.md` is a symlink to `CLAUDE.md`, the block is written once.
 
 ## Built-in packs and reserved ids
@@ -182,15 +182,15 @@ builtin = ["core", "ui", "qa"]
 An enabled built-in pack works like any pack — `packs list` (with `builtin: true` and an
 absolute `dir`), `packs sync`, `eject`, `agents-md`, `templates list`, lint — and ranks below
 every repository pack whatever their `priority`. Its version is the engine version. The ids
-`core`, `qa` and `ui` are reserved: `modsys packs new ui` is refused
+`core`, `qa` and `ui` are reserved: `segmently-modules packs new ui` is refused
 (`pack id 'ui' is reserved for the engine's built-in pack — enable it: [packs] builtin = ["ui"]`).
 To own a whole built-in pack, copy its directory (the `dir` of its `packs list` row) to
-`.modsys/packs/<id>/`: a repository pack with a built-in id replaces the built-in pack, enabled
+`.segmently-modules/packs/<id>/`: a repository pack with a built-in id replaces the built-in pack, enabled
 or not. To own one skill of it, eject the skill.
 
 ## Lint
 
-Plain `modsys lint` (and the lint step of `modsys ci`) checks every installed pack; the findings
+Plain `segmently-modules lint` (and the lint step of `segmently-modules ci`) checks every installed pack; the findings
 carry module `*`, so `lint --changed` never shows them:
 
 | Code | Severity | Finding |
@@ -202,7 +202,7 @@ carry module `*`, so `lint --changed` never shows them:
 | MS064 | warning | `reads_roles` names a role no layer configures, or a disabled one |
 | MS065 | warning | another pack with a higher precedence declares the same skill id |
 | MS068 | warning | a skill's `SKILL.md`, or one `references/*.md` file, is over `[budgets] skill_split_signal` (9000 characters) — route its scenarios or split the skill |
-| MS069 | warning | a pack's `SKILL.md` files together are over `[budgets] pack_split_signal` (60000 characters; `references/` is not counted) — route, split a skill out, or split the pack |
+| MS069 | warning | a pack's `SKILL.md` files together are over `[budgets] pack_split_signal` (64000 characters; `references/` is not counted) — route, split a skill out, or split the pack |
 
 ## Size is a decomposition signal
 

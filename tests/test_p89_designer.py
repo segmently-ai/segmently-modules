@@ -15,8 +15,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys.config import builtin_packs_root, core_defaults
-from modsys.skills import file_hashes, read_front_matter
+from segmently_modules.config import builtin_packs_root, core_defaults
+from segmently_modules.skills import file_hashes, read_front_matter
 from tests.helpers import changelog_since_first_release, copy_fixture, run_json
 from tests.plugin_helpers import copy_engine, run_tool
 from tests.test_builtin_skills import section, skill_files
@@ -55,7 +55,7 @@ class NameTest(unittest.TestCase):  # D11, owner: `designer`, no alias
         self.assertEqual(read_front_matter(SKILL / "SKILL.md")["name"], "designer")
 
     def test_the_old_name_is_gone_from_what_ships(self):
-        roots = [ENGINE / d for d in ("modsys", "tools", "docs", "evals")] + [ENGINE / "README.md"]
+        roots = [ENGINE / d for d in ("segmently_modules", "tools", "docs", "evals")] + [ENGINE / "README.md"]
         found = []
         for root in roots:
             for path in [root] if root.is_file() else sorted(root.rglob("*")):
@@ -176,7 +176,7 @@ class ContextTest(unittest.TestCase):  # D11: the context the host skill loaded,
         steps = flat(section((SKILL / "SKILL.md").read_text("utf-8"), "## Steps"))
         for key in UI_KEYS:
             self.assertIn(f"| `{key}` |", steps)
-        for needle in ("`.modsys/config.toml`", "`.modsys/config.user.toml`",
+        for needle in ("`.segmently-modules/config.toml`", "`.segmently-modules/config.user.toml`",
                        "each file whole, never only its first lines",  # C5: a table at the end
                        "`sed -n '/^\\[ui\\]/,/^\\[/p' <file>`",
                        "(default `.design`)", "**Modules** (at most 10)",
@@ -213,7 +213,7 @@ class RoleTemplateTest(unittest.TestCase):  # D12: the designer role template
     def test_create_renders_it(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(Path(tmp))
-            (root / ".modsys/config.toml").write_text('[packs]\nbuiltin = ["ui"]\n')
+            (root / ".segmently-modules/config.toml").write_text('[packs]\nbuiltin = ["ui"]\n')
             code, env, err = run_json("create", "reviews", "--non-interactive", "--description",
                                       "Customer reviews of books: ratings and moderation.",
                                       "--keywords", "review, rating, stars, comment, moderation",
@@ -228,7 +228,7 @@ class UiTableTest(unittest.TestCase):  # owner: `[ui]` in the team config, no en
     def test_the_engine_accepts_the_table(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(Path(tmp))
-            (root / ".modsys/config.toml").write_text(
+            (root / ".segmently-modules/config.toml").write_text(
                 '[packs]\nbuiltin = ["ui"]\n\n[ui]\nrules = ["docs/design.md"]\n'
                 'capture = "npm run shot --"\nsizes = ["1280x800"]\nschemes = ["light", "dark"]\n'
                 'artifacts = ".design"\n')
@@ -252,7 +252,7 @@ class SyncRenameTest(unittest.TestCase):  # an installed copy of the old skill i
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             root = copy_fixture(base / "repo")
-            (root / ".modsys/config.toml").write_text('[packs]\nbuiltin = ["ui"]\n')
+            (root / ".segmently-modules/config.toml").write_text('[packs]\nbuiltin = ["ui"]\n')
             old = base / "builtins"
             shutil.copytree(builtin_packs_root(), old)
             (old / "ui/skills/designer").rename(old / "ui/skills" / OLD)
@@ -264,7 +264,7 @@ class SyncRenameTest(unittest.TestCase):  # an installed copy of the old skill i
                 '[skills.designer]\npath = "skills/designer"',
                 f'[skills.{OLD}]\npath = "skills/{OLD}"'), encoding="utf-8")
             argv = ("packs", "sync", "--agent", "claude", "--agent", "codex", "--root", str(root))
-            with mock.patch("modsys.config.builtin_packs_root", side_effect=lambda: old):
+            with mock.patch("segmently_modules.config.builtin_packs_root", side_effect=lambda: old):
                 self.assertEqual(run_json(*argv)[0], 0)
             self.assertTrue((root / ".claude/skills" / OLD / "SKILL.md").is_file())
             code, env, err = run_json(*argv)
@@ -281,17 +281,17 @@ class SyncRenameTest(unittest.TestCase):  # an installed copy of the old skill i
                                      ["SKILL.md", *(f"references/{n}" for n in REFERENCES)])
 
 
-class PluginTest(unittest.TestCase):  # the modsys-ui plugin ships the skill and its routes
+class PluginTest(unittest.TestCase):  # the segmently-modules-ui plugin ships the skill and its routes
     def test_the_ui_plugin(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp).resolve()
             engine = copy_engine(base / "engine")
             proc = run_tool(engine, "build_plugins", "--out", str(base / "out"))
             self.assertEqual(proc.returncode, 0, proc.stderr)
-            skills = base / "out/modsys-ui/skills"
+            skills = base / "out/segmently-modules-ui/skills"
             self.assertEqual(sorted(p.name for p in skills.iterdir()), ["designer"])
             self.assertEqual(file_hashes(skills / "designer"), file_hashes(SKILL))
-            manifest = json.loads((base / "out/modsys-ui/.claude-plugin/plugin.json").read_text())
+            manifest = json.loads((base / "out/segmently-modules-ui/.claude-plugin/plugin.json").read_text())
             self.assertIn("designer skill: prototypes, audits and reviews UI work",
                           manifest["description"])
 

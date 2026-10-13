@@ -1,4 +1,4 @@
-"""`modsys init map|confirm|status|resume` (D3): the init state machine — valid and invalid
+"""`segmently-modules init map|confirm|status|resume` (D3): the init state machine — valid and invalid
 transitions, an interrupted phase and `init resume` (row 5.2 for phases 1–2), the data of each
 action, atomic writes and the headless contract."""
 import copy
@@ -15,15 +15,15 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys import __version__
-from modsys.init_cmd import ACTIONS
-from modsys.init_flow import PHASES, TEST_STOP, InitFlow
+from segmently_modules import __version__
+from segmently_modules.init_cmd import ACTIONS
+from segmently_modules.init_flow import PHASES, TEST_STOP, InitFlow
 from tests.helpers import git, run, run_json
 from tests.init_fake_executor import write_docs
 
 ENGINE = Path(__file__).resolve().parents[1]
 ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
-WORK = ".modsys/init"
+WORK = ".segmently-modules/init"
 
 
 def snapshot(root: Path) -> dict:
@@ -53,14 +53,14 @@ class InitRepo(unittest.TestCase):
     def init(self, *argv, code=0) -> dict:
         got, env, err = run_json("init", *argv, *self.R)
         self.assertEqual((got, err), (code, ""), env)
-        self.assertEqual(env["schema"], "modsys.init/1")
+        self.assertEqual(env["schema"], "segmently-modules.init/1")
         return env["data"]
 
     def refused(self, *argv) -> str:
         before = snapshot(self.root)
         code, out, err = run("init", *argv, "--json", *self.R)
         self.assertEqual((code, out), (2, ""), err)
-        self.assertTrue(err.startswith("modsys: error: "), err)
+        self.assertTrue(err.startswith("segmently-modules: error: "), err)
         self.assertNotIn("Traceback", err)
         self.assertEqual(snapshot(self.root), before)
         return err
@@ -93,13 +93,13 @@ class ValidTransitionsTest(InitRepo):  # P5A-AC-025
         before = snapshot(self.root)
         data = self.init("status")  # row 0
         self.assertEqual(data, {"action": "status", "phase": None, "phases": {},
-                                "next": "run modsys init map", "modules": {},  # P5B-AC-027
+                                "next": "run segmently-modules init map", "modules": {},  # P5B-AC-027
                                 "counts": {"pending": 0, "running": 0, "done": 0, "failed": 0},
                                 "pr": None})
         self.assertEqual(snapshot(self.root), before)
         data = self.init("map")  # row 1
         self.assertEqual([(f["path"], f["status"]) for f in data["files"]],
-                         [(".modsys/config.toml", "created"), ("modules/registry.json", "created"),
+                         [(".segmently-modules/config.toml", "created"), ("modules/registry.json", "created"),
                           (".gitignore", "created")])
         self.assertEqual(sorted(p.name for p in self.work.iterdir()),
                          ["preflight.json", "proposal.json", "state.json"])
@@ -109,13 +109,13 @@ class ValidTransitionsTest(InitRepo):  # P5A-AC-025
         before = snapshot(self.root)
         data = self.init("status")  # row 2
         self.assertIn(f"edit {WORK}/proposal.json", data["next"])
-        self.assertIn("modsys init confirm", data["next"])
+        self.assertIn("segmently-modules init confirm", data["next"])
         self.assertEqual(snapshot(self.root), before)
         self.init("map")  # row 3: recomputed, byte-identical
         self.assertEqual(self.outputs(), first)
         data = self.init("resume")  # row 4
         self.assertEqual((data["ran"], data["message"]), ([], None))
-        self.assertIn("modsys init confirm", data["next"])
+        self.assertIn("segmently-modules init confirm", data["next"])
         self.edit_proposal(lambda c: (c[0].update(include=False), c[1].update(name="why")))
         data = self.init("confirm")  # row 5
         self.assertEqual((data["status"], data["included"], data["excluded"]),
@@ -124,7 +124,7 @@ class ValidTransitionsTest(InitRepo):  # P5A-AC-025
         self.assertEqual((self.state()["phase"], self.statuses()), ("gate-map", ("done",) * 3))
         data = self.init("status")  # row 6
         self.assertIn("gate 3 passed", data["next"])
-        self.assertIn("modsys init fanout", data["next"])  # P5B-AC-026: phase 4 exists now
+        self.assertIn("segmently-modules init fanout", data["next"])  # P5B-AC-026: phase 4 exists now
         confirmed = (self.work / "confirmed.json").read_bytes()
         self.assertEqual(self.init("confirm")["status"], "unchanged")  # row 8
         self.assertEqual((self.work / "confirmed.json").read_bytes(), confirmed)
@@ -132,7 +132,7 @@ class ValidTransitionsTest(InitRepo):  # P5A-AC-025
         self.assertEqual(self.init("confirm")["status"], "updated")  # row 9
         data = self.init("resume")  # row 7, after gate 3: the fan-out runs (P5B-AC-026)
         self.assertEqual((data["message"], data["ran"]), (None, ["fanout"]))
-        self.assertIn("modsys init next", data["next"])
+        self.assertIn("segmently-modules init next", data["next"])
         self.init("map", "--restart")  # row 10
         self.assertFalse((self.work / "confirmed.json").exists())
         self.assertEqual(self.outputs(), first)
@@ -145,7 +145,7 @@ class ValidTransitionsTest(InitRepo):  # P5A-AC-025
         self.assertEqual(set(state), {"schema", "engine", "started_at", "phase", "phases",
                                       "modules"})
         self.assertEqual((state["schema"], state["engine"], state["modules"]),
-                         ("modsys.init-state/1", __version__, {}))
+                         ("segmently-modules.init-state/1", __version__, {}))
         self.assertEqual(list(state["phases"]), list(PHASES))  # P5b: eight phases
         self.assertTrue(ISO.match(state["started_at"]))
         for phase, entry in state["phases"].items():
@@ -156,35 +156,35 @@ class ValidTransitionsTest(InitRepo):  # P5A-AC-025
 
 class InvalidTransitionsTest(InitRepo):  # P5A-AC-026
     def test_without_a_state(self):
-        self.assertIn("run modsys init map", self.refused("resume"))
-        self.assertIn("modsys init map", self.refused("confirm"))
-        self.assertFalse((self.root / ".modsys").exists())
+        self.assertIn("run segmently-modules init map", self.refused("resume"))
+        self.assertIn("segmently-modules init map", self.refused("confirm"))
+        self.assertFalse((self.root / ".segmently-modules").exists())
 
     def test_after_gate_3_and_an_edited_proposal(self):
         self.init("map")
         self.edit_proposal(lambda c: c[0].update(include=False))
         err = self.refused("map")
-        self.assertIn("init map would lose the edits — run modsys init confirm, or modsys init "
+        self.assertIn("init map would lose the edits — run segmently-modules init confirm, or segmently-modules init "
                       "map --restart to discard them", err)
         self.init("confirm")
         err = self.refused("map")
         self.assertIn("gate 3 passed", err)
-        self.assertIn("modsys init map --restart", err)
+        self.assertIn("segmently-modules init map --restart", err)
 
     def test_a_registry_with_modules(self):
         registry = self.root / "modules/registry.json"
         registry.parent.mkdir()
         registry.write_text('{"modules": {"x": {"description": "The x module."}}}\n')
         err = self.refused("map")
-        self.assertIn("modsys adopt", err)
-        self.assertIn("modsys coverage", err)
-        self.assertFalse((self.root / ".modsys").exists())
+        self.assertIn("segmently-modules adopt", err)
+        self.assertIn("segmently-modules coverage", err)
+        self.assertFalse((self.root / ".segmently-modules").exists())
         self.assertFalse((self.root / ".gitignore").exists())
 
     def test_corrupt_files(self):
         self.init("map")
         for rel, text in (("state.json", "{not json"),
-                          ("state.json", json.dumps({"schema": "modsys.init-state/9"})),
+                          ("state.json", json.dumps({"schema": "segmently-modules.init-state/9"})),
                           ("proposal.json", "{not json")):
             good = (self.work / rel).read_bytes()
             (self.work / rel).write_text(text)
@@ -192,7 +192,7 @@ class InvalidTransitionsTest(InitRepo):  # P5A-AC-026
                 with self.subTest(file=rel, text=text[:12], action=action):
                     err = self.refused(action)
                     self.assertIn(f"{WORK}/{rel}", err)
-                    self.assertIn("modsys init map --restart", err)
+                    self.assertIn("segmently-modules init map --restart", err)
             (self.work / rel).write_bytes(good)
 
     def test_flags_and_actions(self):
@@ -247,7 +247,7 @@ class StateEntriesTest(InitRepo):  # P5A-AC-026: a later engine's phases, damage
                 with self.subTest(case=label, action=action):
                     err = self.refused(action)
                     self.assertIn(f"{WORK}/state.json: not a valid init state", err)
-                    self.assertIn("start over: modsys init map --restart", err)
+                    self.assertIn("start over: segmently-modules init map --restart", err)
 
 
 class InterruptTest(InitRepo):  # P5A-AC-027 (row 5.2, phases 1–2)
@@ -260,7 +260,7 @@ class InterruptTest(InitRepo):  # P5A-AC-027 (row 5.2, phases 1–2)
     def stopped(self, seam: str | None, *argv) -> None:
         env = {TEST_STOP: seam} if seam else {}
         with mock.patch.dict(os.environ, env):
-            self.assertEqual(run("init", *argv, *self.R), (130, "", "modsys: interrupted\n"))
+            self.assertEqual(run("init", *argv, *self.R), (130, "", "segmently-modules: interrupted\n"))
 
     def test_an_interrupted_preflight(self):
         first = self.baseline()
@@ -278,7 +278,7 @@ class InterruptTest(InitRepo):  # P5A-AC-027 (row 5.2, phases 1–2)
         for seam in ("map", "map:renamed", None):
             with self.subTest(seam=seam):
                 if seam is None:  # Ctrl-C during map
-                    with mock.patch("modsys.mapper.build", side_effect=KeyboardInterrupt):
+                    with mock.patch("segmently_modules.mapper.build", side_effect=KeyboardInterrupt):
                         self.stopped(None, "map", "--restart")
                 else:
                     self.stopped(seam, "map", "--restart")
@@ -303,8 +303,8 @@ class InterruptTest(InitRepo):  # P5A-AC-027 (row 5.2, phases 1–2)
                 raise KeyboardInterrupt
             return real(flow, state, phase, status, sha)
 
-        with mock.patch("modsys.init_flow.InitFlow.mark", autospec=True, side_effect=stop):
-            self.assertEqual(run("init", "confirm", *self.R), (130, "", "modsys: interrupted\n"))
+        with mock.patch("segmently_modules.init_flow.InitFlow.mark", autospec=True, side_effect=stop):
+            self.assertEqual(run("init", "confirm", *self.R), (130, "", "segmently-modules: interrupted\n"))
         self.assertTrue((self.work / "confirmed.json").exists())
         self.assertEqual(self.statuses(), ("done", "done", "running"))
 
@@ -379,7 +379,7 @@ class ActionDataTest(InitRepo):  # P5A-AC-029
     def test_a_note_when_code_stays_outside_the_manifest_units(self):  # P5B-AC-043 (SI-26)
         note = ("note: 1 code file(s) are outside every candidate — a manifest in a fixture, "
                 "docs site or functions folder can hide source directories: add it to [init] "
-                "exclude and run modsys init map --restart")
+                "exclude and run segmently-modules init map --restart")
         site = self.root / "src/x/fixtures/site"  # src/x contains a unit: src/x/main.py stays out
         site.mkdir(parents=True)
         (site / "package.json").write_text('{"name": "site"}\n')
@@ -413,7 +413,7 @@ class WritesAndRacesTest(InitRepo):  # P5A-AC-044 (init)
         self.assertIn("gate 3", self.init("status")["next"])
         self.init("map")
         self.assertFalse(stale.exists())
-        from modsys import mapper
+        from segmently_modules import mapper
         real = mapper.build
         calls = []
 
@@ -423,7 +423,7 @@ class WritesAndRacesTest(InitRepo):  # P5A-AC-044 (init)
                 self.init("map")  # a second run finishes while the first is in its map phase
             return real(*args)
 
-        with mock.patch("modsys.mapper.build", side_effect=interleaved):
+        with mock.patch("segmently_modules.mapper.build", side_effect=interleaved):
             self.init("map")
         for name in ("state.json", "preflight.json", "proposal.json"):
             json.loads((self.work / name).read_text())
@@ -448,7 +448,7 @@ class WritesAndRacesTest(InitRepo):  # P5A-AC-044 (init)
             os.unlink(src)
             return real(src, dst)
 
-        with mock.patch("modsys.init_flow.os.replace", side_effect=swept):
+        with mock.patch("segmently_modules.init_flow.os.replace", side_effect=swept):
             err = self.refused("map")
         self.assertIn("another init run", err)
         self.assertIn("try again", err)
@@ -459,23 +459,23 @@ class WritesAndRacesTest(InitRepo):  # P5A-AC-044 (init)
     def test_write_failures(self):
         os.chmod(self.root, 0o555)
         try:
-            self.assertIn("cannot write .modsys/config.toml: Permission denied",
+            self.assertIn("cannot write .segmently-modules/config.toml: Permission denied",
                           self.refused("map"))
         finally:
             os.chmod(self.root, 0o755)
         self.init()
-        os.chmod(self.root / ".modsys", 0o555)
+        os.chmod(self.root / ".segmently-modules", 0o555)
         try:
-            self.assertIn("cannot write .modsys/init/state.json: Permission denied",
+            self.assertIn("cannot write .segmently-modules/init/state.json: Permission denied",
                           self.refused("map"))
         finally:
-            os.chmod(self.root / ".modsys", 0o755)
+            os.chmod(self.root / ".segmently-modules", 0o755)
         self.init("map")
         os.chmod(self.work, 0o555)
         try:
-            self.assertIn("cannot write .modsys/init/state.json: Permission denied",
+            self.assertIn("cannot write .segmently-modules/init/state.json: Permission denied",
                           self.refused("confirm"))
-            self.assertIn("cannot write .modsys/init/: Permission denied",
+            self.assertIn("cannot write .segmently-modules/init/: Permission denied",
                           self.refused("map", "--restart"))
         finally:
             os.chmod(self.work, 0o755)
@@ -505,7 +505,7 @@ class ModuleTransitionsTest(Phase4Repo):  # P5B-AC-003 (the claims and checks; r
         self.assertEqual(self.modules()["x"], {"status": "running", "attempts": 1, "error": None})
         code, out, err = run("init", "done", "x", "--json", *self.R)  # nothing written yet
         self.assertEqual((code, self.modules()["x"]["status"]), (1, "running"))
-        self.assertIn("modsys: x: missing MODULE.md", err.splitlines())
+        self.assertIn("segmently-modules: x: missing MODULE.md", err.splitlines())
         write_docs(self.root, self.item("x"))
         data = self.init("done", "x")
         self.assertEqual((data["status"], data["problems"], data["message"]), ("done", [], None))
@@ -532,8 +532,8 @@ class ModuleTransitionsTest(Phase4Repo):  # P5B-AC-003 (the claims and checks; r
 
     def test_state_writes_are_atomic(self):
         good = (self.work / "state.json").read_bytes()
-        with mock.patch("modsys.init_flow.os.replace", side_effect=KeyboardInterrupt):
-            self.assertEqual(run("init", "next", *self.R), (130, "", "modsys: interrupted\n"))
+        with mock.patch("segmently_modules.init_flow.os.replace", side_effect=KeyboardInterrupt):
+            self.assertEqual(run("init", "next", *self.R), (130, "", "segmently-modules: interrupted\n"))
         self.assertEqual((self.work / "state.json").read_bytes(), good)
         json.loads(good)
         self.assertEqual(self.temps(), [])
@@ -544,14 +544,14 @@ class Phase4InvalidTransitionsTest(InitRepo):  # P5B-AC-004 (the phase 4 rows)
         self.init("map")
         for argv in (("fanout",), ("next",)):
             with self.subTest(argv=argv):
-                self.assertIn("modsys init confirm", self.refused(*argv))
+                self.assertIn("segmently-modules init confirm", self.refused(*argv))
         self.assertFalse((self.work / "work").exists())
 
     def test_the_claim_and_check_rows(self):
         self.init("map")
         self.init("confirm")
         self.init("fanout")
-        self.assertIn("'x' is pending — claim it first: modsys init next",
+        self.assertIn("'x' is pending — claim it first: segmently-modules init next",
                       self.refused("done", "x"))
         self.assertIn("unknown module 'nosuch' (modules: x, y, z)", self.refused("done", "nosuch"))
         for _ in range(3):
@@ -568,8 +568,8 @@ class Phase4InvalidTransitionsTest(InitRepo):  # P5B-AC-004 (the phase 4 rows)
         self.assertEqual({p: p.read_bytes() for p in (self.work / "staging/x").rglob("*")
                           if p.is_file()}, before)
         err = self.refused("fanout")
-        self.assertIn("modsys init resume", err)
-        self.assertIn("modsys init run", err)
+        self.assertIn("segmently-modules init resume", err)
+        self.assertIn("segmently-modules init run", err)
         self.assertIn("gate 3 passed", self.refused("map"))
         self.assertIn("init done needs the MODULE", self.refused("done"))
         self.assertIn("init next takes no MODULE", self.refused("next", "x"))
@@ -583,7 +583,7 @@ class ConcurrencyTest(Phase4Repo):  # P5B-AC-006 (SI-3)
         gate = self.root.parent / "go"
         script = ("import os, sys, time\n"
                   f"while not os.path.exists({str(gate)!r}): time.sleep(0.01)\n"
-                  "from modsys.cli import main\nsys.exit(main(sys.argv[1:]))\n")
+                  "from segmently_modules.cli import main\nsys.exit(main(sys.argv[1:]))\n")
         env = {**os.environ, "PYTHONPATH": str(ENGINE)}
         procs = [subprocess.Popen([sys.executable, "-c", script, *argv, "--json", *self.R],
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
@@ -609,9 +609,9 @@ class ConcurrencyTest(Phase4Repo):  # P5B-AC-006 (SI-3)
                          dict.fromkeys(self.UNITS, "done"))
 
     def test_a_writer_waits_for_the_lock_then_gives_up(self):
-        from modsys.store import file_lock
+        from segmently_modules.store import file_lock
         with file_lock(self.work / "state.json"), \
-                mock.patch("modsys.init_flow.LOCK_TIMEOUT_S", 0.2):
+                mock.patch("segmently_modules.init_flow.LOCK_TIMEOUT_S", 0.2):
             err = self.refused("next")
         self.assertIn("state.json.lock", err)
         self.assertIn("locked by another writer", err)
@@ -626,7 +626,7 @@ class ReconfirmTest(InitRepo):  # P5B-AC-050 (P5a SI-13)
         self.init("fanout")
         files = ("confirmed.json", "state.json", "work/ex.json")
         before = {f: (self.work / f).read_bytes() for f in files}
-        message = "the fan-out has started — to change the module set: modsys init map --restart"
+        message = "the fan-out has started — to change the module set: segmently-modules init map --restart"
         for change in (None, lambda c: c[1].update(include=False)):
             with self.subTest(edited=change is not None):
                 if change:
@@ -660,13 +660,13 @@ class StatusTest(Phase4Repo):  # P5B-AC-027
                                        "y                        failed  (attempt 2) exit 3: y "
                                        "broke", "z                        pending",
                                        "modules    0 done, 1 running, 1 pending, 1 failed"])
-        self.assertTrue(lines[-1].startswith("next: modsys init resume"), lines[-1])
+        self.assertTrue(lines[-1].startswith("next: segmently-modules init resume"), lines[-1])
 
 
 class InitContractTest(InitRepo):  # P5A-AC-046 (init)
     def test_garbage_config_interrupt_and_options_after_the_action(self):
         self.init("map")
-        config = self.root / ".modsys/config.toml"
+        config = self.root / ".segmently-modules/config.toml"
         good = config.read_text()
         for text in ("[init]\nexclude = 5\n", "code_map = 5\n"):
             config.write_text(text)
@@ -675,17 +675,17 @@ class InitContractTest(InitRepo):  # P5A-AC-046 (init)
                     err = self.refused(action)
                     self.assertIn("config.toml", err)
         config.write_text(good)
-        with mock.patch("modsys.init_flow.InitFlow.run_phases", side_effect=KeyboardInterrupt):
-            self.assertEqual(run("init", "map", *self.R), (130, "", "modsys: interrupted\n"))
+        with mock.patch("segmently_modules.init_flow.InitFlow.run_phases", side_effect=KeyboardInterrupt):
+            self.assertEqual(run("init", "map", *self.R), (130, "", "segmently-modules: interrupted\n"))
         self.init("map")
-        with mock.patch("modsys.init_flow.InitFlow.validate", side_effect=RuntimeError("boom")):
+        with mock.patch("segmently_modules.init_flow.InitFlow.validate", side_effect=RuntimeError("boom")):
             with mock.patch.dict(os.environ):
-                os.environ.pop("MODSYS_DEBUG", None)
+                os.environ.pop("SEGMENTLY_MODULES_DEBUG", None)
                 code, out, err = run("init", "confirm", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertIn("modsys: internal error: RuntimeError: boom", err)
+        self.assertIn("segmently-modules: internal error: RuntimeError: boom", err)
         code, out, err = run("init", "--json", "status", "--root", str(self.root))
-        self.assertEqual((code, err, json.loads(out)["schema"]), (0, "", "modsys.init/1"))
+        self.assertEqual((code, err, json.loads(out)["schema"]), (0, "", "segmently-modules.init/1"))
 
 
 if __name__ == "__main__":

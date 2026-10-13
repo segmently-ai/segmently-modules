@@ -9,12 +9,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from modsys import lint
-from modsys.skill_sync import sync_command
+from segmently_modules import lint
+from segmently_modules.skill_sync import sync_command
 from tests.helpers import copy_fixture, init_git, run, run_json
 
 SKILL = "---\nname: {sid}\ndescription: The {sid} skill.\n---\n\n# {sid}\n"
-SYNC = re.compile(r"modsys packs sync(?: --agent \w+)*")
+SYNC = re.compile(r"segmently-modules packs sync(?: --agent \w+)*")
 
 
 class BacklogRepo(unittest.TestCase):
@@ -22,7 +22,7 @@ class BacklogRepo(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = copy_fixture(self._tmp.name)
         self.R = ("--root", str(self.root))
-        self.team = self.root / ".modsys/packs/team"
+        self.team = self.root / ".segmently-modules/packs/team"
         self.pack(["api-review"])
 
     def tearDown(self):
@@ -42,7 +42,7 @@ class BacklogRepo(unittest.TestCase):
             md.write_text(SKILL.format(sid=sid))
 
     def config(self, text: str) -> None:
-        (self.root / ".modsys/config.toml").write_text(text)
+        (self.root / ".segmently-modules/config.toml").write_text(text)
 
     def text(self, *argv) -> str:
         return run(*argv, *self.R)[1]
@@ -50,13 +50,13 @@ class BacklogRepo(unittest.TestCase):
 
 class HintsNameTheAgentsTest(BacklogRepo):  # P4B-AC-001
     def test_one_helper_names_the_sync_command(self):
-        both = "modsys packs sync --agent claude --agent codex"
+        both = "segmently-modules packs sync --agent claude --agent codex"
         self.assertEqual(sync_command(None, None), both)
         self.assertEqual(sync_command(["codex", "claude"], None),
-                         "modsys packs sync --agent codex --agent claude")
-        self.assertEqual(sync_command(None, ["claude"]), "modsys packs sync")
-        self.assertEqual(sync_command(["claude"], ["claude"]), "modsys packs sync")
-        self.assertEqual(sync_command(["codex"], ["claude"]), "modsys packs sync --agent codex")
+                         "segmently-modules packs sync --agent codex --agent claude")
+        self.assertEqual(sync_command(None, ["claude"]), "segmently-modules packs sync")
+        self.assertEqual(sync_command(["claude"], ["claude"]), "segmently-modules packs sync")
+        self.assertEqual(sync_command(["codex"], ["claude"]), "segmently-modules packs sync --agent codex")
 
     def test_every_surface_uses_it(self):
         help_text = " ".join(run("eject", "--help")[1].split())
@@ -66,7 +66,7 @@ class HintsNameTheAgentsTest(BacklogRepo):  # P4B-AC-001
             with self.subTest(configured=configured):
                 self.config("" if configured is None else
                             '[packs]\nagents = ["claude", "codex"]\n')
-                shutil.rmtree(self.root / ".modsys/overrides", ignore_errors=True)
+                shutil.rmtree(self.root / ".segmently-modules/overrides", ignore_errors=True)
                 shutil.rmtree(self.root / ".claude", ignore_errors=True)
                 eject = self.text("eject", "api-review").splitlines()[-1]
                 self.assertEqual(SYNC.findall(eject), [sync_command(None, configured)])
@@ -77,9 +77,9 @@ class HintsNameTheAgentsTest(BacklogRepo):  # P4B-AC-001
                 self.assertEqual(SYNC.findall(check),
                                  [sync_command(["codex", "claude"], configured)])
         check = self.text("packs", "sync", "--check").splitlines()[-1]
-        self.assertTrue(check.endswith("stale — run modsys packs sync"), check)
+        self.assertTrue(check.endswith("stale — run segmently-modules packs sync"), check)
         self.assertTrue(self.text("packs", "sync", "--check", "--agent", "claude").endswith(
-            "stale — run modsys packs sync --agent claude\n"))
+            "stale — run segmently-modules packs sync --agent claude\n"))
 
     def test_packs_new_names_the_configured_agents(self):  # fix wave M1
         for configured in (None, ["claude"], ["claude", "codex"]):
@@ -96,7 +96,7 @@ class RecordAndArticleTest(BacklogRepo):  # P4B-AC-002
     def test_a_record_less_copy_of_a_skill_no_pack_declares(self):
         self.assertEqual(run("eject", "api-review", *self.R)[0], 0)
         self.pack([])
-        (self.root / ".modsys/overrides/skills/api-review/.modsys-ejected").write_text("{}\n")
+        (self.root / ".segmently-modules/overrides/skills/api-review/.segmently-modules-ejected").write_text("{}\n")
         out = self.text("packs", "sync", "--agent", "claude")
         self.assertEqual(out.splitlines()[0],
                          "invalid    claude  .claude/skills/api-review  (no valid record)")
@@ -131,15 +131,15 @@ class UnreadableInputsTest(BacklogRepo):  # P4B-AC-003
     def refused(self, *argv, path: str) -> None:
         code, out, err = run(*argv, "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertEqual(err, f"modsys: error: cannot read {path}: Permission denied\n")
+        self.assertEqual(err, f"segmently-modules: error: cannot read {path}: Permission denied\n")
 
     def test_a_source_file(self):
         os.chmod(self.ref, 0)
-        path = ".modsys/packs/team/skills/api-review/references/r.md"
+        path = ".segmently-modules/packs/team/skills/api-review/references/r.md"
         self.refused("packs", "sync", "--agent", "claude", path=path)
         self.assertFalse((self.root / ".claude").exists())
         self.refused("eject", "api-review", path=path)
-        self.assertFalse((self.root / ".modsys/overrides").exists())
+        self.assertFalse((self.root / ".segmently-modules/overrides").exists())
         (self.root / "AGENTS.md").write_text("# Team\n")
         self.refused("agents-md", "--target", "AGENTS.md", path=path)
         self.assertEqual((self.root / "AGENTS.md").read_text(), "# Team\n")
@@ -160,7 +160,7 @@ class UnreadableInputsTest(BacklogRepo):  # P4B-AC-003
         init_git(self.root)
         self.assertEqual(run("eject", "api-review", *self.R)[0], 0)
         path = (self.ref if side == "source" else
-                self.root / ".modsys/overrides/skills/api-review/references/r.md")
+                self.root / ".segmently-modules/overrides/skills/api-review/references/r.md")
         os.chmod(path, 0)
         return path.relative_to(self.root).as_posix()
 
@@ -201,7 +201,7 @@ class ContainmentTest(BacklogRepo):  # P4B-AC-004 (M-4)
         (self.team / "roles").mkdir()
         os.symlink(self.root / "outside.md", self.team / "roles/r.md")
         self.assertEqual(self.ms061(), [("pack 'team': role 'reviewer' template 'roles/r.md' is "
-                                         "outside the pack", ".modsys/packs/team/pack.toml")])
+                                         "outside the pack", ".segmently-modules/packs/team/pack.toml")])
         (self.team / "roles/r.md").unlink()
         (self.team / "roles/inside.md").write_text("# ${title}\n")
         os.symlink("inside.md", self.team / "roles/r.md")
@@ -229,7 +229,7 @@ class FileBecomesDirectoryTest(BacklogRepo):  # P4B-AC-004 (M-3)
         (self.src() / "refs/a.md").write_text("a\n")
         self.assertEqual(self.sync(), [("updated", ["refs", "refs/a.md"], None)])
         self.assertEqual((self.dest() / "refs/a.md").read_text(), "a\n")
-        marker = json.loads((self.dest() / ".modsys-managed").read_text())
+        marker = json.loads((self.dest() / ".segmently-modules-managed").read_text())
         self.assertEqual(sorted(marker["files"]), ["SKILL.md", "refs/a.md"])
         self.assertEqual(run("packs", "sync", "--check", "--agent", "claude", *self.R)[0], 0)
         shutil.rmtree(self.src() / "refs")
@@ -254,7 +254,7 @@ class FileBecomesDirectoryTest(BacklogRepo):  # P4B-AC-004 (M-3)
 class PackGuideTest(unittest.TestCase):  # D0(g)
     def test_the_create_role_example_names_the_standard_roles(self):
         text = (Path(__file__).resolve().parents[1] / "docs/writing-a-pack.md").read_text()
-        after = text.split("modsys packs list                     # the pack", 1)[1]
+        after = text.split("segmently-modules packs list                     # the pack", 1)[1]
         self.assertIn("the standard roles'\ndocs (`developer`, `qa`, `po`, `architect`) are "
                       "scaffolded too", after.split("## ", 1)[0])
 

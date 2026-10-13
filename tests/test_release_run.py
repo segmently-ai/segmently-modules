@@ -28,11 +28,11 @@ class RunTest(ReleaseRepo):  # P6-AC-014, 015, 017
         self.assertRegex(proc.stdout, r"step 3 tests: Ran 3 tests in 2 modules \(\d+ jobs?\), "
                                       r"OK \(skipped=1\); "
                                       r"the adoption eval passed")  # the skip stays visible
-        version = re.search(r"done: modsys (\S+) \(dev\)", proc.stdout).group(1)
+        version = re.search(r"done: segmently-modules (\S+) \(dev\)", proc.stdout).group(1)
         self.assertRegex(version, rf"^{re.escape(REL)}-dev\.h[0-9a-f]{{8}}$")
         self.assertEqual(self.state(self.engine), engine_before)  # dev: no commit, no tag
         self.assertFalse((self.engine / "tools/__pycache__").exists())
-        self.assertEqual(self.log(self.pub, "dev"), [f"release modsys {version} (dev)"])
+        self.assertEqual(self.log(self.pub, "dev"), [f"release segmently-modules {version} (dev)"])
         self.assertEqual(git(self.pub, "tag", "-l"), "")
         self.assertIn("push: not requested — the release is committed locally; to publish it "
                       f"(an owner command), run:\n  git -C {shlex.quote(str(self.pub))} push "
@@ -45,15 +45,15 @@ class RunTest(ReleaseRepo):  # P6-AC-014, 015, 017
                             "print(publish.build_channel(Path(sys.argv[2]), Path(sys.argv[3]), "
                             "'dev'))", str(self.engine / "tools"), str(self.engine),
                             str(build)], check=True, capture_output=True)
-            for name in ("modsys", "modsys-ui", "modsys-qa"):
+            for name in ("segmently-modules", "segmently-modules-ui", "segmently-modules-qa"):
                 self.assertEqual(self.files(build / name), self.files(self.pub / "plugins" / name))
             self.assertEqual(self.committed("dev"), {
                 f"plugins/{name}/{rel}": "100755" if mode & 0o111 else "100644"
-                for name in ("modsys", "modsys-ui", "modsys-qa")
+                for name in ("segmently-modules", "segmently-modules-ui", "segmently-modules-qa")
                 for rel, (mode, _) in self.files(build / name).items()})
         claude = json.loads((self.pub / ".claude-plugin/marketplace.json").read_text())
         codex = json.loads((self.pub / ".agents/plugins/marketplace.json").read_text())
-        self.assertEqual((claude["name"], codex["name"]), ("modsys-dev", "modsys-dev"))
+        self.assertEqual((claude["name"], codex["name"]), ("segmently-modules-dev", "segmently-modules-dev"))
         self.assertIn(f"`claude plugin marketplace add {SLUG}#stable`",
                       (self.pub / "README.md").read_text())
         self.assertEqual(self.entries("dev"), [(version, "dev", git(
@@ -67,26 +67,26 @@ class RunTest(ReleaseRepo):  # P6-AC-014, 015, 017
             self.assertEqual(call["secrets"], [])
             self.assertTrue(call["config"].startswith(str(self.tmpdir)), call)
         installs = [c["argv"][2] for c in calls if c["argv"][:2] == ["plugin", "install"]]
-        self.assertEqual(installs, ["modsys-ui@modsys-dev", "modsys-qa@modsys-dev"])
-        self.assertIn(f"bin/modsys --version = modsys {ENG}", proc.stdout)
+        self.assertEqual(installs, ["segmently-modules-ui@segmently-modules-dev", "segmently-modules-qa@segmently-modules-dev"])
+        self.assertIn(f"bin/segmently-modules --version = segmently-modules {ENG}", proc.stdout)
 
         proc = self.release("stable")
         self.assert_ok(proc)
         self.assertEqual(git(self.engine, "log", "--format=%s", "-3").splitlines(),
-                         [f"start modsys {NXT_DEV}", f"release modsys {REL}", "engine"])
+                         [f"start segmently-modules {NXT_DEV}", f"release segmently-modules {REL}", "engine"])
         self.assertEqual(git(self.engine, "tag", "--points-at", "HEAD~1").split(), [f"v{REL}"])
         self.assertIn(f'__version__ = "{REL}"', git(self.engine, "show",
-                                                   "HEAD~1:modsys/__init__.py"))
+                                                   "HEAD~1:segmently_modules/__init__.py"))
         self.assertIn(f'version = "{REL}"', git(self.engine, "show", "HEAD~1:pyproject.toml"))
         self.assertIn(f'version = "{NXT_DEV}"', (self.engine / "pyproject.toml").read_text())
         # ONE commit (P6-AC-015): a channel never starts on the other channel's release
-        self.assertEqual(self.log(self.pub, "stable"), [f"release modsys {REL} (stable)"])
+        self.assertEqual(self.log(self.pub, "stable"), [f"release segmently-modules {REL} (stable)"])
         self.assertEqual(sorted(git(self.pub, "tag", "--points-at", "stable").split()),
                          [t.format(REL) for t in TAGS])
-        self.assertEqual(self.log(self.pub, "dev"), [f"release modsys {version} (dev)"])
+        self.assertEqual(self.log(self.pub, "dev"), [f"release segmently-modules {version} (dev)"])
         self.assertEqual(git(self.pub, "symbolic-ref", "HEAD").strip(), "refs/heads/stable")
         self.assertEqual(json.loads((self.pub / ".claude-plugin/marketplace.json")
-                                    .read_text())["name"], "modsys")
+                                    .read_text())["name"], "segmently-modules")
         log = (self.pub / "CHANGELOG.md").read_text()
         self.assertIn(f"- {REL} (stable): engine ", log)
         self.assertNotIn("(dev)", log)  # the channel's own entries only
@@ -95,24 +95,24 @@ class RunTest(ReleaseRepo):  # P6-AC-014, 015, 017
         self.assertEqual(git(self.engine, "show", "HEAD~1:CHANGELOG.md"), CHANGELOG.replace(
             "## [Unreleased]\n\n", f"## [Unreleased]\n\n## [{REL}] - {DATE}\n\n", 1))
         self.assertEqual(git(self.engine, "show", "--name-only", "--format=", "HEAD~1").split(),
-                         ["CHANGELOG.md", "modsys/__init__.py", "pyproject.toml"])
+                         ["CHANGELOG.md", "pyproject.toml", "segmently_modules/__init__.py"])
         self.assertEqual(git(self.engine, "show", "--name-only", "--format=", "HEAD").split(),
-                         ["modsys/__init__.py", "pyproject.toml"])
+                         ["pyproject.toml", "segmently_modules/__init__.py"])
         self.assertEqual((self.engine / "CHANGELOG.md").read_text(),
                          git(self.engine, "show", "HEAD~1:CHANGELOG.md"))
         self.assertEqual(self.entries("stable"), [(REL, "stable", git(
             self.engine, "rev-parse", "HEAD~1"), ["- First planted note.",
                                                   "- Second planted note."])])
-        self.assertTrue(log.startswith(f"{LOG_BEGIN}\n## modsys\n\n- {REL} (stable): engine "))
+        self.assertTrue(log.startswith(f"{LOG_BEGIN}\n## segmently-modules\n\n- {REL} (stable): engine "))
         self.assertTrue(log.endswith("\n  - First planted note.\n  - Second planted note.\n"
                                      f"{LOG_END}\n"), log)
-        self.assertIn(f"step 4 build: modsys {REL} (modsys, modsys-ui, modsys-qa); CHANGELOG.md "
+        self.assertIn(f"step 4 build: segmently-modules {REL} (segmently-modules, segmently-modules-ui, segmently-modules-qa); CHANGELOG.md "
                       f"[Unreleased] dated [{REL}] - {DATE}\n", proc.stdout)
-        self.assertIn(f"bin/modsys --version = modsys {REL}", proc.stdout)
+        self.assertIn(f"bin/segmently-modules --version = segmently-modules {REL}", proc.stdout)
         self.assertIn(f"  git -C {shlex.quote(str(self.pub))} push --atomic origin "
                       "refs/heads/stable "
-                      f"refs/tags/v{REL} refs/tags/modsys--v{REL} refs/tags/modsys-ui--v{REL} "
-                      f"refs/tags/modsys-qa--v{REL}\n  git -C {self.engine} push --atomic "
+                      f"refs/tags/v{REL} refs/tags/segmently-modules--v{REL} refs/tags/segmently-modules-ui--v{REL} "
+                      f"refs/tags/segmently-modules-qa--v{REL}\n  git -C {self.engine} push --atomic "
                       f"origin refs/heads/main refs/tags/v{REL}\n", proc.stdout)
         self.assertEqual(list(self.pub.rglob("__pycache__")), [])
         self.assertNotIn("push", (self.base / "git.log").read_text().split())
@@ -135,8 +135,8 @@ class RunTest(ReleaseRepo):  # P6-AC-014, 015, 017
         self.assert_ok(self.release("stable"))
         dev, stable = self.log(self.pub, "dev"), self.log(self.pub, "stable")
         self.assertEqual(dev[1:], ["the owner's content"])
-        self.assertEqual(stable, [f"release modsys {REL} (stable)", "the owner's content"])
-        self.assertRegex(dev[0], rf"^release modsys {re.escape(REL)}-dev\.h[0-9a-f]{{8}} \(dev\)$")
+        self.assertEqual(stable, [f"release segmently-modules {REL} (stable)", "the owner's content"])
+        self.assertRegex(dev[0], rf"^release segmently-modules {re.escape(REL)}-dev\.h[0-9a-f]{{8}} \(dev\)$")
         for branch in ("dev", "stable"):
             self.assertEqual(git(self.pub, "show", f"{branch}:plugins/other-tool/plugin.json"),
                              '{"name": "other-tool"}\n')
@@ -153,13 +153,13 @@ class RunTest(ReleaseRepo):  # P6-AC-014, 015, 017
         proc = self.release("stable", "--push")
         self.assert_ok(proc)
         self.assertEqual(sorted(self.refs(remotes["publish"])),
-                         ["refs/heads/stable", f"refs/tags/modsys--v{NXT}",
-                          f"refs/tags/modsys-qa--v{NXT}", f"refs/tags/modsys-ui--v{NXT}",
+                         ["refs/heads/stable", f"refs/tags/segmently-modules--v{NXT}",
+                          f"refs/tags/segmently-modules-qa--v{NXT}", f"refs/tags/segmently-modules-ui--v{NXT}",
                           f"refs/tags/v{NXT}"])
         self.assertEqual(sorted(self.refs(remotes["engine"])),
                          ["refs/heads/main", f"refs/tags/v{NXT}"])
-        self.assertIn(f"push: publish repo stable, v{NXT}, modsys--v{NXT}, modsys-ui--v{NXT}, "
-                      f"modsys-qa--v{NXT}; engine main, v{NXT}\n", proc.stdout)
+        self.assertIn(f"push: publish repo stable, v{NXT}, segmently-modules--v{NXT}, segmently-modules-ui--v{NXT}, "
+                      f"segmently-modules-qa--v{NXT}; engine main, v{NXT}\n", proc.stdout)
         pushes = [l for l in (self.base / "git.log").read_text().splitlines() if " push " in
                   f" {l} "]
         self.assertEqual(len(pushes), 2, pushes)
@@ -183,7 +183,7 @@ class CommitTest(ReleaseRepo):  # final review I-1: the commit is the build, wha
     def test_ignore_rules_and_a_repository_without_modes(self):
         (self.pub / "README.md").write_bytes(b"# Plugins\r\n\r\nIntro.\r\n")
         (self.pub / "CHANGELOG.md").write_bytes(b"# Changes\r\n\r\n- theirs\r\n")
-        (self.pub / ".gitignore").write_text("bin/\n")  # the owner's: it matches bin/modsys
+        (self.pub / ".gitignore").write_text("bin/\n")  # the owner's: it matches bin/segmently-modules
         git(self.pub, "add", "--", "README.md", "CHANGELOG.md", ".gitignore")
         git(self.pub, "commit", "-q", "-m", "the owner's files")
         git(self.pub, "config", "core.fileMode", "false")
@@ -193,22 +193,22 @@ class CommitTest(ReleaseRepo):  # final review I-1: the commit is the build, wha
         self.assert_ok(self.release("dev", env=env))
         rows = git(self.pub, "ls-tree", "-r", "dev", "--", "plugins").splitlines()
         held = {row.split("\t")[1]: row.split()[0] for row in rows}
-        self.assertEqual(held["plugins/modsys/bin/modsys"], "100755")
+        self.assertEqual(held["plugins/segmently-modules/bin/segmently-modules"], "100755")
         self.assertEqual([p for p, mode in held.items() if mode != "100644"],
-                         ["plugins/modsys/bin/modsys"])
+                         ["plugins/segmently-modules/bin/segmently-modules"])
         on_disk = sorted(p.relative_to(self.pub).as_posix()
                          for p in (self.pub / "plugins").rglob("*") if p.is_file())
         self.assertEqual(sorted(held), on_disk)  # every built file is in the commit
-        self.assertGreater(sum(p.startswith("plugins/modsys/runtime/") for p in held), 50)
-        for rel, ours in (("README.md", "<!-- modsys:begin -->"),
-                          ("CHANGELOG.md", "<!-- modsys:changelog:begin -->")):
+        self.assertGreater(sum(p.startswith("plugins/segmently-modules/runtime/") for p in held), 50)
+        for rel, ours in (("README.md", "<!-- segmently-modules:begin -->"),
+                          ("CHANGELOG.md", "<!-- segmently-modules:changelog:begin -->")):
             data = (self.pub / rel).read_bytes()  # a CRLF file stays CRLF, inside our section
             self.assertIn(ours.encode(), data)  # too; the owner's bytes are unchanged
             self.assertNotIn(b"\n", data.replace(b"\r\n", b""), rel)
         self.assertTrue((self.pub / "README.md").read_bytes().startswith(
-            b"# Plugins\r\n\r\nIntro.\r\n\r\n<!-- modsys:begin -->\r\n## modsys\r\n"))
+            b"# Plugins\r\n\r\nIntro.\r\n\r\n<!-- segmently-modules:begin -->\r\n## Segmently Modules\r\n"))
         self.assertTrue((self.pub / "CHANGELOG.md").read_bytes().startswith(
-            b"# Changes\r\n\r\n- theirs\r\n\r\n<!-- modsys:changelog:begin -->\r\n"))
+            b"# Changes\r\n\r\n- theirs\r\n\r\n<!-- segmently-modules:changelog:begin -->\r\n"))
         proc = self.release("dev", env=env)  # and the same tree again is no change
         self.assert_ok(proc)
         self.assertIn("nothing to release", proc.stdout)

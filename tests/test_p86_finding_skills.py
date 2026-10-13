@@ -20,8 +20,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys.config import builtin_packs_root, core_defaults
-from modsys.skills import front_matter
+from segmently_modules.config import builtin_packs_root, core_defaults
+from segmently_modules.skills import front_matter
 from tests.helpers import SPLIT_FIXTURE, copy_fixture, init_git, run, run_json
 
 ENGINE = Path(__file__).resolve().parents[1]
@@ -112,7 +112,7 @@ class DiscoverContractTest(unittest.TestCase):  # D2: the host's MODE=discover c
         "`consume` — the task calls its API as it is",
         "`reference` — the task only follows its patterns or rules",
         # docs for every role, the extracts that bear on the task, the "nothing" line
-        "modsys show <module> --all-roles --json",
+        "segmently-modules show <module> --all-roles --json",
         "A `reference` module: its main doc only, never its role docs, even when that doc is long "
         "or links them",  # C5 read a reference module's role docs (P8.6 F1)
         "a rule it points to in a role doc is extracted as that pointer, unread",
@@ -183,7 +183,7 @@ class DiscoverContractTest(unittest.TestCase):  # D2: the host's MODE=discover c
 
     def test_the_change_only_scenario(self):
         text = flat(ref("module-discover", "from-diff.md"))
-        for phrase in ("modsys discover --from-diff <base>..HEAD --json",
+        for phrase in ("segmently-modules discover --from-diff <base>..HEAD --json",
                        "`git merge-base <target> HEAD`", "never the target itself",
                        "the docs of every `modify` module for every role"):
             self.assertIn(phrase, text)
@@ -230,10 +230,10 @@ class ResearchContractTest(unittest.TestCase):  # D4: kept, a full skill, a stub
     def test_the_contract(self):
         body = every_file("module-research")
         for phrase in ("Pin the question in one sentence.",
-                       "modsys show <module> --all-roles --json",
+                       "segmently-modules show <module> --all-roles --json",
                        "research its successor instead and say so",
                        "`edges`: the modules it relies on; `reverse`: those pointing at it",
-                       "modsys code-map files <module> --json", "modsys lint --json",
+                       "segmently-modules code-map files <module> --json", "segmently-modules lint --json",
                        '"the docs say X (doc:line), the code does Y (file:line)"',
                        "the gaps table", "gaps are reported, not fixed"):
             self.assertIn(phrase, body)
@@ -288,11 +288,11 @@ class SandboxLineTest(unittest.TestCase):  # P84-AC-015, now in each skill's cho
             with self.subTest(skill=name):
                 text = ref(name, "choose.md")
                 self.assertEqual(text.count("<<'EOF'"), 1)
-                block = re.search(r"```bash\n(modsys choose --task-file - <<'EOF'\n.*?\nEOF)\n",
+                block = re.search(r"```bash\n(segmently-modules choose --task-file - <<'EOF'\n.*?\nEOF)\n",
                                   text, re.S).group(1)
                 script = block.replace("<the task text, verbatim>", self.TASK).replace(
-                    "modsys choose --task-file -",
-                    f"'{sys.executable}' -m modsys choose --task-file - --root '{self.root}'", 1)
+                    "segmently-modules choose --task-file -",
+                    f"'{sys.executable}' -m segmently_modules choose --task-file - --root '{self.root}'", 1)
                 env = {**os.environ, "PYTHONPATH": str(ENGINE)}
                 proc = subprocess.run(["sh", "-c", script], capture_output=True, text=True,
                                       env=env, timeout=120)
@@ -311,7 +311,7 @@ class ReferencesTravelTest(unittest.TestCase):  # P84-AC-030: copies, markers, e
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.root = copy_fixture(self._tmp.name)
-        (self.root / ".modsys/config.toml").write_text('[packs]\nbuiltin = ["core"]\n',
+        (self.root / ".segmently-modules/config.toml").write_text('[packs]\nbuiltin = ["core"]\n',
                                                        encoding="utf-8")
         self.R = ("--root", str(self.root))
 
@@ -322,7 +322,7 @@ class ReferencesTravelTest(unittest.TestCase):  # P84-AC-030: copies, markers, e
             for agent_dir in (".claude/skills", ".agents/skills"):
                 with self.subTest(skill=name, where=agent_dir):
                     dest = self.root / agent_dir / name
-                    marker = json.loads((dest / ".modsys-managed").read_text(encoding="utf-8"))
+                    marker = json.loads((dest / ".segmently-modules-managed").read_text(encoding="utf-8"))
                     self.assertEqual(sorted(marker["files"]),
                                      sorted(["SKILL.md"] + [f"references/{f}"
                                                             for f in REFERENCES[name]]))
@@ -346,7 +346,7 @@ class ReferencesTravelTest(unittest.TestCase):  # P84-AC-030: copies, markers, e
         code, _, err = run_json("eject", "module-discover", *self.R)
         self.assertEqual((code, err), (0, ""))
         for file in REFERENCES["module-discover"]:
-            copy = self.root / ".modsys/overrides/skills/module-discover/references" / file
+            copy = self.root / ".segmently-modules/overrides/skills/module-discover/references" / file
             self.assertEqual(copy.read_bytes(),
                              (CORE / "module-discover/references" / file).read_bytes())
 

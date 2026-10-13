@@ -4,7 +4,7 @@ import re
 import unittest
 from pathlib import Path
 
-from modsys.cli import build_parser
+from segmently_modules.cli import build_parser
 from tests.test_cli_contract import GOLDEN
 
 ENGINE = Path(__file__).resolve().parents[1]
@@ -40,7 +40,7 @@ class PackDocsTest(unittest.TestCase):  # P4A-AC-022
                        "{template, role, source, path}",
                        "{template, file, from, dry_run}", "{targets: [{path, status, same_as?}], "
                                                           "check, dry_run}",
-                       "/.modsys-managed", ".modsys-ejected", "<config_dir>/overrides/templates/",
+                       "/.segmently-modules-managed", ".segmently-modules-ejected", "<config_dir>/overrides/templates/",
                        "<config_dir>/overrides/skills/"):
             self.assertIn(needle, contract)
 
@@ -48,7 +48,7 @@ class PackDocsTest(unittest.TestCase):  # P4A-AC-022
         config = doc("docs/configuration.md")
         for needle in ("## `[packs]`", "| `agents` |", "`[skills.<id>]` tables", "`reads_roles`",
                        "`roles/developer.md`, `roles/qa.md`, `roles/po.md`, `roles/architect.md`",
-                       "`agents-md.md`", "modsys templates list", "writing-a-pack.md"):
+                       "`agents-md.md`", "segmently-modules templates list", "writing-a-pack.md"):
             self.assertIn(needle, config)
         rows = dict(re.findall(r"^\| (MS06\d) \| [^|]+ \| (.*) \|$",
                                (ENGINE / "docs/configuration.md").read_text(encoding="utf-8"),
@@ -59,11 +59,11 @@ class PackDocsTest(unittest.TestCase):  # P4A-AC-022
 
     def test_writing_a_pack_walks_through_in_order(self):
         text = (ENGINE / "docs/writing-a-pack.md").read_text(encoding="utf-8")
-        steps = ["modsys packs new team --role reviewer --skill api-review",
-                 "modsys create reviews", "modsys show reviews --role reviewer",
-                 "modsys packs sync --agent claude --agent codex",
-                 "modsys packs sync --check", "## Conflicts", "modsys eject api-review",
-                 "modsys eject api-review --diff", "MS063", "modsys agents-md --target CLAUDE.md"]
+        steps = ["segmently-modules packs new team --role reviewer --skill api-review",
+                 "segmently-modules create reviews", "segmently-modules show reviews --role reviewer",
+                 "segmently-modules packs sync --agent claude --agent codex",
+                 "segmently-modules packs sync --check", "## Conflicts", "segmently-modules eject api-review",
+                 "segmently-modules eject api-review --diff", "MS063", "segmently-modules agents-md --target CLAUDE.md"]
         positions = [text.find(step) for step in steps]
         self.assertNotIn(-1, positions, dict(zip(steps, positions)))
         self.assertEqual(positions, sorted(positions))

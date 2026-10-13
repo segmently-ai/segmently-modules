@@ -9,14 +9,14 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys import mapper, preflight
-from modsys.config import load_config
-from modsys.create import NAME
-from modsys.init_flow import InitFlow
+from segmently_modules import mapper, preflight
+from segmently_modules.config import load_config
+from segmently_modules.create import NAME
+from segmently_modules.init_flow import InitFlow
 from tests.fixtures.build_monorepo import build
 from tests.helpers import git, run, run_json
 
-EXPECTED = {'schema': 'modsys.init-proposal/1',
+EXPECTED = {'schema': 'segmently-modules.init-proposal/1',
  'root': '<root>',
  'candidates': [{'name': 'storefront',
                  'include': True,
@@ -211,7 +211,7 @@ def commit(root: Path, history: list[list[str]]) -> None:
 def proposal(root: Path) -> dict:
     """The proposal `init map` would write (computed, nothing written)."""
     root = Path(root).resolve()
-    flow = InitFlow(root, root / ".modsys", load_config(root / ".modsys", root))
+    flow = InitFlow(root, root / ".segmently-modules", load_config(root / ".segmently-modules", root))
     return flow.map(False, True)["proposal"]
 
 
@@ -235,7 +235,7 @@ class MonorepoTest(MapRepo):  # P5A-AC-037 (row 5.3)
         for argv in (("init",), ("init", "map")):
             code, _, err = run_json(*argv, "--root", str(self.root))
             self.assertEqual((code, err), (0, ""))
-        self.work = self.root / ".modsys/init"
+        self.work = self.root / ".segmently-modules/init"
 
     def written(self) -> dict:
         return json.loads((self.work / "proposal.json").read_text(encoding="utf-8"))
@@ -280,7 +280,7 @@ class CandidatesTest(MapRepo):  # P5A-AC-033
         for c in doc["candidates"]:
             self.assertIs(c["include"], True)
             self.assertTrue(NAME.fullmatch(c["name"]) and len(c["name"]) <= 48, c["name"])
-        flow = InitFlow(root, root / ".modsys", load_config(root / ".modsys", root))
+        flow = InitFlow(root, root / ".segmently-modules", load_config(root / ".segmently-modules", root))
         self.assertEqual(flow.validate(doc), [])  # an unedited proposal always passes
         self.doc = doc
         return rows(doc)
@@ -480,8 +480,8 @@ class OwnersAndCoChangeTest(MapRepo):  # P5A-AC-035
         root = build(self.base / "shop")
         with_all = proposal(root)
         (root / ".github/CODEOWNERS").unlink()
-        (root / ".modsys").mkdir()
-        (root / ".modsys/config.toml").write_text("[init]\nco_change_commits = 0\n")
+        (root / ".segmently-modules").mkdir()
+        (root / ".segmently-modules/config.toml").write_text("[init]\nco_change_commits = 0\n")
         without = proposal(root)
         self.assertEqual([(c["name"], c["include"], c["paths"]) for c in with_all["candidates"]],
                          [(c["name"], c["include"], c["paths"]) for c in without["candidates"]])
@@ -518,20 +518,20 @@ class ConfidenceAndKeywordsTest(MapRepo):  # P5A-AC-036
 class InitKeysTest(MapRepo):  # P5A-AC-032 (the effect of [init] exclude and co_change_commits)
     def test_exclude(self):
         root = build(self.base / "shop")
-        (root / ".modsys").mkdir()
-        (root / ".modsys/config.toml").write_text('[init]\nexclude = ["tools/**"]\n')
+        (root / ".segmently-modules").mkdir()
+        (root / ".segmently-modules/config.toml").write_text('[init]\nexclude = ["tools/**"]\n')
         doc = proposal(root)
         self.assertEqual(doc["unassigned"], [])
         self.assertFalse([p for c in doc["candidates"] for p in c["paths"] if "tools" in p])
         code, env, err = run_json("init", "map", "--dry-run", "--root", str(root))
         self.assertEqual((code, err), (0, ""))
-        flow = InitFlow(root, root / ".modsys", load_config(root / ".modsys", root))
+        flow = InitFlow(root, root / ".segmently-modules", load_config(root / ".segmently-modules", root))
         self.assertFalse([f for f in flow.files() if f.startswith("tools/")])
 
     def test_co_change_commits(self):
         root = build(self.base / "shop")
-        (root / ".modsys").mkdir()
-        (root / ".modsys/config.toml").write_text("[init]\nco_change_commits = 0\n")
+        (root / ".segmently-modules").mkdir()
+        (root / ".segmently-modules/config.toml").write_text("[init]\nco_change_commits = 0\n")
         real = subprocess.run
         logs = []
         with mock.patch("subprocess.run", side_effect=lambda argv, **kw: (
@@ -550,9 +550,9 @@ class CostTest(MapRepo):  # P5A-AC-045 (the spies; the timings are recorded at t
         root = build(self.base / "shop")
         listings, logs, reads = [], [], []
         real_list, real_read, real_run = preflight.list_files, preflight._read, subprocess.run
-        with mock.patch("modsys.preflight.list_files",
+        with mock.patch("segmently_modules.preflight.list_files",
                         side_effect=lambda *a: listings.append(1) or real_list(*a)), \
-                mock.patch("modsys.preflight._read",
+                mock.patch("segmently_modules.preflight._read",
                            side_effect=lambda p: reads.append(p) or real_read(p)), \
                 mock.patch("subprocess.run", side_effect=lambda argv, **kw: (
                     logs.append(argv) if "log" in argv else None) or real_run(argv, **kw)):
@@ -572,7 +572,7 @@ class CostTest(MapRepo):  # P5A-AC-045 (the spies; the timings are recorded at t
         for rel, data in odd.items():
             (root / rel).write_bytes(data)
         reads, real = [], preflight._read
-        with mock.patch("modsys.preflight._read",
+        with mock.patch("segmently_modules.preflight._read",
                         side_effect=lambda p: reads.append(p) or real(p)):
             code, _, err = run("init", "map", "--root", str(root))
         self.assertEqual((code, err), (0, ""))
@@ -585,7 +585,7 @@ class OutsideTheUnitsTest(MapRepo):  # P5B-AC-043 (D15(a), SI-26)
     def check(self, files: dict) -> tuple[list[tuple], list[str]]:
         root = write_files(self.base / f"u{len(list(self.base.iterdir()))}", files)
         doc = proposal(root)
-        flow = InitFlow(root, root / ".modsys", load_config(root / ".modsys", root))
+        flow = InitFlow(root, root / ".segmently-modules", load_config(root / ".segmently-modules", root))
         self.assertEqual(flow.validate(doc), [])  # the unedited proposal passes gate 3
         names = [c["name"] for c in doc["candidates"]]
         self.assertEqual(len(set(names)), len(names))
@@ -612,9 +612,9 @@ class OutsideTheUnitsTest(MapRepo):  # P5B-AC-043 (D15(a), SI-26)
         tools = self.doc["candidates"][1]
         self.assertEqual((tools["signals"]["manifest"], tools["confidence"]), (0.0, 0.0))
         self.assertEqual(self.check({"docs/package.json": '{"name": "site"}', "docs/site.js": js,
-                                     "modsys/cli.py": py, "evals/run.py": py}),
+                                     "segmently_modules/cli.py": py, "evals/run.py": py}),
                          ([("site", ["docs/**"]), ("evals", ["evals/**"]),
-                           ("modsys", ["modsys/**"])], []))
+                           ("segmently-modules", ["segmently_modules/**"])], []))
         self.assertEqual(self.check({"services/payments/pyproject.toml":
                                      '[project]\nname = "payments"\n',
                                      "services/payments/pay.py": py,
@@ -645,8 +645,8 @@ class OutsideTheUnitsTest(MapRepo):  # P5B-AC-043 (D15(a), SI-26)
         tools = next(c for c in proposal(root)["candidates"] if c["name"] == "tools")
         self.assertEqual((tools["signals"]["intra_imports"], tools["signals"]["owners"],
                           tools["confidence"]), (1, 1.0, 0.4))
-        (root / ".modsys").mkdir()
-        (root / ".modsys/config.toml").write_text('[init]\nexclude = ["packages/**"]\n')
+        (root / ".segmently-modules").mkdir()
+        (root / ".segmently-modules/config.toml").write_text('[init]\nexclude = ["packages/**"]\n')
         doc = proposal(root)
         self.assertEqual((rows(doc), doc["candidates"][0]["rationale"][0]),
                          ([("tools", ["tools/**"])], "a top-level directory that holds code"))

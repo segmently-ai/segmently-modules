@@ -41,10 +41,10 @@ class UnreadableProposalTest(Repo):  # P5A-AC-001 (M9)
                                "status", "--value", '"draft"', "--reason", "r", "--run-id",
                                run_id, *self.R)
             self.assertEqual((code, err), (0, ""))
-        queue = self.root / ".modsys/proposals"
+        queue = self.root / ".segmently-modules/proposals"
         other = (queue / "r2-cli.json").read_bytes()
         os.chmod(queue / "r1-cli.json", 0)
-        want = ("modsys: error: cannot read .modsys/proposals/r1-cli.json: "
+        want = ("segmently-modules: error: cannot read .segmently-modules/proposals/r1-cli.json: "
                 "Permission denied\n")
         for argv in (("proposals", "list"), ("sync-instructions", "--module", "catalog"),
                      ("sync-instructions", "--files", "src/catalog/service.py")):
@@ -65,16 +65,16 @@ class BuiltinRefusalPathTest(Repo):  # P5A-AC-002 (M10)
         for name in ("config.toml", "config.user.toml"):
             with self.subTest(file=name):
                 for other in ("config.toml", "config.user.toml"):
-                    (self.root / ".modsys" / other).unlink(missing_ok=True)
-                self.write(f".modsys/{name}", '[packs]\nbuiltin = ["cor"]\n')
+                    (self.root / ".segmently-modules" / other).unlink(missing_ok=True)
+                self.write(f".segmently-modules/{name}", '[packs]\nbuiltin = ["cor"]\n')
                 self.assertEqual(self.refused("packs", "list"),
-                                 f"modsys: error: .modsys/{name}{self.UNKNOWN}")
+                                 f"segmently-modules: error: .segmently-modules/{name}{self.UNKNOWN}")
 
     def test_a_pack_that_enables_a_builtin_pack(self):
-        self.write(".modsys/packs/team/pack.toml", 'id = "team"\n[packs]\nbuiltin = ["core"]\n')
+        self.write(".segmently-modules/packs/team/pack.toml", 'id = "team"\n[packs]\nbuiltin = ["core"]\n')
         self.assertEqual(self.refused("packs", "list"),
-                         "modsys: error: .modsys/packs/team/pack.toml: [packs] builtin: a pack "
-                         "cannot enable built-in packs — set it in .modsys/config.toml\n")
+                         "segmently-modules: error: .segmently-modules/packs/team/pack.toml: [packs] builtin: a pack "
+                         "cannot enable built-in packs — set it in .segmently-modules/config.toml\n")
 
     def test_a_config_dir_outside_the_root_is_named_absolute(self):
         outside = Path(self._tmp.name).resolve() / "cfg"
@@ -82,7 +82,7 @@ class BuiltinRefusalPathTest(Repo):  # P5A-AC-002 (M10)
         (outside / "config.toml").write_text('[packs]\nbuiltin = ["cor"]\n', encoding="utf-8")
         code, out, err = run("packs", "list", "--config-dir", str(outside), *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertEqual(err, f"modsys: error: {outside / 'config.toml'}{self.UNKNOWN}")
+        self.assertEqual(err, f"segmently-modules: error: {outside / 'config.toml'}{self.UNKNOWN}")
 
 
 class Ms066Test(Repo):  # P5A-AC-003 (M8)
@@ -93,25 +93,25 @@ class Ms066Test(Repo):  # P5A-AC-003 (M8)
                 for f in env["data"]["findings"] if f["code"] == "MS066"]
 
     def pack(self, directory: str, pack_id: str) -> None:
-        self.write(f".modsys/packs/{directory}/pack.toml", f'id = "{pack_id}"\n')
+        self.write(f".segmently-modules/packs/{directory}/pack.toml", f'id = "{pack_id}"\n')
 
     def test_the_decision_table(self):
         core = [("info", "*", "repository pack 'core' replaces the built-in pack 'core'",
-                 ".modsys/packs/core/pack.toml")]
+                 ".segmently-modules/packs/core/pack.toml")]
         self.pack("core", "core")
-        self.write(".modsys/config.toml", '[packs]\nbuiltin = ["core"]\n')
+        self.write(".segmently-modules/config.toml", '[packs]\nbuiltin = ["core"]\n')
         self.assertEqual(self.ms066(), core)
-        (self.root / ".modsys/config.toml").unlink()
+        (self.root / ".segmently-modules/config.toml").unlink()
         self.assertEqual(self.ms066(), core)  # the id is taken whether or not it is enabled
-        (self.root / ".modsys/packs/core/pack.toml").unlink()
+        (self.root / ".segmently-modules/packs/core/pack.toml").unlink()
         self.pack("mine", "ui")
-        self.write(".modsys/config.toml", "[packs]\nbuiltin = []\n")
+        self.write(".segmently-modules/config.toml", "[packs]\nbuiltin = []\n")
         self.assertEqual(self.ms066(), [
             ("info", "*", "repository pack 'ui' replaces the built-in pack 'ui'",
-             ".modsys/packs/mine/pack.toml")])
-        (self.root / ".modsys/packs/mine/pack.toml").unlink()
+             ".segmently-modules/packs/mine/pack.toml")])
+        (self.root / ".segmently-modules/packs/mine/pack.toml").unlink()
         self.pack("team", "team")
-        self.write(".modsys/config.toml", '[packs]\nbuiltin = ["core", "ui", "qa"]\n')
+        self.write(".segmently-modules/config.toml", '[packs]\nbuiltin = ["core", "ui", "qa"]\n')
         self.assertEqual(self.ms066(), [])
 
     def test_changed_and_ci_never_fail_on_it(self):

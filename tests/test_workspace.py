@@ -3,10 +3,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from modsys.config import load_config
-from modsys.output import UsageError
-from modsys.registry import load_registry, resolve_module_arg, stub_head
-from modsys.workspace import find_root
+from segmently_modules.config import load_config
+from segmently_modules.output import UsageError
+from segmently_modules.registry import load_registry, resolve_module_arg, stub_head
+from segmently_modules.workspace import find_root
 from tests.helpers import FIXTURE, run_json
 
 
@@ -14,7 +14,7 @@ class WorkspaceTest(unittest.TestCase):
     def test_schema_verb_includes_pack_declared_field(self):
         code, env, _ = run_json("schema", "--root", str(FIXTURE))
         self.assertEqual(code, 0)
-        self.assertEqual(env["schema"], "modsys.schema/1")
+        self.assertEqual(env["schema"], "segmently-modules.schema/1")
         module = env["data"]["properties"]["modules"]["additionalProperties"]
         self.assertIn("file_paths", module["properties"])
 
@@ -53,7 +53,7 @@ class RegistryTest(unittest.TestCase):
             "payments/refunds")
 
     def test_stub_head(self):
-        config = load_config(FIXTURE / ".modsys")
+        config = load_config(FIXTURE / ".segmently-modules")
         self.assertIn("retired", stub_head(FIXTURE, config, "legacy-search"))
         self.assertIsNone(stub_head(FIXTURE, config, "catalog"))
 

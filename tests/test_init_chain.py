@@ -66,7 +66,7 @@ class ChainTest(ChainRepo):  # P5B-AC-026
         data = self.resume(root, "--non-interactive")
         self.assertEqual(data["ran"], ["gate-map", "fanout", "run", "reconcile", "eval-tasks",
                                        "verify"])
-        self.assertIn("modsys init finish", data["next"])  # gate 7 stays with a person or a PR
+        self.assertIn("segmently-modules init finish", data["next"])  # gate 7 stays with a person or a PR
         self.assertEqual(sorted(statuses(root)), sorted(SIX + ["tools"]))
 
     def test_from_a_half_done_fan_out(self):
@@ -123,7 +123,7 @@ class ChainTest(ChainRepo):  # P5B-AC-026
         root = shop(self.base)
         data = self.resume(root, fake=None)  # the fan-out, then a writer is needed
         self.assertEqual(data["ran"], ["fanout"])
-        self.assertIn("modsys init run --executor", data["next"])
+        self.assertIn("segmently-modules init run --executor", data["next"])
         ok(root, "init", "run", "--executor", executor("--fail", "cart"), code=1)
         data = self.resume(root, fake=None)
         self.assertEqual((data["ran"], data["message"]),
@@ -131,11 +131,11 @@ class ChainTest(ChainRepo):  # P5B-AC-026
         ok(root, "init", "run", "--executor", executor())
         data = self.resume(root, fake=None)  # reconcile runs; the routing tasks need an agent
         self.assertEqual(data["ran"], ["reconcile"])
-        self.assertIn("modsys init eval-tasks", data["next"])
+        self.assertIn("segmently-modules init eval-tasks", data["next"])
         ok(root, "init", "eval-tasks", "--executor", executor())
         data = self.resume(root, fake=None)
         self.assertEqual(data["ran"], ["verify"])
-        self.assertIn("modsys init finish", data["next"])
+        self.assertIn("segmently-modules init finish", data["next"])
 
 
 class PullRequestRetryTest(ChainRepo):  # P5B-AC-025 (the retries), SI-20
@@ -157,7 +157,7 @@ class PullRequestRetryTest(ChainRepo):  # P5B-AC-025 (the retries), SI-20
         self.assertEqual((data["ran"], state(root)["pr"]),
                          (["pr"], "https://example.invalid/bookshop/pull/1"))
         self.assertEqual(len(self.prs()), 1)
-        self.assertEqual(git(self.base / "remote.git", "rev-parse", "modsys/init"),
+        self.assertEqual(git(self.base / "remote.git", "rev-parse", "segmently-modules/init"),
                          git(root, "rev-parse", "HEAD"))
         self.assertEqual(git(root, "rev-list", "--count", "main..HEAD").strip(), "1")
 
@@ -173,7 +173,7 @@ class PullRequestRetryTest(ChainRepo):  # P5B-AC-025 (the retries), SI-20
         with mock.patch.dict(os.environ, self.env):
             code, env, err = run_json("init", "finish", "--open-pr", "--root", str(root))
         self.assertEqual((code, env["data"]["pr"]), (1, "pending"))
-        self.assertIn("git commit failed on branch modsys/init: lint-staged: failed", err)
+        self.assertIn("git commit failed on branch segmently-modules/init: lint-staged: failed", err)
         self.assertIn("the retry picks up from the branch", err)
         record = state(root)["open_pr"]
         self.assertEqual((record["branch_created"], record["committed"], record["pushed"]),
@@ -183,12 +183,12 @@ class PullRequestRetryTest(ChainRepo):  # P5B-AC-025 (the retries), SI-20
         self.assertEqual((data["ran"], state(root)["pr"]),
                          (["pr"], "https://example.invalid/bookshop/pull/1"))
         self.assertEqual(len(self.prs()), 1)  # one gh, one push, one commit
-        self.assertEqual(git(self.base / "remote.git", "rev-parse", "modsys/init"),
-                         git(root, "rev-parse", "modsys/init"))
-        self.assertEqual(git(root, "rev-list", "--count", "main..modsys/init").strip(), "1")
-        self.assertEqual(git(root, "branch", "--show-current").strip(), "modsys/init")
-        self.assertEqual(git(root, "log", "-1", "--format=%s", "modsys/init").strip(),
-                         "docs: module docs for 6 module(s) (modsys init)")
+        self.assertEqual(git(self.base / "remote.git", "rev-parse", "segmently-modules/init"),
+                         git(root, "rev-parse", "segmently-modules/init"))
+        self.assertEqual(git(root, "rev-list", "--count", "main..segmently-modules/init").strip(), "1")
+        self.assertEqual(git(root, "branch", "--show-current").strip(), "segmently-modules/init")
+        self.assertEqual(git(root, "log", "-1", "--format=%s", "segmently-modules/init").strip(),
+                         "docs: module docs for 6 module(s) (segmently-modules init)")
         self.assertEqual(git(root, "status", "--porcelain"), "")
         data = self.resume(root, "--open-pr", fake=None)
         self.assertEqual((data["ran"], data["message"]), ([], "init is finished"))
@@ -211,7 +211,7 @@ class PullRequestRetryTest(ChainRepo):  # P5B-AC-025 (the retries), SI-20
     def killed(self, root: Path, when) -> None:
         """`init finish --open-pr`, killed right after the step `when(state)` recognises and
         before the state records it."""
-        from modsys.init_flow import InitFlow
+        from segmently_modules.init_flow import InitFlow
         real = InitFlow.save_state
 
         def save(flow, s):
@@ -220,23 +220,23 @@ class PullRequestRetryTest(ChainRepo):  # P5B-AC-025 (the retries), SI-20
             return real(flow, s)
 
         with mock.patch.dict(os.environ, self.env), \
-                mock.patch("modsys.init_flow.InitFlow.save_state", autospec=True,
+                mock.patch("segmently_modules.init_flow.InitFlow.save_state", autospec=True,
                            side_effect=save):
             code, _, err = run_json("init", "finish", "--open-pr", "--root", str(root))
-        self.assertEqual((code, err), (130, "modsys: interrupted\n"))
+        self.assertEqual((code, err), (130, "segmently-modules: interrupted\n"))
 
     def test_a_commit_made_but_not_recorded(self):  # N-2: never "nothing to commit" forever
         root = self.verified()
         remote = bare_remote(root, self.base / "remote.git")
         self.killed(root, lambda s: (s.get("open_pr") or {}).get("committed") is True)
         self.assertEqual(state(root)["open_pr"]["committed"], False)
-        self.assertEqual(git(root, "rev-list", "--count", "main..modsys/init").strip(), "1")
+        self.assertEqual(git(root, "rev-list", "--count", "main..segmently-modules/init").strip(), "1")
         data = self.resume(root, "--open-pr", fake=None)
         self.assertEqual((data["ran"], state(root)["pr"]),
                          (["pr"], "https://example.invalid/bookshop/pull/1"))
         self.assertEqual(len(self.prs()), 1)
-        self.assertEqual(git(root, "rev-list", "--count", "main..modsys/init").strip(), "1")
-        self.assertEqual(git(remote, "rev-parse", "modsys/init"), git(root, "rev-parse", "HEAD"))
+        self.assertEqual(git(root, "rev-list", "--count", "main..segmently-modules/init").strip(), "1")
+        self.assertEqual(git(remote, "rev-parse", "segmently-modules/init"), git(root, "rev-parse", "HEAD"))
         record = state(root)["open_pr"]
         self.assertEqual((record["committed"], record["pushed"]), (True, True))
 

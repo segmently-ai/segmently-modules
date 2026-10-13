@@ -4,11 +4,11 @@ fixed identity and date). Stdlib only; run as `python3 evals/skills/module-adopt
 <case id> <new directory>`.
 
   1  modules/registry.json with an extra field `owner_team` on every module and a role
-     `curator` that no config declares; no .modsys/
+     `curator` that no config declares; no .segmently-modules/
   2  the registry at docs/modules/registry.json (a generated index) with each module's entry in
-     docs/modules/<name>/module.json — the per-module layout; no .modsys/
+     docs/modules/<name>/module.json — the per-module layout; no .segmently-modules/
   3  modules/registry.json with an undeclared field `stock_paths`, and a team config that
-     already exists (.modsys/config.toml with a [ci] section)"""
+     already exists (.segmently-modules/config.toml with a [ci] section)"""
 import json
 import os
 import subprocess
@@ -63,7 +63,7 @@ def build(case: int, root: Path) -> Path:
         entries = {n: entry(n, "modules", stock_paths=[f"src/{n}/"]) for n in MODULES}
         docs(root, entries)
         write(root, "modules/registry.json", json.dumps({"modules": entries}, indent=2) + "\n")
-        write(root, ".modsys/config.toml", '[ci]\nbase = "origin/main"\n')
+        write(root, ".segmently-modules/config.toml", '[ci]\nbase = "origin/main"\n')
     else:
         raise SystemExit(f"unknown case {case} (1, 2, 3)")
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}

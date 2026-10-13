@@ -1,5 +1,5 @@
 """`init eval-tasks --executor CMD` (D5, SI-15): the executor gets the routing prompt on stdin and
-writes MODSYS_INIT_TASKS; the file is checked (JSON, known modules, a task for each)."""
+writes SEGMENTLY_MODULES_INIT_TASKS; the file is checked (JSON, known modules, a task for each)."""
 import hashlib
 import json
 import shutil
@@ -12,7 +12,7 @@ from unittest import mock
 from tests.helpers import run
 from tests.init_helpers import SIX, WORK, executor, ok, shop, state
 
-REFUSED = ("modsys: error: the routing tasks were refused — run modsys init eval-tasks (or "
+REFUSED = ("segmently-modules: error: the routing tasks were refused — run segmently-modules init eval-tasks (or "
            "write the file and use --force)")
 
 
@@ -52,7 +52,7 @@ class EvalTasksTest(unittest.TestCase):  # P5B-AC-020
             ["cart", "catalog", "payments", "recommendations", "storefront", "ui-kit"], 5))
         self.assertEqual(state(self.root)["phases"]["eval-tasks"]["status"], "done")
         call = json.loads(self.log.read_text().splitlines()[0])
-        self.assertEqual(call["env"]["MODSYS_INIT_TASKS"], str(self.tasks))
+        self.assertEqual(call["env"]["SEGMENTLY_MODULES_INIT_TASKS"], str(self.tasks))
         prompt = run("eval", "routing", "--prompt", "--root", str(self.root))[1]
         self.assertEqual(call["stdin_sha256"], hashlib.sha256(prompt.encode("utf-8")).hexdigest())
 
@@ -66,7 +66,7 @@ class EvalTasksTest(unittest.TestCase):  # P5B-AC-020
                 self.setUp()
                 code, data, err = self.eval_tasks("--tasks-mode", mode)
                 self.assertEqual((code, data["status"]), (1, "failed"))
-                self.assertIn(f"modsys: eval-tasks: {problem}", err.splitlines())
+                self.assertIn(f"segmently-modules: eval-tasks: {problem}", err.splitlines())
                 self.assertNotEqual(state(self.root)["phases"]["eval-tasks"]["status"], "done")
 
     def test_an_existing_file_and_force(self):
@@ -90,7 +90,7 @@ class EvalTasksTest(unittest.TestCase):  # P5B-AC-020
                 self.assertEqual(code, 1)
                 self.assertFalse(self.tasks.exists())
                 self.assertTrue(self.rejected().is_file())
-                self.assertIn("modsys init eval-tasks", data["next"])
+                self.assertIn("segmently-modules init eval-tasks", data["next"])
                 self.assertIn("routing-tasks.rejected.json", data["next"])
                 code, out, err = run("init", "verify", "--json", "--root", str(self.root))
                 self.assertEqual((code, out), (2, ""))  # never measured as if nothing happened
@@ -133,7 +133,7 @@ class EvalTasksTest(unittest.TestCase):  # P5B-AC-020
                     shutil.copy(self.rejected(), self.tasks)
                 data = self.resume()
                 self.assertEqual(data["ran"], [])
-                self.assertIn("modsys init eval-tasks", data["next"])
+                self.assertIn("segmently-modules init eval-tasks", data["next"])
                 data = self.resume("--non-interactive", "--executor", executor())
                 self.assertEqual(data["ran"], ["eval-tasks", "verify"])
                 routing = json.loads((self.root / WORK / "verify.json").read_text())["routing"]
@@ -152,11 +152,11 @@ class EvalTasksTest(unittest.TestCase):  # P5B-AC-020
 
         with mock.patch("subprocess.run", side_effect=half):
             got = run("init", "eval-tasks", "--executor", executor(), "--root", str(self.root))
-        self.assertEqual(got, (130, "", "modsys: interrupted\n"))
+        self.assertEqual(got, (130, "", "segmently-modules: interrupted\n"))
         self.assertFalse(self.tasks.exists())
         self.assertTrue(self.rejected().is_file())
         self.assertEqual(state(self.root)["phases"]["eval-tasks"]["status"], "running")
-        self.assertIn("modsys init eval-tasks", ok(self.root, "init", "status")["next"])
+        self.assertIn("segmently-modules init eval-tasks", ok(self.root, "init", "status")["next"])
         self.assertEqual(self.eval_tasks()[1]["status"], "written")
 
     def test_before_reconcile(self):
@@ -167,7 +167,7 @@ class EvalTasksTest(unittest.TestCase):  # P5B-AC-020
         (root / WORK / "state.json").write_text(json.dumps(s))
         code, out, err = run("init", "eval-tasks", "--executor", executor(), "--root", str(root))
         self.assertEqual((code, out), (2, ""))
-        self.assertIn("modsys init reconcile", err)
+        self.assertIn("segmently-modules init reconcile", err)
 
 
 if __name__ == "__main__":

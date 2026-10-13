@@ -13,8 +13,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys.config import BUILTIN_PACKS, builtin_packs_root
-from modsys.skills import read_front_matter
+from segmently_modules.config import BUILTIN_PACKS, builtin_packs_root
+from segmently_modules.skills import read_front_matter
 from tests.helpers import copy_fixture, run
 
 # P8.2 (2026-10-03): the decision taken again for the shipped choice agent and the Codex path
@@ -31,8 +31,8 @@ DECISION = re.compile(r"^discussed with the owner (\d{4}-\d{2}-\d{2}): (keep|rou
                       r"because \S.*$", re.DOTALL)
 
 # Measured on the bookshop fixture (characters of stdout; `<root>` is the copied fixture):
-#   modsys context --task "add a payment retry to the checkout" --role developer --json --root <root>
-#   modsys show catalog --json --root <root>
+#   segmently-modules context --task "add a payment retry to the checkout" --role developer --json --root <root>
+#   segmently-modules show catalog --json --root <root>
 CONTEXT_MEASURED = 1866
 SHOW_MEASURED = 541
 CONTEXT_MAX = int(CONTEXT_MEASURED * 1.2)
@@ -61,10 +61,10 @@ def crossings(root: Path | None = None) -> dict[str, str]:
     built-in packs enabled (`root`: where the packs are read from — a test seam)."""
     with tempfile.TemporaryDirectory() as tmp:
         repo = copy_fixture(tmp)
-        (repo / ".modsys").mkdir(exist_ok=True)
-        (repo / ".modsys" / "config.toml").write_text('[packs]\nbuiltin = ["core", "qa", "ui"]\n',
+        (repo / ".segmently-modules").mkdir(exist_ok=True)
+        (repo / ".segmently-modules" / "config.toml").write_text('[packs]\nbuiltin = ["core", "qa", "ui"]\n',
                                                       encoding="utf-8")
-        with mock.patch("modsys.config.builtin_packs_root",
+        with mock.patch("segmently_modules.config.builtin_packs_root",
                         return_value=root or builtin_packs_root()):
             code, out, err = run("lint", "--fail-on", "never", "--json", "--root", str(repo))
         assert (code, err) == (0, ""), err
@@ -167,7 +167,7 @@ class SplitDecisionsTest(unittest.TestCase):
         self.assertNotIn("pack core", found)  # a route file is never part of the pack total
         pack = self.root / "qa" / "skills"
         grown = next(pack.glob("*/SKILL.md"))
-        grown.write_text(grown.read_text(encoding="utf-8") + "z" * 60_000, encoding="utf-8")
+        grown.write_text(grown.read_text(encoding="utf-8") + "z" * 64_000, encoding="utf-8")
         self.assertIn("pack qa", crossings(self.root))
 
 
@@ -180,7 +180,7 @@ class ShippedSkillsTest(unittest.TestCase):
         self.assertEqual(split_problems(crossings(), SPLIT_DECISIONS), [])
 
     def test_the_caps_are_gone(self):  # final review M-2: every test and engine module
-        sources = [*(ENGINE / "tests").rglob("*.py"), *(ENGINE / "modsys").rglob("*.py")]
+        sources = [*(ENGINE / "tests").rglob("*.py"), *(ENGINE / "segmently_modules").rglob("*.py")]
         self.assertGreater(len(sources), 100)
         self.assertEqual(cap_definitions(sources), [])
 

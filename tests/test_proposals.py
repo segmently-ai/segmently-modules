@@ -4,7 +4,7 @@ import os
 import tempfile
 import unittest
 
-from modsys.store import file_sha256
+from segmently_modules.store import file_sha256
 from tests.helpers import copy_fixture, run, run_json
 
 
@@ -13,7 +13,7 @@ class ProposalsTest(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = copy_fixture(self._tmp.name)
         self.R = ("--root", str(self.root))
-        self.queue = self.root / ".modsys" / "proposals"
+        self.queue = self.root / ".segmently-modules" / "proposals"
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -28,9 +28,9 @@ class ProposalsTest(unittest.TestCase):
         before = (self.root / "modules" / "registry.json").read_bytes()
         code, env, _ = self.propose("--module", "catalog", "--op", "set", "--field", "status",
                                     "--value", '"draft"', "--reason", "not shipped yet")
-        self.assertEqual((code, env["schema"]), (0, "modsys.propose/1"))
+        self.assertEqual((code, env["schema"]), (0, "segmently-modules.propose/1"))
         doc = json.loads((self.queue / "r1-planner.json").read_text())
-        self.assertEqual(doc["schema"], "modsys.proposal/1")
+        self.assertEqual(doc["schema"], "segmently-modules.proposal/1")
         self.assertEqual(len(doc["items"][0]["base_sha256"]), 64)
         self.assertEqual((self.root / "modules" / "registry.json").read_bytes(), before)
         _, env, _ = run_json("proposals", "list", *self.R)
@@ -153,7 +153,7 @@ class ProposalsTest(unittest.TestCase):
 
     def test_apply_in_per_module_layout(self):
         run("index", "split", *self.R)
-        (self.root / ".modsys" / "config.toml").write_text(
+        (self.root / ".segmently-modules" / "config.toml").write_text(
             '[paths]\nregistry_layout = "per-module"\n', encoding="utf-8")
         self.propose("--module", "checkout", "--op", "set", "--field", "status",
                      "--value", '"draft"', "--reason", "r")
@@ -167,7 +167,7 @@ class ProposalsGapTest(unittest.TestCase):  # AC-015, AC-016
         self._tmp = tempfile.TemporaryDirectory()
         self.root = copy_fixture(self._tmp.name)
         self.R = ("--root", str(self.root))
-        self.queue = self.root / ".modsys" / "proposals"
+        self.queue = self.root / ".segmently-modules" / "proposals"
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -184,7 +184,7 @@ class ProposalsGapTest(unittest.TestCase):  # AC-015, AC-016
     def test_malformed_queue_file_is_exit_2_naming_it(self):
         self.queue.mkdir(parents=True)
         for text, needle in (("{", "not a valid proposal file"),
-                             ('{"schema": "x"}', "not a modsys.proposal/1 file")):
+                             ('{"schema": "x"}', "not a segmently-modules.proposal/1 file")):
             with self.subTest(needle=needle):
                 (self.queue / "bad.json").write_text(text, encoding="utf-8")
                 code, out, err = run("proposals", "apply", *self.R)
@@ -203,7 +203,7 @@ class ProposalsGapTest(unittest.TestCase):  # AC-015, AC-016
         before = target.read_bytes()
         item = {"id": "1", "op": "doc_write", "module": "..", "doc": "modules/checkout/MODULE.md",
                 "value": "# hacked", "base_sha256": file_sha256(target)}
-        bad = {"schema": "modsys.proposal/1", "run_id": "r1", "agent": "planner",
+        bad = {"schema": "segmently-modules.proposal/1", "run_id": "r1", "agent": "planner",
                "created_at": "2026-01-01T00:00:00Z", "items": [item]}
         (self.queue / "r1-planner.json").write_text(json.dumps(bad), encoding="utf-8")
         code, env, _ = run_json("proposals", "apply", *self.R)

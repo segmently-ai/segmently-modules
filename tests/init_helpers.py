@@ -11,11 +11,11 @@ from tests.fixtures.build_monorepo import build
 from tests.helpers import run, run_json
 
 FAKE = Path(__file__).resolve().parent / "init_fake_executor.py"
-WORK = ".modsys/init"
+WORK = ".segmently-modules/init"
 SIX = ["cart", "catalog", "payments", "recommendations", "storefront", "ui-kit"]
 ROLES = ["developer", "qa", "po", "architect"]
 NOTE = ("\n## The previous attempt was refused\n\nThe files written last time did not pass "
-        "`modsys init done`. Fix each of these problems:\n\n")  # D3, SI-6: pinned here
+        "`segmently-modules init done`. Fix each of these problems:\n\n")  # D3, SI-6: pinned here
 
 
 def invented(module: str) -> list[str]:
@@ -35,7 +35,7 @@ def executor(*flags: str) -> str:
 
 
 def ok(root: Path, *argv: str, code: int = 0):
-    """`modsys <argv> --json --root <root>`: the data (None when stdout is empty)."""
+    """`segmently-modules <argv> --json --root <root>`: the data (None when stdout is empty)."""
     got, env, err = run_json(*argv, "--root", str(root))
     assert got == code, (argv, got, err, env)
     return env["data"] if env else None
@@ -51,7 +51,7 @@ def shop(base: Path, name: str = "shop", exclude=("tools",), config: str = "") -
     root = build(Path(base) / name)
     ok(root, "init", "map")
     if config:
-        path = root / ".modsys/config.toml"
+        path = root / ".segmently-modules/config.toml"
         path.write_text(path.read_text(encoding="utf-8") + "\n" + config, encoding="utf-8")
     proposal = root / WORK / "proposal.json"
     doc = json.loads(proposal.read_text(encoding="utf-8"))
@@ -83,7 +83,7 @@ def protected_sha(root: Path) -> str:
     """sha256 over `modules/`, the registry, CLAUDE.md / AGENTS.md and the team config — what
     only `init finish` may change (P5B-AC-011); the writers' `*.lock` files do not count."""
     h = hashlib.sha256()
-    for rel in ("modules", "CLAUDE.md", "AGENTS.md", ".modsys/config.toml"):
+    for rel in ("modules", "CLAUDE.md", "AGENTS.md", ".segmently-modules/config.toml"):
         path = root / rel
         files = sorted(p for p in path.rglob("*") if p.is_file() and p.suffix != ".lock") \
             if path.is_dir() else [path] if path.is_file() else []

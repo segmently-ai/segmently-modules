@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys import preflight
-from modsys.config import load_config
+from segmently_modules import preflight
+from segmently_modules.config import load_config
 from tests.helpers import git, run_json
 
 ENGINE = Path(__file__).resolve().parents[1]
@@ -36,7 +36,7 @@ class PreflightRepo(unittest.TestCase):
     def doc(self) -> dict:
         code, env, err = run_json("init", "map", "--dry-run", "--root", str(self.root))
         self.assertEqual((code, err), (0, ""))
-        files = preflight.list_files(self.root, load_config(self.root / ".modsys", self.root))
+        files = preflight.list_files(self.root, load_config(self.root / ".segmently-modules", self.root))
         counts = preflight.scan(self.root, files)
         return preflight.build(self.root, files, preflight.manifests(self.root, files,
                                                                      counts["texts"]), counts)
@@ -44,12 +44,12 @@ class PreflightRepo(unittest.TestCase):
 
 class FileSetTest(PreflightRepo):  # P5A-AC-030
     def test_the_counting_table(self):
-        self.write(".modsys/config.toml", '[init]\nexclude = ["docs/**"]\n')
+        self.write(".segmently-modules/config.toml", '[init]\nexclude = ["docs/**"]\n')
         self.write(".gitignore", "build/\n")
         self.write("src/a.py", "a = 1\nb = 2\nc = 3\n")  # tracked, 3 lines (18 bytes)
         self.write("src/gone.py", "x = 1\n")
         git(self.root, "init", "-q", "-b", "main")
-        git(self.root, "add", "--", ".gitignore", ".modsys", "src")
+        git(self.root, "add", "--", ".gitignore", ".segmently-modules", "src")
         git(self.root, "commit", "-q", "-m", "base")
         (self.root / "src/gone.py").unlink()  # in the index, deleted from disk
         self.write("src/b.py", "b = 2\n")  # untracked, 1 line (6 bytes)
@@ -65,19 +65,19 @@ class FileSetTest(PreflightRepo):  # P5A-AC-030
         unreadable = self.write("misc/secret.txt", "hidden\n")
         if os.geteuid() != 0:
             os.chmod(unreadable, 0)
-        files = preflight.list_files(self.root, load_config(self.root / ".modsys", self.root))
-        self.assertEqual(files, [".gitignore", ".modsys/config.toml", "big/exact.txt",
+        files = preflight.list_files(self.root, load_config(self.root / ".segmently-modules", self.root))
+        self.assertEqual(files, [".gitignore", ".segmently-modules/config.toml", "big/exact.txt",
                                  "big/over.txt", "bin/nul8191.dat", "bin/nul8192.txt",
                                  "misc/empty.txt", "misc/link.py", "misc/secret.txt",
                                  "misc/two.txt", "src/a.py", "src/b.py"])
         read = []
         real = preflight._read
-        with mock.patch("modsys.preflight._read",
+        with mock.patch("segmently_modules.preflight._read",
                         side_effect=lambda p: read.append(p) or real(p)):
             counts = preflight.scan(self.root, files)
         self.assertNotIn(self.root / "misc/link.py", read)  # a symlink's target is never read
         self.assertNotIn(self.root / "big/over.txt", read)
-        lines = {".gitignore": 1, ".modsys/config.toml": 2, "big/exact.txt": 1,
+        lines = {".gitignore": 1, ".segmently-modules/config.toml": 2, "big/exact.txt": 1,
                  "bin/nul8192.txt": 1, "misc/empty.txt": 0, "misc/two.txt": 2, "src/a.py": 3,
                  "src/b.py": 1}
         if os.geteuid() == 0:  # root reads the mode-000 file: a text file like the others
@@ -107,7 +107,7 @@ class FileSetTest(PreflightRepo):  # P5A-AC-030
         git(self.root, "init", "-q", "-b", "main")
         code, _, err = run_json("init", "map", "--root", str(self.root))
         self.assertEqual((code, err), (0, ""))
-        text = (self.root / ".modsys/init/preflight.json").read_text(encoding="utf-8")
+        text = (self.root / ".segmently-modules/init/preflight.json").read_text(encoding="utf-8")
         doc = json.loads(text)
         self.assertEqual(text, json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
         self.assertEqual(list(doc), ["schema", "root", "git", "files", "lines", "bytes",
@@ -172,16 +172,16 @@ class MetadataTest(PreflightRepo):  # P5A-AC-031
         self.write("shelf/a.py", "A = 1\n")
         odd = "caf\udce9/menu.py"  # the bytes caf\xe9 as the listing decodes them
         real_walk, real_lexists = preflight._walk, os.path.lexists
-        with mock.patch("modsys.preflight._walk",
+        with mock.patch("segmently_modules.preflight._walk",
                         side_effect=lambda root: real_walk(root) + [odd]), \
-                mock.patch("modsys.preflight.os.path.lexists",
+                mock.patch("segmently_modules.preflight.os.path.lexists",
                            side_effect=lambda p: str(p).endswith(odd) or real_lexists(p)):
             code, env, err = run_json("init", "map", "--root", str(self.root))
-            files = preflight.list_files(self.root, load_config(self.root / ".modsys",
+            files = preflight.list_files(self.root, load_config(self.root / ".segmently-modules",
                                                                 self.root))
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(files, [".gitignore", "modules/registry.json", "shelf/a.py"])
-        work = self.root / ".modsys/init"
+        work = self.root / ".segmently-modules/init"
         self.assertEqual(json.loads((work / "preflight.json").read_text())["top_dirs"],
                          ["modules", "shelf"])
         self.assertEqual(env["data"]["candidates"], ["shelf"])
@@ -191,7 +191,7 @@ class MetadataTest(PreflightRepo):  # P5A-AC-031
         self.write("packages/a/index.js", "var a = 1;\n")
         (self.root / "packages/a/package.json").symlink_to(self.root.parent / "elsewhere.json")
         reads, real = [], preflight._read
-        with mock.patch("modsys.preflight._read",
+        with mock.patch("segmently_modules.preflight._read",
                         side_effect=lambda p: reads.append(p) or real(p)):
             found = preflight.manifests(self.root, ["packages/a/index.js",
                                                     "packages/a/package.json"])

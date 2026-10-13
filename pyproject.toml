@@ -3,20 +3,23 @@ requires = ["setuptools>=62.3"]      # `**` in package-data globs needs 62.3
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "modsys"
-version = "0.1.5.dev0"
+name = "segmently-modules"
+version = "0.2.0.dev0"
 description = "Code-structure-centric context layer for AI coding agents"
 requires-python = ">=3.11"
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/segmently-ai/segmently-modules"
+
 [project.scripts]
-modsys = "modsys.cli:main"
+segmently-modules = "segmently_modules.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["modsys*"]
+include = ["segmently_modules*"]
 
 [tool.setuptools.package-data]
-modsys = ["defaults/*.toml", "defaults/templates/*.md", "defaults/templates/roles/*.md",
-          "defaults/templates/init/*.md",
-          "defaults/templates/choose/*.md", "defaults/agents/*.md",
-          "defaults/scaffold/*", "defaults/packs/**/*"]
+segmently_modules = ["defaults/*.toml", "defaults/templates/*.md", "defaults/templates/roles/*.md",
+                     "defaults/templates/init/*.md",
+                     "defaults/templates/choose/*.md", "defaults/agents/*.md",
+                     "defaults/scaffold/*", "defaults/packs/**/*"]

@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from modsys.doc_checks import anchors
+from segmently_modules.doc_checks import anchors
 from tests.helpers import copy_fixture, git, init_git, mutate_registry, run, run_json
 
 CHECKOUT = "modules/checkout/MODULE.md"
@@ -75,15 +75,15 @@ class UnregisteredDocTest(Repo):
             ("checkout", "modules/checkout/roles/ARCHITECTURE.md"):
                 "modules/checkout/roles/ARCHITECTURE.md is not registered — agents never load "
                 "it; it reads like the architect doc: rename it to "
-                "modules/checkout/roles/architect.md, then modsys roles add architect checkout "
+                "modules/checkout/roles/architect.md, then segmently-modules roles add architect checkout "
                 "registers it",
             ("checkout", "modules/checkout/roles/notes.md"):
                 "modules/checkout/roles/notes.md is not registered — agents never load it; "
-                "register it (modsys registry append checkout context_files.supplementary "
+                "register it (segmently-modules registry append checkout context_files.supplementary "
                 "'\"modules/checkout/roles/notes.md\"') or delete it",
             ("payments/refunds", "modules/payments/submodules/refunds/roles/po.md"):
                 "modules/payments/submodules/refunds/roles/po.md is not registered — agents "
-                "never load it; it is the po doc: modsys roles add po payments/refunds "
+                "never load it; it is the po doc: segmently-modules roles add po payments/refunds "
                 "registers it"})
 
     def test_the_hint_clears_the_finding(self):
@@ -102,7 +102,7 @@ class UnregisteredDocTest(Repo):
         write(self.root, "modules/catalog/plans/deep.md", "# nested: not checked\n")
         self.assertEqual(self.findings("MS017"), [
             ("MS017", "info", "catalog", "2 doc(s) in modules/catalog/ are not registered — "
-             "agents never load them: notes.md, plan.md; list one (modsys registry append catalog "
+             "agents never load them: notes.md, plan.md; list one (segmently-modules registry append catalog "
              "context_files.supplementary '\"<path>\"') or move it out of the module directory",
              "modules/catalog")])
         mutate_registry(self.root, lambda d: d["modules"]["catalog"]["context_files"].update(
@@ -143,7 +143,7 @@ class LinkTest(Repo):
 
     def test_link_severity(self):
         write(self.root, CHECKOUT, LINKS)
-        config = self.root / ".modsys/config.toml"
+        config = self.root / ".segmently-modules/config.toml"
         config.write_text('[lint]\nlink_severity = "info"\n', encoding="utf-8")
         self.assertEqual({s for _c, s, *_ in self.findings("MS041")}, {"info"})
         config.write_text('[lint]\nlink_severity = "loud"\n', encoding="utf-8")
@@ -286,7 +286,7 @@ class ReviewFixesTest(Repo):  # the final review: what the first cut got wrong
         write(self.root, "modules/catalog/roles/developer.md", "# Dev\n\n`src/catalog/gone.py`\n")
         init_git(self.root)
         write(self.root, "src/catalog/service.py", "x = 2\n")
-        with mock.patch("modsys.changes.subprocess.run", wraps=subprocess.run) as spy:
+        with mock.patch("segmently_modules.changes.subprocess.run", wraps=subprocess.run) as spy:
             code, env, err = run_json("lint", "--changed", "--root", str(self.root),
                                       "--fail-on", "never")
         self.assertEqual((code, err), (0, ""))

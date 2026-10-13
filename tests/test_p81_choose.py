@@ -1,4 +1,4 @@
-"""P8.1 task 3b, the work order and its answer: `modsys choose` (P81-AC-051…057), the
+"""P8.1 task 3b, the work order and its answer: `segmently-modules choose` (P81-AC-051…057), the
 `[search]` settings (AC-069/070) and the catalog's `search` / `match.semantic` (AC-020)."""
 import hashlib
 import json
@@ -183,7 +183,7 @@ class ApplyTest(Base):
         self.assertIn("0.90  orders/refunds  r", out)
         self.assertIn("docs/orders", out.replace("modules/orders", "docs/orders"))
         data = json.loads(self.apply(self.GOOD, "--json")[1])
-        self.assertEqual(data["schema"], "modsys.choose/1")
+        self.assertEqual(data["schema"], "segmently-modules.choose/1")
         picks_ = data["data"]["picks"]
         self.assertEqual([p["module"] for p in picks_], ["orders/refunds", "payments"])
         self.assertEqual(picks_[0]["reason"], "r")
@@ -233,7 +233,7 @@ class ApplyTest(Base):
                     code, out, err = run("choose", "--apply", self.answer_file(text), *self.R,
                                          *extra)
                     self.assertEqual((code, out), (2, ""))
-                    self.assertTrue(err.startswith("modsys: error: "), err)
+                    self.assertTrue(err.startswith("segmently-modules: error: "), err)
                     self.assertNotIn("Traceback", err)
                     self.assertIn(needle, err)
         code, out, err = run("choose", "--apply", str(self.tmp / "missing.json"), *self.R)

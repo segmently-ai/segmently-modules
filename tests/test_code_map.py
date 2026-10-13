@@ -20,7 +20,7 @@ class CodeMapTest(unittest.TestCase):
         self._tmp.cleanup()
 
     def config(self, text: str) -> None:
-        (self.root / ".modsys" / "config.toml").write_text(text, encoding="utf-8")
+        (self.root / ".segmently-modules" / "config.toml").write_text(text, encoding="utf-8")
 
     def mapped(self, *files):
         code, env, err = run_json("sync", "--files", *files, "--dry-run", *self.R)
@@ -136,7 +136,7 @@ class UnknownTargetLintTest(unittest.TestCase):
     def test_rule_naming_no_registry_target_is_ms052(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(tmp)
-            (root / ".modsys" / "config.toml").write_text(
+            (root / ".segmently-modules" / "config.toml").write_text(
                 '[[code_map]]\nid = "ok"\nmodule = "payments/refunds"\nglobs = ["r/**"]\n'
                 '[[code_map]]\nid = "typo"\nmodule = "payments/refund"\nglobs = ["t/**"]\n'
                 '[[code_map]]\nid = "gone"\nmodule = "ghost"\nglobs = ["g/**"]\n'

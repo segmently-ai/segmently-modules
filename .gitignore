@@ -1,4 +1,4 @@
 __pycache__/
 *.egg-info/
-.modsys/config.user.toml
+.segmently-modules/config.user.toml
 dist/

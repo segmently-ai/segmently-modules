@@ -1,4 +1,4 @@
-"""`modsys code-map list` / `files`, and the actionable `[[code_map]]` config errors."""
+"""`segmently-modules code-map list` / `files`, and the actionable `[[code_map]]` config errors."""
 import tempfile
 import unittest
 from pathlib import Path
@@ -29,14 +29,14 @@ class CodeMapListTest(unittest.TestCase):  # P32-AC-008
         self._tmp.cleanup()
 
     def layers(self):
-        write(self.root / ".modsys/packs/acme/pack.toml", 'id = "acme"\n' + PACK)
-        write(self.root / ".modsys/config.toml",
+        write(self.root / ".segmently-modules/packs/acme/pack.toml", 'id = "acme"\n' + PACK)
+        write(self.root / ".segmently-modules/config.toml",
               TEAM + '[[code_map]]\nid = "due"\nmodule = "tasks/due"\nglobs = ["lib/due/**"]\n')
-        write(self.root / ".modsys/config.user.toml", USER)
+        write(self.root / ".segmently-modules/config.user.toml", USER)
 
     def rows(self, *argv):
         code, env, err = run_json("code-map", "list", *argv, *self.R)
-        self.assertEqual((code, err, env["schema"]), (0, "", "modsys.code-map/1"))
+        self.assertEqual((code, err, env["schema"]), (0, "", "segmently-modules.code-map/1"))
         return env["data"]
 
     def test_no_rules(self):
@@ -94,7 +94,7 @@ class CodeMapFilesTest(unittest.TestCase):  # P32-AC-009
 
     def files(self, target):
         code, env, err = run_json("code-map", "files", target, *self.R)
-        self.assertEqual((code, err, env["schema"]), (0, "", "modsys.code-map/1"))
+        self.assertEqual((code, err, env["schema"]), (0, "", "segmently-modules.code-map/1"))
         self.assertEqual(env["data"]["target"], target)
         self.assertEqual(env["data"]["total"], len(env["data"]["files"]))
         return {f["path"]: f["via"] for f in env["data"]["files"]}
@@ -116,7 +116,7 @@ class CodeMapFilesTest(unittest.TestCase):  # P32-AC-009
                                "2 file(s) map to db"])
 
     def test_coverage_filters_do_not_apply(self):
-        write(self.root / ".modsys/config.user.toml", '[coverage]\nexclude = ["src/**"]\n')
+        write(self.root / ".segmently-modules/config.user.toml", '[coverage]\nexclude = ["src/**"]\n')
         self.assertIn("src/tasks/a.py", self.files("tasks"))
 
     def test_refusals(self):
@@ -136,10 +136,10 @@ class CodeMapContractTest(unittest.TestCase):  # P32-AC-022 (list / files)
             root = make_repo(tmp, {"tasks": ["task"]}, "code_map = 5\n")
             code, out, err = run("code-map", "list", "--json", "--root", str(root))
             self.assertEqual((code, out), (2, ""))
-            self.assertTrue(err.startswith("modsys: error:"), err)
+            self.assertTrue(err.startswith("segmently-modules: error:"), err)
             self.assertNotIn("Traceback", err)
-            (root / ".modsys/config.toml").write_text("")
-            with mock.patch("modsys.code_map_cmd.rule_rows", side_effect=KeyboardInterrupt):
+            (root / ".segmently-modules/config.toml").write_text("")
+            with mock.patch("segmently_modules.code_map_cmd.rule_rows", side_effect=KeyboardInterrupt):
                 self.assertEqual(run("code-map", "list", "--root", str(root))[0], 130)
 
 
@@ -147,8 +147,8 @@ class PatternWordingTest(unittest.TestCase):  # P32-AC-013
     def refused(self, config: str, where: str = "config.toml") -> str:
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp, {"tasks": ["task"]})
-            path = (root / ".modsys" / "config.toml" if where == "config.toml"
-                    else root / ".modsys" / "packs" / "acme" / "pack.toml")
+            path = (root / ".segmently-modules" / "config.toml" if where == "config.toml"
+                    else root / ".segmently-modules" / "packs" / "acme" / "pack.toml")
             write(path, config)
             code, out, err = run("code-map", "list", "--root", str(root))
             self.assertIn(str(path.resolve()), err)

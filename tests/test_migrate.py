@@ -1,4 +1,4 @@
-"""modsys migrate: content-detected upgrades of old registry shapes."""
+"""segmently-modules migrate: content-detected upgrades of old registry shapes."""
 import json
 import tempfile
 import unittest
@@ -34,7 +34,7 @@ class MigrateTest(unittest.TestCase):
     def test_current_fixture_has_nothing_to_migrate(self):
         before = (self.root / "modules/registry.json").read_bytes()
         code, env, _ = run_json("migrate", *self.R)
-        self.assertEqual((code, env["schema"], env["data"]["applied"]), (0, "modsys.migrate/1", []))
+        self.assertEqual((code, env["schema"], env["data"]["applied"]), (0, "segmently-modules.migrate/1", []))
         self.assertEqual((self.root / "modules/registry.json").read_bytes(), before)
 
     def test_old_shape_migrates_and_lints_clean(self):

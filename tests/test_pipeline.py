@@ -19,7 +19,7 @@ class ContextTest(unittest.TestCase):
     def test_read_set_for_a_role(self):
         code, env, _ = run_json("context", "--task", "add isbn to book listing",
                                 "--role", "developer", *self.R)
-        self.assertEqual((code, env["schema"]), (0, "modsys.context/1"))
+        self.assertEqual((code, env["schema"]), (0, "segmently-modules.context/1"))
         self.assertEqual([m["module"] for m in env["data"]["modules"]], ["catalog"])
         self.assertEqual([(r["module"], r["label"]) for r in env["data"]["read"]],
                          [("catalog", "universal"), ("catalog", "role:developer")])
@@ -63,7 +63,7 @@ class DiscoverTest(unittest.TestCase):
         code, env, _ = run_json("discover", "--task",
                                 "Fix src/catalog/service.py so the order total shows the book price",
                                 *self.R)
-        self.assertEqual((code, env["schema"]), (0, "modsys.discover/1"))
+        self.assertEqual((code, env["schema"]), (0, "segmently-modules.discover/1"))
         mods = self.modules(env)
         self.assertEqual((mods["catalog"]["usage"], mods["catalog"]["sources"]),
                          ("modify", ["keyword", "path"]))

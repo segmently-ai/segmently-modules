@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys import skill_sync
+from segmently_modules import skill_sync
 from tests.helpers import copy_fixture, run, run_json
 
 SKILL = "---\nname: api-review\ndescription: Reviews API changes.\n---\n\n# api-review\n"
@@ -24,7 +24,7 @@ class RemoveRepo(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = copy_fixture(self._tmp.name)
         self.R = ("--root", str(self.root))
-        team = self.root / ".modsys/packs/team"
+        team = self.root / ".segmently-modules/packs/team"
         (team / "skills/api-review").mkdir(parents=True)
         (team / "pack.toml").write_text('id = "team"\nversion = "0.1.0"\n\n[skills.api-review]\n'
                                         'path = "skills/api-review"\n')
@@ -38,12 +38,12 @@ class RemoveRepo(unittest.TestCase):
         text = '[packs]\nbuiltin = ["core"]\n'
         if agents is not None:
             text += f"agents = {json.dumps(agents)}\n"
-        (self.root / ".modsys/config.toml").write_text(text)
+        (self.root / ".segmently-modules/config.toml").write_text(text)
 
     def sync(self, *argv: str, code: int = 0) -> dict:
         got, env, err = run_json("packs", "sync", *argv, *self.R)
         self.assertEqual((got, err), (code, ""), env)
-        self.assertEqual(env["schema"], "modsys.packs/1")
+        self.assertEqual(env["schema"], "segmently-modules.packs/1")
         return env["data"]
 
     def hashes(self, *skip: str) -> dict:
@@ -67,7 +67,7 @@ class RemoveTest(RemoveRepo):  # P6-AC-005
         (skills / "my-own").mkdir()
         (skills / "my-own/SKILL.md").write_text("---\nname: my-own\ndescription: Mine.\n---\n")
         (skills / "y").mkdir()
-        shutil.copy(skills / "api-review/.modsys-managed", skills / "y/.modsys-managed")
+        shutil.copy(skills / "api-review/.segmently-modules-managed", skills / "y/.segmently-modules-managed")
         self.edited = skills / "module-sync/SKILL.md"
         self.original = self.edited.read_bytes()
         self.edited.write_text("# edited\n")
@@ -128,9 +128,9 @@ class RemoveTest(RemoveRepo):  # P6-AC-005
         with mock.patch.object(Path, "unlink", unlink):
             code, out, err = run("packs", "sync", "--agent", "cursor", "--remove", "--json",
                                  *self.R)
-        self.assertEqual((code, out, err), (130, "", "modsys: interrupted\n"))
+        self.assertEqual((code, out, err), (130, "", "segmently-modules: interrupted\n"))
         half = self.root / ".agents/skills/api-review"
-        self.assertEqual(sorted(p.name for p in half.iterdir()), [".modsys-managed"])
+        self.assertEqual(sorted(p.name for p in half.iterdir()), [".segmently-modules-managed"])
         data = self.sync("--agent", "cursor", "--remove")
         self.assertEqual(self.statuses(data)["api-review"], "removed")
         self.assertFalse(half.exists())
@@ -139,7 +139,7 @@ class RemoveTest(RemoveRepo):  # P6-AC-005
             code, out, err = run("packs", "sync", "--agent", "cursor", "--remove", "--json",
                                  *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertTrue(err.startswith("modsys: internal error: RuntimeError: boom"), err)
+        self.assertTrue(err.startswith("segmently-modules: internal error: RuntimeError: boom"), err)
         self.assertNotIn("Traceback", err)
 
     def test_one_envelope(self):  # P6-AC-033
@@ -147,7 +147,7 @@ class RemoveTest(RemoveRepo):  # P6-AC-005
         code, out, err = run("packs", "sync", "--agent", "cursor", "--remove", "--json", *self.R)
         self.assertEqual((code, err), (0, ""))
         env = json.loads(out)
-        self.assertEqual((env["schema"], set(env["data"])), ("modsys.packs/1", {
+        self.assertEqual((env["schema"], set(env["data"])), ("segmently-modules.packs/1", {
             "agents", "check", "dry_run", "skills", "summary", "failed", "notes"}))
         self.assertEqual(env["data"]["notes"], [
             ".agents/skills is also where codex, gemini, copilot read skills — the copies are "

@@ -1,4 +1,4 @@
-"""`modsys roles skip ROLE TARGET… [--note TEXT]`: a module (or a child) that needs no doc for a
+"""`segmently-modules roles skip ROLE TARGET… [--note TEXT]`: a module (or a child) that needs no doc for a
 role says so in the registry — `context_files.roles.<role>` is `false`, or `{"skip": NOTE}` with a
 note. `roles list` counts it as `skipped`, not `missing`; `next` stops naming it; `roles add --all`
 leaves it alone while an explicit TARGET writes the doc in its place; lint accepts the mark and

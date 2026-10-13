@@ -1,20 +1,20 @@
-"""`modsys init`: starter config, empty registry, .gitignore lines — idempotent."""
+"""`segmently-modules init`: starter config, empty registry, .gitignore lines — idempotent."""
 import os
 import tempfile
 import tomllib
 import unittest
 from pathlib import Path
 
-from modsys.config import core_defaults, validate_layer
-from modsys.fields import load_field_defs
-from modsys.init_cmd import starter_config
-from modsys.merge import merge
-from modsys.workspace import Workspace
+from segmently_modules.config import core_defaults, validate_layer
+from segmently_modules.fields import load_field_defs
+from segmently_modules.init_cmd import starter_config
+from segmently_modules.merge import merge
+from segmently_modules.workspace import Workspace
 from tests.helpers import git, run, run_json
 
 EMPTY_REGISTRY = '{\n  "modules": {}\n}\n'
-IGNORE_LINES = ["modules/registry.json.lock", ".modsys/proposals/", ".modsys/init/",
-                ".modsys/config.user.toml"]  # P5a D3
+IGNORE_LINES = ["modules/registry.json.lock", ".segmently-modules/proposals/", ".segmently-modules/init/",
+                ".segmently-modules/config.user.toml"]  # P5a D3
 
 
 def snapshot(root: Path) -> dict:
@@ -38,16 +38,16 @@ class InitTest(unittest.TestCase):
 
     def test_empty_repo_gets_config_registry_and_gitignore(self):
         code, env, err = self.init()
-        self.assertEqual((code, err, env["schema"]), (0, "", "modsys.init/1"))
+        self.assertEqual((code, err, env["schema"]), (0, "", "segmently-modules.init/1"))
         self.assertEqual(env["data"]["files"], [
-            {"path": ".modsys/config.toml", "status": "created"},
+            {"path": ".segmently-modules/config.toml", "status": "created"},
             {"path": "modules/registry.json", "status": "created"},
             {"path": ".gitignore", "status": "created"}])
         self.assertEqual((env["data"]["layout"], env["data"]["dry_run"]), ("single", False))
         self.assertEqual(env["data"]["root"], str(self.root))
         self.assertEqual((self.root / "modules/registry.json").read_text(), EMPTY_REGISTRY)
         self.assertEqual((self.root / ".gitignore").read_text().splitlines(), IGNORE_LINES)
-        self.assertEqual(run_json("list", *self.R)[:2], (0, {"schema": "modsys.list/1",
+        self.assertEqual(run_json("list", *self.R)[:2], (0, {"schema": "segmently-modules.list/1",
                                                             "data": []}))
         self.assertEqual(run("lint", *self.R)[0], 0)
 
@@ -60,12 +60,12 @@ class InitTest(unittest.TestCase):
         self.assertEqual(snapshot(self.root), before)
 
     def test_existing_gitignore_gets_only_the_missing_lines(self):
-        (self.root / ".gitignore").write_text("node_modules/\n.modsys/proposals/")
+        (self.root / ".gitignore").write_text("node_modules/\n.segmently-modules/proposals/")
         _, env, _ = self.init()
         self.assertIn({"path": ".gitignore", "status": "updated"}, env["data"]["files"])
         self.assertEqual((self.root / ".gitignore").read_text(),
-                         "node_modules/\n.modsys/proposals/\nmodules/registry.json.lock\n"
-                         ".modsys/init/\n.modsys/config.user.toml\n")  # P5a D3, P8.1 S3
+                         "node_modules/\n.segmently-modules/proposals/\nmodules/registry.json.lock\n"
+                         ".segmently-modules/init/\n.segmently-modules/config.user.toml\n")  # P5a D3, P8.1 S3
         self.assertIn({"path": ".gitignore", "status": "exists"}, self.init()[1]["data"]["files"])
 
     def test_existing_registry_is_kept(self):
@@ -82,7 +82,7 @@ class InitTest(unittest.TestCase):
         self.assertEqual({f["status"] for f in env["data"]["files"]}, {"created"})
         self.assertEqual(snapshot(self.root), {})
         code, out, _ = run("init", "--dry-run", *self.R)
-        self.assertIn("would create  .modsys/config.toml", out)
+        self.assertIn("would create  .segmently-modules/config.toml", out)
 
     def test_text_output_states_the_root_first(self):
         """A user running `init` from a subdirectory sees where files went (M7): the plain-text
@@ -95,7 +95,7 @@ class InitTest(unittest.TestCase):
         code, env, _ = self.init("--layout", "per-module")
         self.assertEqual((code, env["data"]["layout"]), (0, "per-module"))
         self.assertIn('\n[paths]\nregistry_layout = "per-module"',
-                      (self.root / ".modsys/config.toml").read_text())
+                      (self.root / ".segmently-modules/config.toml").read_text())
         self.assertEqual(Workspace.load(self.root).config["paths"]["registry_layout"],
                          "per-module")
         self.assertEqual((self.root / "modules/registry.json").read_text(), EMPTY_REGISTRY)
@@ -123,7 +123,7 @@ class InitTest(unittest.TestCase):
         self.assertEqual((code, out), (2, ""))
         self.assertIn("conflicts with the configured registry_layout 'single'", err)
         self.assertEqual(snapshot(self.root), before)
-        self.assertFalse((self.root / ".modsys/config.toml").exists())
+        self.assertFalse((self.root / ".segmently-modules/config.toml").exists())
         self.assertEqual(reg.read_text(), '{"modules": {"x": {}}}\n')
 
     def test_root_defaults_to_the_git_top_level_else_cwd(self):
@@ -140,8 +140,8 @@ class InitTest(unittest.TestCase):
         finally:
             os.chdir(cwd)
         self.assertEqual((code, env["data"]["root"]), (0, str(self.root)))
-        self.assertTrue((self.root / ".modsys/config.toml").is_file())
-        self.assertFalse((sub / ".modsys").exists())
+        self.assertTrue((self.root / ".segmently-modules/config.toml").is_file())
+        self.assertFalse((sub / ".segmently-modules").exists())
         self.assertEqual((code2, env2["data"]["root"]), (0, str(plain)))
 
     def test_root_must_be_a_directory(self):
@@ -153,7 +153,7 @@ class InitTest(unittest.TestCase):
         code, out, err = run("list", *self.R)
         self.assertEqual((code, out), (2, ""))
         self.assertIn("registry not found", err)
-        self.assertIn("run `modsys init`", err)
+        self.assertIn("run `segmently-modules init`", err)
 
 
 class StarterConfigTest(unittest.TestCase):
@@ -194,21 +194,21 @@ class StarterConfigTest(unittest.TestCase):
 class InitIgnoreLineTest(InitTest):  # P5A-AC-024
     def test_a_repository_initialised_before(self):
         (self.root / ".gitignore").write_text("modules/registry.json.lock\r\n"
-                                              ".modsys/proposals/\r\n")
+                                              ".segmently-modules/proposals/\r\n")
         self.init()
         (self.root / ".gitignore").write_bytes(b"node_modules/\r\nmodules/registry.json.lock\r\n"
-                                               b".modsys/proposals/\r\n")
+                                               b".segmently-modules/proposals/\r\n")
         code, env, _ = self.init()
         self.assertEqual([(f["path"], f["status"]) for f in env["data"]["files"]],
-                         [(".modsys/config.toml", "exists"), ("modules/registry.json", "exists"),
+                         [(".segmently-modules/config.toml", "exists"), ("modules/registry.json", "exists"),
                           (".gitignore", "updated")])
         self.assertEqual((self.root / ".gitignore").read_bytes(),
-                         b"node_modules/\r\nmodules/registry.json.lock\r\n.modsys/proposals/\r\n"
-                         b".modsys/init/\r\n.modsys/config.user.toml\r\n")
+                         b"node_modules/\r\nmodules/registry.json.lock\r\n.segmently-modules/proposals/\r\n"
+                         b".segmently-modules/init/\r\n.segmently-modules/config.user.toml\r\n")
         before = snapshot(self.root)
         self.assertEqual({f["status"] for f in self.init()[1]["data"]["files"]}, {"exists"})
         self.assertEqual(snapshot(self.root), before)
-        self.assertFalse((self.root / ".modsys/init").exists())
+        self.assertFalse((self.root / ".segmently-modules/init").exists())
 
     def test_the_config_dir_decides_the_line(self):
         self.init("--config-dir", str(self.root / "cfg"))

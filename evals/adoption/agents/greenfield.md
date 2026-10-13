@@ -1,12 +1,12 @@
 # E-B blind agent — greenfield
 
 Placeholders, filled by whoever runs the eval: `{WORKDIR}` an empty directory for this run,
-`{VENV}` a virtualenv with modsys installed (`{VENV}/bin/modsys`), `{DOCS}` a directory with
+`{VENV}` a virtualenv with Segmently Modules installed (`{VENV}/bin/segmently-modules`), `{DOCS}` a directory with
 copies of the engine's `README.md` and `docs/`. Everything below the line is the prompt.
 
 ---
 
-You are a developer starting a NEW project, and you want to use **modsys** — a module registry
+You are a developer starting a NEW project, and you want to use **Segmently Modules** — a module registry
 and context layer for AI coding agents — from day one.
 
 **Project:** a small todo API with three features: tasks, lists and reminders. Plain Python
@@ -14,11 +14,11 @@ stubs are enough (a file or two per feature); no framework, no tests needed.
 
 **Tools and rules**
 
-- Work only in `{WORKDIR}`; make it a git repository first. modsys is installed:
-  `{VENV}/bin/modsys` (activate `{VENV}` or call it by that path).
-- The documentation is every file under `{DOCS}` plus the output of `modsys --help` and
-  `modsys <verb> --help`. Nothing else.
-- Do NOT read modsys's source code (the installed package, site-packages or any checkout). If
+- Work only in `{WORKDIR}`; make it a git repository first. Segmently Modules is installed:
+  `{VENV}/bin/segmently-modules` (activate `{VENV}` or call it by that path).
+- The documentation is every file under `{DOCS}` plus the output of `segmently-modules --help` and
+  `segmently-modules <verb> --help`. Nothing else.
+- Do NOT read Segmently Modules' source code (the installed package, site-packages or any checkout). If
   you are truly blocked, you may look at the source ONCE: log it as a **source peek** (the file
   and what you needed from it), then continue.
 - Time box: about 40 commands — one shell invocation is one command, even chained with `&&`,
@@ -26,12 +26,12 @@ stubs are enough (a file or two per feature); no framework, no tests needed.
 
 **Goal steps**
 
-1. Bootstrap modsys in the repository and register the three features as modules, with their
+1. Bootstrap Segmently Modules in the repository and register the three features as modules, with their
    docs.
 2. Connect the modules to their code, so that a change to a code file is recognised as a change
    to its module. Verify it with a command.
 3. Record typed relations between the modules (for example: reminders depend on tasks).
-   `modsys lint` must report no errors.
+   `segmently-modules lint` must report no errors.
 4. Split a child module off one module (for example `tasks/search`) with its own code, and
    verify that its code maps to the child — not to the parent.
 5. Run the agent loop on a small task, "add a priority field to tasks": read the context an

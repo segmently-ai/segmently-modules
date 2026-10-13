@@ -1,4 +1,4 @@
-# Start from existing code: `modsys init`
+# Start from existing code: `segmently-modules init`
 
 > Start here: [README](../README.md), "Start from existing code". Every verb's JSON:
 > [cli-contract.md](cli-contract.md). The `[init]` keys: [configuration.md](configuration.md#init).
@@ -6,46 +6,46 @@
 A repository with code and no module registry gets its modules, their docs, the registry, the
 code routing rules and the agents' block in seven phases. Two of them are gates where a person
 decides; everything else is a script, or a writer (an agent) per module. The engine keeps every
-intermediate file in `<config_dir>/init/` (default `.modsys/init/`, git-ignored by `modsys init`)
+intermediate file in `<config_dir>/init/` (default `.segmently-modules/init/`, git-ignored by `segmently-modules init`)
 and never touches the modules dir, the registry or the config before the last gate.
 
 | # | Phase | Command | Writes (in `<config_dir>/init/`) | Who |
 |---|---|---|---|---|
-| 1 | preflight | `modsys init map` | `preflight.json` | the script |
-| 2 | map | `modsys init map` | `proposal.json` | the script |
-| — | gate 3 | `modsys init confirm` | `confirmed.json` | a person edits the proposal, then confirms |
-| 4 | fan-out | `modsys init fanout`, then the writers | `work/<module>.json`, `staging/<module>/` | one writer per module |
-| 5 | reconcile | `modsys init reconcile` | `staging/registry.json`, `reconcile.json` | the script (a person judges what it lists) |
-| 6 | verify | `modsys init eval-tasks`, `modsys init verify` | `routing-tasks.json`, `verify.json` | a task writer, then the script |
-| — | gate 7 | `modsys init finish` | the modules dir, the registry, the config, the agents' block | a person, or a pull request |
+| 1 | preflight | `segmently-modules init map` | `preflight.json` | the script |
+| 2 | map | `segmently-modules init map` | `proposal.json` | the script |
+| — | gate 3 | `segmently-modules init confirm` | `confirmed.json` | a person edits the proposal, then confirms |
+| 4 | fan-out | `segmently-modules init fanout`, then the writers | `work/<module>.json`, `staging/<module>/` | one writer per module |
+| 5 | reconcile | `segmently-modules init reconcile` | `staging/registry.json`, `reconcile.json` | the script (a person judges what it lists) |
+| 6 | verify | `segmently-modules init eval-tasks`, `segmently-modules init verify` | `routing-tasks.json`, `verify.json` | a task writer, then the script |
+| — | gate 7 | `segmently-modules init finish` | the modules dir, the registry, the config, the agents' block | a person, or a pull request |
 
-`modsys init status` shows every phase and every module, and names the next step;
-`modsys init resume` continues from the recorded phase.
+`segmently-modules init status` shows every phase and every module, and names the next step;
+`segmently-modules init resume` continues from the recorded phase.
 
 ## Gate 3: the candidates
 
-`modsys init map` proposes candidate modules from the package manifests, the source
+`segmently-modules init map` proposes candidate modules from the package manifests, the source
 directories, the imports, CODEOWNERS and the files that change together. Edit
 `<config_dir>/init/proposal.json` — each candidate's `include`, `name` and `paths` — to merge,
-split, rename or drop candidates, then `modsys init confirm`: it names every problem at once
+split, rename or drop candidates, then `segmently-modules init confirm`: it names every problem at once
 (a name that breaks the `create` rule, a glob that matches no file, two candidates that claim
 one file) and freezes the proposal as `confirmed.json`. An agent that drives init stops after
 `init map`: it shows the candidates and asks the person before `init confirm` (the
 `module-init` skill does this). Once the fan-out has started the module set is fixed: `init
-confirm` refuses, and `modsys init map --restart` starts over — unless modules were created by
-hand in the registry meanwhile: then `--restart` refuses too (continue with `modsys init
+confirm` refuses, and `segmently-modules init map --restart` starts over — unless modules were created by
+hand in the registry meanwhile: then `--restart` refuses too (continue with `segmently-modules init
 resume`, or take them out of the registry and the modules dir first). After `init finish`,
-`init map` says `init is finished — see modsys init status`.
+`init map` says `init is finished — see segmently-modules init status`.
 
 ## Phase 4: one writer per module
 
-`modsys init fanout` writes one work item per confirmed module:
+`segmently-modules init fanout` writes one work item per confirmed module:
 
 ```json
 {"module": "cart", "parent": null, "paths": ["packages/cart/**"],
  "files": ["packages/cart/package.json", "packages/cart/src/index.ts"], "files_total": 2,
  "neighbours": [{"to": "catalog", "imports": 1}], "roles": ["developer", "qa", "po", "architect"],
- "staging_dir": ".modsys/init/staging/cart", "prompt": "…"}
+ "staging_dir": ".segmently-modules/init/staging/cart", "prompt": "…"}
 ```
 
 `files` holds the first 200 files (in path order), `files_total` all of them; `neighbours` the
@@ -67,31 +67,31 @@ them written, all over the same state:
 - **One agent, no subagents** — a loop:
 
   ```bash
-  modsys init next --json                 # claims the first pending module: its work item and prompt
+  segmently-modules init next --json                 # claims the first pending module: its work item and prompt
   # … write the files into the item's staging_dir …
-  modsys init done cart --json            # checks them: done, or exit 1 naming each problem
+  segmently-modules init done cart --json            # checks them: done, or exit 1 naming each problem
   ```
 
 - **CI** — an executor command:
 
   ```bash
-  modsys init run --executor "my-writer --model small"
+  segmently-modules init run --executor "my-writer --model small"
   ```
 
   It runs the command once per pending module, `[init] max_parallel` at a time: the prompt on
-  stdin, the root as the working directory, `MODSYS_INIT_MODULE`, `MODSYS_INIT_STAGING` and
-  `MODSYS_INIT_WORK` (absolute paths) in the environment. The command is split like a shell
+  stdin, the root as the working directory, `SEGMENTLY_MODULES_INIT_MODULE`, `SEGMENTLY_MODULES_INIT_STAGING` and
+  `SEGMENTLY_MODULES_INIT_WORK` (absolute paths) in the environment. The command is split like a shell
   line but never run by a shell. Exit 0 and a staging output `init done` accepts → `done`.
   Exit 0 and a refused output → retried once in the same run: a new attempt (its staging dir
-  cleared) whose prompt ends with the problems, and a stderr line `modsys: <module>: refused —
+  cleared) whose prompt ends with the problems, and a stderr line `segmently-modules: <module>: refused —
   retrying once`; refused again → `failed` with them. A retry that cannot be claimed (the
   writer left its staging dir a symlink or not removable, its work item is gone) → `failed`
   with the problems and `; the retry could not start: <reason>` — the other modules run on.
   Any other exit → `failed` at once with the last 20 lines of stderr — no retry. A write
   outside `<config_dir>/init/` fails the run.
-  There is no timeout: stop a hung run with Ctrl-C, then `modsys init resume`.
+  There is no timeout: stop a hung run with Ctrl-C, then `segmently-modules init resume`.
 
-`modsys init done` checks a staging dir: exactly the expected files, none empty or still holding
+`segmently-modules init done` checks a staging dir: exactly the expected files, none empty or still holding
 a placeholder of the templates (see "Your own prompts"), `entry.json` with only the allowed keys
 and the `create` rules, edges to known modules with a known relation and a description.
 
@@ -107,29 +107,29 @@ no file to check: lineTotal`. A doc that is missing, empty or not UTF-8 is named
 not read. `init verify` still runs the full check over the whole staging tree.
 
 The problems of an output `init run` refused stay in the module's entry of `state.json`
-(`problems`, shown by `modsys init status`) until its next claim — by `init run`, `init resume
+(`problems`, shown by `segmently-modules init status`) until its next claim — by `init run`, `init resume
 --executor` or `init next`. That claim hands them to the writer: the returned item carries them
 as `previous_problems`, and its `prompt` ends with a section `## The previous attempt was
 refused` listing them (the work item file itself never changes). The section is added at the
 claim, after the template was rendered, so it may quote a `${…}` from a problem line. An `init
 done` that refuses writes nothing: the writer is still at work. A claim whose work item file is
 missing is refused before anything is written (exit 2, the problems kept), naming the way out:
-`modsys init fanout` while no module has been claimed yet, else `modsys init map --restart`.
+`segmently-modules init fanout` while no module has been claimed yet, else `segmently-modules init map --restart`.
 `init done` refuses a module whose own work item is missing or damaged the same way (exit 2).
 Damaged: not a JSON object, or a field the engine reads — `module` (its file's name), `roles`
 (a list of strings), `prompt` (a string) — of another shape, named with its file (`…/cart.json:
-roles is not a list of strings — fix it, or start over: modsys init map --restart`); a claim
+roles is not a list of strings — fix it, or start over: segmently-modules init map --restart`); a claim
 refuses a damaged item before anything is written too. Under `init run`, a writer that removed
 or damaged its own work item fails its module at once (`the check could not run: …`, no retry)
 and the others run on.
 
-A killed or failed run is picked up by `modsys init resume` (or `modsys init run` again): every
+A killed or failed run is picked up by `segmently-modules init resume` (or `segmently-modules init run` again): every
 `running` or `failed` module goes back to `pending` with its staging dir cleared; a `done`
 module is never run again.
 
 ## Phase 5: reconcile
 
-`modsys init reconcile` (every module done) builds the staging registry from the `entry.json`
+`segmently-modules init reconcile` (every module done) builds the staging registry from the `entry.json`
 files and reports in `reconcile.json`:
 
 - `edges` — the import edges between modules become `depends-on` edges (a writer's own edge to
@@ -147,7 +147,7 @@ files and reports in `reconcile.json`:
 
 Edit the new modules' entries in `staging/registry.json` by hand (keywords, descriptions) as
 you like: `verify` reads the edits. A module that was already in the registry is changed in the
-registry itself, then `modsys init reconcile --force` — `init finish` never rewrites it. Do that
+registry itself, then `segmently-modules init reconcile --force` — `init finish` never rewrites it. Do that
 first: `--force` rebuilds the staging registry from the `entry.json` files, so the new modules'
 keyword edits come after it. A second `reconcile` refuses to overwrite the edits (exit 2);
 `--force` rebuilds from the `entry.json` files; a hand edit that breaks the file is named by
@@ -159,16 +159,16 @@ The routing eval measures whether a task a developer would type reaches its modu
 come from a writer that never sees the keywords:
 
 ```bash
-modsys eval routing --prompt              # the task writer's prompt: each module's purpose paragraph and files
-modsys init eval-tasks --executor "my-writer"   # or: the executor writes .modsys/init/routing-tasks.json
-modsys eval routing --tasks .modsys/init/routing-tasks.json   # the hit rate (during init: the staging registry)
+segmently-modules eval routing --prompt              # the task writer's prompt: each module's purpose paragraph and files
+segmently-modules init eval-tasks --executor "my-writer"   # or: the executor writes .segmently-modules/init/routing-tasks.json
+segmently-modules eval routing --tasks .segmently-modules/init/routing-tasks.json   # the hit rate (during init: the staging registry)
 ```
 
 A task hits when its module (or one of its children) is among the first 3 modules `context`
 ranks for it. The eval passes when hits ≥ `[init] routing_min_hit_rate` × tasks (0.8 by default);
 `hit_rate` is rounded down to 3 decimals.
 
-`modsys init verify` reads the staging tree as if it were in place and runs three checks:
+`segmently-modules init verify` reads the staging tree as if it were in place and runs three checks:
 
 1. **lint** — clean means no error and no warning (info is fine);
 2. **invented components** — every backticked repository path in a staging doc exists inside
@@ -184,15 +184,15 @@ refuses a tree that changed since. On misses, improve the missed new modules' ke
 `staging/registry.json` — never the tasks — and verify again. A tasks file `init eval-tasks`
 refuses (not JSON, a module left out) is moved to `routing-tasks.rejected.json`: the next step
 is `init eval-tasks` again, and until it succeeds `init verify` and `init finish` refuse (exit 2:
-`the routing tasks were refused — run modsys init eval-tasks (or write the file and use
+`the routing tasks were refused — run segmently-modules init eval-tasks (or write the file and use
 --force)`). Written by hand instead: `init verify --force` measures the file, `init finish
 --force` records the override. Both also refuse a symlinked `staging/<module>/`.
 
 ## Gate 7: finish
 
 ```bash
-modsys init finish                        # a person read verify.json: move, register, map, tell the agents
-modsys init finish --open-pr              # or: a branch, one commit, a pull request (gh)
+segmently-modules init finish                        # a person read verify.json: move, register, map, tell the agents
+segmently-modules init finish --open-pr              # or: a branch, one commit, a pull request (gh)
 ```
 
 `init finish` moves every new module's staging docs into the modules dir, adds its entry to the
@@ -205,20 +205,20 @@ directory or a registry entry that appeared since. A file an interrupted finish 
 back is named in its error.
 
 `--open-pr` needs `gh` on `PATH`, a remote `origin` and a clean tree (the starter files `init`
-created may be uncommitted: the commit takes them). It creates `modsys/init` (`--branch`) from
+created may be uncommitted: the commit takes them). It creates `segmently-modules/init` (`--branch`) from
 the current commit, commits, pushes and opens the pull request against the current branch
 (`--base`) with the verify summary, the routing table and the judgement items. The commit's
-subject and the pull request's title are `docs: module docs for <n> module(s) (modsys init)`
+subject and the pull request's title are `docs: module docs for <n> module(s) (segmently-modules init)`
 (Conventional Commits). A commit a hook, the git identity or signing refuses, a failed push or
-`gh` leaves the pull request pending: `modsys init resume --open-pr` retries what is left, back
+`gh` leaves the pull request pending: `segmently-modules init resume --open-pr` retries what is left, back
 on the branch. A step that was done but not recorded (a kill in between) is not done twice: the
 commit already on the branch is kept, and a pull request `gh` says already exists is recorded.
 
 ## Without a person
 
 ```bash
-modsys init map
-modsys init resume --non-interactive --executor "my-writer" --open-pr
+segmently-modules init map
+segmently-modules init resume --non-interactive --executor "my-writer" --open-pr
 ```
 
 `init resume` continues from the recorded phase and stops at the first step that needs an
@@ -237,14 +237,14 @@ then the engine):
 | `init/routing_prompt.md` | the task writer's prompt: `${count}`, `${per_module}`, `${modules}` |
 
 ```bash
-modsys templates list                               # init/module_prompt.md  engine  …
-modsys templates override init/module_prompt.md     # a copy in .modsys/overrides/templates/ to edit
+segmently-modules templates list                               # init/module_prompt.md  engine  …
+segmently-modules templates override init/module_prompt.md     # a copy in .segmently-modules/overrides/templates/ to edit
 ```
 
 A placeholder a template does not know is rendered as `<name>`: a rendered prompt never holds
 `${` (the section a claim appends after a refused attempt may quote one from a problem line).
 
-`modsys init done` refuses a staging doc that still holds `${<name>}` (or `${<name>` without its
+`segmently-modules init done` refuses a staging doc that still holds `${<name>}` (or `${<name>` without its
 brace) for a `<name>` that is a placeholder of a template `init` renders for that module — the
 resolved `MODULE.md`, the role templates of its work item and `init/module_prompt.md` (your
 override and packs included, so their own placeholders count too). Any other `${…}` is text:
@@ -259,13 +259,13 @@ could not run: …`, no retry) and the others run on.
 | Situation | What to do |
 |---|---|
 | `init confirm` exit 2 | fix every problem it names in `proposal.json`, confirm again |
-| `init confirm` after the fan-out | refused: `modsys init map --restart` starts over — refused too once modules were created by hand in the registry: continue with `modsys init resume`, or take them out of the registry and the modules dir first |
-| a module stays `failed` | `modsys init status` shows its error; `modsys init resume` puts it back |
-| a run was killed | `modsys init resume`: interrupted modules restart from a clean staging dir |
+| `init confirm` after the fan-out | refused: `segmently-modules init map --restart` starts over — refused too once modules were created by hand in the registry: continue with `segmently-modules init resume`, or take them out of the registry and the modules dir first |
+| a module stays `failed` | `segmently-modules init status` shows its error; `segmently-modules init resume` puts it back |
+| a run was killed | `segmently-modules init resume`: interrupted modules restart from a clean staging dir |
 | `init reconcile` exit 2 (edited) | keep the edits, or `--force` to rebuild from `entry.json` |
-| `init eval-tasks` exit 1 | the refused file is in `routing-tasks.rejected.json`: fix the task writer, then `modsys init eval-tasks` again (no `--force` needed) |
-| `init verify` / `init finish` exit 2: the routing tasks were refused | `modsys init eval-tasks` again; or write `routing-tasks.json` by hand, then `init verify --force` and `init finish --force` (recorded) |
-| `init finish` exit 2 (verify) | `modsys init verify`, then finish; `--force` only on purpose |
-| `init finish` exit 2 (conflict) | a module directory appeared since: move it away — only that clears it (a new reconcile rebuilds the same entry); a staging registry edit of a module already in the registry: make it in the registry itself, then `modsys init reconcile --force` |
-| `init finish` was interrupted | `modsys init finish` again: an interrupted finish puts back what it wrote (a file it could not put back is named: restore it by hand; after a kill, move away what it left — its refusal names each file) |
-| a pull request is pending | fix what refused it (a commit hook, the git identity, the remote, `gh`), then `modsys init resume --open-pr` |
+| `init eval-tasks` exit 1 | the refused file is in `routing-tasks.rejected.json`: fix the task writer, then `segmently-modules init eval-tasks` again (no `--force` needed) |
+| `init verify` / `init finish` exit 2: the routing tasks were refused | `segmently-modules init eval-tasks` again; or write `routing-tasks.json` by hand, then `init verify --force` and `init finish --force` (recorded) |
+| `init finish` exit 2 (verify) | `segmently-modules init verify`, then finish; `--force` only on purpose |
+| `init finish` exit 2 (conflict) | a module directory appeared since: move it away — only that clears it (a new reconcile rebuilds the same entry); a staging registry edit of a module already in the registry: make it in the registry itself, then `segmently-modules init reconcile --force` |
+| `init finish` was interrupted | `segmently-modules init finish` again: an interrupted finish puts back what it wrote (a file it could not put back is named: restore it by hand; after a kill, move away what it left — its refusal names each file) |
+| a pull request is pending | fix what refused it (a commit hook, the git identity, the remote, `gh`), then `segmently-modules init resume --open-pr` |

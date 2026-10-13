@@ -13,13 +13,13 @@ money: every run is a real, billed model call.
 
 | Case | Kind | Passes when |
 |---|---|---|
-| `<skill>/trigger` — one per skill (12) | trigger | the agent invoked that skill (`Skill` tool, grader `skill-fired`) and ran its primary modsys verb (`Bash`, grader `ran-modsys`) (`module-discover`, `module-scout` and `module-research` run in the conversation again since P8.6; their agents only on request) |
+| `<skill>/trigger` — one per skill (12) | trigger | the agent invoked that skill (`Skill` tool, grader `skill-fired`) and ran its primary Segmently Modules verb (`Bash`, grader `ran-segmently-modules`) (`module-discover`, `module-scout` and `module-research` run in the conversation again since P8.6; their agents only on request) |
 | `module-sync/outcome` | outcome | the catalog's module doc names the new `BarcodeScanner`; `sync-instructions` ran |
 | `module-create/outcome` | outcome | `modules/wishlist/MODULE.md` was created and the registry lists `wishlist`; `create wishlist` ran |
 | `module-split/outcome` | outcome | `MODULE.legacy.md` and the `search` child's doc were created; `create … --parent` ran |
 | `negative/unrelated` | negative | an ISBN coding question fires no skill (`Skill` called 0 times, scored in both arms) and gets code |
 
-These three `ran-modsys` graders are first verified by the model-run evals before a stable release.
+These three `ran-segmently-modules` graders are first verified by the model-run evals before a stable release.
 
 Every case starts from `scaffold.sh`: a git copy of `tests/fixtures/bookshop` with
 `[packs] builtin = ["core", "ui", "qa"]` and one routing rule, committed; a case's own `seed.sh`
@@ -40,8 +40,8 @@ python3 evals/skills/run.py --case module-scout-trigger --runs 1 --ablation none
 
 `run.py` assembles a plugin in a work directory (`--out DIR`, else a new temporary one) — the
 built-in skills under `skills/`, these cases under `evals/` with their scaffold, and a runtime
-with this engine, the fixture and a `modsys` launcher — and runs `claude plugin eval` on it with
-the launcher first on `PATH`, so the agent's sandboxed shell runs this checkout's modsys. Without
+with this engine, the fixture and a `segmently-modules` launcher — and runs `claude plugin eval` on it with
+the launcher first on `PATH`, so the agent's sandboxed shell runs this checkout's Segmently Modules. Without
 flags it uses its default flags: `--ablation none --runs 2 --threshold 0.5 --max-cost-usd 20
 --allow-tools Bash Write Edit --trust-plugin --no-publish`. With your own flags, it adds
 `--max-cost-usd 20` when they set no cost cap and `--no-publish` when they lack it, so a probe
@@ -73,7 +73,7 @@ subagents at a release gate — never by `claude plugin eval` and never by the u
 `module-init`'s cases run on a git copy of `tests/fixtures/bookshop_monorepo`
 (`tests/fixtures/build_monorepo.py`); the third starts from an init stopped after the fan-out
 with two modules written (`tests/init_fake_executor.py`). Each case runs once with the skill and
-once without it (the same prompt and `modsys`, with its `README.md` and `docs/`), a grader
+once without it (the same prompt and `segmently-modules`, with its `README.md` and `docs/`), a grader
 writes `grading.json`, and skill-creator's `aggregate_benchmark` sums the runs. The trigger
 check asks a judge that sees only the built-in skills' names and descriptions which skill each
 query needs. `tests/test_skill_creator_evals.py` checks the files' shape.

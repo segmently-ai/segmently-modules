@@ -1,4 +1,4 @@
-"""Field-level writers: `modsys registry set|append|remove|unset`."""
+"""Field-level writers: `segmently-modules registry set|append|remove|unset`."""
 import json
 import os
 import subprocess
@@ -7,9 +7,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import modsys
-from modsys.fields import load_field_defs
-from modsys.writers import apply_field_op, entry_sha256
+import segmently_modules
+from segmently_modules.fields import load_field_defs
+from segmently_modules.writers import apply_field_op, entry_sha256
 from tests.helpers import FIXTURE, copy_fixture, run, run_json
 
 
@@ -28,7 +28,7 @@ class RegistryVerbTest(unittest.TestCase):
 
     def test_set_status_and_lint_stays_clean(self):
         code, env, _ = run_json("registry", "set", "catalog", "status", '"draft"', *self.R)
-        self.assertEqual((code, env["schema"], env["data"]["changed"]), (0, "modsys.registry/1", True))
+        self.assertEqual((code, env["schema"], env["data"]["changed"]), (0, "segmently-modules.registry/1", True))
         self.assertEqual(self.reg()["catalog"]["status"], "draft")
         self.assertEqual(run("lint", *self.R)[0], 0)
 
@@ -96,11 +96,11 @@ class ApplyFieldOpTest(unittest.TestCase):
 
 class ConcurrentWritersTest(unittest.TestCase):  # AC-005
     def test_two_concurrent_cli_writers_lose_nothing(self):
-        engine = str(Path(modsys.__file__).resolve().parents[1])
+        engine = str(Path(segmently_modules.__file__).resolve().parents[1])
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(tmp)
             env = {**os.environ, "PYTHONPATH": engine}
-            procs = [subprocess.Popen([sys.executable, "-m", "modsys", "registry", "append",
+            procs = [subprocess.Popen([sys.executable, "-m", "segmently_modules", "registry", "append",
                                        "catalog", "keywords", f'"{kw}"', "--root", str(root)],
                                       env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
                      for kw in ("x1", "x2")]

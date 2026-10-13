@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys.config import builtin_packs_root
+from segmently_modules.config import builtin_packs_root
 from tests.helpers import git, run, run_json
 from tests.init_helpers import (IDENTITY, SIX, WORK, bare_remote, executor, gh_shim, ok,
                                 protected_sha, shop, state, text)
@@ -77,7 +77,7 @@ class FinishTest(FinishRepo):  # P5B-AC-023 (SI-18)
         for skill in pack["skills"]:
             self.assertIn(f"- `{skill}` — ", claude)
         self.assertFalse((self.root / "AGENTS.md").exists())
-        config = tomllib.loads((self.root / ".modsys/config.toml").read_text())
+        config = tomllib.loads((self.root / ".segmently-modules/config.toml").read_text())
         rules = {r["id"]: r for r in config["code_map"]}
         self.assertEqual(data["code_map"], [f"init-{m}" for m in SIX])
         self.assertEqual(rules["init-cart"], {"id": "init-cart", "module": "cart",
@@ -106,8 +106,8 @@ class FinishTest(FinishRepo):  # P5B-AC-023 (SI-18)
     def test_the_per_module_layout_and_agents_md(self):
         single = [r["module"] for r in (self.finish(), ok(self.root, "list"))[1]]
         root = shop(self.base, name="per", config="")
-        shutil.rmtree(root / ".modsys/init")
-        (root / ".modsys/config.toml").unlink()
+        shutil.rmtree(root / ".segmently-modules/init")
+        (root / ".segmently-modules/config.toml").unlink()
         (root / "modules/registry.json").unlink()
         ok(root, "init", "map", "--layout", "per-module")
         doc = json.loads((root / WORK / "proposal.json").read_text())
@@ -157,7 +157,7 @@ class RefusalsTest(FinishRepo):  # P5B-AC-024 (SI-16, SI-18)
         s = state(self.root)
         s["phases"]["verify"]["status"] = "pending"
         (self.root / WORK / "state.json").write_text(json.dumps(s))
-        self.assertIn("verify has not passed — run modsys init verify", self.refused())
+        self.assertIn("verify has not passed — run segmently-modules init verify", self.refused())
         data = self.finish("--force")
         self.assertTrue(data["forced"])
         self.assertEqual(state(self.root)["forced"]["reason"], "verify not passed")
@@ -165,7 +165,7 @@ class RefusalsTest(FinishRepo):  # P5B-AC-024 (SI-16, SI-18)
     def test_the_staging_changed_since_verify(self):
         registry = self.root / WORK / "staging/registry.json"
         registry.write_text(registry.read_text().replace('"basket"', '"trolley"'))
-        self.assertIn("staging changed since verify — run modsys init verify", self.refused())
+        self.assertIn("staging changed since verify — run segmently-modules init verify", self.refused())
         self.assertEqual(self.finish("--force")["forced"], True)
         self.assertEqual(state(self.root)["forced"]["reason"], "staging changed since verify")
 
@@ -184,12 +184,12 @@ class RefusalsTest(FinishRepo):  # P5B-AC-024 (SI-16, SI-18)
                           self.refused(*flags))
 
     def test_a_code_map_id_already_taken(self):  # never overridden; the file root-relative
-        config = self.root / ".modsys/config.toml"
+        config = self.root / ".segmently-modules/config.toml"
         config.write_text(config.read_text() + '\n[[code_map]]\nid = "init-cart"\n'
                                                 'globs = ["packages/cart/**"]\nmodule = "cart"\n')
         for flags in ((), ("--force",)):
             err = self.refused(*flags)
-            self.assertIn("[[code_map]] 'init-cart' is already defined in .modsys/config.toml", err)
+            self.assertIn("[[code_map]] 'init-cart' is already defined in .segmently-modules/config.toml", err)
             self.assertNotIn(str(self.root), err)
         self.assertEqual(state(self.root)["phases"]["finish"]["status"], "pending")
 
@@ -198,7 +198,7 @@ class RefusalsTest(FinishRepo):  # P5B-AC-024 (SI-16, SI-18)
         err = self.refused()
         self.assertIn("CLAUDE.md is not valid UTF-8 text; nothing written", err)
         self.assertEqual(state(self.root)["phases"]["finish"]["status"], "pending")
-        (self.root / "CLAUDE.md").write_text("<!-- modsys:begin v1 -->\nno end marker\n")
+        (self.root / "CLAUDE.md").write_text("<!-- segmently-modules:begin v1 -->\nno end marker\n")
         self.assertIn("CLAUDE.md:1: a begin marker without an end marker", self.refused())
         (self.root / "CLAUDE.md").unlink()
         self.finish()
@@ -220,11 +220,11 @@ class RefusalsTest(FinishRepo):  # P5B-AC-024 (SI-16, SI-18)
         self.assertEqual((code, out), (2, ""))
         self.assertIn("the staging registry changes catalog, already in the registry — finish "
                       "never rewrites a registry module: make that change in "
-                      "modules/registry.json itself, then run modsys init reconcile --force", err)
+                      "modules/registry.json itself, then run segmently-modules init reconcile --force", err)
         self.assertNotIn("the registry changed since init reconcile", err)
         # N-5: finish reads the staging registry once — the edit check hashes the bytes it
         # parsed, even when the file changes on disk right after the parse
-        from modsys import init_finish
+        from segmently_modules import init_finish
         parse = init_finish.staged_registry
 
         def then_put_back(flow, work):
@@ -232,7 +232,7 @@ class RefusalsTest(FinishRepo):  # P5B-AC-024 (SI-16, SI-18)
             staged.write_bytes(original)
             return got
 
-        with mock.patch("modsys.init_finish.staged_registry", side_effect=then_put_back):
+        with mock.patch("segmently_modules.init_finish.staged_registry", side_effect=then_put_back):
             code, out, err = run("init", "finish", "--root", str(root))
         self.assertEqual((code, out), (2, ""))
         self.assertIn("the staging registry changes catalog, already in the registry", err)
@@ -247,13 +247,13 @@ class RefusalsTest(FinishRepo):  # P5B-AC-024 (SI-16, SI-18)
         finally:
             os.chmod(self.root / "modules", 0o755)
         self.assertEqual((code, out), (2, ""))
-        self.assertIn("modsys: error: cannot write modules/cart/MODULE.md: Permission denied", err)
+        self.assertIn("segmently-modules: error: cannot write modules/cart/MODULE.md: Permission denied", err)
         self.assertEqual(protected_sha(self.root), before)
         self.assertEqual(state(self.root)["phases"]["finish"]["status"], "running")
         self.finish()
 
     def test_a_file_the_rollback_cannot_put_back_is_named(self):  # re-review: never silent
-        from modsys import init_finish
+        from segmently_modules import init_finish
         (self.root / "CLAUDE.md").write_text("# notes\n")
         put_back = init_finish.restore
 
@@ -262,27 +262,27 @@ class RefusalsTest(FinishRepo):  # P5B-AC-024 (SI-16, SI-18)
                 raise PermissionError(13, "Permission denied")
             return put_back(path, data)
 
-        with mock.patch("modsys.init_finish.restore", side_effect=stuck), \
-                mock.patch("modsys.init_finish.Finish.git_add",
+        with mock.patch("segmently_modules.init_finish.restore", side_effect=stuck), \
+                mock.patch("segmently_modules.init_finish.Finish.git_add",
                            side_effect=init_finish.UsageError("boom")):
             code, out, err = run("init", "finish", "--json", "--root", str(self.root))
         self.assertEqual((code, out), (2, ""))
-        self.assertIn("modsys: error: boom — could not put back: CLAUDE.md, "
+        self.assertIn("segmently-modules: error: boom — could not put back: CLAUDE.md, "
                       "modules/registry.json (restore them by hand)", err)
         self.setUp()
-        with mock.patch("modsys.init_finish.restore", side_effect=stuck), \
-                mock.patch("modsys.init_finish.Finish.git_add", side_effect=KeyboardInterrupt):
+        with mock.patch("segmently_modules.init_finish.restore", side_effect=stuck), \
+                mock.patch("segmently_modules.init_finish.Finish.git_add", side_effect=KeyboardInterrupt):
             code, out, err = run("init", "finish", "--json", "--root", str(self.root))
         self.assertEqual((code, out), (130, ""))
-        self.assertEqual(err, "modsys: init finish could not put back: modules/registry.json "
-                              "(restore them by hand)\nmodsys: interrupted\n")
+        self.assertEqual(err, "segmently-modules: init finish could not put back: modules/registry.json "
+                              "(restore them by hand)\nsegmently-modules: interrupted\n")
 
     def test_before_reconcile_and_after_finish(self):
         s = state(self.root)
         s["phases"]["reconcile"]["status"] = "pending"
         (self.root / WORK / "state.json").write_text(json.dumps(s))
         for flags in ((), ("--force",)):
-            self.assertIn("modsys init reconcile", self.refused(*flags))
+            self.assertIn("segmently-modules init reconcile", self.refused(*flags))
         self.setUp()
         self.finish()
         for flags in ((), ("--force",)):
@@ -293,12 +293,12 @@ class RefusalsTest(FinishRepo):  # P5B-AC-024 (SI-16, SI-18)
             with self.subTest(argv=argv):
                 code, out, err = run("init", *argv, "--json", "--root", str(self.root))
                 self.assertEqual((code, out), (2, ""))
-                self.assertIn("already finished — see modsys init status", err)
+                self.assertIn("already finished — see segmently-modules init status", err)
         for flags in ((), ("--restart",)):  # N-1: init wrote those modules, not a person
             with self.subTest(map=flags):
                 code, out, err = run("init", "map", *flags, "--json", "--root", str(self.root))
                 self.assertEqual((code, out), (2, ""))
-                self.assertIn("modsys: error: init is finished — see modsys init status", err)
+                self.assertIn("segmently-modules: error: init is finished — see segmently-modules init status", err)
                 self.assertNotIn("created by hand", err)
         self.assertEqual((self.root / WORK / "state.json").read_bytes(), state_before)
 
@@ -327,16 +327,16 @@ class OpenPrTest(FinishRepo):  # P5B-AC-025 (SI-20)
         base = git(self.root, "rev-parse", "HEAD").strip()
         _, data, err = self.open_pr()
         self.assertEqual((data["pr"], err), ("https://example.invalid/bookshop/pull/1", ""))
-        self.assertEqual(git(self.root, "branch", "--show-current").strip(), "modsys/init")
+        self.assertEqual(git(self.root, "branch", "--show-current").strip(), "segmently-modules/init")
         self.assertEqual(git(self.root, "rev-list", "--count", f"{base}..HEAD").strip(), "1")
         committed = git(self.root, "show", "--name-only", "--format=", "HEAD").split()
         self.assertEqual(sorted(committed), data["git_add"])
-        self.assertEqual(git(self.remote, "rev-parse", "modsys/init"),
+        self.assertEqual(git(self.remote, "rev-parse", "segmently-modules/init"),
                          git(self.root, "rev-parse", "HEAD"))
         (call,) = self.calls()
         argv = call["argv"]
-        self.assertEqual(argv[:6], ["pr", "create", "--base", "main", "--head", "modsys/init"])
-        title = "docs: module docs for 6 module(s) (modsys init)"  # Conventional Commits
+        self.assertEqual(argv[:6], ["pr", "create", "--base", "main", "--head", "segmently-modules/init"])
+        title = "docs: module docs for 6 module(s) (segmently-modules init)"  # Conventional Commits
         self.assertEqual(argv[argv.index("--title") + 1], title)
         self.assertEqual(git(self.root, "log", "-1", "--format=%s").strip(), title)
         for needle in ("## Verify", "- lint: 0 error(s), 0 warning(s)",
@@ -405,9 +405,9 @@ class OpenPrTest(FinishRepo):  # P5B-AC-025 (SI-20)
             self.assertIn("may not start with '-'", self.refused_pr(f"{flag}=-x"))
         self.assertIn("--branch 'bad..name' is not a valid branch name",
                       self.refused_pr("--branch", "bad..name"))
-        git(self.root, "branch", "modsys/init")
-        self.assertIn("branch modsys/init exists", self.refused_pr())
-        git(self.root, "branch", "-D", "modsys/init")
+        git(self.root, "branch", "segmently-modules/init")
+        self.assertIn("branch segmently-modules/init exists", self.refused_pr())
+        git(self.root, "branch", "-D", "segmently-modules/init")
         git(self.root, "remote", "remove", "origin")
         self.assertIn("no git remote 'origin'", self.refused_pr())
 
@@ -415,11 +415,11 @@ class OpenPrTest(FinishRepo):  # P5B-AC-025 (SI-20)
         shutil.rmtree(self.remote)
         _, data, err = self.open_pr(code=1)
         self.assertEqual(data["pr"], "pending")
-        self.assertIn("modsys: the pull request is pending: git push failed", err)
+        self.assertIn("segmently-modules: the pull request is pending: git push failed", err)
         s = state(self.root)
         self.assertEqual((s["pr"], s["open_pr"]["committed"], s["open_pr"]["pushed"]),
                          ("pending", True, False))
-        self.assertEqual(git(self.root, "branch", "--show-current").strip(), "modsys/init")
+        self.assertEqual(git(self.root, "branch", "--show-current").strip(), "segmently-modules/init")
         self.assertEqual(self.calls(), [])
         self.setUp()
         gh_shim(self.bin, self.log, code=1)

@@ -21,7 +21,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys import agent as agent_mod
+from segmently_modules import agent as agent_mod
 from tests.agent_helpers import AgentRepo, picks
 from tests.helpers import changelog_since_first_release, mutate_registry, run, run_json
 
@@ -34,8 +34,8 @@ ENGINE = Path(__file__).resolve().parents[1]
 TASK = "partial refund for a returned book"
 MATCH_TASK = "refund payment catalog"
 TIMEOUT = 90
-NO_AGENT = ("semantic matching needs your agent: set MODSYS_AGENT_COMMAND (a JSON array); "
-            "in Claude Code / Codex the skills do it with modsys choose")
+NO_AGENT = ("semantic matching needs your agent: set SEGMENTLY_MODULES_AGENT_COMMAND (a JSON array); "
+            "in Claude Code / Codex the skills do it with segmently-modules choose")
 SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
 
 
@@ -59,11 +59,11 @@ LOCALES = tuple(loc for loc in ("C", _utf8_locale()) if loc)
 
 class Base(AgentRepo, unittest.TestCase):
     def spawn(self, argv, stdin=b"", loc="C"):
-        """(exit code, stdout bytes, stderr text) of `python -m modsys ARGV --root R` under
+        """(exit code, stdout bytes, stderr text) of `python -m segmently_modules ARGV --root R` under
         `LC_ALL=loc`, with the test's (clean) environment."""
         env = {**os.environ, "PYTHONPATH": str(ENGINE), "PYTHONDONTWRITEBYTECODE": "1",
                "LC_ALL": loc}
-        done = subprocess.run([sys.executable, "-m", "modsys", *argv, *self.R], input=stdin,
+        done = subprocess.run([sys.executable, "-m", "segmently_modules", *argv, *self.R], input=stdin,
                               capture_output=True, env=env, cwd=ENGINE, timeout=TIMEOUT)
         return done.returncode, done.stdout, done.stderr.decode("utf-8", "replace")
 
@@ -73,7 +73,7 @@ class Base(AgentRepo, unittest.TestCase):
 class SignalWindowsTest(Base):
     """In-process, main thread, sentinel handlers installed before the run. (a) the signal lands
     as the outer `finally` enters `_ignore_signals` on a run that finished; (b) it lands inside
-    `_set_signals`, right after modsys installed its handler for that signal."""
+    `_set_signals`, right after segmently-modules installed its handler for that signal."""
 
     def setUp(self):
         super().setUp()
@@ -88,7 +88,7 @@ class SignalWindowsTest(Base):
         self.sentinels = {s: self.sentinel() for s in SIGNALS}
 
     def sentinel(self):
-        def handler(signum, frame):  # the caller's own handler: modsys must not reach it
+        def handler(signum, frame):  # the caller's own handler: segmently-modules must not reach it
             self.hits.append(signum)
         return handler
 
@@ -111,7 +111,7 @@ class SignalWindowsTest(Base):
                 previous = real_signal(s, handler)
                 if s == sig and not reached and callable(handler) \
                         and handler not in self.sentinels.values():
-                    reached.append(s)  # modsys's own handler is in place: fire it now
+                    reached.append(s)  # segmently-modules's own handler is in place: fire it now
                     os.kill(os.getpid(), s)
                 return previous
             with mock.patch.object(signal, "signal", installing):
@@ -139,8 +139,8 @@ class SignalWindowsTest(Base):
             signal.signal(signal.SIGHUP, signal.SIG_IGN)
         with self.inject(window, sig):
             code, out, err = run("choose", "--task", TASK, "--run", *self.R)
-        self.assertEqual((code, out, err), (130, "", "modsys: interrupted\n"))
-        self.assertEqual([p.name for p in self.scratch.iterdir()], [])  # no modsys-agent-* left
+        self.assertEqual((code, out, err), (130, "", "segmently-modules: interrupted\n"))
+        self.assertEqual([p.name for p in self.scratch.iterdir()], [])  # no segmently-modules-agent-* left
         for s, h in self.sentinels.items():
             want = signal.SIG_IGN if nohup and s == signal.SIGHUP else h
             self.assertIs(signal.getsignal(s), want, f"{s.name} not restored")
@@ -195,13 +195,13 @@ class TaskTextTest(Base):
             for path, stdin, reason in self.refusals():
                 with self.subTest(locale=loc, path=Path(path).name):
                     got = self.spawn(("choose", "--task-file", path), stdin, loc)
-                    self.assertEqual(got, (2, b"", f"modsys: error: {reason}\n"))
+                    self.assertEqual(got, (2, b"", f"segmently-modules: error: {reason}\n"))
         for verb in self.VERBS:
             for path, stdin, reason in self.refusals():
                 for form in ((), ("--json",)):
                     with self.subTest(verb=verb, path=Path(path).name, json=bool(form)):
                         got = self.in_process((verb, "--task-file", path, *form), stdin)
-                        self.assertEqual(got, (2, "", f"modsys: error: {reason}\n"))
+                        self.assertEqual(got, (2, "", f"segmently-modules: error: {reason}\n"))
 
     def test_in_process_stdin_and_an_empty_file(self):  # P83-AC-024
         empty = self.tmp / "empty.txt"
@@ -210,12 +210,12 @@ class TaskTextTest(Base):
             with self.subTest(verb=verb):
                 code, out, err = run(verb, "--task-file", str(empty), *self.R)
                 self.assertEqual((code, out), (2, ""))
-                self.assertTrue(err.startswith("modsys: error: give the task: "), err)
+                self.assertTrue(err.startswith("segmently-modules: error: give the task: "), err)
                 # a text stream without .buffer holding a lone surrogate: a refusal, never an
                 # internal error (fix round 1, M-2)
                 with mock.patch("sys.stdin", io.StringIO("refund " + chr(0xD800))):
                     got = run(verb, "--task-file", "-", *self.R)
-                self.assertEqual(got, (2, "", "modsys: error: cannot read <stdin>: "
+                self.assertEqual(got, (2, "", "segmently-modules: error: cannot read <stdin>: "
                                               "not valid UTF-8\n"))
 
     def test_valid_text_reads_as_before(self):  # P83-AC-024
@@ -368,27 +368,27 @@ class AnswerReaderTest(Base):
                         continue
                     self.assertEqual([ran[1], applied[1], piped[1]], ["", "", ""])
                     message = run_refusal(label, text)
-                    self.assertEqual(ran[2], "modsys: error: " + message.format(who=who) + "\n")
+                    self.assertEqual(ran[2], "segmently-modules: error: " + message.format(who=who) + "\n")
                     for src, got in ((path, applied[2]), ("stdin", piped[2])):
                         if label == "whitespace":
                             want = f"{src}: the answer is empty (expected a JSON object)"
                         else:
                             want = message.replace("its output", "its text").format(who=src)
-                        self.assertEqual(got, f"modsys: error: {want}\n")
+                        self.assertEqual(got, f"segmently-modules: error: {want}\n")
 
     def test_more_apply_refusals_start_with_the_source(self):  # P83-AC-025 / SI-P83-8
         missing = self.tmp / "missing.json"
         code, out, err = run("choose", "--apply", str(missing), *self.R)
-        self.assertEqual((code, out, err), (2, "", f"modsys: error: {missing}: cannot read the "
+        self.assertEqual((code, out, err), (2, "", f"segmently-modules: error: {missing}: cannot read the "
                                                    f"answer: {os.strerror(errno.ENOENT)}\n"))
         error = json.dumps({"is_error": True, "result": "rate limited"})
         with mock.patch("sys.stdin", io.StringIO(error)):
             code, out, err = run("choose", "--apply", "-", *self.R)
-        self.assertEqual((code, out, err), (2, "", "modsys: error: stdin reported an error: "
+        self.assertEqual((code, out, err), (2, "", "segmently-modules: error: stdin reported an error: "
                                                    "rate limited\n"))
         self.agent(answer=error)
         code, out, err = run("choose", "--task", TASK, "--run", *self.R)  # as at 758d085
-        self.assertEqual(err, f"modsys: error: agent {sys.executable} reported an error: "
+        self.assertEqual(err, f"segmently-modules: error: agent {sys.executable} reported an error: "
                               f"rate limited\n")
 
     def test_three_rows_under_both_locales(self):  # P83-AC-025, PRE-003(e)
@@ -443,9 +443,9 @@ TOP_ZERO = "no module matched (--top 0)\n"
 
 class TopZeroTest(Base):
     VERBS = (("match", MATCH_TASK), ("context", "--task", MATCH_TASK))
-    MATCH_JSON = '{\n  "schema": "modsys.match/1",\n  "data": {\n    "mode": "%s",\n    ' \
+    MATCH_JSON = '{\n  "schema": "segmently-modules.match/1",\n  "data": {\n    "mode": "%s",\n    ' \
                  '"rows": [],\n    "notes": []\n  }\n}\n'
-    CONTEXT_JSON = ('{\n  "schema": "modsys.context/1",\n  "data": {\n    "task": '
+    CONTEXT_JSON = ('{\n  "schema": "segmently-modules.context/1",\n  "data": {\n    "task": '
                     '"refund payment catalog",\n    "role": null,\n    "all_roles": false,\n    '
                     '"modules": [],\n    "read": [],\n    "near_misses": [],\n    "mode": "%s",\n'
                     '    "notes": []\n  }\n}\n')
@@ -468,12 +468,12 @@ class TopZeroTest(Base):
             for form in ((), ("--json",)):
                 with self.subTest(verb=argv[0], json=bool(form)):
                     got = run(*argv, "--match", "semantic", "--top", "0", *form, *self.R)
-                    self.assertEqual(got, (2, "", f"modsys: error: {NO_AGENT}\n"))
+                    self.assertEqual(got, (2, "", f"segmently-modules: error: {NO_AGENT}\n"))
 
     def test_hybrid_keeps_the_keyword_wording(self):  # P83-AC-026 row 3
         self.agent(answer=picks(("payments", 0.9)))
         texts = {"match": "no keyword matches (try rephrasing with domain terms, or use: list)\n",
-                 "context": "no module matched (try domain terms, or: modsys list)\n"}
+                 "context": "no module matched (try domain terms, or: segmently-modules list)\n"}
         for argv in self.VERBS:
             with self.subTest(verb=argv[0]):
                 self.assertEqual(run(*argv, "--match", "hybrid", "--top", "0", *self.R),
@@ -622,7 +622,7 @@ class WrapEdgesTest(unittest.TestCase):  # P83-AC-027, fix round 1 (M-3), with a
     ]
 
     def test_no_empty_part_and_an_exact_join(self):
-        from modsys.workorder import wrap_card
+        from segmently_modules.workorder import wrap_card
         for line, parts, joiner in self.CASES:
             with self.subTest(line=line):
                 got = wrap_card(line, 10)
@@ -666,7 +666,7 @@ class WhatDoesNotChangeTest(CardLinesBase):
         long_task = words(3000)
         self.task.write_text(long_task, encoding="utf-8")
         rule = words(2500)
-        rules = self.root / ".modsys/overrides/templates/choose/rules.md"
+        rules = self.root / ".segmently-modules/overrides/templates/choose/rules.md"
         rules.parent.mkdir(parents=True, exist_ok=True)
         rules.write_text(f"- {rule}\n- Give at most $max_picks picks.\n", encoding="utf-8")
         out = self.text()
@@ -691,17 +691,17 @@ class WhatDoesNotChangeTest(CardLinesBase):
 # ---- catalog with a malformed agent variable (P83-AC-029) -------------------------------------
 
 def catalog_note(problem: str) -> str:
-    return f"modsys: note: {problem} — match.semantic is false\n"
+    return f"segmently-modules: note: {problem} — match.semantic is false\n"
 
 
 class CatalogNoteTest(Base):
-    NOT_JSON = "MODSYS_AGENT_COMMAND: expected a JSON array of strings, got 'not json'"
-    EMPTY = "MODSYS_AGENT_COMMAND: expected a non-empty JSON array of strings, got '[]'"
-    PLACEHOLDER = ("MODSYS_AGENT_COMMAND: item '{foo}': unknown placeholder {foo} (placeholders: "
+    NOT_JSON = "SEGMENTLY_MODULES_AGENT_COMMAND: expected a JSON array of strings, got 'not json'"
+    EMPTY = "SEGMENTLY_MODULES_AGENT_COMMAND: expected a non-empty JSON array of strings, got '[]'"
+    PLACEHOLDER = ("SEGMENTLY_MODULES_AGENT_COMMAND: item '{foo}': unknown placeholder {foo} (placeholders: "
                    "{claude_model}, {codex_model}, {effort}, {reasoning})")
 
     def timeout(self, value):
-        return f"MODSYS_AGENT_TIMEOUT: expected an integer from 1 to 3600, got {value!r}"
+        return f"SEGMENTLY_MODULES_AGENT_TIMEOUT: expected an integer from 1 to 3600, got {value!r}"
 
     def setUp(self):
         super().setUp()
@@ -709,7 +709,7 @@ class CatalogNoteTest(Base):
         self.plain = (run("catalog", *self.R), run("catalog", "--json", *self.R))  # unset
 
     def env(self, command=None, timeout=None):
-        for name, value in (("MODSYS_AGENT_COMMAND", command), ("MODSYS_AGENT_TIMEOUT", timeout)):
+        for name, value in (("SEGMENTLY_MODULES_AGENT_COMMAND", command), ("SEGMENTLY_MODULES_AGENT_TIMEOUT", timeout)):
             if value is None:
                 os.environ.pop(name, None)
             else:
@@ -730,7 +730,7 @@ class CatalogNoteTest(Base):
         for argv in (("choose", "--task", TASK, "--run"),
                      ("match", MATCH_TASK, "--match", "semantic")):
             with self.subTest(argv=argv[0]):
-                self.assertEqual(run(*argv, *self.R), (2, "", f"modsys: error: {message}\n"))
+                self.assertEqual(run(*argv, *self.R), (2, "", f"segmently-modules: error: {message}\n"))
 
     def test_the_decision_table(self):  # P83-AC-029
         rows = [(self.good, None, True, None, None),
@@ -758,7 +758,7 @@ class CatalogNoteTest(Base):
                     code, out, err = run("catalog", *form, *self.R)
                     self.assertEqual((code, out), (2, ""))
                     self.assertEqual(len(err.splitlines()), 1)
-                    self.assertTrue(err.startswith("modsys: error: "), err)
+                    self.assertTrue(err.startswith("segmently-modules: error: "), err)
                     self.assertIn("[agent] is not read from files", err)
 
 
@@ -768,13 +768,13 @@ class CatalogNoteStreamsTest(Base):
 
     def setUp(self):
         super().setUp()
-        os.environ["MODSYS_AGENT_COMMAND"] = "not json"
+        os.environ["SEGMENTLY_MODULES_AGENT_COMMAND"] = "not json"
         self.note = catalog_note(CatalogNoteTest.NOT_JSON)
         self.env = {**os.environ, "PYTHONPATH": str(ENGINE), "PYTHONDONTWRITEBYTECODE": "1"}
 
     def shell(self, redirect, argv, preexec_fn=None, stdout=subprocess.PIPE,
               stderr=subprocess.PIPE):
-        cmd = ["/bin/sh", "-c", f'exec "$@" {redirect}', "sh", sys.executable, "-m", "modsys",
+        cmd = ["/bin/sh", "-c", f'exec "$@" {redirect}', "sh", sys.executable, "-m", "segmently_modules",
                *argv, *self.R]
         done = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr,
                               env=self.env, cwd=ENGINE, preexec_fn=preexec_fn, timeout=TIMEOUT)
@@ -814,7 +814,7 @@ class CatalogNoteStreamsTest(Base):
                 self.assertEqual(code, 2, err)
                 lines = err.splitlines()
                 self.assertEqual(len(lines), 1, err)
-                self.assertTrue(lines[0].startswith("modsys: error: cannot write stdout: "), err)
+                self.assertTrue(lines[0].startswith("segmently-modules: error: cannot write stdout: "), err)
                 self.assertNotIn("Traceback", err)
 
 
@@ -832,15 +832,15 @@ class DocsTest(unittest.TestCase):
     def test_catalog_cell(self):  # P83-AC-030
         cell = self.row("| `catalog` |")
         self.assertNotIn("is exit `2` here too", cell)
-        self.assertIn("a malformed `MODSYS_AGENT_COMMAND` or `MODSYS_AGENT_TIMEOUT` keeps "
+        self.assertIn("a malformed `SEGMENTLY_MODULES_AGENT_COMMAND` or `SEGMENTLY_MODULES_AGENT_TIMEOUT` keeps "
                       "`catalog` at exit `0` with `match.semantic` false and one stderr note "
-                      "`modsys: note: <variable>: <problem> — match.semantic is false`", cell)
+                      "`segmently-modules: note: <variable>: <problem> — match.semantic is false`", cell)
         self.assertIn("an `[agent]` table in a config file is still exit `2`", cell)
 
     def test_the_note_list(self):  # P83-AC-030
         doc = flat("docs/cli-contract.md")
-        self.assertIn("The `modsys: note:` lines (stderr only, after stdout, only when the run "
-                      "exits `0`): the one above and `catalog`'s `modsys: note: <variable>: "
+        self.assertIn("The `segmently-modules: note:` lines (stderr only, after stdout, only when the run "
+                      "exits `0`): the one above and `catalog`'s `segmently-modules: note: <variable>: "
                       "<problem> — match.semantic is false`", doc)
 
     def test_choose_cell_and_the_task_file(self):  # P83-AC-030
@@ -851,7 +851,7 @@ class DocsTest(unittest.TestCase):
                       "indented by four spaces", cell)
         doc = flat("docs/cli-contract.md")
         self.assertIn("a task file that cannot be read or is not UTF-8 is exit `2` with "
-                      "`modsys: error: cannot read <path>: <reason>` (`<stdin>` for `-`; "
+                      "`segmently-modules: error: cannot read <path>: <reason>` (`<stdin>` for `-`; "
                       "`<reason>` is the system's reason or `not valid UTF-8`)", doc)
         self.assertNotIn("is exit 2 in `catalog` too", flat("docs/configuration.md"))
 
@@ -866,7 +866,7 @@ class DocsTest(unittest.TestCase):
                        "`no module matched (--top 0)`",  # N-4
                        "card lines longer than 2,000 characters",  # N-6
                        "`catalog` with a malformed `MODSYS_AGENT_COMMAND` or "
-                       "`MODSYS_AGENT_TIMEOUT` exits 0"):  # catalog
+                       "`MODSYS_AGENT_TIMEOUT` exits 0"):  # catalog (0.1.1, the old name)
             self.assertIn(needle, unreleased)
 
 

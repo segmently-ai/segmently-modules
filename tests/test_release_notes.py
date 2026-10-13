@@ -30,7 +30,7 @@ class SectionsTest(unittest.TestCase):  # P6-AC-016: only our sections change
         log = release.changelog("# Changes\n\n- theirs\n", f"- {REL} (stable): engine abc")
         self.assertTrue(log.startswith("# Changes\n\n- theirs\n\n"))
         log = release.changelog(log, f"- {NXT} (stable): engine def")
-        self.assertIn(f"## modsys\n\n- {NXT} (stable): engine def\n- {REL} (stable): engine "
+        self.assertIn(f"## segmently-modules\n\n- {NXT} (stable): engine def\n- {REL} (stable): engine "
                       "abc\n", log)
         self.assertEqual(log.count(release.LOG_BEGIN), 1)
 
@@ -45,7 +45,7 @@ class SectionsTest(unittest.TestCase):  # P6-AC-016: only our sections change
         log = release.changelog("# Changes\r\n\r\n- theirs\r\n", f"- {REL} (dev): engine abc")
         log = release.changelog(log, f"- {NXT} (dev): engine def")
         self.assertEqual(log, "# Changes\r\n\r\n- theirs\r\n\r\n"
-                              f"{release.LOG_BEGIN}\r\n## modsys\r\n\r\n- {NXT} (dev): engine "
+                              f"{release.LOG_BEGIN}\r\n## segmently-modules\r\n\r\n- {NXT} (dev): engine "
                               f"def\r\n- {REL} (dev): engine abc\r\n{release.LOG_END}\r\n")
 
     def test_damaged_markers_fail_naming_the_file(self):
@@ -61,7 +61,7 @@ class SectionsTest(unittest.TestCase):  # P6-AC-016: only our sections change
                             release.replace_section(text, begin, end, "new\n")
                         else:
                             release.changelog(text, f"- {REL} (dev): engine abc")
-                    self.assertIn(f"{where}: the markers of the modsys section are damaged",
+                    self.assertIn(f"{where}: the markers of the segmently-modules section are damaged",
                                   str(caught.exception))
 
 
@@ -83,7 +83,7 @@ class NotesTest(unittest.TestCase):  # P61-AC-021, 022, 031, 036 (D6, SI-P61-9/1
         for channel in ("stable", "dev"):
             self.assertEqual(self.r.pending_notes(text, channel), notes)
         probe = ["- `lint` skips lines that start with `<!--`.",  # fix round 1: a `<!--` inside
-                 "- `agents-md` keeps text outside its `<!-- modsys:begin -->` marker.",  # text
+                 "- `agents-md` keeps text outside its `<!-- segmently-modules:begin -->` marker.",  # text
                  "- Second fix."]  # opens no comment — three notes, verbatim
         text = "## [Unreleased]\n\n" + "\n".join(probe) + "\n\n## [0.0.1] - 2026-01-01\n"
         for channel in ("stable", "dev"):
@@ -119,12 +119,12 @@ class NotesTest(unittest.TestCase):  # P61-AC-021, 022, 031, 036 (D6, SI-P61-9/1
             self.assertEqual(self.refused(three, channel), two_headings(3, "1, 3 and 5"))
         self.assertEqual(self.refused(None), NO_FILE)
         self.assertEqual(self.r.pending_notes(None, "dev"), [])
-        marked = ("## [Unreleased]\n\n- One.\n- `<!-- modsys:changelog:end -->` closes our "
+        marked = ("## [Unreleased]\n\n- One.\n- `<!-- segmently-modules:changelog:end -->` closes our "
                   "section.\n")
         for channel in ("stable", "dev"):  # fix round 1: never a damaged publish section
             self.assertEqual(self.refused(marked, channel), MARKER)
         self.assertEqual(self.r.pending_notes(  # a comment LINE holding it is dropped, never
-            "## [Unreleased]\n<!-- modsys:changelog:end -->\n- One.\n", "stable"),  # published
+            "## [Unreleased]\n<!-- segmently-modules:changelog:end -->\n- One.\n", "stable"),  # published
             ["- One."])
         for message in (NO_NOTE, NO_HEADING, NO_FILE, UNTRACKED, MARKER,
                         two_headings(2, "3 and 7")):
@@ -157,26 +157,26 @@ class NotesTest(unittest.TestCase):  # P61-AC-021, 022, 031, 036 (D6, SI-P61-9/1
                           r.log_entry(REL, "stable", "abc", ["- One.", "### Fixed", "- Two."]))
         log = r.changelog(log, r.log_entry(NXT, "stable", "def", ["- Three."]))
         self.assertEqual(log, "# Changes\r\n\r\n- theirs\r\n\r\n"  # the newest first, CRLF kept
-                              f"{LOG_BEGIN}\r\n## modsys\r\n\r\n- {NXT} (stable): engine def\r\n"
+                              f"{LOG_BEGIN}\r\n## segmently-modules\r\n\r\n- {NXT} (stable): engine def\r\n"
                               f"  - Three.\r\n- {REL} (stable): engine abc\r\n  - One.\r\n"
                               f"  ### Fixed\r\n  - Two.\r\n{LOG_END}\r\n")
 
     def test_the_date(self):  # SI-P61-9
         r = self.r
-        with mock.patch.dict(os.environ, {"MODSYS_RELEASE_DATE": DATE}):
+        with mock.patch.dict(os.environ, {"SEGMENTLY_MODULES_RELEASE_DATE": DATE}):
             self.assertEqual(r.release_date(), DATE)
         for bad in ("2026-02-30", "2026-13-01", "20261015", "2026-1-5", "2026-10-15T00:00",
                     "tomorrow"):
             with self.subTest(value=bad), mock.patch.dict(os.environ,
-                                                          {"MODSYS_RELEASE_DATE": bad}):
+                                                          {"SEGMENTLY_MODULES_RELEASE_DATE": bad}):
                 with self.assertRaises(r.Refused) as caught:
                     r.release_date()
                 self.assertEqual(str(caught.exception),
-                                 f"MODSYS_RELEASE_DATE={bad!r}: not a date YYYY-MM-DD")
-        for unset in ({"MODSYS_RELEASE_DATE": ""}, {}):
+                                 f"SEGMENTLY_MODULES_RELEASE_DATE={bad!r}: not a date YYYY-MM-DD")
+        for unset in ({"SEGMENTLY_MODULES_RELEASE_DATE": ""}, {}):
             with mock.patch.dict(os.environ, unset):
                 if not unset:
-                    os.environ.pop("MODSYS_RELEASE_DATE", None)
+                    os.environ.pop("SEGMENTLY_MODULES_RELEASE_DATE", None)
                 before = datetime.date.today().isoformat()
                 got = r.release_date()
                 after = datetime.date.today().isoformat()
@@ -206,7 +206,7 @@ class NotesRunTest(ReleaseRepo):  # P61-AC-022, 031, 036: the notes through whol
             self.assertEqual(path.read_bytes() if path.exists() else None, notes)
             self.assertIn("; CHANGELOG.md [Unreleased]: " + (
                 "1 line\n" if case == "one line" else "no notes yet\n"), proc.stdout)
-            version = re.search(r"done: modsys (\S+) \(dev\)", proc.stdout).group(1)
+            version = re.search(r"done: segmently-modules (\S+) \(dev\)", proc.stdout).group(1)
             want.insert(0, (version, "dev", git(self.engine, "rev-parse", "HEAD"),
                             ["- First planted note."] if case == "one line"
                             else ["no notes yet"]))
@@ -221,8 +221,8 @@ class NotesRunTest(ReleaseRepo):  # P61-AC-022, 031, 036: the notes through whol
         before, index = self.both(), self.index()
         proc = self.release(channel, env={"FAKE_GUARD_ERROR": "1", **(env or {})})
         self.assertEqual((proc.returncode, proc.stderr), (2, f"release.py: error: {message}\n"))
-        market = "modsys" if channel == "stable" else "modsys-dev"
-        self.assertEqual(proc.stdout, f"release modsys: channel {channel} (marketplace {market}), "
+        market = "segmently-modules" if channel == "stable" else "segmently-modules-dev"
+        self.assertEqual(proc.stdout, f"release segmently-modules: channel {channel} (marketplace {market}), "
                                       f"publish repo {self.pub}\n")  # no step finished
         self.assertEqual((self.both(), self.index()), (before, index))
         self.assertEqual(list(self.tmpdir.iterdir()), [])
@@ -230,8 +230,8 @@ class NotesRunTest(ReleaseRepo):  # P61-AC-022, 031, 036: the notes through whol
 
     def test_stable_without_notes_is_refused_before_any_work(self):  # P61-AC-036, AC-031
         # FAKE_GUARD_ERROR: had the guard run (or the suite after it), stderr would say so
-        self.refused_at_step_1("MODSYS_RELEASE_DATE='2026-02-30': not a date YYYY-MM-DD",
-                               env={"MODSYS_RELEASE_DATE": "2026-02-30"})
+        self.refused_at_step_1("SEGMENTLY_MODULES_RELEASE_DATE='2026-02-30': not a date YYYY-MM-DD",
+                               env={"SEGMENTLY_MODULES_RELEASE_DATE": "2026-02-30"})
         head = "# Changelog\n\nAll notable changes to this copy are documented in this file.\n\n"
         old = "## [0.0.1] - 2026-01-01\n\n- The first planted release.\n"
         for case, text, message in (
@@ -250,7 +250,7 @@ class NotesRunTest(ReleaseRepo):  # P61-AC-022, 031, 036: the notes through whol
                     self.commit(self.engine, "CHANGELOG.md", text, case)
                 self.refused_at_step_1(message)
         self.commit(self.engine, "CHANGELOG.md", CHANGELOG.replace(  # fix round 1: a note
-            "- Second planted note.\n", "- `<!-- modsys:changelog:end -->` closes our "
+            "- Second planted note.\n", "- `<!-- segmently-modules:changelog:end -->` closes our "
             "section.\n"), "a note holding the marker")
         for channel in ("stable", "dev"):  # either would write it into the publish section
             self.refused_at_step_1(MARKER, channel=channel)

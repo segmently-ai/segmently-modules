@@ -58,7 +58,7 @@ class MatchGapTest(unittest.TestCase):  # AC-016 … AC-019
     def _root(self, tmp, config=None, mutation=None):
         root = copy_fixture(tmp)
         if config:
-            (root / ".modsys" / "config.toml").write_text(config, encoding="utf-8")
+            (root / ".segmently-modules" / "config.toml").write_text(config, encoding="utf-8")
         if mutation:
             mutate_registry(root, mutation)
         return ("--root", str(root))

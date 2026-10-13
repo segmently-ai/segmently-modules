@@ -63,9 +63,9 @@ class CiWorkflowTest(unittest.TestCase):  # P6-AC-020
         self.assertEqual(listed, max(claude))  # the last claude line is checked, not printed
         self.assertLess(at["set -o pipefail"], listed)
         check = "\n".join(self.lines[listed:])
-        for needle in ('if r.get("enabled")', '("modsys", "modsys-ui", "modsys-qa")',
+        for needle in ('if r.get("enabled")', '("segmently-modules", "segmently-modules-ui", "segmently-modules-qa")',
                        'sys.exit(f"not installed and enabled: {missing}")',
-                       '"/bin/modsys"', '"--version"', "check=True"):
+                       '"/bin/segmently-modules"', '"--version"', "check=True"):
             self.assertIn(needle, check)  # all three enabled; the INSTALLED launcher runs
 
     def test_no_secret_no_model_call_no_guard(self):

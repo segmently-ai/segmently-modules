@@ -1,5 +1,5 @@
-"""The plugin launcher `bin/modsys` (P6 D3; source `tools/launcher.sh`): the interpreter it
-chooses — `MODSYS_PYTHON`, the names on PATH, the directories outside $HOME one at a time, then
+"""The plugin launcher `bin/segmently-modules` (P6 D3; source `tools/launcher.sh`): the interpreter it
+chooses — `SEGMENTLY_MODULES_PYTHON`, the names on PATH, the directories outside $HOME one at a time, then
 `uv` — and how it runs the plugin's engine. Stub interpreters (sh scripts) log every start; a
 temp copy of the launcher points its directory line at stub directories (SI-11). Each case
 runs under `sh` and, when present, `dash` (without it, `DashTest` is a visible skip)."""
@@ -43,15 +43,15 @@ class LauncherRepo(unittest.TestCase):
         self.tmp = Path(self._tmp.name).resolve()
         self.plugin = self.tmp / "my plugin"  # a space in the plugin path
         (self.plugin / "bin").mkdir(parents=True)
-        (self.plugin / "runtime/modsys").mkdir(parents=True)
-        (self.plugin / "runtime/modsys/__main__.py").write_text("")  # the stubs never read it
+        (self.plugin / "runtime/segmently_modules").mkdir(parents=True)
+        (self.plugin / "runtime/segmently_modules/__main__.py").write_text("")  # the stubs never read it
         self.path_dir = self.tmp / "path"
         self.stand_in = [self.tmp / d for d in ("opt-homebrew-bin", "usr-local-bin", "usr-bin")]
         for d in [self.path_dir, *self.stand_in]:
             d.mkdir()
         text = LAUNCHER.read_text(encoding="utf-8")
         self.assertEqual(text.count(DIRS_LINE), 1)
-        self.launcher = self.plugin / "bin/modsys"
+        self.launcher = self.plugin / "bin/segmently-modules"
         self.launcher.write_text(text.replace(DIRS_LINE, 'DIRS="' + " ".join(
             str(d) for d in self.stand_in) + '"\n'), encoding="utf-8")
         self.launcher.chmod(0o755)
@@ -88,7 +88,7 @@ class LauncherRepo(unittest.TestCase):
 class ChoiceTest(LauncherRepo):  # P6-AC-006
     def test_the_table(self):
         p, (hb, ul, ub) = self.path_dir, self.stand_in
-        rows = [  # (name, setup, MODSYS_PYTHON, expected: the stub that runs, or None)
+        rows = [  # (name, setup, SEGMENTLY_MODULES_PYTHON, expected: the stub that runs, or None)
             (1, [(p, "python3.14", GOOD), (p, "python3.11", GOOD)], None, p / "python3.14"),
             (2, [(p, "python3.14", OLD), (p, "python3.13", BROKEN), (p, "python3.11", GOOD)],
              None, p / "python3.11"),
@@ -106,9 +106,9 @@ class ChoiceTest(LauncherRepo):  # P6-AC-006
                         self.stub(where, name, text)
                     env = {}
                     if chosen == "good":
-                        env["MODSYS_PYTHON"] = str(self.stub(self.tmp, "chosen", GOOD))
+                        env["SEGMENTLY_MODULES_PYTHON"] = str(self.stub(self.tmp, "chosen", GOOD))
                     elif chosen == "":
-                        env["MODSYS_PYTHON"] = ""
+                        env["SEGMENTLY_MODULES_PYTHON"] = ""
                     proc, lines = self.launch(shell, "list", env=env)
                     self.assertEqual((proc.returncode, proc.stderr), (0, ""), lines)
                     self.assertEqual(self.ran(lines), str(expected))
@@ -136,7 +136,7 @@ class ChoiceTest(LauncherRepo):  # P6-AC-006
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertEqual([l for l in lines if l.startswith("arg=")], [
                     "arg=[run]", "arg=[--no-project]", "arg=[--python]", "arg=[>=3.11]",
-                    "arg=[python]", "arg=[-P]", "arg=[-m]", "arg=[modsys]", "arg=[lint]",
+                    "arg=[python]", "arg=[-P]", "arg=[-m]", "arg=[segmently_modules]", "arg=[lint]",
                     "arg=[--json]"])
             for row, env in ((8, {"UV_VERSION_EXIT": "1"}), (9, None)):
                 with self.subTest(shell=shell, row=row):
@@ -145,12 +145,12 @@ class ChoiceTest(LauncherRepo):  # P6-AC-006
                     proc, lines = self.launch(shell, "list", env=env)
                     self.assertEqual((proc.returncode, proc.stdout), (127, ""))
                     self.assertEqual(proc.stderr.count("\n"), 1)
-                    for needle in ("Python 3.11 or newer", "MODSYS_PYTHON", "uv"):
+                    for needle in ("Python 3.11 or newer", "SEGMENTLY_MODULES_PYTHON", "uv"):
                         self.assertIn(needle, proc.stderr)
                     self.assertIsNone(self.ran(lines))
                     self.stub(self.path_dir, "uv", UV)
 
-    def test_an_unusable_modsys_python(self):  # row 11 (SI-12): never a silent fall-through
+    def test_an_unusable_segmently_modules_python(self):  # row 11 (SI-12): never a silent fall-through
         self.stub(self.path_dir, "python3.14", GOOD)
         old = self.stub(self.tmp, "old", OLD)
         broken = self.stub(self.tmp, "broken", BROKEN)
@@ -160,17 +160,17 @@ class ChoiceTest(LauncherRepo):  # P6-AC-006
                                (broken, "does not run (exit 127)"),
                                (plain, ""), ("/nonexistent", ": not found")):
                 with self.subTest(shell=shell, value=value):
-                    proc, lines = self.launch(shell, "list", env={"MODSYS_PYTHON": str(value)})
+                    proc, lines = self.launch(shell, "list", env={"SEGMENTLY_MODULES_PYTHON": str(value)})
                     self.assertEqual((proc.returncode, proc.stdout), (127, ""))
-                    self.assertTrue(proc.stderr.startswith(f"modsys: MODSYS_PYTHON={value}"),
+                    self.assertTrue(proc.stderr.startswith(f"segmently-modules: SEGMENTLY_MODULES_PYTHON={value}"),
                                     proc.stderr)
                     self.assertIn(why, proc.stderr)
                     self.assertIsNone(self.ran(lines))  # the PATH stub never runs
                     self.assertNotIn(f"start {self.path_dir}/python3.14", lines)
             with self.subTest(shell=shell, value="a backslash"):  # printed as it is: one line
-                proc, _ = self.launch(shell, "list", env={"MODSYS_PYTHON": "/no/such\\ndir"})
+                proc, _ = self.launch(shell, "list", env={"SEGMENTLY_MODULES_PYTHON": "/no/such\\ndir"})
                 self.assertEqual((proc.returncode, proc.stdout), (127, ""))
-                self.assertEqual(proc.stderr, "modsys: MODSYS_PYTHON=/no/such\\ndir: not found — "
+                self.assertEqual(proc.stderr, "segmently-modules: SEGMENTLY_MODULES_PYTHON=/no/such\\ndir: not found — "
                                               "unset it, or point it at Python 3.11 or newer\n")
 
     def reset(self) -> None:
@@ -197,7 +197,7 @@ class InvocationTest(LauncherRepo):  # P6-AC-007
                 # -P is a flag of the engine's process: nothing it starts inherits it
                 self.assertIn("PYTHONDONTWRITEBYTECODE=1 PYTHONSAFEPATH=unset", lines)
                 self.assertEqual([l for l in lines if l.startswith("arg=")], [
-                    "arg=[-P]", "arg=[-m]", "arg=[modsys]", "arg=[a b]", 'arg=["q"]',
+                    "arg=[-P]", "arg=[-m]", "arg=[segmently_modules]", "arg=[a b]", 'arg=["q"]',
                     "arg=[$HOME]", "arg=[]"])
                 self.assertEqual([l for l in lines if l.startswith("start ")],
                                  [f"start {self.path_dir}/python3.14"] * 2)  # probe + run
@@ -205,10 +205,10 @@ class InvocationTest(LauncherRepo):  # P6-AC-007
     def test_through_a_symlink(self):
         elsewhere = self.tmp / "elsewhere"
         elsewhere.mkdir()
-        os.symlink(os.path.relpath(self.launcher, elsewhere), elsewhere / "modsys")
-        os.symlink(elsewhere / "modsys", self.tmp / "twice")
+        os.symlink(os.path.relpath(self.launcher, elsewhere), elsewhere / "segmently-modules")
+        os.symlink(elsewhere / "segmently-modules", self.tmp / "twice")
         for shell in SHELLS:
-            for target in (elsewhere / "modsys", self.tmp / "twice"):
+            for target in (elsewhere / "segmently-modules", self.tmp / "twice"):
                 with self.subTest(shell=shell, target=target.name):
                     proc, lines = self.launch(shell, "--version", target=target)
                     self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -236,21 +236,21 @@ class InvocationTest(LauncherRepo):  # P6-AC-007
         (decoy / "bin").mkdir(parents=True)
         for shell in SHELLS:
             with self.subTest(shell=shell):
-                proc, lines = self.launch(shell, "x", target="bin/modsys", cwd=self.plugin,
+                proc, lines = self.launch(shell, "x", target="bin/segmently-modules", cwd=self.plugin,
                                           env={"CDPATH": str(decoy)})
                 self.assertEqual((proc.returncode, proc.stderr), (0, ""))
                 self.assertIn(f"PYTHONPATH={self.plugin}/runtime", lines)
 
-    def test_a_plugin_without_its_runtime_runs_no_other_modsys(self):
+    def test_a_plugin_without_its_runtime_runs_no_other_segmently_modules(self):
         shutil.rmtree(self.plugin / "runtime")
-        other = self.tmp / "other"  # another modsys the caller's PYTHONPATH holds
-        (other / "modsys").mkdir(parents=True)
-        (other / "modsys/__main__.py").write_text("print('the wrong modsys')\n")
+        other = self.tmp / "other"  # another segmently-modules the caller's PYTHONPATH holds
+        (other / "segmently_modules").mkdir(parents=True)
+        (other / "segmently_modules/__main__.py").write_text("print('the wrong segmently-modules')\n")
         for shell in SHELLS:
             with self.subTest(shell=shell):
                 proc, lines = self.launch(shell, "--version", env={"PYTHONPATH": str(other)})
                 self.assertEqual((proc.returncode, proc.stdout), (127, ""))
-                self.assertEqual(proc.stderr, f"modsys: {self.plugin} has no runtime/modsys — "
+                self.assertEqual(proc.stderr, f"segmently-modules: {self.plugin} has no runtime/segmently_modules — "
                                               "reinstall the plugin\n")
                 self.assertEqual(lines, [])  # no interpreter started
 
@@ -261,16 +261,16 @@ class InvocationTest(LauncherRepo):  # P6-AC-007
             with self.subTest(shell=shell):
                 proc, lines = self.launch(shell, "x", target=self.tmp / "link")
                 self.assertEqual((proc.returncode, proc.stdout), (127, ""))
-                self.assertEqual(proc.stderr, f"modsys: cannot follow the symlink {self.tmp}/link "
+                self.assertEqual(proc.stderr, f"segmently-modules: cannot follow the symlink {self.tmp}/link "
                                               "(readlink)\n")
                 self.assertEqual(lines, [])
         colon = self.tmp / "a:b"
         shutil.copytree(self.plugin, colon)
         for shell in SHELLS:
             with self.subTest(shell=shell, what="a colon"):
-                proc, lines = self.launch(shell, "x", target=colon / "bin/modsys")
+                proc, lines = self.launch(shell, "x", target=colon / "bin/segmently-modules")
                 self.assertEqual((proc.returncode, proc.stdout), (127, ""))
-                self.assertEqual(proc.stderr, f"modsys: {colon} holds a \":\" — install the "
+                self.assertEqual(proc.stderr, f"segmently-modules: {colon} holds a \":\" — install the "
                                               "plugin elsewhere\n")
                 self.assertEqual(lines, [])
 
@@ -289,7 +289,7 @@ class InvocationTest(LauncherRepo):  # P6-AC-007
                 self.assertEqual((proc.returncode, proc.stderr), (0, ""))
         self.assertTrue(LAUNCHER.read_text(encoding="utf-8").startswith("#!/bin/sh\n"))
         self.assertFalse(stat.S_IMODE(os.stat(LAUNCHER).st_mode) & 0o111)  # the source stays
-        # 100644 in git: the builder gives bin/modsys its 0755
+        # 100644 in git: the builder gives bin/segmently-modules its 0755
 
 
 class DashTest(unittest.TestCase):  # final review T-7: the dash half never goes missing quietly
@@ -302,9 +302,9 @@ class RealEngineTest(unittest.TestCase):  # P6-AC-007 (the Then): the real engin
     def plugin(self, tmp: Path) -> Path:
         plugin = tmp / "p"
         (plugin / "bin").mkdir(parents=True)
-        shutil.copy(LAUNCHER, plugin / "bin/modsys")
-        (plugin / "bin/modsys").chmod(0o755)
-        shutil.copytree(ENGINE / "modsys", plugin / "runtime/modsys",
+        shutil.copy(LAUNCHER, plugin / "bin/segmently-modules")
+        (plugin / "bin/segmently-modules").chmod(0o755)
+        shutil.copytree(ENGINE / "segmently_modules", plugin / "runtime/segmently_modules",
                         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         return plugin
 
@@ -314,7 +314,7 @@ class RealEngineTest(unittest.TestCase):  # P6-AC-007 (the Then): the real engin
             plugin = self.plugin(tmp)
             repo = tmp / "repo"
             shutil.copytree(ENGINE / "tests/fixtures/bookshop", repo)
-            (repo / ".modsys/config.toml").write_text(
+            (repo / ".segmently-modules/config.toml").write_text(
                 f'[[hooks.post_sync]]\nid = "notify"\nrun = ["{sys.executable}", '
                 f'"./tools/notify.py"]\n')
             (repo / "tools").mkdir()
@@ -323,9 +323,9 @@ class RealEngineTest(unittest.TestCase):  # P6-AC-007 (the Then): the real engin
                 "import json, os\nimport helper\nprint(json.dumps({'messages': [helper.WORD, "
                 "os.environ.get('PYTHONSAFEPATH', 'unset')]}))\n")
             env = {k: v for k, v in os.environ.items() if k != "PYTHONSAFEPATH"}
-            proc = subprocess.run([str(plugin / "bin/modsys"), "sync", "--files", "README.md",
+            proc = subprocess.run([str(plugin / "bin/segmently-modules"), "sync", "--files", "README.md",
                                    "--root", str(repo), "--json"], cwd=repo, capture_output=True,
-                                  text=True, env={**env, "MODSYS_PYTHON": sys.executable})
+                                  text=True, env={**env, "SEGMENTLY_MODULES_PYTHON": sys.executable})
             self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
             hook = json.loads(proc.stdout)["data"]["hooks"]["hooks"][0]
             self.assertEqual((hook["status"], hook["messages"]),
@@ -335,19 +335,19 @@ class RealEngineTest(unittest.TestCase):  # P6-AC-007 (the Then): the real engin
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp).resolve()
             plugin = self.plugin(tmp)
-            shadow = tmp / "cwd/modsys"  # a `modsys` package in the working directory and on
+            shadow = tmp / "cwd/segmently-modules"  # a `segmently-modules` package in the working directory and on
             shadow.mkdir(parents=True)  # the caller's PYTHONPATH never wins
-            (shadow / "__init__.py").write_text("raise SystemExit('the wrong modsys')\n")
-            (shadow / "__main__.py").write_text("raise SystemExit('the wrong modsys')\n")
-            env = {**os.environ, "MODSYS_PYTHON": sys.executable,
+            (shadow / "__init__.py").write_text("raise SystemExit('the wrong segmently-modules')\n")
+            (shadow / "__main__.py").write_text("raise SystemExit('the wrong segmently-modules')\n")
+            env = {**os.environ, "SEGMENTLY_MODULES_PYTHON": sys.executable,
                    "PYTHONPATH": str(tmp / "cwd")}
             env.pop("PYTHONDONTWRITEBYTECODE", None)
             version = re.search(r'^__version__ = "([^"]+)"$',
-                                (ENGINE / "modsys/__init__.py").read_text(), re.M).group(1)
-            proc = subprocess.run([str(plugin / "bin/modsys"), "--version"], cwd=tmp / "cwd",
+                                (ENGINE / "segmently_modules/__init__.py").read_text(), re.M).group(1)
+            proc = subprocess.run([str(plugin / "bin/segmently-modules"), "--version"], cwd=tmp / "cwd",
                                   env=env, capture_output=True, text=True)
             self.assertEqual((proc.returncode, proc.stdout.strip(), proc.stderr),
-                             (0, f"modsys {version}", ""))
+                             (0, f"segmently-modules {version}", ""))
             self.assertEqual(list(plugin.rglob("__pycache__")), [])
 
 

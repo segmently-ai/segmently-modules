@@ -10,8 +10,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from modsys.config import builtin_packs_root, core_defaults
-from tests.helpers import changelog_since_first_release, copy_fixture, run, run_json
+from segmently_modules.config import builtin_packs_root, core_defaults
+from tests.helpers import changelog_release, changelog_since_first_release, copy_fixture, run, run_json
 from tests.test_budgets import SPLIT_DECISIONS, decision_key
 
 ENGINE = Path(__file__).resolve().parents[1]
@@ -25,7 +25,7 @@ KEYWORDS = (
 KEYWORDS = "".join("   " + ln for ln in KEYWORDS.splitlines(True))  # nested in step 5's list
 CODE_STEP = (  # P84-AC-013: D2 in full, F27, F28 (SI-P84-18 as amended); a wrapped skill's
     # steps live in its procedure
-    "3. Go to the code: `modsys code-map files <candidate> --json`; its code is the files whose `via`\n"
+    "3. Go to the code: `segmently-modules code-map files <candidate> --json`; its code is the files whose `via`\n"
     "   holds more than `docs`. A picked child or a docs-only module has no code of its own: search its\n"
     "   parent's code paths (when it has a parent) for the task's terms and let step 4's `--files` name\n"
     "   the owner. Search its source files first — tests, fixtures and plans last — for the terms of\n"
@@ -34,11 +34,11 @@ CODE_STEP = (  # P84-AC-013: D2 in full, F27, F28 (SI-P84-18 as amended); a wrap
     "   gives nothing. For a wrong value, find where it is computed and set, not only the lines that\n"
     "   read it. Note each code hit as file:line.\n")
 STEP_1 = (
-    "   Before you edit, save the gate: `modsys ci --base <base> --json > <ci file>` (outside the\n"
+    "   Before you edit, save the gate: `segmently-modules ci --base <base> --json > <ci file>` (outside the\n"
     "   repository; ignore its exit code).\n")
 STEP_7 = (  # final review I-1 (ruled): a stale path the change itself caused is fixed, not excused
     # (P8.7 D5: the check is step 9 since the session's knowledge came first)
-    "9. Check: `modsys ci --base <base> --baseline <ci file> --json`. Its steps (`lint`, `drift`,\n"
+    "9. Check: `segmently-modules ci --base <base> --baseline <ci file> --json`. Its steps (`lint`, `drift`,\n"
     "   `coverage`) should pass or be report-only; a `known` finding predates your edits: report it, but\n"
     "   fix one the change caused (a moved or deleted path). Fix what your updates caused and rerun.\n")
 FIX_CLAUSE = ("a `known` finding predates your edits: report it, but fix one the change caused "
@@ -90,7 +90,7 @@ class SavedGateTest(unittest.TestCase):  # P83-AC-012
     def test_step_1_ends_with_the_save(self):
         text = skill("module-sync")
         self.assertEqual(text.count(STEP_1), 1)
-        step1 = text.split("\n3. Ask modsys what to update")[0]  # P8.7: the pin is step 2
+        step1 = text.split("\n3. Ask Segmently Modules what to update")[0]  # P8.7: the pin is step 2
         self.assertTrue(step1.endswith("\n\n" + STEP_1), step1[-300:])  # its own lines (review M-1)
 
     def test_step_7_is_exact(self):
@@ -112,9 +112,9 @@ class CostSentenceTest(unittest.TestCase):  # P83-AC-013
 
 class TemporaryFileTest(unittest.TestCase):  # P83-AC-014
     def test_template_text(self):
-        t = (ENGINE / "modsys/defaults/templates/agents-md.md").read_text(encoding="utf-8")
+        t = (ENGINE / "segmently_modules/defaults/templates/agents-md.md").read_text(encoding="utf-8")
         self.assertIn("- Before a task, write it to a temporary file outside the repository and run\n"
-                      "  `modsys context --task-file <file> --role <role> --match lexical`;", t)
+                      "  `segmently-modules context --task-file <file> --role <role> --match lexical`;", t)
 
     def test_scaffold_placeholder(self):
         want = "--task-file <the task in one sentence, in a temporary file outside the repository>"
@@ -124,8 +124,8 @@ class TemporaryFileTest(unittest.TestCase):  # P83-AC-014
                 name = "s" + str(len(args))
                 code, _o, err = run("packs", "new", name, "--skill", "x" + name, *args, "--root", str(root))
                 self.assertEqual((code, err), (0, ""))
-                text = (root / ".modsys/packs" / name / "skills" / ("x" + name) / "SKILL.md").read_text(encoding="utf-8")
-                self.assertIn(f"modsys context {want} {flag}--match lexical --json", text)
+                text = (root / ".segmently-modules/packs" / name / "skills" / ("x" + name) / "SKILL.md").read_text(encoding="utf-8")
+                self.assertIn(f"segmently-modules context {want} {flag}--match lexical --json", text)
 
     def test_block_rewritten_once_then_idempotent(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -158,8 +158,8 @@ class BudgetTest(unittest.TestCase):  # P83-AC-015
 class SavedGateEndToEndTest(unittest.TestCase):  # P83-AC-012 (the two commands, run in order)
     def commands(self):
         text = skill("module-sync")
-        save = re.search(r"save the gate: `(modsys ci [^`]*)`", text).group(1)
-        check = re.search(r"9\. Check: `(modsys ci [^`]*)`", text).group(1)
+        save = re.search(r"save the gate: `(segmently-modules ci [^`]*)`", text).group(1)
+        check = re.search(r"9\. Check: `(segmently-modules ci [^`]*)`", text).group(1)
         return save, check
 
     def test_save_then_check_on_a_repository_with_a_known_finding(self):
@@ -253,7 +253,8 @@ class ReleaseNotesTest(unittest.TestCase):  # final review I-3
                       "yet — never a code identifier, never one per task;", flat)
 
     def test_one_changed_entry_names_t2(self):
-        changed = self.unreleased().split("### Changed", 1)[1].split("### Fixed", 1)[0]
+        log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")  # 0.1.1 shipped it
+        changed = changelog_release(log, "0.1.1").split("### Changed", 1)[1].split("### Fixed", 1)[0]
         entries = [" ".join(e.split()) for e in changed.split("\n- ")]
         mine = [e for e in entries if "`ci --baseline`" in e and "never a code identifier" in e]
         self.assertEqual(len(mine), 1, entries)
@@ -262,7 +263,7 @@ class ReleaseNotesTest(unittest.TestCase):  # final review I-3
             self.assertIn(needle, mine[0])
         self.assertNotIn("where a wrong value is computed", mine[0])  # P8.6 D2 removed the rule
         self.assertTrue(mine[0].endswith(
-            "run `modsys agents-md` and `modsys packs sync` after the upgrade — `--check` "
+            "run `modsys agents-md` and `modsys packs sync` after the upgrade — `--check` "  # the old name
             "reports the old block and stale copies until then."), mine[0])
 
 
@@ -274,8 +275,8 @@ class DocsSavedGateTest(unittest.TestCase):  # final review M-2 (1)
         paras = [p for p in passage.split("\n\n") if "saves the gate" in p]
         self.assertEqual(len(paras), 1, passage)
         flat = " ".join(paras[0].split())
-        for needle in ("saves the gate", "`modsys ci --base \"$BASE\" --json`",
-                       "`modsys ci --base \"$BASE\" --baseline", "known"):
+        for needle in ("saves the gate", "`segmently-modules ci --base \"$BASE\" --json`",
+                       "`segmently-modules ci --base \"$BASE\" --baseline", "known"):
             self.assertIn(needle, flat)
 
 

@@ -1,4 +1,4 @@
-"""`modsys eject` (D8): a repo-owned copy of a pack skill that `packs sync` materializes and the
+"""`segmently-modules eject` (D8): a repo-owned copy of a pack skill that `packs sync` materializes and the
 pack never overwrites; `eject --diff` and lint MS063 when the pack moves on."""
 import hashlib
 import json
@@ -10,7 +10,7 @@ from unittest import mock
 
 from pathlib import Path
 
-from modsys.skills import is_behind, pack_skills, read_ejected
+from segmently_modules.skills import is_behind, pack_skills, read_ejected
 from tests.helpers import copy_fixture, engine_version, init_git, run, run_json
 from tests.test_builtin_packs import FakeBuiltins
 
@@ -23,20 +23,20 @@ class EjectRepo(unittest.TestCase):
         self.root = copy_fixture(self._tmp.name)
         self.R = ("--root", str(self.root))
         self.set_pack("9.0.0", "Reviews API changes.")
-        self.ejected = self.root / ".modsys/overrides/skills/api-review"
+        self.ejected = self.root / ".segmently-modules/overrides/skills/api-review"
 
     def tearDown(self):
         self._tmp.cleanup()
 
     def set_pack(self, version: str, desc: str) -> None:
-        team = self.root / ".modsys/packs/team"
+        team = self.root / ".segmently-modules/packs/team"
         (team / "skills/api-review").mkdir(parents=True, exist_ok=True)
         (team / "pack.toml").write_text(f'id = "team"\nversion = "{version}"\n'
                                         '[skills.api-review]\npath = "skills/api-review"\n')
         (team / "skills/api-review/SKILL.md").write_text(SKILL.format(desc=desc))
 
     def upstream(self, rel: str = "SKILL.md"):
-        return self.root / ".modsys/packs/team/skills/api-review" / rel
+        return self.root / ".segmently-modules/packs/team/skills/api-review" / rel
 
     def ok(self, *argv, code=0) -> dict:
         got, env, err = run_json(*argv, *self.R)
@@ -62,12 +62,12 @@ class EjectTest(EjectRepo):  # P4A-AC-017
         before = {p: p.read_bytes() for p in (self.root / ".claude").rglob("*") if p.is_file()}
         data = self.ok("eject", "api-review")
         self.assertEqual(data, {"skill": "api-review", "pack": "team", "version": "9.0.0",
-                                "dir": ".modsys/overrides/skills/api-review",
+                                "dir": ".segmently-modules/overrides/skills/api-review",
                                 "files": ["SKILL.md"], "dry_run": False})
         self.assertEqual((self.ejected / "SKILL.md").read_bytes(), self.upstream().read_bytes())
         digest = hashlib.sha256(self.upstream().read_bytes()).hexdigest()
-        self.assertEqual((self.ejected / ".modsys-ejected").read_text(), json.dumps(
-            {"schema": "modsys.ejected/1", "skill": "api-review", "pack": "team",
+        self.assertEqual((self.ejected / ".segmently-modules-ejected").read_text(), json.dumps(
+            {"schema": "segmently-modules.ejected/1", "skill": "api-review", "pack": "team",
              "version": "9.0.0", "files": {"SKILL.md": digest}}, indent=2, sort_keys=True)
             + "\n")
         self.assertEqual({p: p.read_bytes() for p in (self.root / ".claude").rglob("*")
@@ -96,19 +96,19 @@ class EjectTest(EjectRepo):  # P4A-AC-017
     def test_refusals_write_nothing(self):
         self.ok("eject", "api-review")
         os.symlink("SKILL.md", self.upstream("link.md"))
-        (self.root / ".modsys/packs/team/pack.toml").write_text(
+        (self.root / ".segmently-modules/packs/team/pack.toml").write_text(
             'id = "team"\n[skills.api-review]\npath = "skills/api-review"\n'
             '[skills.broken]\npath = "skills/api-review"\n')
         for argv, needle in [
                 (("api-review",), "skill 'api-review' is already ejected: "
-                                  ".modsys/overrides/skills/api-review"),
+                                  ".segmently-modules/overrides/skills/api-review"),
                 (("nosuch",), "unknown skill 'nosuch' (pack skills: api-review, broken)"),
                 (("broken",), "skill 'broken' of pack 'team' is not loadable: symlink in "
                               "source: link.md (lint MS062); nothing written")]:
             with self.subTest(argv=argv):
                 code, out, err = run("eject", *argv, "--json", *self.R)
                 self.assertEqual((code, out), (2, ""))
-                self.assertIn(f"modsys: error: {needle}", err)
+                self.assertIn(f"segmently-modules: error: {needle}", err)
         self.assertEqual(sorted(p.name for p in self.ejected.parent.iterdir()), ["api-review"])
 
     def test_dry_run_and_text(self):
@@ -117,23 +117,23 @@ class EjectTest(EjectRepo):  # P4A-AC-017
         self.assertFalse(self.ejected.exists())
         out = run("eject", "api-review", "--dry-run", *self.R)[1].splitlines()
         self.assertEqual(out, ["would eject  api-review  (team 9.0.0) -> "
-                               ".modsys/overrides/skills/api-review", "  SKILL.md",
-                               "next: modsys eject api-review (to do it)"])
+                               ".segmently-modules/overrides/skills/api-review", "  SKILL.md",
+                               "next: segmently-modules eject api-review (to do it)"])
         out = run("eject", "api-review", *self.R)[1].splitlines()
         self.assertEqual(out, ["ejected  api-review  (team 9.0.0) -> "
-                               ".modsys/overrides/skills/api-review", "  SKILL.md",
+                               ".segmently-modules/overrides/skills/api-review", "  SKILL.md",
                                "edit the copy: packs sync materializes the skill from it, and "
                                "the pack never overwrites it",
-                               "next: modsys packs sync --agent claude --agent codex (or set "
+                               "next: segmently-modules packs sync --agent claude --agent codex (or set "
                                "[packs] agents once)"])
         out = run("packs", "sync", "--agent", "claude", *self.R)[1].splitlines()
         self.assertEqual(out[0], "created    claude  .claude/skills/api-review  (team 9.0.0, "
                                  "ejected copy)")
 
     def test_the_next_line_works_as_printed(self):  # fix wave F6
-        (self.root / ".modsys/config.toml").write_text('[packs]\nagents = ["claude"]\n')
+        (self.root / ".segmently-modules/config.toml").write_text('[packs]\nagents = ["claude"]\n')
         out = run("eject", "api-review", *self.R)[1].splitlines()
-        self.assertEqual(out[-1], "next: modsys packs sync")
+        self.assertEqual(out[-1], "next: segmently-modules packs sync")
         code, _, err = run("packs", "sync", *self.R)  # the line as printed
         self.assertEqual((code, err), (0, ""))
 
@@ -143,8 +143,8 @@ class EjectTest(EjectRepo):  # P4A-AC-017
         out = run("packs", "sync", "--agent", "claude", *self.R)[1].splitlines()
         self.assertEqual(out[1], "  SKILL.md (locally edited) — revert it (git checkout -- "
                                  ".claude/skills/api-review) and sync again, or keep the change: "
-                                 "modsys eject api-review, copy the change into "
-                                 ".modsys/overrides/skills/api-review, then packs sync")
+                                 "segmently-modules eject api-review, copy the change into "
+                                 ".segmently-modules/overrides/skills/api-review, then packs sync")
 
 
 class EjectedCopyLoadableTest(EjectRepo):  # fix wave F4: lint checks the copy packs sync reads
@@ -161,29 +161,29 @@ class EjectedCopyLoadableTest(EjectRepo):  # fix wave F4: lint checks the copy p
         self.assertEqual(self.ms062(), [])  # a valid ejected copy
         (self.ejected / "SKILL.md").write_text("---\nname: api_review\ndescription: Ours.\n---\n")
         self.assertEqual(self.ms062(), [(
-            "error", "*", "ejected skill 'api-review' (.modsys/overrides/skills/api-review) is not "
+            "error", "*", "ejected skill 'api-review' (.segmently-modules/overrides/skills/api-review) is not "
                           "loadable by agents: SKILL.md name 'api_review' is not the skill id "
-                          "'api-review'", ".modsys/overrides/skills/api-review/SKILL.md")])
+                          "'api-review'", ".segmently-modules/overrides/skills/api-review/SKILL.md")])
         self.assertEqual(run("lint", "--fail-on", "error", *self.R)[0], 1)
         self.assertEqual(self.sync(code=1), [("claude", "invalid", "ejected"),
                                              ("codex", "invalid", "ejected")])
         self.assertEqual(self.sync_text()[1], "  SKILL.md name 'api_review' is not the skill id "
                                               "'api-review' — fix the ejected copy "
-                                              ".modsys/overrides/skills/api-review (plain modsys "
+                                              ".segmently-modules/overrides/skills/api-review (plain segmently-modules "
                                               "lint reports it as MS062)")
         (self.ejected / "SKILL.md").unlink()
         self.assertEqual([f[2:] for f in self.ms062()], [(
-            "ejected skill 'api-review' (.modsys/overrides/skills/api-review) is not loadable by "
-            "agents: no SKILL.md", ".modsys/overrides/skills/api-review")])
+            "ejected skill 'api-review' (.segmently-modules/overrides/skills/api-review) is not loadable by "
+            "agents: no SKILL.md", ".segmently-modules/overrides/skills/api-review")])
 
     def test_an_ejected_copy_without_its_record(self):
         self.ok("eject", "api-review")
-        (self.ejected / ".modsys-ejected").write_text("{}")
+        (self.ejected / ".segmently-modules-ejected").write_text("{}")
         self.assertEqual(self.ms062(), [])  # MS063 reports it
-        self.assertEqual(self.sync_text()[1], "  the ejected copy .modsys/overrides/skills/"
-                                              "api-review has no valid .modsys-ejected record — "
-                                              "fix the ejected copy .modsys/overrides/skills/"
-                                              "api-review (plain modsys lint reports it as MS063)")
+        self.assertEqual(self.sync_text()[1], "  the ejected copy .segmently-modules/overrides/skills/"
+                                              "api-review has no valid .segmently-modules-ejected record — "
+                                              "fix the ejected copy .segmently-modules/overrides/skills/"
+                                              "api-review (plain segmently-modules lint reports it as MS063)")
 
 
 class EjectDiffTest(EjectRepo):  # P4A-AC-018
@@ -215,8 +215,8 @@ class EjectDiffTest(EjectRepo):  # P4A-AC-018
         self.assertTrue(self.diff()["behind"])
         self.assertEqual(self.ms063(), [(
             "warning", "ejected skill 'api-review' is behind pack 'team' (ejected from 9.0.0, "
-                       "pack is now 9.1.0) — review: modsys eject api-review --diff",
-            ".modsys/overrides/skills/api-review")])
+                       "pack is now 9.1.0) — review: segmently-modules eject api-review --diff",
+            ".segmently-modules/overrides/skills/api-review")])
         self.set_pack("9.0.0", "Reviews API changes, version two.")  # new files, same version
         self.assertTrue(self.diff()["behind"])
         self.assertEqual(len(self.ms063()), 1)
@@ -240,10 +240,10 @@ class EjectDiffTest(EjectRepo):  # P4A-AC-018
 
     def test_a_skill_no_pack_declares_any_more(self):
         self.ok("eject", "api-review")
-        shutil.rmtree(self.root / ".modsys/packs/team")
+        shutil.rmtree(self.root / ".segmently-modules/packs/team")
         self.assertEqual(self.ms063(), [(
             "info", "ejected skill 'api-review': pack 'team' no longer declares it; the ejected "
-                    "copy is its only source", ".modsys/overrides/skills/api-review")])
+                    "copy is its only source", ".segmently-modules/overrides/skills/api-review")])
         rows = self.ok("packs", "sync", "--agent", "claude")["skills"]
         self.assertEqual([(r["status"], r["source"], r["pack"]) for r in rows],
                          [("created", "ejected", "team")])
@@ -254,14 +254,14 @@ class EjectDiffTest(EjectRepo):  # P4A-AC-018
     def test_refusals_and_lint_changed(self):
         code, out, err = run("eject", "other", "--diff", "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertIn("skill 'other' is not ejected (eject it first: modsys eject other)", err)
+        self.assertIn("skill 'other' is not ejected (eject it first: segmently-modules eject other)", err)
         self.ok("eject", "api-review")
         code, _, err = run("eject", "api-review", "--diff", "--dry-run", *self.R)
         self.assertEqual(code, 2)
         self.assertIn("--dry-run applies to eject without --diff", err)
-        (self.ejected / ".modsys-ejected").write_text("{}")
+        (self.ejected / ".segmently-modules-ejected").write_text("{}")
         self.assertEqual([m for _, m, _ in self.ms063()],
-                         ["ejected skill 'api-review' has no valid .modsys-ejected record — "
+                         ["ejected skill 'api-review' has no valid .segmently-modules-ejected record — "
                           "eject it again or restore the file"])
         self.assertEqual(self.sync(code=1)[0][1], "invalid")
         self.set_pack("9.1.0", "Changed.")
@@ -272,14 +272,14 @@ class EjectDiffTest(EjectRepo):  # P4A-AC-018
     def test_diff_and_lint_share_one_behind_rule(self):  # fix wave F1
         self.ok("eject", "api-review")
         digest = hashlib.sha256(self.upstream().read_bytes()).hexdigest()
-        with mock.patch("modsys.eject_cmd.behind_reason", return_value="why") as rule:
+        with mock.patch("segmently_modules.eject_cmd.behind_reason", return_value="why") as rule:
             data = self.diff()  # P5a D0d: --diff asks behind_reason once, for `reason` too
         self.assertEqual((data["behind"], data["reason"]), (True, "why"))
         rule.assert_called_once()
         self.assertEqual(rule.call_args.kwargs["upstream"], {"SKILL.md": digest})
-        skill = pack_skills(self.root / ".modsys")["api-review"]
+        skill = pack_skills(self.root / ".segmently-modules")["api-review"]
         record = read_ejected(self.ejected)
-        with mock.patch("modsys.skills.file_hashes", side_effect=AssertionError("hashed twice")):
+        with mock.patch("segmently_modules.skills.file_hashes", side_effect=AssertionError("hashed twice")):
             self.assertFalse(is_behind(skill, record, upstream={"SKILL.md": digest}))
             self.assertTrue(is_behind(skill, record, upstream={}))
         self.assertFalse(is_behind(skill, record))  # hashes the pack's files itself
@@ -296,21 +296,21 @@ class EjectDiffTest(EjectRepo):  # P4A-AC-018
 
 class EjectContractTest(EjectRepo):  # P4A-AC-023
     def test_garbage_config_and_interrupt(self):
-        (self.root / ".modsys/config.toml").write_text("code_map = 5\n")
+        (self.root / ".segmently-modules/config.toml").write_text("code_map = 5\n")
         for argv in (("api-review",), ("api-review", "--diff")):
             with self.subTest(argv=argv):
                 code, out, err = run("eject", *argv, "--json", *self.R)
                 self.assertEqual((code, out), (2, ""))
-                self.assertTrue(err.startswith("modsys: error: "), err)
-        (self.root / ".modsys/config.toml").unlink()
-        with mock.patch("modsys.eject_cmd.copy_file", side_effect=KeyboardInterrupt):
+                self.assertTrue(err.startswith("segmently-modules: error: "), err)
+        (self.root / ".segmently-modules/config.toml").unlink()
+        with mock.patch("segmently_modules.eject_cmd.copy_file", side_effect=KeyboardInterrupt):
             self.assertEqual(run("eject", "api-review", *self.R),
-                             (130, "", "modsys: interrupted\n"))
+                             (130, "", "segmently-modules: interrupted\n"))
         self.assertFalse(self.ejected.exists())  # no half-made copy
         self.ok("eject", "api-review")
-        with mock.patch("modsys.eject_cmd.source_hashes", side_effect=KeyboardInterrupt):
+        with mock.patch("segmently_modules.eject_cmd.source_hashes", side_effect=KeyboardInterrupt):
             self.assertEqual(run("eject", "api-review", "--diff", *self.R),
-                             (130, "", "modsys: interrupted\n"))
+                             (130, "", "segmently-modules: interrupted\n"))
 
 
 class DiffReasonTest(EjectRepo):  # P5A-AC-011 (D0d, M-6)
@@ -330,7 +330,7 @@ class DiffReasonTest(EjectRepo):  # P5A-AC-011 (D0d, M-6)
         self.set_pack("9.0.0", "Reviews API changes, version two.")
         self.assertEqual(self.diff()[:2], (True, "the pack's files changed since the eject"))
         self.set_pack("9.0.0", "Reviews API changes.")
-        team = self.root / ".modsys/packs/team"
+        team = self.root / ".segmently-modules/packs/team"
         team.rename(team.with_name("team2"))
         toml = team.with_name("team2") / "pack.toml"
         toml.write_text(toml.read_text().replace('id = "team"', 'id = "team2"'))
@@ -340,7 +340,7 @@ class DiffReasonTest(EjectRepo):  # P5A-AC-011 (D0d, M-6)
         self.assertNotIn("ejected from team2", head)
         self.assertEqual([m for _, m, _ in self.ms063()], [
             "ejected skill 'api-review' is behind pack 'team2' (ejected from pack 'team', now "
-            "declared by pack 'team2') — review: modsys eject api-review --diff"])
+            "declared by pack 'team2') — review: segmently-modules eject api-review --diff"])
 
     def test_packs_sync_text_shows_both_versions(self):
         self.ok("eject", "api-review")
@@ -357,7 +357,7 @@ class BuiltinDiffReasonTest(FakeBuiltins):  # P5A-AC-011: a built-in pack, the e
     def test_the_engine_version_alone(self):
         self.enable("core")
         self.ok("eject", "notes")
-        with mock.patch("modsys.config.__version__", "99.0.0"):
+        with mock.patch("segmently_modules.config.__version__", "99.0.0"):
             data = self.ok("eject", "notes", "--diff")
             out = run("eject", "notes", "--diff", *self.R)[1].splitlines()
         self.assertEqual((data["behind"], data["reason"]), (False, None))
@@ -384,7 +384,7 @@ class SymlinkAtTheEjectedPathTest(EjectRepo):  # P5A-AC-012 (D0d, M-9)
                           [target] if target.exists() else []) if p.is_file()}
 
     def test_every_verb_treats_it_as_in_the_way(self):
-        where = ".modsys/overrides/skills/api-review"
+        where = ".segmently-modules/overrides/skills/api-review"
         for kind in ("directory", "file", "dangling"):
             with self.subTest(kind=kind):
                 target = self.link(kind)
@@ -394,10 +394,10 @@ class SymlinkAtTheEjectedPathTest(EjectRepo):  # P5A-AC-012 (D0d, M-9)
                     code, out, err = run(*argv, "--json", *self.R)
                     self.assertEqual((code, out), (2, ""))
                     self.assertIn(f"{where} is in the way: a symlink, not an ejected copy", err)
-                (self.root / ".modsys/packs/team/skills/notes").mkdir(parents=True)
-                (self.root / ".modsys/packs/team/skills/notes/SKILL.md").write_text(
+                (self.root / ".segmently-modules/packs/team/skills/notes").mkdir(parents=True)
+                (self.root / ".segmently-modules/packs/team/skills/notes/SKILL.md").write_text(
                     "---\nname: notes\ndescription: Notes.\n---\n")
-                toml = self.root / ".modsys/packs/team/pack.toml"
+                toml = self.root / ".segmently-modules/packs/team/pack.toml"
                 toml.write_text(toml.read_text() + '[skills.notes]\npath = "skills/notes"\n')
                 data = self.ok("packs", "sync", "--agent", "claude", code=1)
                 self.assertEqual([(r["skill"], r["status"], r["reason"]) for r in data["skills"]],
@@ -409,7 +409,7 @@ class SymlinkAtTheEjectedPathTest(EjectRepo):  # P5A-AC-012 (D0d, M-9)
                 self.assertEqual(self.state(target), before)
                 self.ejected.unlink()
                 shutil.rmtree(self.root / ".claude")
-                shutil.rmtree(self.root / ".modsys/packs/team/skills/notes")
+                shutil.rmtree(self.root / ".segmently-modules/packs/team/skills/notes")
                 self.set_pack("9.0.0", "Reviews API changes.")
                 if target.is_dir():
                     shutil.rmtree(target)

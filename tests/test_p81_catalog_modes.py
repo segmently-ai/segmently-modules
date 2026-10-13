@@ -1,4 +1,4 @@
-"""P8.1 tasks 3a/3b: `modsys catalog` (S2), `[match] mode` and `--match` (S1), the no-agent
+"""P8.1 tasks 3a/3b: `segmently-modules catalog` (S2), `[match] mode` and `--match` (S1), the no-agent
 refusal and note (S4), the config shape of `[match]` (an invalid mode)."""
 import contextlib
 import hashlib
@@ -13,8 +13,8 @@ from pathlib import Path
 from tests.agent_helpers import AgentRepo
 from tests.helpers import run, run_json
 
-NO_AGENT = ("semantic matching needs your agent: set MODSYS_AGENT_COMMAND (a JSON array); "
-               "in Claude Code / Codex the skills do it with modsys choose")
+NO_AGENT = ("semantic matching needs your agent: set SEGMENTLY_MODULES_AGENT_COMMAND (a JSON array); "
+               "in Claude Code / Codex the skills do it with segmently-modules choose")
 NOTE = "semantic part skipped: no agent command configured"
 TASK = "partial refund for a returned book"
 MODES = ("lexical", "semantic", "hybrid")
@@ -63,7 +63,7 @@ class CatalogTest(Repo):
 
     def test_json_default_config(self):  # P81-AC-020
         code, env, err = run_json("catalog", *self.R)
-        self.assertEqual((code, err, env["schema"]), (0, "", "modsys.catalog/1"))
+        self.assertEqual((code, err, env["schema"]), (0, "", "segmently-modules.catalog/1"))
         data = env["data"]
         self.assertEqual(data["match"], {"mode": "lexical", "semantic": False})
         self.assertEqual(data["search"], {"claude_model": "sonnet", "codex_model": "gpt-5.6-luna",
@@ -98,7 +98,7 @@ class CatalogTest(Repo):
                 self.assertEqual((code, err), (0, ""))
         self.assertEqual(tree_hash(self.root), before)
         self.assertFalse(self.marker.exists())
-        self.assertFalse((self.root / ".modsys" / "cache").exists())
+        self.assertFalse((self.root / ".segmently-modules" / "cache").exists())
         self.assertFalse(list(self.root.rglob("*.lock")))
 
     def test_read_only_directory(self):  # P81-AC-021
@@ -131,7 +131,7 @@ class ModeResolutionTest(Repo):
                         self.assertEqual((code, err), (0, ""))
 
     def test_flag_beats_config_beats_default(self):  # P81-AC-022
-        os.environ["MODSYS_AGENT_ALLOW_REPO_MODE"] = "1"  # D6: a config mode runs only opted in
+        os.environ["SEGMENTLY_MODULES_AGENT_ALLOW_REPO_MODE"] = "1"  # D6: a config mode runs only opted in
         for cfg in (None, *MODES):
             for flag in (None, *MODES):
                 self.config("" if cfg is None else f'[match]\nmode = "{cfg}"\n')
@@ -141,7 +141,7 @@ class ModeResolutionTest(Repo):
                     code, out, err = run(*argv, "--json")
                     if effective == "semantic":
                         self.assertEqual((code, out, err),
-                                         (2, "", f"modsys: error: {NO_AGENT}\n"))
+                                         (2, "", f"segmently-modules: error: {NO_AGENT}\n"))
                         continue
                     self.assertEqual((code, err), (0, ""))
                     data = json.loads(out)["data"]
@@ -151,7 +151,7 @@ class ModeResolutionTest(Repo):
                         self.assertEqual(data["mode"], effective)
 
     def test_hybrid_and_semantic_by_config_for_context_and_discover(self):  # P81-AC-022
-        os.environ["MODSYS_AGENT_ALLOW_REPO_MODE"] = "1"  # D6: a config mode runs only opted in
+        os.environ["SEGMENTLY_MODULES_AGENT_ALLOW_REPO_MODE"] = "1"  # D6: a config mode runs only opted in
         self.config('[match]\nmode = "hybrid"\n')
         for argv in (("context", "--task", TASK), ("discover", "--task", TASK)):
             _, env, _ = run_json(*argv, *self.R)
@@ -196,7 +196,7 @@ class LexicalIdenticalTest(Repo):
                 self.assertEqual(run(*argv, "--match", "lexical", *self.R, *json_flag),
                                  base[(argv, json_flag)])
         self.assertFalse(self.marker.exists())
-        self.assertFalse((self.root / ".modsys" / "cache").exists())
+        self.assertFalse((self.root / ".segmently-modules" / "cache").exists())
 
     def test_no_sources_or_similarity_keys(self):  # P81-AC-023
         for argv in (("match", TASK), ("context", "--task", TASK), ("discover", "--task", TASK)):
@@ -212,7 +212,7 @@ class NoAgentTest(Repo):
     def test_semantic_refuses(self):  # P81-AC-024
         for cfg_mode in (False, True):
             if cfg_mode:
-                os.environ["MODSYS_AGENT_ALLOW_REPO_MODE"] = "1"  # D6: opted in
+                os.environ["SEGMENTLY_MODULES_AGENT_ALLOW_REPO_MODE"] = "1"  # D6: opted in
                 self.config('[match]\nmode = "semantic"\n')
             before = tree_hash(self.root)
             flag = () if cfg_mode else ("--match", "semantic")
@@ -222,7 +222,7 @@ class NoAgentTest(Repo):
                     with self.subTest(argv=argv, cfg=cfg_mode, json=json_flag):
                         code, out, err = run(*argv, *flag, *self.R, *json_flag)
                         self.assertEqual((code, out), (2, ""))
-                        self.assertEqual(err, f"modsys: error: {NO_AGENT}\n")
+                        self.assertEqual(err, f"segmently-modules: error: {NO_AGENT}\n")
                         self.assertEqual(tree_hash(self.root), before)
 
     def test_hybrid_degrades_to_the_lexical_rows_with_one_note(self):  # P81-AC-025
@@ -250,7 +250,7 @@ class ConfigShapeTest(Repo):
         for argv in (("match", TASK), ("lint",), ("catalog",)):
             code, out, err = run(*argv, *self.R)
             self.assertEqual((code, out), (2, ""), argv)
-            self.assertTrue(err.startswith("modsys: error: "), err)
+            self.assertTrue(err.startswith("segmently-modules: error: "), err)
             self.assertIn("config.toml", err)
             self.assertNotIn("Traceback", err)
             for n in needles:

@@ -1,6 +1,6 @@
 exit 0
 {
-  "schema": "modsys.ci/1",
+  "schema": "segmently-modules.ci/1",
   "data": {
     "base": "HEAD~1",
     "base_commit": "<sha>",

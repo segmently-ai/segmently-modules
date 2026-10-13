@@ -52,8 +52,8 @@ class AgentRepo:
         super().tearDown()
 
     def config(self, text: str, name: str = "config.toml") -> None:
-        (self.root / ".modsys").mkdir(exist_ok=True)
-        (self.root / ".modsys" / name).write_text(text, encoding="utf-8")
+        (self.root / ".segmently-modules").mkdir(exist_ok=True)
+        (self.root / ".segmently-modules" / name).write_text(text, encoding="utf-8")
 
     def behaviour(self, **cfg) -> list[str]:
         """The argv of a fake agent with this behaviour (answer: a dict is dumped as JSON)."""
@@ -66,19 +66,19 @@ class AgentRepo:
         return [sys.executable, str(FAKE), str(path)]
 
     def agent(self, extra_argv=(), timeout_s=None, search: str = "", **cfg) -> list[str]:
-        """Configure the fake agent: `MODSYS_AGENT_COMMAND` (and `MODSYS_AGENT_TIMEOUT`) in the
+        """Configure the fake agent: `SEGMENTLY_MODULES_AGENT_COMMAND` (and `SEGMENTLY_MODULES_AGENT_TIMEOUT`) in the
         environment, which the AgentRepo setUp restores; `search` goes to config.user.toml."""
         argv = self.behaviour(**cfg) + list(extra_argv)
-        os.environ["MODSYS_AGENT_COMMAND"] = json.dumps(argv)
+        os.environ["SEGMENTLY_MODULES_AGENT_COMMAND"] = json.dumps(argv)
         if timeout_s is not None:
-            os.environ["MODSYS_AGENT_TIMEOUT"] = str(timeout_s)
+            os.environ["SEGMENTLY_MODULES_AGENT_TIMEOUT"] = str(timeout_s)
         if search:
             self.config(search, "config.user.toml")
         return argv
 
     def no_agent(self) -> None:
-        os.environ.pop("MODSYS_AGENT_COMMAND", None)
-        os.environ.pop("MODSYS_AGENT_TIMEOUT", None)
+        os.environ.pop("SEGMENTLY_MODULES_AGENT_COMMAND", None)
+        os.environ.pop("SEGMENTLY_MODULES_AGENT_TIMEOUT", None)
 
     def calls(self) -> list[dict]:
         return json.loads(self.calls_log.read_text(encoding="utf-8")) \

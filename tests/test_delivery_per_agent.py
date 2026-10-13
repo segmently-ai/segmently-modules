@@ -22,7 +22,7 @@ class TableValuesTest(DeliveryRepo):
                 self.config(value)
                 code, out, err = run("packs", "sync", "--agent", "claude", *self.R)
                 self.assertEqual((code, out), (2, ""))
-                self.assertIn(f".modsys/config.toml: [packs] builtin_delivery: {why}", err)
+                self.assertIn(f".segmently-modules/config.toml: [packs] builtin_delivery: {why}", err)
 
     def test_a_string_still_means_every_agent(self):
         self.config('"plugin"')
@@ -74,7 +74,7 @@ class MixedSyncTest(DeliveryRepo):
     def test_bare_sync_and_next_follow_the_table(self):
         self.config(MIXED)
         self.sync(*AGENTS)
-        cfg = self.root / ".modsys/config.toml"
+        cfg = self.root / ".segmently-modules/config.toml"
         cfg.write_text(cfg.read_text() + 'agents = ["claude", "codex"]\n', encoding="utf-8")
         code, env, err = run_json("packs", "sync", "--check", *self.R)
         self.assertEqual((code, err), (0, ""), env)
@@ -104,8 +104,8 @@ class MixedOtherVerbsTest(DeliveryRepo):
         code, _env, err = run_json("agents-md", "--target", "CLAUDE.md", *self.R)
         self.assertEqual((code, err), (0, ""))
         text = (self.root / "CLAUDE.md").read_text(encoding="utf-8")
-        self.assertIn("Skills from packs (the modsys plugins provide these skills for claude; "
-                      "`modsys packs sync` copies them for the other agents):\n- `designer`", text)
-        self.assertIn("Skills from packs (`modsys packs sync` copies them into the agents' skill "
+        self.assertIn("Skills from packs (the segmently-modules plugins provide these skills for claude; "
+                      "`segmently-modules packs sync` copies them for the other agents):\n- `designer`", text)
+        self.assertIn("Skills from packs (`segmently-modules packs sync` copies them into the agents' skill "
                       "directories):\n- `api-review`", text)
-        self.assertEqual(text.count("modsys:begin"), 1)
+        self.assertEqual(text.count("segmently-modules:begin"), 1)

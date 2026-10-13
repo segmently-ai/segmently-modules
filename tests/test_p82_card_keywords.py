@@ -58,7 +58,7 @@ class ValuesTest(Base):
                 self.cap(value)
                 self.assertEqual(self.card(self.order(), "catalog")["keywords"], KW12[:want])
                 self.assertEqual(run("lint", *self.R)[0], 0)
-        self.root.joinpath(".modsys/config.toml").write_text("", encoding="utf-8")
+        self.root.joinpath(".segmently-modules/config.toml").write_text("", encoding="utf-8")
         self.assertEqual(self.card(self.order(), "catalog")["keywords"], KW12[:10])
         self.assertEqual(run("lint", *self.R)[0], 0)
 
@@ -67,7 +67,7 @@ class ValuesTest(Base):
         self.assertEqual((code, out), (2, ""))
         lines = err.strip().splitlines()
         self.assertEqual(len(lines), 1)
-        self.assertTrue(lines[0].startswith("modsys: error: "))
+        self.assertTrue(lines[0].startswith("segmently-modules: error: "))
         self.assertTrue(lines[0].endswith(tail), lines[0])
 
     def test_refused_values(self):  # P82-AC-009
@@ -77,7 +77,7 @@ class ValuesTest(Base):
                 for js in ((), ("--json",)):
                     with self.subTest(value=value, form=form[0], json=bool(js)):
                         self.cap(value)
-                        self.refused((*form, *js), f"/.modsys/config.toml: [search] "
+                        self.refused((*form, *js), f"/.segmently-modules/config.toml: [search] "
                                      f"card_keywords: expected an integer >= 0, got {shown}")
 
     def test_layers_and_pack(self):  # P82-AC-009
@@ -87,18 +87,18 @@ class ValuesTest(Base):
         self.assertEqual(len(self.card(self.order(), "catalog")["keywords"]), 2)
         self.cap(-1, "config.user.toml")
         for argv in (("choose", "--task-file", str(self.task)), ("lint",)):
-            self.refused(argv, "/.modsys/config.user.toml: [search] card_keywords: expected "
+            self.refused(argv, "/.segmently-modules/config.user.toml: [search] card_keywords: expected "
                                "an integer >= 0, got -1")
-        (self.root / ".modsys/config.user.toml").unlink()
-        (self.root / ".modsys/config.toml").unlink()
-        pack = self.root / ".modsys/packs/capper"
+        (self.root / ".segmently-modules/config.user.toml").unlink()
+        (self.root / ".segmently-modules/config.toml").unlink()
+        pack = self.root / ".segmently-modules/packs/capper"
         pack.mkdir(parents=True)
         head = 'id = "capper"\nversion = "0.1.0"\npriority = 50\n\n[search]\n'
         (pack / "pack.toml").write_text(head + "card_keywords = 4\n", encoding="utf-8")
         self.assertEqual(len(self.card(self.order(), "catalog")["keywords"]), 4)
         (pack / "pack.toml").write_text(head + "card_keywords = true\n", encoding="utf-8")
         for argv in (("choose", "--task-file", str(self.task)), ("lint",)):
-            self.refused(argv, "/.modsys/packs/capper/pack.toml: [search] card_keywords: "
+            self.refused(argv, "/.segmently-modules/packs/capper/pack.toml: [search] card_keywords: "
                                "expected an integer >= 0, got True")
 
 
@@ -197,7 +197,7 @@ class DigestTest(Base):
         self.config('[search]\ncard_keywords = 3\neffort = "deep"\nclaude_model = "opus"\n',
                     "config.user.toml")
         self.assertEqual(self.digest(), base)
-        override = self.root / ".modsys/overrides/templates/choose/rules.md"
+        override = self.root / ".segmently-modules/overrides/templates/choose/rules.md"
         override.parent.mkdir(parents=True)
         override.write_text("- only rule\n", encoding="utf-8")
         self.assertEqual(self.digest(), base)

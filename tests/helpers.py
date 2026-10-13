@@ -7,7 +7,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from modsys.cli import main
+from segmently_modules.cli import main
 
 FIXTURE = Path(__file__).parent / "fixtures" / "bookshop"
 # a split parent `orders` (children checkout, refunds, invoices; only checkout has a role doc)
@@ -29,7 +29,7 @@ os.environ.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1",
                   **NO_AUTO_MAINTENANCE)
 
 
-os.environ.pop("MODSYS_AGENT_COMMAND", None)  # a developer's own agent never reaches a test
+os.environ.pop("SEGMENTLY_MODULES_AGENT_COMMAND", None)  # a developer's own agent never reaches a test
 
 
 def run(*argv):
@@ -56,7 +56,7 @@ def copy_fixture(tmp: Path, fixture: Path = FIXTURE) -> Path:
 def make_repo(tmp, modules: dict, config: str = "", files=()) -> Path:
     """A small synthetic repository `<tmp>/repo`: `modules` maps a module name (or
     "parent/child", listed after its parent) to its keyword list; each gets a registry entry
-    and its MODULE.md. `config` becomes `.modsys/config.toml`; every path in `files` is created
+    and its MODULE.md. `config` becomes `.segmently-modules/config.toml`; every path in `files` is created
     with one line of code."""
     root = Path(tmp) / "repo"
     registry: dict = {"modules": {}}
@@ -74,9 +74,9 @@ def make_repo(tmp, modules: dict, config: str = "", files=()) -> Path:
             registry["modules"][name] = {"name": name, "status": "active", **entry}
     (root / "modules" / "registry.json").write_text(
         json.dumps(registry, indent=2) + "\n", encoding="utf-8")
-    (root / ".modsys").mkdir()
+    (root / ".segmently-modules").mkdir()
     if config:
-        (root / ".modsys" / "config.toml").write_text(config, encoding="utf-8")
+        (root / ".segmently-modules" / "config.toml").write_text(config, encoding="utf-8")
     for rel in files:
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         (root / rel).write_text("x = 1\n", encoding="utf-8")
@@ -115,10 +115,10 @@ _VERSION_FORM = re.compile(r"(\d+)\.(\d+)\.(\d+)(?:\.dev(\d+))?")
 
 
 def engine_version(engine: Path | None = None) -> str:
-    """`__version__` of the engine source under test (`modsys/__init__.py` read as text, never
+    """`__version__` of the engine source under test (`segmently_modules/__init__.py` read as text, never
     an installed copy) — the one place tests learn the version from."""
     root = engine or Path(__file__).resolve().parents[1]
-    text = (root / "modsys/__init__.py").read_text(encoding="utf-8")
+    text = (root / "segmently_modules/__init__.py").read_text(encoding="utf-8")
     return _VERSION_LINE.search(text).group(1)
 
 

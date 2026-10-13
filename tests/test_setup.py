@@ -1,4 +1,4 @@
-"""`modsys setup [--agent A]… [--target FILE]… [--dry-run]` (P6.1 W5, D5, SI-P61-13): the
+"""`segmently-modules setup [--agent A]… [--target FILE]… [--dry-run]` (P6.1 W5, D5, SI-P61-13): the
 one-command start — bare `init`, `packs sync` for the chosen agents and `agents-md` for the
 chosen instruction files, run in-process, idempotently, each step reporting its status."""
 import json
@@ -9,26 +9,26 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import modsys
-from modsys.agents_md_cmd import render_block
-from modsys.cli import build_parser
-from modsys.init_cmd import starter_config
-from modsys.output import UsageError
-from modsys.workspace import Workspace
+import segmently_modules
+from segmently_modules.agents_md_cmd import render_block
+from segmently_modules.cli import build_parser
+from segmently_modules.init_cmd import starter_config
+from segmently_modules.output import UsageError
+from segmently_modules.workspace import Workspace
 from tests.helpers import copy_fixture, init_git, run
 
-VERSION = modsys.__version__
+VERSION = segmently_modules.__version__
 STEPS = ["init", "packs sync", "agents-md"]
 CORE_SKILLS = ["module-adopt", "module-assistant", "module-create", "module-discover", "module-init",
                "module-lint", "module-research", "module-roles", "module-scout", "module-split",
                "module-sync"]
 EMPTY_REGISTRY = '{\n  "modules": {}\n}\n'
-IGNORE_LINES = ["modules/registry.json.lock", ".modsys/proposals/", ".modsys/init/",
-                ".modsys/config.user.toml"]
+IGNORE_LINES = ["modules/registry.json.lock", ".segmently-modules/proposals/", ".segmently-modules/init/",
+                ".segmently-modules/config.user.toml"]
 COPILOT = ("  note: GitHub Copilot reads both .claude/skills and .agents/skills, so it sees each "
            "skill twice — where Copilot works, sync only one of the two directories (Copilot "
            "reads either)")
-BEGIN, END = "<!-- modsys:begin v1 -->", "<!-- modsys:end -->"
+BEGIN, END = "<!-- segmently-modules:begin v1 -->", "<!-- segmently-modules:end -->"
 TEAM_NOTES = "# Team notes\n\nRun the tests before a commit.\n"
 TEAM_PACK = ('id = "team"\nversion = "9.0.0"\ndescription = "Team skills"\n\n'
              '[skills.team-review]\npath = "skills/team-review"\n')
@@ -59,7 +59,7 @@ def snap(root: Path) -> dict:
 
 
 def empty_repo(tmp: Path, name: str = "repo") -> Path:
-    """An empty git repository: one commit (a README), no `.modsys/`, no `modules/`."""
+    """An empty git repository: one commit (a README), no `.segmently-modules/`, no `modules/`."""
     root = tmp / name
     write(root / "README.md", "# Bookshop\n")
     init_git(root)
@@ -73,13 +73,13 @@ def must(*argv) -> str:
 
 
 def setup_json(root: Path, *argv, code: int = 0) -> dict:
-    """`modsys setup … --json`: the exit code, nothing on stderr, one `modsys.setup/1`
+    """`segmently-modules setup … --json`: the exit code, nothing on stderr, one `segmently-modules.setup/1`
     document with the step rows in order; its data."""
     got, out, err = run("setup", *argv, "--json", "--root", str(root))
     assert (got, err) == (code, ""), (got, out, err)
     env, end = json.JSONDecoder().raw_decode(out)
     assert out[end:].strip() == "" and set(env) == {"schema", "data"}, out
-    assert env["schema"] == "modsys.setup/1", env
+    assert env["schema"] == "segmently-modules.setup/1", env
     assert list(env["data"]) == ["dry_run", "agents", "targets", "steps"], env
     assert [s["step"] for s in env["data"]["steps"]] == STEPS, env
     for step in env["data"]["steps"]:
@@ -119,7 +119,7 @@ class EmptyRepositoryTest(unittest.TestCase):  # P61-AC-016, P61-AC-017, P61-AC-
                          (False, ["claude", "codex"], ["CLAUDE.md", "AGENTS.md"]))
         self.assertEqual(statuses(data), ["created", "created", "created"])
         root = self.root
-        self.assertEqual((root / ".modsys/config.toml").read_text(encoding="utf-8"),
+        self.assertEqual((root / ".segmently-modules/config.toml").read_text(encoding="utf-8"),
                          starter_config("single"))
         self.assertEqual((root / "modules/registry.json").read_text(encoding="utf-8"),
                          EMPTY_REGISTRY)
@@ -128,7 +128,7 @@ class EmptyRepositoryTest(unittest.TestCase):  # P61-AC-016, P61-AC-017, P61-AC-
         for agent_dir in (".claude/skills", ".agents/skills"):  # the core pack (P6-AC-001)
             self.assertEqual(sorted(p.name for p in (root / agent_dir).iterdir()), CORE_SKILLS)
             for skill in CORE_SKILLS:
-                self.assertTrue((root / agent_dir / skill / ".modsys-managed").is_file())
+                self.assertTrue((root / agent_dir / skill / ".segmently-modules-managed").is_file())
         for target in ("CLAUDE.md", "AGENTS.md"):
             self.assertEqual((root / target).read_text(encoding="utf-8"), block(root))
         # every byte is what the three verbs write when run by hand, and so is every row
@@ -144,12 +144,12 @@ class EmptyRepositoryTest(unittest.TestCase):  # P61-AC-016, P61-AC-017, P61-AC-
         self.assertEqual((detail(data, "packs sync"), detail(data, "agents-md")),
                          (synced, written))
         self.assertEqual(run("lint", *self.R)[0], 0)
-        self.assertEqual(run("next", *self.R), (0, f"modsys {VERSION}\nnothing to do\n", ""))
+        self.assertEqual(run("next", *self.R), (0, f"segmently-modules {VERSION}\nnothing to do\n", ""))
 
     def test_the_text_of_a_first_and_a_second_run(self):  # P61-AC-016, P61-AC-017
         flags = ("--agent", "claude", "--agent", "codex")
         self.assertEqual(run("setup", *flags, *self.R), (0, "\n".join([
-            "init        created      .modsys/config.toml, modules/registry.json, .gitignore",
+            "init        created      .segmently-modules/config.toml, modules/registry.json, .gitignore",
             "packs sync  created      22 skill copies, 3 agent files",  # codex's (P8.4 D3)
             COPILOT,
             "agents-md   created      CLAUDE.md, AGENTS.md",
@@ -157,7 +157,7 @@ class EmptyRepositoryTest(unittest.TestCase):  # P61-AC-016, P61-AC-017, P61-AC-
             "targets     CLAUDE.md, AGENTS.md"]) + "\n", ""))
         before = snap(self.root)
         self.assertEqual(run("setup", *flags, *self.R), (0, "\n".join([
-            "init        exists       .modsys/config.toml, modules/registry.json, .gitignore",
+            "init        exists       .segmently-modules/config.toml, modules/registry.json, .gitignore",
             "packs sync  unchanged    22 skill copies, 3 agent files",
             COPILOT,
             "agents-md   unchanged    CLAUDE.md, AGENTS.md",
@@ -194,7 +194,7 @@ class EmptyRepositoryTest(unittest.TestCase):  # P61-AC-016, P61-AC-017, P61-AC-
         self.assertEqual(statuses(data), ["created", "created", "created"])
         self.assertEqual(snap(self.root), before)
         self.assertEqual(run("setup", "--dry-run", *self.R), (0, "\n".join([
-            "init        would create .modsys/config.toml, modules/registry.json, .gitignore",
+            "init        would create .segmently-modules/config.toml, modules/registry.json, .gitignore",
             "packs sync  would create 22 skill copies, 3 agent files",
             COPILOT,
             "agents-md   would create CLAUDE.md, AGENTS.md",
@@ -211,9 +211,9 @@ class EmptyRepositoryTest(unittest.TestCase):  # P61-AC-016, P61-AC-017, P61-AC-
 class PlanningTest(unittest.TestCase):  # P61-AC-019: a dry run reads the config init would write
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
-        self.root = copy_fixture(Path(self._tmp.name).resolve())  # .modsys/packs, no config
-        write(self.root / ".modsys/packs/team/pack.toml", TEAM_PACK)
-        write(self.root / ".modsys/packs/team/skills/team-review/SKILL.md", TEAM_SKILL)
+        self.root = copy_fixture(Path(self._tmp.name).resolve())  # .segmently-modules/packs, no config
+        write(self.root / ".segmently-modules/packs/team/pack.toml", TEAM_PACK)
+        write(self.root / ".segmently-modules/packs/team/skills/team-review/SKILL.md", TEAM_SKILL)
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -238,9 +238,9 @@ class PlanningTest(unittest.TestCase):  # P61-AC-019: a dry run reads the config
 
 
     def test_a_dry_run_shows_the_real_config_paths(self):
-        write(self.root / ".modsys/overrides/skills/notes/SKILL.md",  # no .modsys-ejected
+        write(self.root / ".segmently-modules/overrides/skills/notes/SKILL.md",  # no .segmently-modules-ejected
               "---\nname: notes\ndescription: Notes.\n---\n\n# notes\n")
-        reason = ("the ejected copy .modsys/overrides/skills/notes has no valid .modsys-ejected "
+        reason = ("the ejected copy .segmently-modules/overrides/skills/notes has no valid .segmently-modules-ejected "
                   "record")
         dry = setup_json(self.root, "--agent", "claude", "--dry-run", code=1)
         real = setup_json(self.root, "--agent", "claude", code=1)
@@ -266,12 +266,12 @@ class OrderTest(unittest.TestCase):  # P61-AC-018 (D5, SI-P61-13)
         config afterwards (the markers stay)."""
         root = empty_repo(self.tmp, name)
         if config is not None:
-            write(root / ".modsys/config.toml", config)
+            write(root / ".segmently-modules/config.toml", config)
         if synced:
             must("packs", "sync", *(f for a in synced for f in ("--agent", a)), "--root",
                  str(root))
         if drop_config:
-            (root / ".modsys/config.toml").unlink()
+            (root / ".segmently-modules/config.toml").unlink()
         return root
 
     def test_the_decision_table(self):
@@ -316,7 +316,7 @@ class OrderTest(unittest.TestCase):  # P61-AC-018 (D5, SI-P61-13)
 
 
 class BlockTargetsTest(unittest.TestCase):  # final review M-2: the files that hold a block
-    """Without --target, setup refreshes the instruction files that already hold a modsys
+    """Without --target, setup refreshes the instruction files that already hold a segmently-modules
     block (the files `next` checks); D5's default applies only when none does."""
 
     def setUp(self):
@@ -330,7 +330,7 @@ class BlockTargetsTest(unittest.TestCase):  # final review M-2: the files that h
     def test_a_plain_setup_refreshes_the_gemini_block(self):
         first = setup_json(self.root, "--agent", "gemini", "--target", "GEMINI.md")
         self.assertEqual((first["agents"], first["targets"]), (["gemini"], ["GEMINI.md"]))
-        with open(self.root / ".modsys/config.toml", "a", encoding="utf-8") as fh:
+        with open(self.root / ".segmently-modules/config.toml", "a", encoding="utf-8") as fh:
             fh.write("\n[roles.po]\nenabled = false\n")  # the block's render changes
         stale = (self.root / "GEMINI.md").read_text(encoding="utf-8")
         self.assertNotEqual(stale, block(self.root))
@@ -358,7 +358,7 @@ class BlockTargetsTest(unittest.TestCase):  # final review M-2: the files that h
     def test_every_file_that_holds_a_block_in_next_order(self):
         for rel in (".github/copilot-instructions.md", "CLAUDE.md"):
             must("agents-md", "--target", rel, *self.R)
-        write(self.root / "AGENTS.md", "# Agents\n\nNo modsys block here.\n")
+        write(self.root / "AGENTS.md", "# Agents\n\nNo segmently-modules block here.\n")
         data = setup_json(self.root, "--agent", "codex", "--dry-run")
         self.assertEqual(data["targets"], ["CLAUDE.md", ".github/copilot-instructions.md"])
 
@@ -379,7 +379,7 @@ class TeamFilesTest(unittest.TestCase):  # P61-AC-030
         self.assertEqual(statuses(data), ["created", "conflict", "updated"])
         rows = {r["skill"]: r for r in detail(data, "packs sync")["skills"]}
         self.assertEqual((rows["module-sync"]["status"], rows["module-sync"]["reason"]),
-                         ("conflict", "not managed by modsys (no .modsys-managed)"))
+                         ("conflict", "not managed by segmently-modules (no .segmently-modules-managed)"))
         self.assertEqual({r["status"] for s, r in rows.items() if s != "module-sync"},
                          {"created"})
         self.assertEqual(detail(data, "agents-md")["targets"],
@@ -392,20 +392,20 @@ class TeamFilesTest(unittest.TestCase):  # P61-AC-030
         code, out, err = run("setup", "--agent", "claude", "--root", str(self.root))
         self.assertEqual((code, err), (1, ""))
         self.assertEqual(out, "\n".join([
-            "init        created      .modsys/config.toml, modules/registry.json, .gitignore",
+            "init        created      .segmently-modules/config.toml, modules/registry.json, .gitignore",
             "packs sync  conflict     11 skill copies (10 created, 1 conflict)",
             "  conflict  claude  .claude/skills/module-sync",
-            "    not managed by modsys (no .modsys-managed) — a skill written by hand: move or "
+            "    not managed by segmently-modules (no .segmently-modules-managed) — a skill written by hand: move or "
             "rename it, then sync again",
             "agents-md   updated      CLAUDE.md (added)",
             "agents      claude",
             "targets     CLAUDE.md",
             "setup: packs sync left 1 skill copy unwritten — resolve it as shown above, then "
-            "run modsys setup again"]) + "\n")
+            "run segmently-modules setup again"]) + "\n")
         code, out, err = run("setup", "--agent", "claude", "--root", str(self.root))
         self.assertEqual((code, err), (1, ""))
         self.assertEqual(out.splitlines()[:2], [
-            "init        exists       .modsys/config.toml, modules/registry.json, .gitignore",
+            "init        exists       .segmently-modules/config.toml, modules/registry.json, .gitignore",
             "packs sync  conflict     11 skill copies (10 unchanged, 1 conflict)"])
         self.assertIn("agents-md   unchanged    CLAUDE.md", out.splitlines())
         self.assertEqual(snap(self.root / ".claude/skills/module-sync"), self.hand)
@@ -422,32 +422,32 @@ class ExistingConfigTest(unittest.TestCase):  # fix round 1, finding 1: bare ini
 
     def test_a_config_without_a_registry_gets_one(self):
         config = '[packs]\nbuiltin = ["core"]\nagents = ["claude"]\n'
-        write(self.root / ".modsys/config.toml", config)
+        write(self.root / ".segmently-modules/config.toml", config)
         dry = setup_json(self.root, "--dry-run")
         self.assertEqual(statuses(dry), ["created", "created", "created"])
         self.assertEqual(detail(dry, "init")["files"], [
-            {"path": ".modsys/config.toml", "status": "exists"},
+            {"path": ".segmently-modules/config.toml", "status": "exists"},
             {"path": "modules/registry.json", "status": "created"},
             {"path": ".gitignore", "status": "created"}])
         self.assertFalse((self.root / "modules").exists())
         code, out, err = run("setup", *self.R)
         self.assertEqual((code, err), (0, ""))
-        self.assertEqual(out.splitlines()[0], "init        created      .modsys/config.toml "
+        self.assertEqual(out.splitlines()[0], "init        created      .segmently-modules/config.toml "
                                               "(exists), modules/registry.json, .gitignore")
-        self.assertEqual((self.root / ".modsys/config.toml").read_text(encoding="utf-8"),
+        self.assertEqual((self.root / ".segmently-modules/config.toml").read_text(encoding="utf-8"),
                          config)
         self.assertEqual((self.root / "modules/registry.json").read_text(encoding="utf-8"),
                          EMPTY_REGISTRY)
         self.assertEqual((self.root / ".gitignore").read_text(encoding="utf-8").splitlines(),
                          IGNORE_LINES)
         self.assertEqual(run("lint", *self.R)[0], 0)
-        self.assertEqual(run("next", *self.R), (0, f"modsys {VERSION}\nnothing to do\n", ""))
+        self.assertEqual(run("next", *self.R), (0, f"segmently-modules {VERSION}\nnothing to do\n", ""))
         before = snap(self.root)
         self.assertEqual(statuses(setup_json(self.root)), ["exists", "unchanged", "unchanged"])
         self.assertEqual(snap(self.root), before)
 
     def test_only_gitignore_lines_appended_is_updated(self):
-        write(self.root / ".modsys/config.toml", '[packs]\nbuiltin = ["core"]\n')
+        write(self.root / ".segmently-modules/config.toml", '[packs]\nbuiltin = ["core"]\n')
         write(self.root / "modules/registry.json", EMPTY_REGISTRY)
         write(self.root / ".gitignore", "node_modules/\n")
         data = setup_json(self.root, "--agent", "claude")
@@ -457,18 +457,18 @@ class ExistingConfigTest(unittest.TestCase):  # fix round 1, finding 1: bare ini
         self.assertEqual((self.root / ".gitignore").read_text(encoding="utf-8").splitlines(),
                          ["node_modules/"] + IGNORE_LINES)
         code, out, _ = run("setup", "--agent", "claude", *self.R)
-        self.assertEqual(out.splitlines()[0], "init        exists       .modsys/config.toml, "
+        self.assertEqual(out.splitlines()[0], "init        exists       .segmently-modules/config.toml, "
                                               "modules/registry.json, .gitignore")
 
     def test_a_broken_config_stops_setup_at_init(self):
         for text in ("[packs\n", "code_map = 5\n"):  # not TOML; TOML the config refuses
             with self.subTest(text=text):
-                write(self.root / ".modsys/config.toml", text)
+                write(self.root / ".segmently-modules/config.toml", text)
                 before = snap(self.root)
                 for extra in ((), ("--json",), ("--dry-run",)):
                     code, out, err = run("setup", *extra, *self.R)
                     self.assertEqual((code, out), (2, ""))
-                    self.assertTrue(err.startswith("modsys: error: setup stopped at init: "), err)
+                    self.assertTrue(err.startswith("segmently-modules: error: setup stopped at init: "), err)
                     self.assertEqual(len(err.splitlines()), 1, err)
                     self.assertNotIn("before it", err)
                     self.assertEqual(snap(self.root), before)
@@ -484,16 +484,16 @@ class NothingToCopyTest(unittest.TestCase):  # D5: `skipped` — packs sync has 
         self._tmp.cleanup()
 
     def test_the_plugins_provide_the_built_in_skills(self):
-        write(self.root / ".modsys/config.toml",
+        write(self.root / ".segmently-modules/config.toml",
               '[packs]\nbuiltin = ["core"]\nbuiltin_delivery = "plugin"\n')
         code, out, err = run("setup", "--agent", "claude", *self.R)
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(out.splitlines()[:3], [
-            "init        created      .modsys/config.toml (exists), modules/registry.json, "
+            "init        created      .segmently-modules/config.toml (exists), modules/registry.json, "
             ".gitignore",
             "packs sync  skipped      nothing to copy",
             '  note: builtin_delivery = "plugin": the built-in skills come from the plugins '
-            "modsys (core) — packs sync copies none of them"])
+            "segmently-modules (core) — packs sync copies none of them"])
         self.assertFalse((self.root / ".claude").exists())
         before = snap(self.root)
         self.assertEqual(statuses(setup_json(self.root, "--agent", "claude")),
@@ -501,10 +501,10 @@ class NothingToCopyTest(unittest.TestCase):  # D5: `skipped` — packs sync has 
         self.assertEqual(snap(self.root), before)
 
     def test_no_pack_skills(self):
-        write(self.root / ".modsys/config.toml", "[packs]\nbuiltin = []\n")
+        write(self.root / ".segmently-modules/config.toml", "[packs]\nbuiltin = []\n")
         code, out, err = run("setup", "--agent", "codex", *self.R)
         self.assertEqual((code, err), (0, ""))
-        self.assertIn("packs sync  skipped      no pack skills (add one: modsys packs new ID "
+        self.assertIn("packs sync  skipped      no pack skills (add one: segmently-modules packs new ID "
                       "--skill NAME)", out.splitlines())
 
 
@@ -520,11 +520,11 @@ class StopTest(unittest.TestCase):  # P61-AC-035, D5 (a refusal stops setup and 
     def test_a_malformed_block_stops_setup_at_agents_md(self):
         broken = f"# Team notes\n\n{BEGIN}\nold text\n"
         write(self.root / "CLAUDE.md", broken)
-        error = (f"modsys: error: setup stopped at agents-md: CLAUDE.md:3: a begin marker "
+        error = (f"segmently-modules: error: setup stopped at agents-md: CLAUDE.md:3: a begin marker "
                  f"without an end marker ({END}) — fix the markers by hand; nothing written "
                  f"(before it: init created, packs sync created)\n")
         self.assertEqual(run("setup", "--agent", "claude", *self.R), (2, "", error))
-        self.assertTrue((self.root / ".modsys/config.toml").is_file())  # the first two ran
+        self.assertTrue((self.root / ".segmently-modules/config.toml").is_file())  # the first two ran
         self.assertTrue((self.root / "modules/registry.json").is_file())
         self.assertEqual(sorted(p.name for p in (self.root / ".claude/skills").iterdir()),
                          CORE_SKILLS)
@@ -545,23 +545,23 @@ class StopTest(unittest.TestCase):  # P61-AC-035, D5 (a refusal stops setup and 
                          "# Team notes\n\n" + block(self.root))
 
     def test_a_refused_init_runs_no_later_step(self):
-        write(self.root / ".modsys", "not a directory\n")
+        write(self.root / ".segmently-modules", "not a directory\n")
         before = snap(self.root)
         code, out, err = run("setup", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertTrue(err.startswith("modsys: error: setup stopped at init: cannot write "
-                                       ".modsys/config.toml: "), err)
+        self.assertTrue(err.startswith("segmently-modules: error: setup stopped at init: cannot write "
+                                       ".segmently-modules/config.toml: "), err)
         self.assertEqual(len(err.splitlines()), 1)
         self.assertEqual(snap(self.root), before)
 
     def test_a_refused_packs_sync_runs_no_agents_md(self):
-        with mock.patch("modsys.setup_cmd.packs_sync",
+        with mock.patch("segmently_modules.setup_cmd.packs_sync",
                         side_effect=UsageError("cannot read .claude/skills/x: denied")):
             code, out, err = run("setup", "--json", *self.R)
-        self.assertEqual((code, out, err), (2, "", "modsys: error: setup stopped at packs sync: "
+        self.assertEqual((code, out, err), (2, "", "segmently-modules: error: setup stopped at packs sync: "
                                                    "cannot read .claude/skills/x: denied "
                                                    "(before it: init created)\n"))
-        self.assertTrue((self.root / ".modsys/config.toml").is_file())
+        self.assertTrue((self.root / ".segmently-modules/config.toml").is_file())
         self.assertFalse((self.root / "CLAUDE.md").exists())
 
 
@@ -588,11 +588,11 @@ class ContractTest(unittest.TestCase):  # P61-AC-026, P61-AC-037 (the `setup` pa
         write(self.root / "docs/guide.md", "# Guide\n")
         before = snap(self.root)
         outside = self.tmp / "outside.md"
-        cases = ((("--agent", "nobody"), "modsys: error: unknown agent 'nobody' (agents: "
+        cases = ((("--agent", "nobody"), "segmently-modules: error: unknown agent 'nobody' (agents: "
                                          "claude, codex, cursor, gemini, copilot)\n"),
-                 (("--target", str(outside)), f"modsys: error: --target {outside}: outside the "
+                 (("--target", str(outside)), f"segmently-modules: error: --target {outside}: outside the "
                                               f"repository root {self.root}\n"),
-                 (("--target", "docs"), "modsys: error: --target docs is a directory, not an "
+                 (("--target", "docs"), "segmently-modules: error: --target docs is a directory, not an "
                                         "instruction file\n"))
         for argv, error in cases:
             for extra in ((), ("--json",), ("--dry-run",)):
@@ -601,17 +601,17 @@ class ContractTest(unittest.TestCase):  # P61-AC-026, P61-AC-037 (the `setup` pa
                     self.assertEqual(snap(self.root), before)
         code, out, err = run("setup", "--root", str(self.root / "README.md"))
         self.assertEqual((code, out), (2, ""))
-        self.assertTrue(err.startswith("modsys: error: --root "), err)
+        self.assertTrue(err.startswith("segmently-modules: error: --root "), err)
 
     def test_a_config_dir_elsewhere(self):
-        C = ("--config-dir", str(self.root / "tools/modsys"))
+        C = ("--config-dir", str(self.root / "tools/segmently-modules"))
         data = setup_json(self.root, "--agent", "claude", *C)
         self.assertEqual(statuses(data), ["created", "created", "created"])
-        self.assertEqual((self.root / "tools/modsys/config.toml").read_text(encoding="utf-8"),
+        self.assertEqual((self.root / "tools/segmently-modules/config.toml").read_text(encoding="utf-8"),
                          starter_config("single"))
-        self.assertIn("tools/modsys/init/",
+        self.assertIn("tools/segmently-modules/init/",
                       (self.root / ".gitignore").read_text(encoding="utf-8").splitlines())
-        self.assertFalse((self.root / ".modsys").exists())
+        self.assertFalse((self.root / ".segmently-modules").exists())
         before = snap(self.root)
         self.assertEqual(statuses(setup_json(self.root, "--agent", "claude", *C)),
                          ["exists", "unchanged", "unchanged"])
@@ -628,16 +628,16 @@ class ContractTest(unittest.TestCase):  # P61-AC-026, P61-AC-037 (the `setup` pa
             os.chdir(cwd)
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(json.loads(out)["data"]["targets"], ["AGENTS.md"])
-        self.assertTrue((self.root / ".modsys/config.toml").is_file())
+        self.assertTrue((self.root / ".segmently-modules/config.toml").is_file())
         self.assertTrue((self.root / "AGENTS.md").is_file())
         self.assertEqual(list(sub.iterdir()), [])
 
     def test_a_nested_root_is_found_again(self):  # fix round 1, finding 2
-        write(self.root / "CLAUDE.md", TEAM_NOTES)  # the top level's own, not modsys's
+        write(self.root / "CLAUDE.md", TEAM_NOTES)  # the top level's own, not segmently-modules's
         shop = self.root / "shop"
         write(shop / "src/catalog.py", "BOOKS = []\n")
         setup_json(shop, "--agent", "claude")  # --root shop
-        self.assertTrue((shop / ".modsys/config.toml").is_file())
+        self.assertTrue((shop / ".segmently-modules/config.toml").is_file())
         before = snap(self.root)
         cwd = os.getcwd()
         try:
@@ -651,24 +651,24 @@ class ContractTest(unittest.TestCase):  # P61-AC-026, P61-AC-037 (the `setup` pa
                         self.assertEqual(statuses(data), ["exists", "unchanged", "unchanged"])
                         self.assertEqual(detail(data, "init")["root"], str(shop))
                         self.assertEqual(snap(self.root), before)
-                self.assertEqual(run("next"), (0, f"modsys {VERSION}\nnothing to do\n", ""))
+                self.assertEqual(run("next"), (0, f"segmently-modules {VERSION}\nnothing to do\n", ""))
         finally:
             os.chdir(cwd)
         self.assertEqual((self.root / "CLAUDE.md").read_text(encoding="utf-8"), TEAM_NOTES)
-        self.assertFalse((self.root / ".modsys").exists())
+        self.assertFalse((self.root / ".segmently-modules").exists())
 
     def test_an_internal_failure_and_ctrl_c(self):
         with mock.patch.dict(os.environ):
-            os.environ.pop("MODSYS_DEBUG", None)
-            with mock.patch("modsys.setup_cmd.agents_md", side_effect=RuntimeError("boom")):
+            os.environ.pop("SEGMENTLY_MODULES_DEBUG", None)
+            with mock.patch("segmently_modules.setup_cmd.agents_md", side_effect=RuntimeError("boom")):
                 code, out, err = run("setup", "--json", *self.R)
             self.assertEqual((code, out), (2, ""))
-            self.assertEqual(err, "modsys: internal error: RuntimeError: boom (set "
-                                  "MODSYS_DEBUG=1 for a traceback)\n")
-            with mock.patch("modsys.setup_cmd.packs_sync", side_effect=KeyboardInterrupt):
-                self.assertEqual(run("setup", *self.R), (130, "", "modsys: interrupted\n"))
-            os.environ["MODSYS_DEBUG"] = "1"
-            with mock.patch("modsys.setup_cmd.agents_md", side_effect=RuntimeError("boom")), \
+            self.assertEqual(err, "segmently-modules: internal error: RuntimeError: boom (set "
+                                  "SEGMENTLY_MODULES_DEBUG=1 for a traceback)\n")
+            with mock.patch("segmently_modules.setup_cmd.packs_sync", side_effect=KeyboardInterrupt):
+                self.assertEqual(run("setup", *self.R), (130, "", "segmently-modules: interrupted\n"))
+            os.environ["SEGMENTLY_MODULES_DEBUG"] = "1"
+            with mock.patch("segmently_modules.setup_cmd.agents_md", side_effect=RuntimeError("boom")), \
                     self.assertRaises(RuntimeError):
                 run("setup", *self.R)
 

@@ -1,6 +1,6 @@
 """P8.1 final fix wave: repeated signals against an agent that ignores SIGTERM (deferred 1),
 `choose --task-file` (deferred 3), the agent command's wording (deferred 4), the length of
-`MODSYS_AGENT_TIMEOUT` (deferred 19), the variables the test package clears (deferred 21),
+`SEGMENTLY_MODULES_AGENT_TIMEOUT` (deferred 19), the variables the test package clears (deferred 21),
 `choose --apply` unwraps an answer as `--run` does (M-1), no cards means no agent call and the
 texts of an empty catalog and of a semantic `context` without a pick (M-2), the compact work
 order the agent reads (M-3)."""
@@ -15,7 +15,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys import semantic
+from segmently_modules import semantic
 from tests.agent_helpers import AgentRepo, picks
 from tests.helpers import run, run_json
 from tests.test_p81_agent import ENGINE, MATCH_TASK, TASK
@@ -53,7 +53,7 @@ class RepeatedSignalsTest(Base):  # deferred 1 (3b m7)
         scratch.mkdir()
         self.agent(sleep=60, started=str(started), ignore_term=True, answer="{}")
         env = {**os.environ, "PYTHONPATH": str(ENGINE), "TMPDIR": str(scratch)}
-        proc = subprocess.Popen([sys.executable, "-m", "modsys", "choose", "--task", TASK,
+        proc = subprocess.Popen([sys.executable, "-m", "segmently_modules", "choose", "--task", TASK,
                                  "--run", *self.R], env=env, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True, cwd=ENGINE,
                                 preexec_fn=lambda: [signal.signal(x, signal.SIG_DFL) for x in
@@ -132,7 +132,7 @@ class AgentWordingTest(Base):  # deferred 4: the command lives in the environmen
         self.assertEqual(code, 0)
         flat = " ".join(out.split())
         self.assertNotIn("[agent]", flat)
-        self.assertIn("MODSYS_AGENT_COMMAND", flat)
+        self.assertIn("SEGMENTLY_MODULES_AGENT_COMMAND", flat)
         self.assertIn("--task-file", flat)
 
     def test_errors_name_the_variable_only(self):
@@ -140,18 +140,18 @@ class AgentWordingTest(Base):  # deferred 4: the command lives in the environmen
                              (["x", "a{"], "unmatched brace"),
                              (["{effort}", "x"], "argv[0]")):
             with self.subTest(argv=argv):
-                os.environ["MODSYS_AGENT_COMMAND"] = json.dumps(argv)
+                os.environ["SEGMENTLY_MODULES_AGENT_COMMAND"] = json.dumps(argv)
                 code, out, err = run("choose", "--task", "t", "--run", *self.R)
                 self.assertEqual((code, out), (2, ""))
-                self.assertTrue(err.startswith("modsys: error: MODSYS_AGENT_COMMAND: "), err)
+                self.assertTrue(err.startswith("segmently-modules: error: SEGMENTLY_MODULES_AGENT_COMMAND: "), err)
                 self.assertIn(needle, err)
                 self.assertNotIn("[agent]", err)
                 code, _, note = run("catalog", *self.R)  # P8.3 D6: the same text, as a note
-                self.assertEqual((code, note), (0, err.replace("modsys: error: ", "modsys: note: ")
+                self.assertEqual((code, note), (0, err.replace("segmently-modules: error: ", "segmently-modules: note: ")
                                                 .replace("\n", " — match.semantic is false\n")))
 
     def test_no_stale_wording_in_the_engine(self):
-        for path in sorted((ENGINE / "modsys").rglob("*.py")):
+        for path in sorted((ENGINE / "segmently_modules").rglob("*.py")):
             text = " ".join(path.read_text(encoding="utf-8").split())
             for stale in ("[agent] command", "of [agent]", "(`[agent]`",
                           "the environment variable or `config.user.toml`",
@@ -166,11 +166,11 @@ class TimeoutLengthTest(Base):  # deferred 19
                 self.agent(answer=picks(), timeout_s=bad)
                 code, out, err = run("choose", "--task", "t", "--run", *self.R)
                 self.assertEqual((code, out), (2, ""))
-                self.assertIn("MODSYS_AGENT_TIMEOUT: expected an integer from 1 to 3600", err)
+                self.assertIn("SEGMENTLY_MODULES_AGENT_TIMEOUT: expected an integer from 1 to 3600", err)
                 self.assertNotIn("internal error", err)
                 code, _, note = run("catalog", *self.R)  # P8.3 D6: exit 0 and one note
                 self.assertEqual(code, 0)
-                self.assertTrue(note.startswith("modsys: note: MODSYS_AGENT_TIMEOUT: expected an "
+                self.assertTrue(note.startswith("segmently-modules: note: SEGMENTLY_MODULES_AGENT_TIMEOUT: expected an "
                                                 "integer from 1 to 3600"), note)
                 self.assertNotIn("internal error", note)
         self.assertEqual(self.calls(), [])
@@ -178,7 +178,7 @@ class TimeoutLengthTest(Base):  # deferred 19
 
 class TestPackageEnvironmentTest(unittest.TestCase):  # deferred 21
     def test_importing_the_package_clears_the_agent_variables(self):
-        names = ("MODSYS_AGENT_COMMAND", "MODSYS_AGENT_TIMEOUT", "MODSYS_WORK_ORDER")
+        names = ("SEGMENTLY_MODULES_AGENT_COMMAND", "SEGMENTLY_MODULES_AGENT_TIMEOUT", "SEGMENTLY_MODULES_WORK_ORDER")
         env = {**os.environ, "PYTHONPATH": str(ENGINE), **{n: "x" for n in names}}
         code = (f"import os, tests; print(sorted(n for n in {names!r} if n in os.environ))")
         done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
@@ -227,7 +227,7 @@ class ApplyUnwrapsTest(Base):  # M-1: --apply takes what --run takes
                 with mock.patch("sys.stdin", io.StringIO(text)):
                     code, out, err = run("choose", "--apply", "-", *self.R)
                 self.assertEqual((code, out), (2, ""))
-                self.assertTrue(err.startswith("modsys: error: "), err)
+                self.assertTrue(err.startswith("segmently-modules: error: "), err)
                 self.assertIn(needle, err)
                 self.assertNotIn("agent ", err)  # no agent ran: the answer is named
                 self.assertNotIn("Traceback", err)
@@ -270,7 +270,7 @@ class NoCardsTest(Base):  # M-2
         self.assertNotIn("try domain terms", out)
         self.assertIn("the agent chose no module", out)
         lexical = run("context", "--task", "zzz nothing", *self.R)[1]
-        self.assertIn("no module matched (try domain terms, or: modsys list)", lexical)
+        self.assertIn("no module matched (try domain terms, or: segmently-modules list)", lexical)
 
 
 class CompactWorkOrderTest(Base):  # M-3

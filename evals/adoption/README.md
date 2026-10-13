@@ -1,6 +1,6 @@
 # Adoption evals
 
-Two ways to measure whether a team (or an agent) can put modsys into a repository — and extend
+Two ways to measure whether a team (or an agent) can put Segmently Modules into a repository — and extend
 it with a pack — using only what ships: a deterministic script (E-A) and blind-agent runs (E-B).
 
 ## E-A — deterministic (`run_eval.py`)
@@ -9,20 +9,20 @@ it with a pack — using only what ships: a deterministic script (E-A) and blind
 python3 evals/adoption/run_eval.py      # from the engine checkout; exit 0 = every step passed
 ```
 
-It builds seven repositories in temp dirs and drives this checkout's CLI (`python -m modsys`)
+It builds seven repositories in temp dirs and drives this checkout's CLI (`python -m segmently_modules`)
 through adoption, a team pack, the built-in skills, adopting an existing registry and starting
 from existing code — up to the pull request. No network: the brownfield app is generated, the
 remote is a local bare repository and `gh` a stand-in.
 
 | Scenario | Steps |
 |---|---|
-| greenfield | `git init` → a missing registry names `modsys init` → `init` (and again: nothing changes) → 3 modules → `code-map add` (no hand edit) → a relation via `registry append` (a bad edge is refused) → lint clean → coverage 100 % → `context` returns `code_globs` → commit → code-only change: `lint --changed --fail-on warning` exits 1 with MS050 → `propose` a `doc_append` → `sync --from-diff --apply-proposals` → commit: gate exits 0 → `ci --base <first commit>` exits 0 → a code-only change: `ci` exits 1 (drift step failed) → a docs follow-up: `ci` exits 0 → a child module mapped by its own exclusive rule (`code-map add --exclusive`) |
+| greenfield | `git init` → a missing registry names `segmently-modules init` → `init` (and again: nothing changes) → 3 modules → `code-map add` (no hand edit) → a relation via `registry append` (a bad edge is refused) → lint clean → coverage 100 % → `context` returns `code_globs` → commit → code-only change: `lint --changed --fail-on warning` exits 1 with MS050 → `propose` a `doc_append` → `sync --from-diff --apply-proposals` → commit: gate exits 0 → `ci --base <first commit>` exits 0 → a code-only change: `ci` exits 1 (drift step failed) → a docs follow-up: `ci` exits 0 → a child module mapped by its own exclusive rule (`code-map add --exclusive`) |
 | brownfield | a generated layered app (`app/routes/<f>/`, `app/repositories/<f>.py`, `app/models/<f>.py`, `app/sql/<f>.sql`, `tests/test_<f>.py`, an `app/db/` layer) → `init` keeps `.gitignore` → baseline coverage → a module per feature + `db` → layered rules: lint reports MS053 until the per-feature `repositories` / `sql` rules are `exclusive` (a hand edit), then lint is clean → coverage ≥ 80 % → `code-map files orders` lists `app/repositories/orders.py` → a feature repository maps only to its feature → a feature change drifts only the feature (MS050, `discover`) → `index split` + per-module layout keep `list` / `match` |
 | packs | a git copy of `tests/fixtures/bookshop` → `packs new team --role reviewer --skill api-review` → plain `lint` without MS06x → `create reviews … --role reviewer` renders the pack's template → `show reviews --role reviewer` lists it → `packs sync --agent claude --agent codex`: 2 × `created` → `packs sync --check` exits 0 → a local edit in `.claude/skills/api-review/SKILL.md`: `packs sync` exits 1 (`conflict`), the edit stays → revert → `eject api-review` → edit the ejected copy: `packs sync` 2 × `updated` from it → the pack moves to `0.2.0` with a changed skill: plain `lint` reports MS063 → `eject api-review --diff` shows the change → a `CLAUDE.md` with team text: `agents-md --target CLAUDE.md --target AGENTS.md` → `added` + `created`, and again → 2 × `unchanged`, the team text kept → `templates list`: `roles/reviewer.md` from `role-template:team` |
 | skills | a git copy of `tests/fixtures/bookshop` → `[packs] builtin = ["core", "ui", "qa"]`: `packs list` shows the three built-in packs → plain `lint` without MS06x → `packs sync --agent claude --agent codex`: 13 skills × 2 agents `created` → `packs sync --check` exits 0 → `agents-md --target AGENTS.md` lists the 13 skills → `create reviews … --tag ui --tag qa` renders `roles/designer.md` and `roles/qa_acceptance.md` from the packs' templates (`templates list`: `role-template:ui` / `role-template:qa`) → a code change in `catalog`: `sync-instructions --from-diff` names `catalog` with an MS050 drift row and the `keywords` hint → `eject module-sync` → the edited ejected copy: `packs sync` 2 × `updated` (`source: ejected`) → `packs new core` is refused (a reserved id) |
-| adopt | a git copy of `tests/fixtures/bookshop` without `.modsys/` (+ `src/checkout/`, `src/payments/` files) and a reference copy with its declarations and a `src/{module}/**` rule → `adopt --dry-run` writes nothing and names the role `designer`, the field `file_paths` and the rule `src/{module}/**` → `adopt` writes `.modsys/config.toml` → `list` and `show catalog --all-roles` equal the reference copy's → a second `adopt` writes `.modsys/adopt.proposed.toml`, `config.toml` unchanged → every file outside `.modsys/` is byte-identical to the start |
-| init-map | `tests/fixtures/bookshop_monorepo` with its history (`tests/fixtures/build_monorepo.py`) → `init` → `init map`: the seven candidates → exclude one and rename one in `.modsys/init/proposal.json` → `init confirm` → `init status`: gate 3 passed → `init resume` runs the fan-out (the work items) → a fresh copy: `init map` stopped by the test seam, then `init resume` → `preflight.json` / `proposal.json` equal an uninterrupted run's |
-| init | `tests/fixtures/bookshop_monorepo` with its history → `init map` (`tools` switched off in the proposal, `[init] max_parallel = 1`) → `init confirm`: six modules → `init fanout`: six work items → `init run --executor` the fake writer (`tests/init_fake_executor.py`), killed by it after two modules → `init resume --executor … --non-interactive`: the other four modules written once each, then reconcile, the routing tasks and verify → `init reconcile --force`: the duplicate `formatPrice` and one collision (`price`) → `init eval-tasks --force`: 30 tasks → `init verify`: passed, 30/30 → `init finish --open-pr` with a local bare `origin` and a `gh` stand-in: one commit on `modsys/init`, pushed, one `gh pr create` whose body holds the verify summary and the routing table |
+| adopt | a git copy of `tests/fixtures/bookshop` without `.segmently-modules/` (+ `src/checkout/`, `src/payments/` files) and a reference copy with its declarations and a `src/{module}/**` rule → `adopt --dry-run` writes nothing and names the role `designer`, the field `file_paths` and the rule `src/{module}/**` → `adopt` writes `.segmently-modules/config.toml` → `list` and `show catalog --all-roles` equal the reference copy's → a second `adopt` writes `.segmently-modules/adopt.proposed.toml`, `config.toml` unchanged → every file outside `.segmently-modules/` is byte-identical to the start |
+| init-map | `tests/fixtures/bookshop_monorepo` with its history (`tests/fixtures/build_monorepo.py`) → `init` → `init map`: the seven candidates → exclude one and rename one in `.segmently-modules/init/proposal.json` → `init confirm` → `init status`: gate 3 passed → `init resume` runs the fan-out (the work items) → a fresh copy: `init map` stopped by the test seam, then `init resume` → `preflight.json` / `proposal.json` equal an uninterrupted run's |
+| init | `tests/fixtures/bookshop_monorepo` with its history → `init map` (`tools` switched off in the proposal, `[init] max_parallel = 1`) → `init confirm`: six modules → `init fanout`: six work items → `init run --executor` the fake writer (`tests/init_fake_executor.py`), killed by it after two modules → `init resume --executor … --non-interactive`: the other four modules written once each, then reconcile, the routing tasks and verify → `init reconcile --force`: the duplicate `formatPrice` and one collision (`price`) → `init eval-tasks --force`: 30 tasks → `init verify`: passed, 30/30 → `init finish --open-pr` with a local bare `origin` and a `gh` stand-in: one commit on `segmently-modules/init`, pushed, one `gh pr create` whose body holds the verify summary and the routing table |
 
 Every step checks an exit code and the data. The scorecard on stdout:
 
@@ -36,10 +36,10 @@ Every step checks an exit code and the data. The scorecard on stdout:
  "init": {"steps": ["…"], "commands": 9, "ok": true}}
 ```
 
-`commands` counts modsys invocations. A scenario stops at its first failed step; the other
+`commands` counts Segmently Modules invocations. A scenario stops at its first failed step; the other
 scenarios still run, and the script exits 1. `tests/test_adoption_eval.py` runs it with the
-unit tests; its failure-path tests set `MODSYS_EVAL_FAIL_STEP=<scenario>:<step name>`, a test
-seam that forces that one step to fail, and `MODSYS_EVAL_SCENARIOS=<scenario>,…`, a test seam
+unit tests; its failure-path tests set `SEGMENTLY_MODULES_EVAL_FAIL_STEP=<scenario>:<step name>`, a test
+seam that forces that one step to fail, and `SEGMENTLY_MODULES_EVAL_SCENARIOS=<scenario>,…`, a test seam
 that runs only the scenarios a test looks at (the file stays under 60 s).
 
 ## E-B — blind agents (`agents/`)
@@ -49,6 +49,6 @@ that runs only the scenarios a test looks at (the file stays under 60 s).
 LLM agent that gets only this repository's `README.md` and `docs/` plus `--help` — no source
 reading. Fill the placeholders (`{WORKDIR}` an empty work directory — for `pack-author` and
 `adopter` a prepared repository, described at the top of the prompt — `{VENV}` a venv with
-modsys installed, `{DOCS}` a directory with copies of `README.md` and `docs/`), run each prompt
+Segmently Modules installed, `{DOCS}` a directory with copies of `README.md` and `docs/`), run each prompt
 2–3 times per phase, and score the friction logs with `agents/rubric.md` (its `pack-author` and
 `adopter` sections list the checks the scorer runs in the final repository).

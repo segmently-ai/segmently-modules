@@ -9,8 +9,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys import __version__
-from modsys.config import builtin_packs_root
+from segmently_modules import __version__
+from segmently_modules.config import builtin_packs_root
 from tests.helpers import copy_fixture, init_git, run, run_json
 
 SKILL = "---\nname: {sid}\ndescription: The {sid} skill of the {pack} pack.\n---\n\n# {sid}\n"
@@ -43,7 +43,7 @@ class FakeBuiltins(unittest.TestCase):
         self.R = ("--root", str(self.root))
         self.tree = Path(self._tmp.name) / "builtins"
         write_tree(self.tree)
-        patcher = mock.patch("modsys.config.builtin_packs_root", side_effect=lambda: self.tree)
+        patcher = mock.patch("segmently_modules.config.builtin_packs_root", side_effect=lambda: self.tree)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -51,7 +51,7 @@ class FakeBuiltins(unittest.TestCase):
         self._tmp.cleanup()
 
     def config(self, text: str, name: str = "config.toml") -> None:
-        (self.root / ".modsys" / name).write_text(text)
+        (self.root / ".segmently-modules" / name).write_text(text)
 
     def enable(self, *ids: str) -> None:
         self.config("[packs]\nbuiltin = [" + ", ".join(f'"{i}"' for i in ids) + "]\n")
@@ -64,11 +64,11 @@ class FakeBuiltins(unittest.TestCase):
     def refused(self, *argv) -> str:
         code, out, err = run(*argv, "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertTrue(err.startswith("modsys: error: "), err)
+        self.assertTrue(err.startswith("segmently-modules: error: "), err)
         return err
 
     def repo_pack(self, pack_id: str, body: str, priority: int = 50) -> Path:
-        d = self.root / ".modsys/packs" / pack_id
+        d = self.root / ".segmently-modules/packs" / pack_id
         d.mkdir(parents=True, exist_ok=True)
         (d / "pack.toml").write_text(f'id = "{pack_id}"\nversion = "9.0.0"\n'
                                      f'priority = {priority}\n{body}')
@@ -105,13 +105,13 @@ class BuiltinConfigTest(FakeBuiltins):  # P4B-AC-005
 
     def test_bad_values_are_config_errors(self):
         for value, needle in [
-                ('["cor"]', ".modsys/config.toml: [packs] builtin: unknown built-in pack 'cor' "
+                ('["cor"]', ".segmently-modules/config.toml: [packs] builtin: unknown built-in pack 'cor' "
                             "(built-in packs: core, qa, ui)"),
-                ('"core"', ".modsys/config.toml: [packs] builtin: expected a list of strings, "
+                ('"core"', ".segmently-modules/config.toml: [packs] builtin: expected a list of strings, "
                            "got 'core'"),
-                ("[1]", ".modsys/config.toml: [packs] builtin: expected a list of strings, "
+                ("[1]", ".segmently-modules/config.toml: [packs] builtin: expected a list of strings, "
                         "got [1]"),
-                ("5", ".modsys/config.toml: [packs] builtin: expected a list of strings, got 5")]:
+                ("5", ".segmently-modules/config.toml: [packs] builtin: expected a list of strings, got 5")]:
             for argv in (("packs", "list"), ("packs", "sync", "--agent", "claude"),
                          ("lint",), ("match", "book")):
                 with self.subTest(value=value, verb=argv[0]):
@@ -120,8 +120,8 @@ class BuiltinConfigTest(FakeBuiltins):  # P4B-AC-005
 
     def test_a_pack_cannot_enable_a_builtin_pack(self):
         self.repo_pack("team", '[packs]\nbuiltin = ["core"]\n')
-        self.assertIn(".modsys/packs/team/pack.toml: [packs] builtin: a pack cannot enable "
-                      "built-in packs — set it in .modsys/config.toml\n",  # P5a D0a (M10)
+        self.assertIn(".segmently-modules/packs/team/pack.toml: [packs] builtin: a pack cannot enable "
+                      "built-in packs — set it in .segmently-modules/config.toml\n",  # P5a D0a (M10)
                       self.refused("packs", "list"))
 
     def test_the_refusal_names_the_config_dir_in_use(self):  # fix wave M10
@@ -132,12 +132,12 @@ class BuiltinConfigTest(FakeBuiltins):  # P4B-AC-005
         err = self.refused("packs", "list", "--config-dir", str(cfg))
         self.assertIn("cfg/packs/team/pack.toml: [packs] builtin: a pack cannot enable built-in "
                       "packs — set it in cfg/config.toml\n", err)  # P5a D0a (M10): root-relative
-        self.assertNotIn(".modsys", err)
+        self.assertNotIn(".segmently-modules", err)
 
 
 class BuiltinDiscoveryTest(FakeBuiltins):  # P4B-AC-006
     def test_rows_in_precedence_order(self):
-        shutil.rmtree(self.root / ".modsys/packs/bookshop")
+        shutil.rmtree(self.root / ".segmently-modules/packs/bookshop")
         self.repo_pack("team", "", priority=50)
         self.repo_pack("late", "", priority=999999)
         self.enable("core", "ui", "qa")
@@ -157,7 +157,7 @@ class BuiltinDiscoveryTest(FakeBuiltins):  # P4B-AC-006
                           ("qa", ["qa_acceptance"], ["qa-check"]),
                           ("ui", ["designer"], ["ui-check"])])
         text = run("packs", "list", *self.R)[1].splitlines()
-        self.assertEqual(text[0], "team 9.0.0 priority 50  .modsys/packs/team")
+        self.assertEqual(text[0], "team 9.0.0 priority 50  .segmently-modules/packs/team")
         self.assertIn(f"core {version} built-in  {self.tree / 'core'}", text)
 
     def test_a_repo_pack_and_the_team_config_win_over_a_builtin_pack(self):
@@ -183,7 +183,7 @@ class BuiltinDiscoveryTest(FakeBuiltins):  # P4B-AC-006
 
     def test_the_engine_tree(self):
         root = builtin_packs_root()  # imported before the patch: the engine's own tree
-        self.assertEqual(root, Path(__file__).resolve().parents[1] / "modsys/defaults/packs")
+        self.assertEqual(root, Path(__file__).resolve().parents[1] / "segmently_modules/defaults/packs")
         self.assertEqual(sorted(p.name for p in root.iterdir() if (p / "pack.toml").is_file()),
                          ["core", "qa", "ui"])
 
@@ -195,13 +195,13 @@ class ReservedIdsTest(FakeBuiltins):  # P4B-AC-007
             for pack_id in ("core", "ui", "qa"):
                 with self.subTest(enabled=enabled, pack=pack_id):
                     err = self.refused("packs", "new", pack_id, "--skill", "x-y")
-                    self.assertEqual(err, f"modsys: error: pack id '{pack_id}' is reserved for "
+                    self.assertEqual(err, f"segmently-modules: error: pack id '{pack_id}' is reserved for "
                                           f"the engine's built-in pack — enable it: [packs] "
                                           f"builtin = [\"{pack_id}\"]\n")
-                    self.assertFalse((self.root / ".modsys/packs" / pack_id).exists())
+                    self.assertFalse((self.root / ".segmently-modules/packs" / pack_id).exists())
 
     def test_a_repo_copy_replaces_the_builtin_pack(self):
-        copy = self.root / ".modsys/packs/ui"
+        copy = self.root / ".segmently-modules/packs/ui"
         shutil.copytree(self.tree / "ui", copy)
         (copy / "pack.toml").write_text((copy / "pack.toml").read_text().replace(
             'description = "UX rules"', 'description = "Our UX rules"'))
@@ -210,7 +210,7 @@ class ReservedIdsTest(FakeBuiltins):  # P4B-AC-007
                 self.enable(*enabled)
                 rows = [r for r in self.ok("packs", "list") if r["id"] == "ui"]
                 self.assertEqual([(r["builtin"], r["dir"], r["roles"]) for r in rows],
-                                 [(False, ".modsys/packs/ui", ["designer"])])
+                                 [(False, ".segmently-modules/packs/ui", ["designer"])])
 
     def test_a_repo_core_pack_declares_what_is_synced(self):
         d = self.repo_pack("core", '[skills.notes]\npath = "skills/notes"\n')
@@ -239,7 +239,7 @@ class BuiltinMachineryTest(FakeBuiltins):  # P4B-AC-008 (mechanics; the shipped 
         self.enable("core", "ui", "qa")
         rows = self.sync()
         self.assertEqual([r[2] for r in rows], ["created"] * 8)
-        marker = json.loads((self.root / ".claude/skills/notes/.modsys-managed").read_text())
+        marker = json.loads((self.root / ".claude/skills/notes/.segmently-modules-managed").read_text())
         self.assertEqual((marker["pack"], marker["version"], marker["source"]),
                          ("core", __version__, "pack"))
         for sid, pack in SKILLS.items():
@@ -260,8 +260,8 @@ class BuiltinMachineryTest(FakeBuiltins):  # P4B-AC-008 (mechanics; the shipped 
         self.sync()
         data = self.ok("eject", "notes")
         self.assertEqual((data["pack"], data["version"]), ("core", __version__))
-        copy = self.root / ".modsys/overrides/skills/notes"
-        record = json.loads((copy / ".modsys-ejected").read_text())
+        copy = self.root / ".segmently-modules/overrides/skills/notes"
+        record = json.loads((copy / ".segmently-modules-ejected").read_text())
         self.assertEqual((record["pack"], record["version"]), ("core", __version__))
         (copy / "SKILL.md").write_text((copy / "SKILL.md").read_text() + "\nOurs.\n")
         self.assertEqual([r for r in self.sync() if r[1] == "notes"],
@@ -271,7 +271,7 @@ class BuiltinMachineryTest(FakeBuiltins):  # P4B-AC-008 (mechanics; the shipped 
         lint = self.ok("lint", "--fail-on", "never")
         self.assertEqual([f["message"] for f in lint["findings"] if f["code"] == "MS063"],
                          ["ejected skill 'notes' is behind pack 'core' (the pack's files changed "
-                          "since the eject) — review: modsys eject notes --diff"])  # M3
+                          "since the eject) — review: segmently-modules eject notes --diff"])  # M3
         diff = self.ok("eject", "notes", "--diff")
         self.assertTrue(diff["behind"])
         self.assertIn("-5. A new step upstream.", diff["diff"])
@@ -284,7 +284,7 @@ class BuiltinMachineryTest(FakeBuiltins):  # P4B-AC-008 (mechanics; the shipped 
         self.enable("core")
         init_git(self.root)
         self.ok("eject", "notes")
-        with mock.patch("modsys.config.__version__", "99.0.0"):  # the next engine release
+        with mock.patch("segmently_modules.config.__version__", "99.0.0"):  # the next engine release
             self.assertEqual([r["version"] for r in self.ok("packs", "list")
                               if r["id"] == "core"], ["99.0.0"])
             self.assertEqual(self.ms063(), [])
@@ -294,19 +294,19 @@ class BuiltinMachineryTest(FakeBuiltins):  # P4B-AC-008 (mechanics; the shipped 
             self.change_the_engine()  # the upgrade also changes the skill's files
             self.assertEqual(self.ms063(), [
                 "ejected skill 'notes' is behind pack 'core' (the pack's files changed since "
-                "the eject) — review: modsys eject notes --diff"])
+                "the eject) — review: segmently-modules eject notes --diff"])
             self.assertTrue(self.ok("eject", "notes", "--diff")["behind"])
             self.assertTrue(self.ok("ci", code=1)["failed"])
 
     def test_a_repository_copy_of_a_builtin_pack_keeps_the_version_rule(self):  # I-3
-        shutil.copytree(self.tree / "core", self.root / ".modsys/packs/core")
-        toml = self.root / ".modsys/packs/core/pack.toml"
+        shutil.copytree(self.tree / "core", self.root / ".segmently-modules/packs/core")
+        toml = self.root / ".segmently-modules/packs/core/pack.toml"
         toml.write_text('version = "9.0.0"\n' + toml.read_text())
         self.ok("eject", "notes")
         toml.write_text(toml.read_text().replace('"9.0.0"', '"9.1.0"'))  # same files
         self.assertEqual(self.ms063(), [
             "ejected skill 'notes' is behind pack 'core' (ejected from 9.0.0, pack is now "
-            "9.1.0) — review: modsys eject notes --diff"])
+            "9.1.0) — review: segmently-modules eject notes --diff"])
 
     def test_the_agents_md_block_and_templates_list(self):
         self.enable("core", "ui", "qa")
@@ -326,7 +326,7 @@ class BuiltinContractTest(FakeBuiltins):  # P4B-AC-024 (packs list with built-in
         self.enable("core", "ui", "qa")
         code, env, err = run_json("packs", "list", *self.R)
         self.assertEqual((code, err, set(env)), (0, "", {"schema", "data"}))
-        self.assertEqual(env["schema"], "modsys.packs/1")
+        self.assertEqual(env["schema"], "segmently-modules.packs/1")
         self.assertEqual({k for row in env["data"] for k in row},
                          {"id", "version", "priority", "builtin", "dir", "description", "roles",
                           "skills"})

@@ -1,4 +1,4 @@
-"""`modsys init confirm` (D3, gate 3): an edited proposal is validated — names by the `create`
+"""`segmently-modules init confirm` (D3, gate 3): an edited proposal is validated — names by the `create`
 rule and unique, every included candidate with globs that match files, no file claimed twice —
 every problem named at once; an unedited proposal always passes."""
 import json
@@ -44,7 +44,7 @@ class ConfirmTest(unittest.TestCase):  # P5A-AC-028
         self.R = ("--root", str(self.root))
         code, _, err = run_json("init", "map", *self.R)
         self.assertEqual((code, err), (0, ""))
-        self.path = self.root / ".modsys/init/proposal.json"
+        self.path = self.root / ".segmently-modules/init/proposal.json"
         self.original = self.path.read_text()
 
     def tearDown(self):
@@ -57,15 +57,15 @@ class ConfirmTest(unittest.TestCase):  # P5A-AC-028
 
     def confirm(self, fn=None, code=0, *argv) -> dict | str:
         self.edited(fn or (lambda by, cs: None))
-        state = (self.root / ".modsys/init/state.json").read_bytes()
-        confirmed = self.root / ".modsys/init/confirmed.json"
+        state = (self.root / ".segmently-modules/init/state.json").read_bytes()
+        confirmed = self.root / ".segmently-modules/init/confirmed.json"
         before = confirmed.read_bytes() if confirmed.exists() else None
         got, out, err = run("init", "confirm", *argv, "--json", *self.R)
         self.assertEqual(got, code, err)
         if code == 0:
             return json.loads(out)["data"]
         self.assertEqual(out, "")
-        self.assertEqual((self.root / ".modsys/init/state.json").read_bytes(), state)
+        self.assertEqual((self.root / ".segmently-modules/init/state.json").read_bytes(), state)
         self.assertEqual(confirmed.read_bytes() if confirmed.exists() else None, before)
         return err
 
@@ -93,7 +93,7 @@ class ConfirmTest(unittest.TestCase):  # P5A-AC-028
                        "paths": ["services/payments/pyproject.toml"], "owner": "team-pay"})
         data = self.confirm(split)
         self.assertIn("payments-config", data["included"])
-        confirmed = json.loads((self.root / ".modsys/init/confirmed.json").read_text())
+        confirmed = json.loads((self.root / ".segmently-modules/init/confirmed.json").read_text())
         self.assertEqual(confirmed["candidates"][-1]["owner"], "team-pay")
 
     def test_refusals(self):
@@ -132,8 +132,8 @@ class ConfirmTest(unittest.TestCase):  # P5A-AC-028
     def test_dry_run_and_the_init_exclude(self):
         data = self.confirm(None, 0, "--dry-run")
         self.assertEqual((data["status"], data["dry_run"]), ("confirmed", True))
-        self.assertFalse((self.root / ".modsys/init/confirmed.json").exists())
-        config = self.root / ".modsys/config.toml"
+        self.assertFalse((self.root / ".segmently-modules/init/confirmed.json").exists())
+        config = self.root / ".segmently-modules/config.toml"
         config.write_text(config.read_text() + '\n[init]\nexclude = ["apps/**"]\n')
         err = self.confirm(None, 2)
         self.assertIn("candidate 'storefront': glob 'apps/storefront/**' matches no file", err)

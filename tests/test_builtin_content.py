@@ -8,9 +8,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys import __version__
-from modsys.config import builtin_packs_root
-from modsys.skills import file_hashes, read_front_matter
+from segmently_modules import __version__
+from segmently_modules.config import builtin_packs_root
+from segmently_modules.skills import file_hashes, read_front_matter
 from tests.helpers import copy_fixture, init_git, run, run_json
 
 CORE = ["module-scout", "module-discover", "module-research", "module-sync", "module-roles",
@@ -34,7 +34,7 @@ class ShippedPacks(unittest.TestCase):
         self._tmp.cleanup()
 
     def enable(self, *ids: str) -> None:
-        (self.root / ".modsys/config.toml").write_text(
+        (self.root / ".segmently-modules/config.toml").write_text(
             "[packs]\nbuiltin = [" + ", ".join(f'"{i}"' for i in ids) + "]\n")
 
     def ok(self, *argv, code=0):
@@ -70,7 +70,7 @@ class ShippedMachineryTest(ShippedPacks):  # P4B-AC-008
         for sid, pack in SKILLS.items():
             for agent_dir in (".claude/skills", ".agents/skills"):
                 dest = self.root / agent_dir / sid
-                marker = json.loads((dest / ".modsys-managed").read_text())
+                marker = json.loads((dest / ".segmently-modules-managed").read_text())
                 self.assertEqual((marker["pack"], marker["version"], marker["source"]),
                                  (pack, __version__, "pack"))
                 self.assertEqual(file_hashes(dest),
@@ -90,8 +90,8 @@ class ShippedMachineryTest(ShippedPacks):  # P4B-AC-008
         init_git(self.root)
         self.sync("claude", "codex")
         self.assertEqual(self.ok("eject", "module-sync")["pack"], "core")
-        copy = self.root / ".modsys/overrides/skills/module-sync"
-        record = json.loads((copy / ".modsys-ejected").read_text())
+        copy = self.root / ".segmently-modules/overrides/skills/module-sync"
+        record = json.loads((copy / ".segmently-modules-ejected").read_text())
         self.assertEqual((record["pack"], record["version"]), ("core", __version__))
         (copy / "SKILL.md").write_text((copy / "SKILL.md").read_text() + "\nTeam rule.\n")
         data = self.ok("packs", "sync", "--agent", "claude", "--agent", "codex")
@@ -102,13 +102,13 @@ class ShippedMachineryTest(ShippedPacks):  # P4B-AC-008
         shutil.copytree(self.engine, upgraded)
         md = upgraded / "core/skills/module-sync/SKILL.md"
         md.write_text(md.read_text() + "\nA new upstream step.\n")
-        with mock.patch("modsys.config.builtin_packs_root", return_value=upgraded):
+        with mock.patch("segmently_modules.config.builtin_packs_root", return_value=upgraded):
             lint = self.ok("lint", "--fail-on", "never")
             diff = self.ok("eject", "module-sync", "--diff")
             rows = self.sync("claude")
         self.assertEqual([f["message"] for f in lint["findings"] if f["code"] == "MS063"],
                          ["ejected skill 'module-sync' is behind pack 'core' (the pack's files "
-                          "changed since the eject) — review: modsys eject module-sync --diff"])
+                          "changed since the eject) — review: segmently-modules eject module-sync --diff"])
         self.assertTrue(diff["behind"])
         self.assertIn("-A new upstream step.", diff["diff"])
         self.assertEqual({s for _, s, st in rows if st != "unchanged"}, set())
@@ -211,14 +211,14 @@ class TransitionsTest(ShippedPacks):  # P4B-AC-028
 class TeamSkillWithACoreIdTest(ShippedPacks):  # P4B-AC-029
     def test_a_team_pack_declares_module_sync(self):
         self.enable("core")
-        team = self.root / ".modsys/packs/team"
+        team = self.root / ".segmently-modules/packs/team"
         (team / "skills/module-sync").mkdir(parents=True)
         (team / "pack.toml").write_text('id = "team"\nversion = "9.0.0"\n'
                                         '[skills.module-sync]\npath = "skills/module-sync"\n')
         (team / "skills/module-sync/SKILL.md").write_text(
             "---\nname: module-sync\ndescription: The team's own doc sync.\n---\n")
         self.sync()
-        marker = json.loads((self.root / ".claude/skills/module-sync/.modsys-managed").read_text())
+        marker = json.loads((self.root / ".claude/skills/module-sync/.segmently-modules-managed").read_text())
         self.assertEqual(marker["pack"], "team")
         lint = self.ok("lint", "--fail-on", "never")
         self.assertEqual([(f["message"], f["path"]) for f in lint["findings"]

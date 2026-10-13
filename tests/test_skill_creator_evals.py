@@ -25,7 +25,7 @@ QUERY_MIN = 60
 OWNERS = {
     "module-init": {
         "Add a new module called wishlist": "module-create",
-        "CI says modsys lint failed": "module-lint",
+        "CI says segmently-modules lint failed": "module-lint",
         "We already have a module registry written by another tool": "module-adopt",
         "I finished the refund changes": "module-sync",
         "The catalog MODULE.md is over the size budget": "module-split",
@@ -36,7 +36,7 @@ OWNERS = {
         "Rename the payment gateway class": None},
     "module-adopt": {
         "This codebase has no module registry at all yet": "module-init",
-        "CI fails on modsys lint": "module-lint",
+        "CI fails on segmently-modules lint": "module-lint",
         "Create a new module for the loyalty points": "module-create",
         "I just changed how orders are shipped": "module-sync",
         "Before we plan the inventory rework": "module-scout",
@@ -130,13 +130,13 @@ class AdoptCasesTest(unittest.TestCase):  # P5B-AC-031 (the repositories of modu
             self.assertEqual({e["owner_team"] for e in registry.values()},
                              {"team-inventory", "team-orders", "team-shipping"})
             self.assertIn("curator", registry["inventory"]["context_files"]["roles"])
-            self.assertFalse((one / ".modsys").exists())
+            self.assertFalse((one / ".segmently-modules").exists())
             two = cases.build(2, Path(tmp) / "two")
             self.assertTrue((two / "docs/modules/registry.json").is_file())
             self.assertEqual(sorted(p.parent.name for p in (two / "docs/modules").glob(
                 "*/module.json")), ["inventory", "orders", "shipping"])
             three = cases.build(3, Path(tmp) / "three")
-            self.assertEqual((three / ".modsys/config.toml").read_text(),
+            self.assertEqual((three / ".segmently-modules/config.toml").read_text(),
                              '[ci]\nbase = "origin/main"\n')
             again = cases.build(1, Path(tmp) / "again")
             self.assertEqual(git(one, "rev-parse", "HEAD"), git(again, "rev-parse", "HEAD"))

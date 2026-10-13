@@ -1,4 +1,4 @@
-"""`modsys agents-md` (D9): one managed block in agent instruction files — update rules, byte
+"""`segmently-modules agents-md` (D9): one managed block in agent instruction files — update rules, byte
 safety, targets and the block's content."""
 import os
 import stat
@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from unittest import mock
 
-from modsys import __version__
-from modsys.agents_md_cmd import BEGIN, END
+from segmently_modules import __version__
+from segmently_modules.agents_md_cmd import BEGIN, END
 from tests.helpers import copy_fixture, run, run_json
 
 
@@ -25,7 +25,7 @@ class BlockRepo(unittest.TestCase):
         flags = [a for t in targets for a in ("--target", t)]
         got, env, err = run_json("agents-md", *flags, *argv, *self.R)
         self.assertEqual((got, err), (code, ""), env)
-        self.assertEqual(env["schema"], "modsys.agents-md/1")
+        self.assertEqual(env["schema"], "segmently-modules.agents-md/1")
         return env["data"]
 
     def block(self) -> str:
@@ -49,7 +49,7 @@ class UpdateRulesTest(BlockRepo):  # P4A-AC-019
                  ("Our rules.\n\n", "added", f"Our rules.\n\n{block}\n"),
                  (f"Before.\n{BEGIN}\nstale\n{END}\nAfter.\n", "updated",
                   f"Before.\n{block}\nAfter.\n"),
-                 (f"Before.\n<!-- modsys:begin v0 -->\n{block.split(chr(10), 1)[1]}\nAfter.",
+                 (f"Before.\n<!-- segmently-modules:begin v0 -->\n{block.split(chr(10), 1)[1]}\nAfter.",
                   "updated", f"Before.\n{block}\nAfter."),
                  (f"# Team\n\n{block}\n", "unchanged", f"# Team\n\n{block}\n")]
         for before, status, after in cases:
@@ -69,7 +69,7 @@ class UpdateRulesTest(BlockRepo):  # P4A-AC-019
 
     def test_malformed_markers_stop_the_run(self):
         cases = [(f"a\n{BEGIN}\nb\n", "CLAUDE.md:2: a begin marker without an end marker "
-                                      "(<!-- modsys:end -->)"),
+                                      "(<!-- segmently-modules:end -->)"),
                  (f"{END}\n{BEGIN}\n", "CLAUDE.md:1: an end marker before any begin marker"),
                  (f"{BEGIN}\n{END}\n{BEGIN}\n{END}\n", "CLAUDE.md:3: a second begin marker "
                                                        "(the first is on line 1)"),
@@ -81,7 +81,7 @@ class UpdateRulesTest(BlockRepo):  # P4A-AC-019
                 code, out, err = run("agents-md", "--target", "AGENTS.md", "--target",
                                      "CLAUDE.md", "--json", *self.R)
                 self.assertEqual((code, out), (2, ""))
-                self.assertIn(f"modsys: error: {needle} — fix the markers by hand; nothing "
+                self.assertIn(f"segmently-modules: error: {needle} — fix the markers by hand; nothing "
                               f"written", err)
                 self.assertEqual(self.claude.read_text(encoding="utf-8"), text)
                 self.assertFalse((self.root / "AGENTS.md").exists())  # no target written
@@ -139,7 +139,7 @@ class ByteSafetyTest(BlockRepo):  # P4A-AC-020
         (self.root / "notes").write_text("a file, not a directory\n")
         code, out, err = run("agents-md", "--target", "notes/AGENTS.md", "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertTrue(err.startswith("modsys: error: cannot write notes/AGENTS.md: "), err)
+        self.assertTrue(err.startswith("segmently-modules: error: cannot write notes/AGENTS.md: "), err)
 
     def test_check_and_dry_run(self):
         self.claude.write_text("# Team\n")
@@ -184,19 +184,19 @@ class BlockContentTest(BlockRepo):  # P4A-AC-021
     def test_the_default_block(self):
         self.assertEqual(run("packs", "new", "team", "--role", "reviewer", "--skill",
                              "api-review", *self.R)[0], 0)
-        md = self.root / ".modsys/packs/team/skills/api-review/SKILL.md"
+        md = self.root / ".segmently-modules/packs/team/skills/api-review/SKILL.md"
         md.write_text(md.read_text().replace(
             md.read_text().split("\n")[2], "description: Reviews API changes against the "
                                            "reviewer docs."))
         body = self.body()
         text = "\n".join(body)
         self.assertLessEqual(len(body), 25)
-        self.assertIn("modsys context --task-file <file> --role <role> --match lexical", text)
+        self.assertIn("segmently-modules context --task-file <file> --role <role> --match lexical", text)
         self.assertIn("Roles in this repository: developer, qa, po, architect, designer, "
                       "reviewer.", text)
         self.assertIn("- `api-review` — Reviews API changes against the reviewer docs.", body)
         flat = " ".join(text.split())  # fix wave M7: the P4b flow after a change
-        self.assertIn("`modsys sync-instructions --from-diff <base>..HEAD`", flat)
+        self.assertIn("`segmently-modules sync-instructions --from-diff <base>..HEAD`", flat)
         self.assertIn("`git merge-base <target> HEAD`", flat)
         self.assertIn("`module-sync`", flat)
         self.assertNotIn("discover --from-diff", flat)
@@ -207,10 +207,10 @@ class BlockContentTest(BlockRepo):  # P4A-AC-021
         self.assertEqual(self.statuses(data), [("CLAUDE.md", "created")])
 
     def test_no_skills_yet(self):
-        self.assertIn("- none yet (add one: modsys packs new ID --skill NAME)", self.body())
+        self.assertIn("- none yet (add one: segmently-modules packs new ID --skill NAME)", self.body())
 
     def test_a_team_template(self):
-        over = self.root / ".modsys/overrides/templates/agents-md.md"
+        over = self.root / ".segmently-modules/overrides/templates/agents-md.md"
         over.parent.mkdir(parents=True)
         over.write_text("Custom ${roles} v${version}\n")
         self.assertEqual(self.body(), [f"Custom developer, qa, po, architect, designer "
@@ -222,14 +222,14 @@ class BlockContentTest(BlockRepo):  # P4A-AC-021
 
 class AgentsMdContractTest(BlockRepo):  # P4A-AC-023
     def test_garbage_config_and_interrupt(self):
-        (self.root / ".modsys/config.toml").write_text("code_map = 5\n")
+        (self.root / ".segmently-modules/config.toml").write_text("code_map = 5\n")
         code, out, err = run("agents-md", "--target", "CLAUDE.md", "--json", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertTrue(err.startswith("modsys: error: "), err)
-        (self.root / ".modsys/config.toml").unlink()
-        with mock.patch("modsys.agents_md_cmd.atomic_write", side_effect=KeyboardInterrupt):
+        self.assertTrue(err.startswith("segmently-modules: error: "), err)
+        (self.root / ".segmently-modules/config.toml").unlink()
+        with mock.patch("segmently_modules.agents_md_cmd.atomic_write", side_effect=KeyboardInterrupt):
             self.assertEqual(run("agents-md", "--target", "CLAUDE.md", *self.R),
-                             (130, "", "modsys: interrupted\n"))
+                             (130, "", "segmently-modules: interrupted\n"))
         self.assertFalse(self.claude.exists())
 
     def test_text_output(self):
@@ -239,7 +239,7 @@ class AgentsMdContractTest(BlockRepo):  # P4A-AC-023
         self.claude.write_text("# Team\n")
         out = run("agents-md", "--target", "CLAUDE.md", "--check", *self.R)[1]
         self.assertEqual(out.splitlines(), ["added      CLAUDE.md", "agents-md --check: stale — "
-                                            "run modsys agents-md with the same --target flags"])
+                                            "run segmently-modules agents-md with the same --target flags"])
 
 
 class SkillListTest(BlockRepo):  # P81-AC-038, P81-AC-039
@@ -247,12 +247,12 @@ class SkillListTest(BlockRepo):  # P81-AC-038, P81-AC-039
         text = '[packs]\nbuiltin = ["core", "ui", "qa"]\n'
         if delivery:
             text += f'builtin_delivery = "{delivery}"\n'
-        (self.root / ".modsys/config.toml").write_text(text, encoding="utf-8")
+        (self.root / ".segmently-modules/config.toml").write_text(text, encoding="utf-8")
 
     def test_plugin_delivery_names_the_plugins(self):  # P81-AC-038
         self.enable("plugin")
         text = self.block()
-        self.assertIn("(the modsys plugins provide these skills):", text)
+        self.assertIn("(the segmently-modules plugins provide these skills):", text)
         self.assertNotIn("packs sync", text)
         self.assertNotIn("copies them", text)
 
@@ -260,12 +260,12 @@ class SkillListTest(BlockRepo):  # P81-AC-038, P81-AC-039
         for delivery in (None, "repo"):
             with self.subTest(delivery=delivery):
                 self.enable(delivery)
-                self.assertIn("Skills from packs (`modsys packs sync` copies them into the "
+                self.assertIn("Skills from packs (`segmently-modules packs sync` copies them into the "
                               "agents' skill directories):\n", self.block())
 
     def test_one_short_line_per_skill(self):  # P81-AC-039
-        from modsys.config import builtin_packs_root
-        from modsys.skills import read_front_matter
+        from segmently_modules.config import builtin_packs_root
+        from segmently_modules.skills import read_front_matter
         self.enable("plugin")
         lines = [ln for ln in self.block().split("\n") if ln.startswith("- `")]
         skills = sorted(p.parent.name for p in builtin_packs_root().glob("*/skills/*/SKILL.md"))
@@ -278,7 +278,7 @@ class SkillListTest(BlockRepo):  # P81-AC-038, P81-AC-039
             first = full.split(". ")[0].rstrip(".")
             self.assertEqual(ln, f"- `{sid}` — {first}.")
             self.assertLessEqual(len(ln), len(f"- `{sid}` — {full}"))
-        self.assertLess(len(self.block()), 3200)
+        self.assertLess(len(self.block()), 3300)  # 3200 before the 11 characters longer name
 
     def test_check_is_stable(self):  # P81-AC-039
         self.enable("plugin")

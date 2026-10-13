@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from modsys.skills import (SKILL_KEYS, front_matter, pack_skills, read_front_matter,
+from segmently_modules.skills import (SKILL_KEYS, front_matter, pack_skills, read_front_matter,
                            source_problem)
 from tests.helpers import copy_fixture, run, run_json
 
@@ -18,7 +18,7 @@ def write(path: Path, text: str) -> None:
 
 
 def pack(root: Path, pack_id: str, body: str, priority: int = 50) -> Path:
-    toml = root / ".modsys/packs" / pack_id / "pack.toml"
+    toml = root / ".segmently-modules/packs" / pack_id / "pack.toml"
     write(toml, f'id = "{pack_id}"\nversion = "0.1.0"\npriority = {priority}\n{body}')
     return toml
 
@@ -53,7 +53,7 @@ class SkillsModelTest(unittest.TestCase):  # P4A-AC-007
             with self.subTest(needle=needle):
                 code, out, err = self.listing(body)
                 self.assertEqual((code, out), (2, ""))
-                self.assertIn(".modsys/packs/team/pack.toml: ", err)
+                self.assertIn(".segmently-modules/packs/team/pack.toml: ", err)
                 self.assertIn(needle, err)
                 self.assertNotIn("Traceback", err)
 
@@ -76,7 +76,7 @@ class SkillsModelTest(unittest.TestCase):  # P4A-AC-007
         self.assertEqual((code, err), (0, ""))
         self.assertEqual([(r["id"], [s["id"] for s in r["skills"]]) for r in env["data"]],
                          [("a", ["api-review"]), ("b", ["api-review"]), ("bookshop", [])])
-        self.assertEqual(pack_skills(self.root / ".modsys")["api-review"].pack, "a")
+        self.assertEqual(pack_skills(self.root / ".segmently-modules")["api-review"].pack, "a")
         self.assertEqual(run("list", *self.R)[0], 0)  # other verbs keep working
 
     def test_the_skill_keys_are_documented(self):

@@ -4,9 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from modsys.config import discover_packs, load_config
-from modsys.registry import load_registry
-from modsys.workspace import Workspace
+from segmently_modules.config import discover_packs, load_config
+from segmently_modules.registry import load_registry
+from segmently_modules.workspace import Workspace
 from tests.helpers import FIXTURE
 
 
@@ -18,7 +18,7 @@ def write(path: Path, text: str) -> None:
 class PackProvenanceTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
-        self.cfg = Path(self._tmp.name) / ".modsys"
+        self.cfg = Path(self._tmp.name) / ".segmently-modules"
         write(self.cfg / "packs/ui/pack.toml",
               'id = "ui"\npriority = 20\n'
               '[roles.designer]\norder = 50\ntemplate = "roles/designer.md"\n'
@@ -55,7 +55,7 @@ class WorkspaceLoadTest(unittest.TestCase):
     def test_load_without_argparse(self):
         ws = Workspace.load(FIXTURE)
         self.assertEqual(ws.root, FIXTURE.resolve())
-        self.assertEqual(ws.config_dir, (FIXTURE / ".modsys").resolve())
+        self.assertEqual(ws.config_dir, (FIXTURE / ".segmently-modules").resolve())
         self.assertIn("catalog", ws.registry.modules)
         self.assertIn("file_paths", ws.fields)
 

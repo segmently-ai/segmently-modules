@@ -1,7 +1,7 @@
-"""`pyproject.toml` must keep setuptools' flat-layout package discovery pinned to `modsys*` —
+"""`pyproject.toml` must keep setuptools' flat-layout package discovery pinned to `segmently-modules*` —
 a second top-level directory (like `evals/`) otherwise makes `pip install` / `pip wheel` fail
 with "Multiple top-level packages discovered in a flat-layout" (C1) — and ship every file under
-`modsys/defaults/`, the built-in packs at any depth included (P4B-AC-010)."""
+`segmently_modules/defaults/`, the built-in packs at any depth included (P4B-AC-010)."""
 import glob
 import importlib.metadata
 import importlib.util
@@ -34,15 +34,15 @@ def no_wheel_backend() -> str | None:
 
 
 class PackagingTest(unittest.TestCase):
-    def test_packages_find_is_pinned_to_modsys(self):
+    def test_packages_find_is_pinned_to_segmently_modules(self):
         data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
         find = data["tool"]["setuptools"]["packages"]["find"]
-        self.assertEqual(find.get("include"), ["modsys*"])
+        self.assertEqual(find.get("include"), ["segmently_modules*"])
 
     def test_every_default_file_is_package_data(self):  # P4A-AC-028, P4B-AC-010
         data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
-        globs = data["tool"]["setuptools"]["package-data"]["modsys"]
-        package = ENGINE / "modsys"
+        globs = data["tool"]["setuptools"]["package-data"]["segmently_modules"]
+        package = ENGINE / "segmently_modules"
         files = [p.relative_to(package).as_posix() for p in (package / "defaults").rglob("*")
                  if p.is_file() and "__pycache__" not in p.parts and p.name != ".DS_Store"]
         self.assertTrue({"defaults/templates/roles/qa.md", "defaults/templates/agents-md.md",
@@ -60,14 +60,14 @@ class PackagingTest(unittest.TestCase):
         self.assertEqual(data["build-system"], {"requires": ["setuptools>=62.3"],
                                                 "build-backend": "setuptools.build_meta"})
         self.assertEqual(data["project"]["dependencies"], [])
-        self.assertEqual(data["project"]["scripts"], {"modsys": "modsys.cli:main"})
+        self.assertEqual(data["project"]["scripts"], {"segmently-modules": "segmently_modules.cli:main"})
 
     def test_every_data_file_lies_under_defaults(self):  # D6 x D1: the wheel ships
-        tracked = subprocess.run(["git", "-C", str(ENGINE), "ls-files", "-z", "--", "modsys"],
+        tracked = subprocess.run(["git", "-C", str(ENGINE), "ls-files", "-z", "--", "segmently_modules"],
                                  capture_output=True, text=True, check=True).stdout.split("\0")
-        self.assertIn("modsys/defaults/packs/core/pack.toml", tracked)  # `modsys/defaults/`
+        self.assertIn("segmently_modules/defaults/packs/core/pack.toml", tracked)  # `segmently_modules/defaults/`
         self.assertEqual([p for p in tracked if p and not p.endswith(".py")  # as package data,
-                          and not p.startswith("modsys/defaults/")], [])  # the plugin all of it
+                          and not p.startswith("segmently_modules/defaults/")], [])  # the plugin all of it
 
     @unittest.skipIf(no_wheel_backend(), no_wheel_backend() or "")
     def test_a_wheel_ships_every_default_file_and_no_tool(self):  # P6-AC-018 (offline)
@@ -81,22 +81,22 @@ class PackagingTest(unittest.TestCase):
                                   env={**env, "PIP_CONFIG_FILE": os.devnull})  # not the user's
             self.assertEqual(proc.returncode, 0, proc.stderr[-2000:])
             names = zipfile.ZipFile(next((tmp / "wheel").glob("*.whl"))).namelist()
-        shipped = sorted(n for n in names if n.startswith("modsys/defaults/"))
+        shipped = sorted(n for n in names if n.startswith("segmently_modules/defaults/"))
         defaults = sorted(p.relative_to(ENGINE).as_posix()
-                          for p in (ENGINE / "modsys/defaults").rglob("*")
+                          for p in (ENGINE / "segmently_modules/defaults").rglob("*")
                           if p.is_file() and "__pycache__" not in p.parts
                           and p.name != ".DS_Store")
         self.assertEqual(shipped, defaults)
-        self.assertIn("modsys/defaults/templates/init/module_prompt.md", shipped)
+        self.assertIn("segmently_modules/defaults/templates/init/module_prompt.md", shipped)
         self.assertEqual([n for n in names if n.startswith(("tools/", "tests/", "evals/"))], [])
 
     def test_the_fixtures_stay_test_data(self):  # P5A-AC-049
         data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
-        self.assertEqual(list(data["tool"]["setuptools"]["package-data"]), ["modsys"])
+        self.assertEqual(list(data["tool"]["setuptools"]["package-data"]), ["segmently_modules"])
         self.assertTrue(all(not g.startswith("..")
-                            for g in data["tool"]["setuptools"]["package-data"]["modsys"]))
+                            for g in data["tool"]["setuptools"]["package-data"]["segmently_modules"]))
         self.assertTrue((ENGINE / "tests/fixtures/bookshop_monorepo/package.json").is_file())
-        self.assertFalse(list((ENGINE / "modsys").rglob("bookshop_monorepo")))
+        self.assertFalse(list((ENGINE / "segmently_modules").rglob("bookshop_monorepo")))
 
 
 if __name__ == "__main__":

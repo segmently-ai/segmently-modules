@@ -1,4 +1,4 @@
-"""`modsys sync-instructions` (D4): per module a change touches — or per named module — the docs
+"""`segmently-modules sync-instructions` (D4): per module a change touches — or per named module — the docs
 to update, the drift findings, the field `sync_hint`s of every layer and the queued proposals;
 the core fields' hints; the verb in the contract (25 verbs)."""
 import re
@@ -7,8 +7,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys.cli import build_parser
-from modsys.fields import CORE_FIELDS
+from segmently_modules.cli import build_parser
+from segmently_modules.fields import CORE_FIELDS
 from tests.helpers import copy_fixture, git, init_git, mutate_registry, run, run_json
 from tests.test_cli_contract import GOLDEN
 
@@ -33,7 +33,7 @@ class SyncInstructionsRepo(unittest.TestCase):
         code, env, err = run_json("sync-instructions", *argv, *self.R)
         self.assertEqual((code, err), (0, ""), env)
         self.assertEqual(set(env), {"schema", "data"})
-        self.assertEqual(env["schema"], "modsys.sync-instructions/1")
+        self.assertEqual(env["schema"], "segmently-modules.sync-instructions/1")
         return env["data"]
 
     def refused(self, *argv) -> str:
@@ -120,12 +120,12 @@ class ModesTest(SyncInstructionsRepo):  # P4B-AC-011
         self.assertEqual((code, err), (0, ""))
         lines = out.splitlines()
         self.assertEqual(lines[0], "catalog  modify")
-        self.assertIn("  queued  1 proposal item(s) — modsys proposals list", lines)
+        self.assertIn("  queued  1 proposal item(s) — segmently-modules proposals list", lines)
         self.assertEqual(lines[-1], "outside   other.txt")
         row = next(line for line in (ENGINE / "docs/cli-contract.md").read_text(
             encoding="utf-8").splitlines() if line.startswith("| `sync-instructions` |"))
         text = row.split("Text:", 1)[1]
-        for kind in ("`  queued  <n> proposal item(s) — modsys proposals list`",
+        for kind in ("`  queued  <n> proposal item(s) — segmently-modules proposals list`",
                      "`outside   <path>`"):
             self.assertIn(kind, text)
 
@@ -134,7 +134,7 @@ class ModesTest(SyncInstructionsRepo):  # P4B-AC-011
                                   "required"),
                              (("--module", "catalog", "--files", "x.py"),
                               "not allowed with argument"),
-                             (("--module", "nosuch"), "modsys: error: unknown module 'nosuch'")]:
+                             (("--module", "nosuch"), "segmently-modules: error: unknown module 'nosuch'")]:
             with self.subTest(argv=argv):
                 self.assertIn(needle, self.refused(*argv))
 
@@ -146,7 +146,7 @@ class ModesTest(SyncInstructionsRepo):  # P4B-AC-011
             theirs = run("discover", *argv)
             self.assertEqual((ours[0], ours[1]), (2, ""))
             self.assertEqual(ours[2], theirs[2])
-            self.assertIn("modsys: error: git diff --name-only HEAD~1..HEAD failed", ours[2])
+            self.assertIn("segmently-modules: error: git diff --name-only HEAD~1..HEAD failed", ours[2])
 
 
 class ContentTest(SyncInstructionsRepo):  # P4B-AC-012
@@ -154,12 +154,12 @@ class ContentTest(SyncInstructionsRepo):  # P4B-AC-012
         return {m["module"]: [f["name"] for f in m["fields"]] for m in data["modules"]}
 
     def test_field_hints_of_every_layer_by_scope(self):
-        team = self.root / ".modsys/packs/team"
+        team = self.root / ".segmently-modules/packs/team"
         team.mkdir(parents=True)
         (team / "pack.toml").write_text(
             'id = "team"\nversion = "0.1.0"\n[fields.owner_team]\ntype = "string"\n'
             'description = "Owning team"\nsync_hint = "Set it when the owning team changes."\n')
-        (self.root / ".modsys/config.toml").write_text(
+        (self.root / ".segmently-modules/config.toml").write_text(
             '[fields.review_notes]\ntype = "string"\nscope = ["submodule"]\n'
             'sync_hint = "Note what reviewers must re-check."\n'
             '[fields.plain]\ntype = "string"\n'
@@ -178,7 +178,7 @@ class ContentTest(SyncInstructionsRepo):  # P4B-AC-012
         self.assertEqual(catalog["keywords"]["type"], ["string[]"])
 
     def test_a_core_field_takes_only_a_sync_hint(self):
-        (self.root / ".modsys/config.toml").write_text(
+        (self.root / ".segmently-modules/config.toml").write_text(
             '[fields.keywords]\ntype = "string"\nsync_hint = "x"\n')
         self.assertIn("field 'keywords' (owner config) is a core field; it cannot be "
                       "redeclared (a layer may set its sync_hint only)",
@@ -232,18 +232,18 @@ class CoreHintsTest(unittest.TestCase):  # P4B-AC-013
 
 class ContractTest(SyncInstructionsRepo):  # P4B-AC-024, P4B-AC-023 (25 verbs)
     def test_garbage_config_interrupt_and_internal_error(self):
-        (self.root / ".modsys/config.toml").write_text("[packs]\nbuiltin = 5\n")
+        (self.root / ".segmently-modules/config.toml").write_text("[packs]\nbuiltin = 5\n")
         err = self.refused("--module", "catalog")
-        self.assertTrue(err.startswith("modsys: error: "), err)
-        self.assertIn(".modsys/config.toml: [packs] builtin", err)
-        (self.root / ".modsys/config.toml").unlink()
-        with mock.patch("modsys.sync_instructions_cmd.build", side_effect=KeyboardInterrupt):
+        self.assertTrue(err.startswith("segmently-modules: error: "), err)
+        self.assertIn(".segmently-modules/config.toml: [packs] builtin", err)
+        (self.root / ".segmently-modules/config.toml").unlink()
+        with mock.patch("segmently_modules.sync_instructions_cmd.build", side_effect=KeyboardInterrupt):
             self.assertEqual(run("sync-instructions", "--module", "catalog", *self.R),
-                             (130, "", "modsys: interrupted\n"))
-        with mock.patch("modsys.sync_instructions_cmd.build", side_effect=ValueError("boom")):
+                             (130, "", "segmently-modules: interrupted\n"))
+        with mock.patch("segmently_modules.sync_instructions_cmd.build", side_effect=ValueError("boom")):
             code, out, err = run("sync-instructions", "--module", "catalog", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertTrue(err.startswith("modsys: internal error: ValueError: boom"), err)
+        self.assertTrue(err.startswith("segmently-modules: internal error: ValueError: boom"), err)
         self.assertNotIn("Traceback", err)
 
     def test_twenty_five_verbs_everywhere(self):

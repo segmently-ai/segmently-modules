@@ -6,7 +6,7 @@ import re
 import unittest
 from pathlib import Path
 
-from modsys.create import GENERIC_KEYWORDS
+from segmently_modules.create import GENERIC_KEYWORDS
 
 ENGINE = Path(__file__).resolve().parents[1]
 
@@ -28,7 +28,7 @@ class P5aDocsTest(unittest.TestCase):  # P5A-AC-042
                        "{action, ran: [phase], phase, next, message}",
                        "`<config_dir>/init/`",
                        "`<config_dir>/adopt.proposed.toml`",
-                       "only `modsys eject <skill> --rebase` rewrites it",
+                       "only `segmently-modules eject <skill> --rebase` rewrites it",
                        "`create NAME` | `{module, files, entry, warnings, dry_run}`",
                        "`committed` / `uncommitted`", "diff, reason}"):
             self.assertIn(needle, text)
@@ -36,8 +36,8 @@ class P5aDocsTest(unittest.TestCase):  # P5A-AC-042
         block = re.search(r"```gitignore\n(.*?)```",
                           (ENGINE / "docs/cli-contract.md").read_text(encoding="utf-8"), re.S)
         self.assertEqual(block.group(1).splitlines(), ["modules/registry.json.lock",
-                                                       ".modsys/proposals/", ".modsys/init/",
-                                                       ".modsys/config.user.toml"])
+                                                       ".segmently-modules/proposals/", ".segmently-modules/init/",
+                                                       ".segmently-modules/config.user.toml"])
 
     def test_the_configuration_reference(self):
         text = flat("docs/configuration.md")
@@ -54,12 +54,12 @@ class P5aDocsTest(unittest.TestCase):  # P5A-AC-042
     def test_the_readme(self):
         text = flat("README.md")
         adopt = text.split("## Adopt an existing registry", 1)[1].split(" ## ", 1)[0]
-        for needle in ("modsys adopt --dry-run", "modsys adopt ", "never changes the registry",
+        for needle in ("segmently-modules adopt --dry-run", "segmently-modules adopt ", "never changes the registry",
                        "adopt.proposed.toml", "--registry"):
             self.assertIn(needle, adopt)
         start = text.split("## Start from existing code", 1)[1].split(" ## ", 1)[0]
-        for needle in ("modsys init map", "modsys init confirm", "modsys init status",
-                       "modsys init resume"):  # P5b D12: the whole flow is there now
+        for needle in ("segmently-modules init map", "segmently-modules init confirm", "segmently-modules init status",
+                       "segmently-modules init resume"):  # P5b D12: the whole flow is there now
             self.assertIn(needle, start)
         reference = text.split("## Reference", 1)[1]
         for anchor in ("(#adopt-an-existing-registry)", "(#start-from-existing-code)"):
@@ -83,7 +83,7 @@ class FixWaveDocsTest(unittest.TestCase):  # the P5a final review and E-B docs i
         "docs/cli-contract.md": (
             "code_map, code_map_suggestion, budgets, skipped}",
             "`code_map_suggestion`: `{pattern, covered, total}`",
-            "`next_steps` names `modsys init` when `.gitignore` lacks the engine's lines",
+            "`next_steps` names `segmently-modules init` when `.gitignore` lacks the engine's lines",
             "except `adopt`'s new `config.toml`: its temp file is hard-linked into place",
             "role docs only with `--role R` (that role's) or `--all-roles` (every role's)",
             "only when gate 3 already passed with these bytes",
@@ -94,15 +94,15 @@ class FixWaveDocsTest(unittest.TestCase):  # the P5a final review and E-B docs i
             "An exclusive rule wins only over non-exclusive rules: two exclusive rules that route "
             "one file to different modules are still an MS053 overlap",
             "any path whose name is not valid UTF-8", "The hint never suggests a generic word"),
-        "modsys/defaults/packs/core/skills/module-lint/references/lint-codes.md": (
+        "segmently_modules/defaults/packs/core/skills/module-lint/references/lint-codes.md": (
             "a symlink at the ejected path (warning: in the way)",),
         "README.md": (
-            'modsys code-map add orders-extra --module orders --glob "app/jobs/nightly_totals.py" '
+            'segmently-modules code-map add orders-extra --module orders --glob "app/jobs/nightly_totals.py" '
             '--glob "app/api/order_export.py"',
             "`exclusive` wins only over NON-exclusive rules",
-            "modsys init # adds the .gitignore lines (lock file, proposals, init); keeps the "
+            "segmently-modules init # adds the .gitignore lines (lock file, proposals, init); keeps the "
             "config", "reported as `code_map_suggestion`",
-            "add it to `[init] exclude` and run `modsys init map --restart`")}
+            "add it to `[init] exclude` and run `segmently-modules init map --restart`")}
 
     def test_the_needles(self):
         for rel, needles in self.NEEDLES.items():

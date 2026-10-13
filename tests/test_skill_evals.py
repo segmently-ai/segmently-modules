@@ -1,6 +1,6 @@
 """The skill eval suite (D7): 15 `claude plugin eval` cases under evals/skills/ with documented
 front matter and grader types, the graders every kind of case needs, and `run.py --dry-run`,
-which assembles the plugin (byte-equal skills, a scaffold per case, a modsys launcher) and prints
+which assembles the plugin (byte-equal skills, a scaffold per case, a segmently-modules launcher) and prints
 the command without running `claude`. The seeded workspace itself is built and checked here."""
 import ast
 import importlib.util
@@ -14,8 +14,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from modsys.config import builtin_packs_root
-from modsys.skills import file_hashes, front_matter
+from segmently_modules.config import builtin_packs_root
+from segmently_modules.skills import file_hashes, front_matter
 from tests.helpers import NO_AUTO_MAINTENANCE
 from tests.test_builtin_content import SKILLS
 
@@ -81,12 +81,12 @@ class SuiteShapeTest(unittest.TestCase):  # P4B-AC-019
                                  {"type": "tool_used", "tool": "Skill",
                                   "input_match": r'"skill"\s*:\s*"(?:[\w-]+:)?' + skill + '"'})
                 if skill in WRAPPED:  # P8.6 D1: the skill runs in the conversation again; its
-                    # agent only on request, so the trigger's own modsys command is the evidence
+                    # agent only on request, so the trigger's own segmently-modules command is the evidence
                     meta = front_matter((SUITE / skill / "trigger/prompt.md").read_text("utf-8"))
                     self.assertIn("Agent", meta["allowed_tools"])  # the chooser of step 1
-                self.assertEqual(found["ran-modsys"]["tool"], "Bash")
-                self.assertTrue(found["ran-modsys"]["input_match"].startswith(
-                    f"modsys {PRIMARY[skill]}"))
+                self.assertEqual(found["ran-segmently-modules"]["tool"], "Bash")
+                self.assertTrue(found["ran-segmently-modules"]["input_match"].startswith(
+                    f"segmently-modules {PRIMARY[skill]}"))
         negative = graders(SUITE / "negative/unrelated")["no-skill"]
         self.assertEqual(negative, {"type": "tool_used", "tool": "Skill", "min": "0", "max": "0",
                                     "arm": "both"})
@@ -146,7 +146,7 @@ class RunnerTest(unittest.TestCase):  # P4B-AC-019
                        "arms": {"with": [
                            {"costUsd": 0.25, "judgeCostUsd": 0.05,
                             "graders": [{"name": "skill-fired", "passed": True},
-                                        {"name": "ran-modsys", "passed": True}]},
+                                        {"name": "ran-segmently-modules", "passed": True}]},
                            {"costUsd": 0.5, "error": "the sandbox refused to start",
                             "graders": [{"name": "skill-fired", "passed": False}]}]}},
                       {"name": "negative-unrelated", "aggregates": {"score": 1.0},
@@ -164,7 +164,7 @@ class RunnerTest(unittest.TestCase):  # P4B-AC-019
         out = self.dry_run()
         plugin = self.out / "plugin"
         manifest = json.loads((plugin / ".claude-plugin/plugin.json").read_text())
-        self.assertEqual(manifest["name"], "modsys-skills")
+        self.assertEqual(manifest["name"], "segmently-modules-skills")
         for sid, pack in SKILLS.items():
             self.assertEqual(file_hashes(plugin / "skills" / sid),
                              file_hashes(builtin_packs_root() / pack / "skills" / sid))
@@ -174,7 +174,7 @@ class RunnerTest(unittest.TestCase):  # P4B-AC-019
             self.assertTrue(os.access(scaffold, os.X_OK), rel)
             self.assertIn(str(self.out / "runtime"), scaffold.read_text())
             self.assertFalse((plugin / "evals" / rel / "seed.sh").exists())
-        self.assertTrue(os.access(self.out / "runtime/bin/modsys", os.X_OK))
+        self.assertTrue(os.access(self.out / "runtime/bin/segmently-modules", os.X_OK))
         self.assertIn(f"command: claude plugin eval {plugin} --scaffold --ablation none --runs 2 "
                       f"--threshold 0.5 --max-cost-usd 20 --allow-tools Bash Write Edit "
                       f"--trust-plugin --no-publish --json {self.out / 'result.json'}\n", out)
@@ -189,11 +189,11 @@ class RunnerTest(unittest.TestCase):  # P4B-AC-019
         scaffold = self.out / "plugin/evals/module-split/outcome/scaffold.sh"
         subprocess.run(["bash", str(scaffold)], cwd=work, env=env, check=True,
                        capture_output=True)
-        proc = subprocess.run(["modsys", "packs", "list", "--json"], cwd=work, env=env,
+        proc = subprocess.run(["segmently-modules", "packs", "list", "--json"], cwd=work, env=env,
                               capture_output=True, text=True, check=True)
         rows = json.loads(proc.stdout)["data"]
         self.assertEqual([r["id"] for r in rows if r["builtin"]], ["core", "qa", "ui"])
-        proc = subprocess.run(["modsys", "lint", "--json"], cwd=work, env=env,
+        proc = subprocess.run(["segmently-modules", "lint", "--json"], cwd=work, env=env,
                               capture_output=True, text=True)
         self.assertEqual([f["code"] for f in json.loads(proc.stdout)["data"]["findings"]
                           if f["severity"] != "info"],  # MS054 notes the modules without code

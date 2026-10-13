@@ -4,12 +4,12 @@ engine's built-in skills.
 
 `claude plugin eval` loads a plugin, so this script first assembles one in a work directory:
 
-  <out>/plugin/.claude-plugin/plugin.json   name "modsys-skills", the engine version
+  <out>/plugin/.claude-plugin/plugin.json   name "segmently-modules-skills", the engine version
   <out>/plugin/skills/<skill>/              every skill of the built-in packs core, ui, qa
   <out>/plugin/evals/<skill>/<case>/        the cases; each gets scaffold.sh = ./scaffold.sh
                                             (@RUNTIME@ filled in) + the case's own seed.sh
   <out>/runtime/{engine,fixture,bin}/       this engine's package, the bookshop fixture and a
-                                            `modsys` launcher for the agent's sandboxed shell
+                                            `segmently-modules` launcher for the agent's sandboxed shell
 
 and runs `claude plugin eval <out>/plugin --scaffold <flags…>` with `<out>/runtime/bin` first on
 PATH. Flags after the script's own are passed through; without any, the gate flags
@@ -34,19 +34,19 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ENGINE = HERE.parents[1]
-PACKS = ENGINE / "modsys" / "defaults" / "packs"
+PACKS = ENGINE / "segmently_modules" / "defaults" / "packs"
 MAX_COST_USD = "20"  # the gate's cost ceiling, added to any flags that set none
 GATE_FLAGS = ["--ablation", "none", "--runs", "2", "--threshold", "0.5", "--max-cost-usd",
               MAX_COST_USD, "--allow-tools", "Bash", "Write", "Edit", "--trust-plugin",
               "--no-publish"]
 LAUNCHER = """#!/bin/sh
 export PYTHONPATH="{engine}" PYTHONDONTWRITEBYTECODE=1
-exec "{python}" -m modsys "$@"
+exec "{python}" -m segmently_modules "$@"
 """
 
 
 def engine_version() -> str:
-    for line in (ENGINE / "modsys" / "__init__.py").read_text(encoding="utf-8").splitlines():
+    for line in (ENGINE / "segmently_modules" / "__init__.py").read_text(encoding="utf-8").splitlines():
         if line.startswith("__version__"):
             return line.split("=", 1)[1].strip().strip('"')
     return "0"
@@ -70,8 +70,8 @@ def cases() -> list[Path]:
 def assemble(out: Path) -> Path:
     """Build the plugin and the runtime under `out`; returns the plugin directory."""
     plugin, runtime = out / "plugin", out / "runtime"
-    manifest = {"name": "modsys-skills", "version": engine_version(),
-                "description": "The modsys built-in skills (packs core, ui, qa), assembled for "
+    manifest = {"name": "segmently-modules-skills", "version": engine_version(),
+                "description": "The segmently-modules built-in skills (packs core, ui, qa), assembled for "
                                "claude plugin eval"}
     (plugin / ".claude-plugin").mkdir(parents=True)
     (plugin / ".claude-plugin" / "plugin.json").write_text(json.dumps(manifest, indent=2) + "\n",
@@ -86,10 +86,10 @@ def assemble(out: Path) -> Path:
         extra = seed.read_text(encoding="utf-8") if seed.is_file() else ""
         (target / "scaffold.sh").write_text(base + extra, encoding="utf-8")
         (target / "scaffold.sh").chmod(0o755)
-    shutil.copytree(ENGINE / "modsys", runtime / "engine" / "modsys",
+    shutil.copytree(ENGINE / "segmently_modules", runtime / "engine" / "segmently_modules",
                     ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copytree(ENGINE / "tests" / "fixtures" / "bookshop", runtime / "fixture")
-    launcher = runtime / "bin" / "modsys"
+    launcher = runtime / "bin" / "segmently-modules"
     launcher.parent.mkdir(parents=True)
     launcher.write_text(LAUNCHER.format(engine=runtime / "engine", python=sys.executable),
                         encoding="utf-8")
@@ -139,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", type=Path, help="work directory (new or empty; kept)")
     args, flags = p.parse_known_args(argv)
     flags = flags[1:] if flags[:1] == ["--"] else flags
-    out = args.out or Path(tempfile.mkdtemp(prefix="modsys-skill-evals-"))
+    out = args.out or Path(tempfile.mkdtemp(prefix="segmently-modules-skill-evals-"))
     if out.exists() and any(out.iterdir()):
         print(f"run.py: {out} is not empty", file=sys.stderr)
         return 2

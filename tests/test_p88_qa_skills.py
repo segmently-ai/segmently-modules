@@ -10,8 +10,8 @@ import hashlib
 import re
 import unittest
 
-from modsys.config import builtin_packs_root, core_defaults
-from modsys.skills import read_front_matter
+from segmently_modules.config import builtin_packs_root, core_defaults
+from segmently_modules.skills import read_front_matter
 from tests.test_builtin_skills import section, skill_files
 
 QA = builtin_packs_root() / "qa"
@@ -204,7 +204,7 @@ class FilesAndSizesTest(unittest.TestCase):  # X4
 
     def test_the_baseline_description_is_unchanged(self):  # X3
         meta = read_front_matter(BASE / "SKILL.md")["description"]
-        self.assertEqual(hashlib.sha256(meta.encode()).hexdigest()[:16], "2a0efce95123748f")
+        self.assertEqual(hashlib.sha256(meta.encode()).hexdigest()[:16], "a14b60b636d19605")
 
     def test_no_placeholder_in_a_reference(self):
         for directory in REFERENCES:

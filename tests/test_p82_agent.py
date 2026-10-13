@@ -1,4 +1,4 @@
-"""P8.2 task 4: the shipped choice agent `modsys:module-chooser` (D4): its source, the build that
+"""P8.2 task 4: the shipped choice agent `segmently-modules:module-chooser` (D4): its source, the build that
 ships it in the core plugin only, the reproducible build, the thin read-only text, the package
 data and the docs (P82-AC-013 agents glob, 029…033)."""
 import glob
@@ -16,10 +16,10 @@ from pathlib import Path
 from tests.helpers import changelog_since_first_release, git
 from tests.plugin_helpers import CLAUDE, ENGINE, NO_CLAUDE, claude_env, copy_engine, run_tool, tree
 
-AGENT_REL = "modsys/defaults/agents/module-chooser.md"
-AGENT_DIR = ENGINE / "modsys/defaults/agents"
-DESCRIPTION = ("Answers a modsys choose work order - picks the modules a task needs by meaning "
-               "and replies with the answer JSON only. The modsys skills hand it the work "
+AGENT_REL = "segmently_modules/defaults/agents/module-chooser.md"
+AGENT_DIR = ENGINE / "segmently_modules/defaults/agents"
+DESCRIPTION = ("Answers a segmently-modules choose work order - picks the modules a task needs by meaning "
+               "and replies with the answer JSON only. The Segmently Modules skills hand it the work "
                "order's file in their by-meaning step.")
 D4 = f"""---
 name: module-chooser
@@ -28,7 +28,7 @@ tools: Read, Grep, Glob
 model: sonnet
 ---
 
-You answer one modsys work order. The message names its file, the output of `modsys choose`:
+You answer one Segmently Modules work order. The message names its file, the output of `segmently-modules choose`:
 the task, the rules, one card per module and the answer schema. That file is your whole task.
 
 1. Read the whole file.
@@ -65,7 +65,7 @@ class AgentSourceTest(unittest.TestCase):  # P82-AC-029
             self.assertIn(step, text)
 
     def test_tracked_mode_644_and_the_only_file(self):
-        out = git(ENGINE, "ls-files", "-s", "--", "modsys/defaults/agents")
+        out = git(ENGINE, "ls-files", "-s", "--", "segmently_modules/defaults/agents")
         self.assertEqual([(l.split()[0], l.split("\t")[1]) for l in out.splitlines()],
                          [("100644", AGENT_REL)])
         self.assertEqual(sorted(p.name for p in AGENT_DIR.iterdir()), ["module-chooser.md"])
@@ -86,9 +86,9 @@ class AgentThinTest(unittest.TestCase):  # P82-AC-032
 class PackageDataTest(unittest.TestCase):  # P82-AC-013 (the agents glob)
     def test_glob_covers_the_agent(self):
         data = tomllib.loads((ENGINE / "pyproject.toml").read_text(encoding="utf-8"))
-        globs = data["tool"]["setuptools"]["package-data"]["modsys"]
+        globs = data["tool"]["setuptools"]["package-data"]["segmently_modules"]
         self.assertIn("defaults/agents/*.md", globs)
-        shipped = {f for g in globs for f in glob.glob(g, root_dir=ENGINE / "modsys",
+        shipped = {f for g in globs for f in glob.glob(g, root_dir=ENGINE / "segmently_modules",
                                                        recursive=True)}
         self.assertIn("defaults/agents/module-chooser.md", shipped)
 
@@ -112,42 +112,42 @@ class BuildTest(unittest.TestCase):  # P82-AC-030, 031
         return int(re.search(rf"built {name} \S+: (\d+) files", stdout).group(1))
 
     def test_core_ships_the_agent(self):
-        built = self.out / "modsys/agents/module-chooser.md"
+        built = self.out / "segmently-modules/agents/module-chooser.md"
         self.assertEqual(built.read_bytes(), (ENGINE / AGENT_REL).read_bytes())
         self.assertEqual(stat.S_IMODE(built.stat().st_mode), 0o644)
         self.assertEqual(stat.S_IMODE(built.parent.stat().st_mode), 0o755)
-        for name in ("modsys-ui", "modsys-qa"):
+        for name in ("segmently-modules-ui", "segmently-modules-qa"):
             self.assertFalse((self.out / name / "agents").exists(), name)
 
     def test_manifests_carry_no_agents_key(self):
-        for name in ("modsys", "modsys-ui", "modsys-qa"):
+        for name in ("segmently-modules", "segmently-modules-ui", "segmently-modules-qa"):
             for rel in MANIFESTS:
                 self.assertNotIn("agents", json.loads((self.out / name / rel).read_text()))
 
     def test_readmes(self):
-        core = (self.out / "modsys/README.md").read_text(encoding="utf-8")
+        core = (self.out / "segmently-modules/README.md").read_text(encoding="utf-8")
         self.assertIn("`module-chooser`", core)
-        self.assertIn("modsys templates override choose/rules.md", core)
-        for name in ("modsys-ui", "modsys-qa"):
+        self.assertIn("segmently-modules templates override choose/rules.md", core)
+        for name in ("segmently-modules-ui", "segmently-modules-qa"):
             self.assertNotIn("module-chooser", (self.out / name / "README.md").read_text())
 
     def test_every_tracked_agent_file_and_never_an_untracked_one(self):
         eng = copy_engine(self.base / "engine2")
-        agents = eng / "modsys/defaults/agents"
+        agents = eng / "segmently_modules/defaults/agents"
         (agents / "extra.md").write_text("---\nname: extra\n---\nx\n", encoding="utf-8")
-        git(eng, "add", "modsys/defaults/agents/extra.md")
+        git(eng, "add", "segmently_modules/defaults/agents/extra.md")
         git(eng, "commit", "-q", "-m", "extra")
         (agents / "local.md").write_text("untracked\n", encoding="utf-8")
         out = self.base / "out2"
         proc = run_tool(eng, "build_plugins", "--out", str(out))
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual(sorted(p.name for p in (out / "modsys/agents").iterdir()),
+        self.assertEqual(sorted(p.name for p in (out / "segmently-modules/agents").iterdir()),
                          ["extra.md", "module-chooser.md", "module-discover-agent.md",
                           "module-research-agent.md", "module-scout-agent.md"])  # P8.4 D3
-        self.assertFalse((out / "modsys/runtime/modsys/defaults/agents/local.md").exists())
+        self.assertFalse((out / "segmently-modules/runtime/segmently_modules/defaults/agents/local.md").exists())
         # the count grows by the shipped agent file and its runtime copy
-        self.assertEqual(self.count(proc.stdout, "modsys"),
-                         self.count(self.stdout, "modsys") + 2)
+        self.assertEqual(self.count(proc.stdout, "segmently-modules"),
+                         self.count(self.stdout, "segmently-modules") + 2)
 
     def test_two_builds_identical(self):
         second = self.base / "again"
@@ -161,7 +161,7 @@ class BuildTest(unittest.TestCase):  # P82-AC-030, 031
     @unittest.skipUnless(CLAUDE, NO_CLAUDE)
     def test_claude_validates_the_agent(self):
         proc = subprocess.run([CLAUDE, "plugin", "validate", "--strict", "--json",
-                               str(self.out / "modsys")], capture_output=True, text=True,
+                               str(self.out / "segmently-modules")], capture_output=True, text=True,
                               timeout=120, env=claude_env(self.base / "claude-config"))
         self.assertEqual(proc.returncode, 0, proc.stdout)
         self.assertTrue(json.loads(proc.stdout)["success"])
@@ -170,9 +170,9 @@ class BuildTest(unittest.TestCase):  # P82-AC-030, 031
 class DocsTest(unittest.TestCase):  # P82-AC-033
     def test_skills_doc(self):
         text = " ".join((ENGINE / "docs/skills.md").read_text(encoding="utf-8").split())
-        for needle in ("`modsys:module-chooser`", "Read, Grep, Glob", "model: <search.claude_model>",
+        for needle in ("`segmently-modules:module-chooser`", "Read, Grep, Glob", "model: <search.claude_model>",
                        "`model: sonnet`", "only a call without a model",
-                       "modsys templates override choose/rules.md",
+                       "segmently-modules templates override choose/rules.md",
                        "replaces the agent file in the plugin cache",
                        'builtin_delivery = "repo"'):  # "Codex ignores `agents/`": P84-AC-010
             self.assertIn(needle, text)

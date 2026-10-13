@@ -4,8 +4,8 @@ import os
 import tempfile
 import unittest
 
-from modsys.config import PACK_META_KEYS
-from modsys.lint import PACK_SECTIONS
+from segmently_modules.config import PACK_META_KEYS
+from segmently_modules.lint import PACK_SECTIONS
 from tests.helpers import copy_fixture, init_git, run, run_json
 
 SKILL = "---\nname: api-review\ndescription: Reviews API changes.\n---\n"
@@ -19,13 +19,13 @@ class PackLintRepo(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = copy_fixture(self._tmp.name)
         self.R = ("--root", str(self.root))
-        self.team = self.root / ".modsys/packs/team"
+        self.team = self.root / ".segmently-modules/packs/team"
 
     def tearDown(self):
         self._tmp.cleanup()
 
     def pack(self, body: str, pack_id: str = "team", priority: int = 50, files=None) -> None:
-        d = self.root / ".modsys/packs" / pack_id
+        d = self.root / ".segmently-modules/packs" / pack_id
         d.mkdir(parents=True, exist_ok=True)
         (d / "pack.toml").write_text(f'id = "{pack_id}"\nversion = "0.1.0"\n'
                                      f'priority = {priority}\n{body}', encoding="utf-8")
@@ -43,7 +43,7 @@ class PackLintRepo(unittest.TestCase):
 
 class PackKeysAndTemplatesTest(PackLintRepo):  # P4A-AC-012
     def test_unknown_keys(self):
-        toml = ".modsys/packs/team/pack.toml"
+        toml = ".segmently-modules/packs/team/pack.toml"
         self.pack('colour = "x"\n[role.designer]\norder = 1\n' + ROLE
                   + "standrad = true\nbudget = 200\nconsumed_by = []\n" + SKILLS + "reads = []\n")
         self.assertEqual(self.findings(), [
@@ -69,21 +69,21 @@ class PackKeysAndTemplatesTest(PackLintRepo):  # P4A-AC-012
         self.assertEqual(self.findings(), [])
 
     def test_role_templates(self):
-        (self.root / ".modsys/outside.md").write_text("# outside\n")
+        (self.root / ".segmently-modules/outside.md").write_text("# outside\n")
         self.pack('[roles.reviewer]\ntemplate = "roles/missing.md"\n'
                   '[roles.auditor]\ntemplate = "../../outside.md"\n', files={})
         self.assertEqual(self.findings(), [
             ("MS061", "error", "*", "pack 'team': role 'reviewer' template 'roles/missing.md' "
-                                    "does not exist", ".modsys/packs/team/roles/missing.md"),
+                                    "does not exist", ".segmently-modules/packs/team/roles/missing.md"),
             ("MS061", "error", "*", "pack 'team': role 'auditor' template '../../outside.md' "
-                                    "is outside the pack", ".modsys/packs/team/pack.toml")])
+                                    "is outside the pack", ".segmently-modules/packs/team/pack.toml")])
 
     def test_roles_a_skill_reads(self):
         self.pack(ROLE + SKILLS.replace('["reviewer"]', '["reviewer", "nosuch"]'))
         self.assertEqual(self.findings(), [
             ("MS064", "warning", "*", "skill 'api-review' of pack 'team' reads role 'nosuch', "
-                                      "which no layer configures", ".modsys/packs/team/pack.toml")])
-        (self.root / ".modsys/config.toml").write_text("[roles.reviewer]\nenabled = false\n")
+                                      "which no layer configures", ".segmently-modules/packs/team/pack.toml")])
+        (self.root / ".segmently-modules/config.toml").write_text("[roles.reviewer]\nenabled = false\n")
         self.assertEqual([f[3] for f in self.findings()], [
             "skill 'api-review' of pack 'team' reads role 'reviewer', which is disabled",
             "skill 'api-review' of pack 'team' reads role 'nosuch', which no layer configures"])
@@ -94,7 +94,7 @@ class PackKeysAndTemplatesTest(PackLintRepo):  # P4A-AC-012
         self.assertEqual(self.findings(), [
             ("MS065", "warning", "*", "skill 'api-review' of pack 'b' is shadowed by pack 'a' "
                                       "(higher precedence); rename one",
-             ".modsys/packs/b/pack.toml")])
+             ".segmently-modules/packs/b/pack.toml")])
 
     def test_where_the_findings_show_and_what_fails(self):
         self.pack('colour = "x"\n' + SKILLS.replace('["reviewer"]', '["nosuch"]'))
@@ -124,13 +124,13 @@ class SkillLoadableTest(PackLintRepo):  # P4A-AC-013
                                                              "info": 0}))
 
     def test_path_problems(self):
-        toml = ".modsys/packs/team/pack.toml"
+        toml = ".segmently-modules/packs/team/pack.toml"
         self.pack(SKILLS.replace('["reviewer"]', "[]"), files={})
         self.assertEqual(self.ms062(), [("the path does not exist", toml)])
         (self.team / "skills").mkdir()
         (self.team / "skills/api-review").write_text("a file\n")
         self.assertEqual(self.ms062(), [("the path is not a directory", toml)])
-        (self.root / ".modsys/packs/other/skills/api-review").mkdir(parents=True)
+        (self.root / ".segmently-modules/packs/other/skills/api-review").mkdir(parents=True)
         self.pack('[skills.api-review]\npath = "../other/skills/api-review"\n', files={})
         self.assertEqual(self.ms062(), [("the path is outside the pack directory", toml)])
 
@@ -139,11 +139,11 @@ class SkillLoadableTest(PackLintRepo):  # P4A-AC-013
         (self.team / "skills/api-review/references").mkdir()
         os.symlink("../SKILL.md", self.team / "skills/api-review/references/link.md")
         self.assertEqual(self.ms062(), [("symlink in source: references/link.md",
-                                         ".modsys/packs/team/skills/api-review")])
+                                         ".segmently-modules/packs/team/skills/api-review")])
 
     def test_skill_md_problems(self):
         self.pack(SKILLS.replace('["reviewer"]', "[]"), files={"skills/api-review/x.md": "x\n"})
-        self.assertEqual(self.ms062(), [("no SKILL.md", ".modsys/packs/team/skills/api-review")])
+        self.assertEqual(self.ms062(), [("no SKILL.md", ".segmently-modules/packs/team/skills/api-review")])
         md = self.team / "skills/api-review/SKILL.md"
         for text, reason in [
                 ("# no front matter\n", "SKILL.md has no front matter (a --- block at the top, "
@@ -157,7 +157,7 @@ class SkillLoadableTest(PackLintRepo):  # P4A-AC-013
                  "SKILL.md description has 1025 characters (max 1024)")]:
             with self.subTest(reason=reason):
                 md.write_text(text, encoding="utf-8")
-                self.assertEqual(self.ms062(), [(reason, ".modsys/packs/team/skills/api-review/"
+                self.assertEqual(self.ms062(), [(reason, ".segmently-modules/packs/team/skills/api-review/"
                                                          "SKILL.md")])
         md.write_text(SKILL, encoding="utf-8")
         self.assertEqual(self.ms062(), [])
@@ -168,7 +168,7 @@ class SkillLoadableTest(PackLintRepo):  # P4A-AC-013
         colon = ("SKILL.md description: quote the value — a plain YAML value cannot contain ': ' "
                  "(agents' YAML loaders reject it)")
         md.write_text("---\nname: api-review\ndescription: Use when: the API changes\n---\n")
-        self.assertEqual(self.ms062(), [(colon, ".modsys/packs/team/skills/api-review/SKILL.md")])
+        self.assertEqual(self.ms062(), [(colon, ".segmently-modules/packs/team/skills/api-review/SKILL.md")])
         code, env, _ = run_json("packs", "sync", "--agent", "claude", *self.R)
         self.assertEqual((code, env["data"]["skills"][0]["status"],
                           env["data"]["skills"][0]["reason"]), (1, "invalid", colon))
@@ -184,7 +184,7 @@ class SkillLoadableTest(PackLintRepo):  # P4A-AC-013
         md.write_text("---\nname: api-review\ndescription: @team reviews API changes\n---\n")
         self.assertEqual(self.ms062(), [(
             "SKILL.md description: quote the value — a plain YAML value cannot start with '@' "
-            "(agents' YAML loaders reject it)", ".modsys/packs/team/skills/api-review/SKILL.md")])
+            "(agents' YAML loaders reject it)", ".segmently-modules/packs/team/skills/api-review/SKILL.md")])
 
 
 if __name__ == "__main__":

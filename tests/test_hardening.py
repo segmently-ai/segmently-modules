@@ -10,8 +10,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys.output import UsageError
-from modsys.workspace import find_root
+from segmently_modules.output import UsageError
+from segmently_modules.workspace import find_root
 from tests.helpers import git, init_git, make_repo, run, run_json
 
 LAYERED = ('[[code_map]]\nid = "repos"\npattern = "app/repositories/{module}.py"\n'
@@ -60,7 +60,7 @@ class CoverageGitFailureTest(Repo):  # P32-AC-023
 
 class CoverageCountedSetTest(Repo):  # P32-AC-024
     def test_an_empty_include_is_refused(self):
-        write(self.root / ".modsys/config.toml", "[coverage]\ninclude = []\n")
+        write(self.root / ".segmently-modules/config.toml", "[coverage]\ninclude = []\n")
         err = self.refused("coverage")
         self.assertIn("config.toml: [coverage] include", err)
         self.assertIn("omit include to count every file", err)
@@ -69,10 +69,10 @@ class CoverageCountedSetTest(Repo):  # P32-AC-024
         (self.root / "modules/registry.json").rename(self.root / "registry.json")
         write(self.root / "registry.json.lock", "")
         write(self.root / "queue/r1-a.json", "{}\n")
-        write(self.root / "modsys-config/config.toml",
+        write(self.root / "segmently-modules-config/config.toml",
               '[paths]\nregistry = "registry.json"\nproposals_dir = "queue/"\n')
         init_git(self.root)
-        code, env, err = run_json("coverage", "--config-dir", str(self.root / "modsys-config"),
+        code, env, err = run_json("coverage", "--config-dir", str(self.root / "segmently-modules-config"),
                                   *self.R)
         self.assertEqual((code, err), (0, ""))
         self.assertEqual((env["data"]["total"], env["data"]["unmapped"]), (1, ["src/tasks/a.py"]))
@@ -94,7 +94,7 @@ class InitGitignoreAndLayoutTest(unittest.TestCase):  # P32-AC-025
         ignore.write_bytes(b"node_modules/\r\n")
         self.assertEqual(run("init", *self.R)[0], 0)
         self.assertEqual(ignore.read_bytes(), b"node_modules/\r\nmodules/registry.json.lock\r\n"
-                                              b".modsys/proposals/\r\n.modsys/init/\r\n.modsys/config.user.toml\r\n")  # P5a D3
+                                              b".segmently-modules/proposals/\r\n.segmently-modules/init/\r\n.segmently-modules/config.user.toml\r\n")  # P5a D3
 
     def test_a_symlinked_gitignore_stays_a_symlink(self):
         shared = self.root / "shared" / "ignore.txt"
@@ -103,13 +103,13 @@ class InitGitignoreAndLayoutTest(unittest.TestCase):  # P32-AC-025
         self.assertEqual(run("init", *self.R)[0], 0)
         self.assertTrue((self.root / ".gitignore").is_symlink())
         self.assertEqual(shared.read_text(), "node_modules/\nmodules/registry.json.lock\n"
-                                             ".modsys/proposals/\n.modsys/init/\n.modsys/config.user.toml\n")  # P5a D3
+                                             ".segmently-modules/proposals/\n.segmently-modules/init/\n.segmently-modules/config.user.toml\n")  # P5a D3
 
     def test_single_to_per_module_names_index_split(self):
         run("init", *self.R)
         code, out, err = run("init", "--layout", "per-module", *self.R)
         self.assertEqual((code, out), (2, ""))
-        self.assertIn("modsys index split", err)
+        self.assertIn("segmently-modules index split", err)
 
     def test_per_module_to_single_names_the_real_path_and_it_works(self):
         run("init", "--layout", "per-module", *self.R)
@@ -120,10 +120,10 @@ class InitGitignoreAndLayoutTest(unittest.TestCase):  # P32-AC-025
         code, out, err = run("init", "--layout", "single", *self.R)
         self.assertEqual((code, out), (2, ""))
         self.assertNotIn("index split", err)
-        self.assertIn("modsys index build", err)
+        self.assertIn("segmently-modules index build", err)
         self.assertIn('registry_layout = "single"', err)
         run("index", "build", *self.R)  # the path the message states
-        config = self.root / ".modsys/config.toml"
+        config = self.root / ".segmently-modules/config.toml"
         config.write_text(config.read_text().replace('registry_layout = "per-module"',
                                                      'registry_layout = "single"'))
         _, env, _ = run_json("list", *self.R)
@@ -132,7 +132,7 @@ class InitGitignoreAndLayoutTest(unittest.TestCase):  # P32-AC-025
 
 class RulingsTest(Repo):  # P32-AC-026
     def test_p31_r4_ms052_only_in_plain_lint(self):
-        write(self.root / ".modsys/config.toml",
+        write(self.root / ".segmently-modules/config.toml",
               '[[code_map]]\nid = "src"\npattern = "src/{module}/**"\n'
               '[[code_map]]\nid = "typo"\nmodule = "ghost"\nglobs = ["g/**"]\n')
         init_git(self.root)
@@ -153,7 +153,7 @@ class RulingsTest(Repo):  # P32-AC-026
         self.assertEqual(run("index", "build", "--check", *self.R)[0], 0)
 
     def test_p31_r2_a_capture_naming_no_module_leaves_the_file_to_the_layer(self):
-        write(self.root / ".modsys/config.toml", LAYERED)
+        write(self.root / ".segmently-modules/config.toml", LAYERED)
         _, env, _ = run_json("sync", "--files", "app/repositories/base.py",
                              "app/repositories/tasks.py", "--dry-run", *self.R)
         self.assertEqual({m["module"]: m["files"] for m in env["data"]["modules"]},
@@ -163,8 +163,8 @@ class RulingsTest(Repo):  # P32-AC-026
 
 class WriterRefusalPathsTest(Repo):  # P32-AC-027
     def queue(self, items: list) -> Path:
-        path = self.root / ".modsys/proposals/q1-pipeline.json"
-        write(path, json.dumps({"schema": "modsys.proposal/1", "run_id": "q1",
+        path = self.root / ".segmently-modules/proposals/q1-pipeline.json"
+        write(path, json.dumps({"schema": "segmently-modules.proposal/1", "run_id": "q1",
                                 "agent": "pipeline", "created_at": "2026-01-01T00:00:00Z",
                                 "items": items}))
         return path
@@ -181,7 +181,7 @@ class WriterRefusalPathsTest(Repo):  # P32-AC-027
     def test_hook_and_queued_proposals(self):
         hook = json.dumps({"proposals": [{"op": "set", "module": "tasks", "field": "status",
                                           "value": "wip", "reason": "hook"}]})
-        write(self.root / ".modsys/config.toml",
+        write(self.root / ".segmently-modules/config.toml",
               f'[[hooks.post_sync]]\nid = "gate"\nrequired = true\n'
               f'run = [{json.dumps(sys.executable)}, "-c", {json.dumps(f"print({hook!r})")}]\n')
         self.queue([{"id": "1", "op": "set", "module": "tasks", "field": "status",

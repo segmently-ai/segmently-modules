@@ -22,15 +22,15 @@ class AllOrNothingTest(AllOrNothingBase):  # P6-AC-031 (SI-16)
         hook.chmod(0o755)
         self.change_a_skill()
         self.failed("dev", "step 8 smoke install failed", env={"FAKE_CLAUDE_FAIL": "install"})
-        self.failed("stable", "step 4 build failed", env={"FAIL_COMMIT": "release modsys"})
+        self.failed("stable", "step 4 build failed", env={"FAIL_COMMIT": "release segmently-modules"})
         self.failed("stable", "step 5 validate failed", env={"FAKE_CLAUDE_FAIL": "validate"})
         self.failed("stable", "step 8 smoke install failed", env={"FAKE_CLAUDE_FAIL": "install"})
         err = self.failed("stable", "step 8 smoke install failed",
                           env={"FAKE_CLAUDE_FAIL": "details"})  # whole names, not substrings
-        self.assertIn("claude plugin details modsys does not name module-", err)
-        self.failed("stable", "step 9 next version failed", env={"FAIL_COMMIT": "start modsys"})
+        self.assertIn("claude plugin details segmently-modules does not name module-", err)
+        self.failed("stable", "step 9 next version failed", env={"FAIL_COMMIT": "start segmently-modules"})
         for seam in ("6", "7"):  # in the middle of step 6; after the commit, before the tags
-            self.failed("stable", "interrupted", env={"MODSYS_RELEASE_INTERRUPT": seam},
+            self.failed("stable", "interrupted", env={"SEGMENTLY_MODULES_RELEASE_INTERRUPT": seam},
                         code=130)  # P61-AC-036: the notes it dated in step 4 are put back
             self.assertIn(f"CHANGELOG.md [Unreleased] dated [{REL}] - {DATE}\n",
                           self.last.stdout)
@@ -44,7 +44,7 @@ class AllOrNothingTest(AllOrNothingBase):  # P6-AC-031 (SI-16)
     def test_sigterm_and_a_closed_terminal_are_an_interrupt(self):
         self.failed("dev", "release.py: interrupted", env={"FAKE_GUARD_MODE": "hangup"},
                     code=130)
-        self.git_wrapper('case "$*" in *"commit -q -m release modsys"*"(dev)"*) '
+        self.git_wrapper('case "$*" in *"commit -q -m release segmently-modules"*"(dev)"*) '
                          'kill -TERM $PPID; sleep 5; exit 1 ;; esac')
         self.failed("dev", "release.py: interrupted", code=130)
 

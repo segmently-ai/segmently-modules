@@ -1,14 +1,14 @@
 """The text of the four skills that find modules (P8.1 task 5, rewritten by P8.2 task 5: D1, D5,
-D8, F20). The shared "choose modules" step — `modsys catalog`, the mode, the work order of
-`modsys choose` handed to the shipped `modsys:module-chooser` agent (Claude Code), to
-`codex exec` (Codex) or answered in the session (elsewhere), `modsys choose --apply`, the keyword
+D8, F20). The shared "choose modules" step — `segmently-modules catalog`, the mode, the work order of
+`segmently-modules choose` handed to the shipped `segmently-modules:module-chooser` agent (Claude Code), to
+`codex exec` (Codex) or answered in the session (elsewhere), `segmently-modules choose --apply`, the keyword
 half, the merge — is word for word the same in module-discover, module-sync, module-scout and
 module-research (P82-AC-034…039). A `lexical` config never skips the search by meaning (D1); the
 depth sentences live in the order's rules, the user's depth travels as `choose --effort` (D8);
 module-discover passes `--files` as separate arguments (F20, P82-AC-040), and the commands of the
 step run on the split fixture with a canned chooser reply (P82-AC-038, P82-AC-040). Sizes and
 descriptions are pinned by `test_budgets` and `test_builtin_skills` (P82-AC-041). Every task text
-goes to modsys through a file (final review M-6), and every `match` / `context` / `discover`
+goes to segmently-modules through a file (final review M-6), and every `match` / `context` / `discover`
 given a task in a shipped skill, reference or template runs `--match lexical` (final review I-1,
 P8.2 ruling M-6): a repository's `[match] mode` never turns a skill's keyword check into an agent
 run."""
@@ -21,8 +21,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys.config import builtin_packs_root
-from modsys.packs_cmd import scaffold_files
+from segmently_modules.config import builtin_packs_root
+from segmently_modules.packs_cmd import scaffold_files
 from tests.helpers import (SPLIT_FIXTURE, changelog_since_first_release, copy_fixture, init_git,
                            run, run_json)
 from tests.test_builtin_skills import argv, commands, section, uses
@@ -33,11 +33,11 @@ MODE = "The mode:"  # the shared text starts here …
 MEANING = "- By meaning (`semantic`, `hybrid`):"
 KEYWORD = "- By keyword (`lexical`, `hybrid`):"  # … the skill's own keyword half sits here …
 HYBRID = "- `hybrid`: merge the lists; a module found both ways ranks first."  # … then the merge
-AGENT = "modsys:module-chooser"
-CLAUDE_CODE = "modsys choose --task-file <task file> > <order file>"
+AGENT = "segmently-modules:module-chooser"
+CLAUDE_CODE = "segmently-modules choose --task-file <task file> > <order file>"
 CODEX = ("codex exec -m <search.codex_model> -c model_reasoning_effort=<reasoning> "
          "--sandbox read-only --output-schema <schema file> - < <order file>")  # AC-038 amended
-APPLY = "modsys choose --apply - --json"
+APPLY = "segmently-modules choose --apply - --json"
 F20 = ("`--files` takes the paths as separate arguments (`--files a.ts b/c.ts`); one quoted string "
        "is one path.")
 
@@ -125,7 +125,7 @@ def strict_problems(node, path: str, objects: list[str]) -> list[str]:
 class SharedStepTest(unittest.TestCase):  # P82-AC-034…039
     PHRASES = [
         # fix 1 I-1: the mode key only; `match.semantic` is the CLI's agent command, not the skill's
-        "modsys catalog --json", "read `match.mode` and `search`.",
+        "segmently-modules catalog --json", "read `match.mode` and `search`.",
         # D1 (P82-AC-035): hybrid, whatever a lexical config says; English examples (SI-P82-21)
         "The mode: `hybrid` unless the user says otherwise",
         '("only lexical", "by meaning", in any language)',
@@ -211,12 +211,12 @@ class SharedStepTest(unittest.TestCase):  # P82-AC-034…039
                 cmds = commands(section(text(skill), "## Steps"))
                 for verb in (("catalog",), ("choose", "--task-file"), ("choose", "--apply")):
                     self.assertTrue(uses(cmds, verb), verb)
-                self.assertEqual(command(skill, "modsys choose --task-file <task file>"), CLAUDE_CODE)
+                self.assertEqual(command(skill, "segmently-modules choose --task-file <task file>"), CLAUDE_CODE)
 
     def test_the_agent_is_the_shipped_one(self):  # D4 / D5: the name the skills hand work to
-        agent = (ENGINE / "modsys/defaults/agents/module-chooser.md").read_text("utf-8")
+        agent = (ENGINE / "segmently_modules/defaults/agents/module-chooser.md").read_text("utf-8")
         name = re.search(r"^name: (\S+)$", agent, re.M).group(1)
-        self.assertEqual(AGENT, f"modsys:{name}")
+        self.assertEqual(AGENT, f"segmently-modules:{name}")
 
     def test_keyword_commands_are_lexical(self):  # review I-1, ruling M-6
         for skill in SKILLS:
@@ -287,7 +287,7 @@ class CommandsRunTest(unittest.TestCase):  # P82-AC-036, 038, 039, 040
 
     def order(self, skill: str, *extra: str) -> tuple[str, Path]:
         """The skill's `choose` command, filled in and run; its output in `<order file>`."""
-        args, target = filled(command(skill, "modsys choose --task-file <task file>"), self.values)
+        args, target = filled(command(skill, "segmently-modules choose --task-file <task file>"), self.values)
         out = self.cli([*args, *extra])
         Path(target).write_text(out, encoding="utf-8")
         return out, Path(target)
@@ -304,16 +304,16 @@ class CommandsRunTest(unittest.TestCase):  # P82-AC-036, 038, 039, 040
                 reply = json.dumps({"picks": [{"module": "orders/refunds", "confidence": 0.9,
                                                "reason": "returned books"}],
                                     "none": False, "catalog_digest": digest})
-                args, target = filled(command(skill, "modsys choose --apply"), {})
+                args, target = filled(command(skill, "segmently-modules choose --apply"), {})
                 self.assertIsNone(target)
                 applied = json.loads(self.cli(args, stdin=reply))
-                self.assertEqual(applied["schema"], "modsys.choose/1")
+                self.assertEqual(applied["schema"], "segmently-modules.choose/1")
                 pick = applied["data"]["picks"][0]
                 self.assertEqual(pick["module"], "orders/refunds")
                 self.assertTrue(pick["read"])
 
     def test_codex_path_writes_the_schema_file(self):  # P82-AC-038
-        args, _ = filled(command("module-sync", "modsys choose --task-file <task file>"), self.values)
+        args, _ = filled(command("module-sync", "segmently-modules choose --task-file <task file>"), self.values)
         envelope = json.loads(self.cli([*args, "--json"]))  # "the same with `--json`"
         (self.files / "order.json").write_text(json.dumps(envelope), encoding="utf-8")
         schema_file = self.files / "schema.json"  # "its `answer_schema` written to <schema file>"
@@ -338,7 +338,7 @@ class CommandsRunTest(unittest.TestCase):  # P82-AC-036, 038, 039, 040
 
     def test_the_users_depth(self):  # D8, SI-P82-14 ruling (b): "search deep" -> --effort deep
         default = json.loads(self.cli(["choose", "--task-file", str(self.task), "--json"]))
-        args, _ = filled(command("module-scout", "modsys choose --task-file <task file>"), self.values)
+        args, _ = filled(command("module-scout", "segmently-modules choose --task-file <task file>"), self.values)
         deep = json.loads(self.cli([*args, "--effort", "deep", "--json"]))
         self.assertEqual(deep["data"]["search"]["effort"], "deep")
         self.assertNotEqual(deep["data"]["rules"], default["data"]["rules"])
@@ -347,12 +347,12 @@ class CommandsRunTest(unittest.TestCase):  # P82-AC-036, 038, 039, 040
 
     def test_discover_commands_in_order(self):  # P82-AC-040
         self.order("module-discover")  # the task file, then the order to <order file>
-        args, _ = filled(command("module-discover", "modsys choose --apply"), {})
+        args, _ = filled(command("module-discover", "segmently-modules choose --apply"), {})
         reply = json.dumps({"picks": [{"module": "orders", "confidence": 0.8, "reason": "r"}],
                             "none": False, "catalog_digest": None})
         self.assertEqual(json.loads(self.cli(args, stdin=reply))["data"]["picks"][0]["module"],
                          "orders")
-        args, _ = filled(command("module-discover", "modsys code-map files"),
+        args, _ = filled(command("module-discover", "segmently-modules code-map files"),
                          {"<module>": "orders"})
         mapped = json.loads(self.cli(args))["data"]["files"]
         self.assertIn("src/orders/service.py",
@@ -360,7 +360,7 @@ class CommandsRunTest(unittest.TestCase):  # P82-AC-036, 038, 039, 040
         keywords = self.files / "queries.txt"  # the keyword half's `<file>`
         keywords.write_text("refund\norder service\n", encoding="utf-8")
         found = "src/orders/service.py src/payments/gateway.py"  # separate arguments (F20)
-        args, _ = filled(command("module-discover", "modsys discover --files"),
+        args, _ = filled(command("module-discover", "segmently-modules discover --files"),
                          {"<touch-point files>": found, "<file>": str(keywords)})
         self.assertEqual(args[:3], ["discover", "--files", "src/orders/service.py"])
         data = json.loads(self.cli(args))["data"]
@@ -415,9 +415,9 @@ class EveryShippedTextIsLexicalTest(unittest.TestCase):  # final review I-1 (and
                     self.assertNotIn("--task", a)
 
     def test_the_scan_sees_a_missing_flag(self):
-        for body in ('`modsys context --task "<t>" --role <r>`',
-                     "```bash\nmodsys match x --json\n```",
-                     "`modsys discover --task-file <f> --match hybrid --json`"):
+        for body in ('`segmently-modules context --task "<t>" --role <r>`',
+                     "```bash\nsegmently-modules match x --json\n```",
+                     "`segmently-modules discover --task-file <f> --match hybrid --json`"):
             a = argv(commands(body)[0])
             self.assertFalse("--match" in a and a[a.index("--match") + 1] == "lexical", body)
 
@@ -447,7 +447,7 @@ class OtherKeysTest(unittest.TestCase):  # review M-9: the keys the steps read, 
 
 class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20)
     ORDER = [  # P8.6 D2: the complete context pull of the host original
-        "modsys catalog --json",
+        "segmently-modules catalog --json",
         "1–3 short English queries",  # F6a: the registry's language, domain terms, identifiers
         "(steps 6 and 7 use it too)",  # review M-4
         "the domain terms and code identifiers",
@@ -455,7 +455,7 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20
         '"only lexical"',
         MEANING,
         f"`{APPLY}`",
-        f"{KEYWORD} `modsys discover --task-file <file> --match lexical --json`",
+        f"{KEYWORD} `segmently-modules discover --task-file <file> --match lexical --json`",
         HYBRID,
         "Modules the user named join the list with a boost",
         "**Verify.**", "the child the task is in",
@@ -463,14 +463,14 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20
         "**One hop out.**", "forward `depends-on`, `implemented-in` and `shares-contract` edges",
         "**Usage.**", "`modify` — the task changes its code or its contracts",
         "`consume` — the task calls its API as it is", "`reference` — the task only follows",
-        "**Docs for every role.**", "modsys show <module> --all-roles --json",
+        "**Docs for every role.**", "segmently-modules show <module> --all-roles --json",
         "read, nothing for this task",
-        "**Code touch points.**", "modsys code-map files <module> --json",
+        "**Code touch points.**", "segmently-modules code-map files <module> --json",
         "the files whose `via` holds more than `docs`",  # review I-2: a doc is not code
         "source files first, tests last; the rest of the repository only when that gives nothing",
         "`file:line — symbol — why`", "it never guesses the files the work will create",
         "**Owners and docs to update.**",
-        "modsys discover --files <touch-point files> --task-file <file> --match lexical --json",
+        "segmently-modules discover --files <touch-point files> --task-file <file> --match lexical --json",
         F20,  # P82-AC-040
         "**Report**", "`references/report.md`",
     ]
@@ -488,12 +488,12 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20
 
 class SyncTest(unittest.TestCase):  # P81-AC-042 (F10, F13, F15)
     ORDER = [
-        "modsys sync-instructions --from-diff <base>..HEAD --json",
+        "segmently-modules sync-instructions --from-diff <base>..HEAD --json",
         "`children` on a split parent: pick the child the change is in",  # F10
-        "modsys catalog --json",  # F13: the docs that describe the change, in the mode
+        "segmently-modules catalog --json",  # F13: the docs that describe the change, in the mode
         "The text: a summary of the change with its identifiers",
         "joins the modules to update, with the docs the search listed",  # review M-6
-        "modsys registry append <module> keywords",
+        "segmently-modules registry append <module> keywords",
         "Add one only for a new feature, command or concept that people will name in later tasks",  # P84-AC-020
         "never a code identifier",
     ]
@@ -505,7 +505,7 @@ class SyncTest(unittest.TestCase):  # P81-AC-042 (F10, F13, F15)
 
     def test_the_keyword_half_is_discover(self):
         body = flat(text("module-sync"))
-        self.assertIn(f'{KEYWORD} `modsys discover --task-file <', body)
+        self.assertIn(f'{KEYWORD} `segmently-modules discover --task-file <', body)
 
     def test_temporary_files_go_outside_the_repository(self):  # fix 1 M-3: the order files
         scope = flat(section(text("module-sync"), "## Scope"))
@@ -521,7 +521,7 @@ class ScoutAndResearchTest(unittest.TestCase):  # P81-AC-043
         self.assertTrue(all(parts.values()), parts)
         self.assertEqual(parts["module-scout"], parts["module-research"])
         self.assertIn("The mode: `hybrid` unless", parts["module-scout"])
-        self.assertIn(f'{KEYWORD} `modsys context --task-file <', parts["module-scout"])
+        self.assertIn(f'{KEYWORD} `segmently-modules context --task-file <', parts["module-scout"])
         self.assertIn("Keep the top 3;", parts["module-scout"])  # review M-7
 
     def test_scout_keeps_the_retry_rule(self):  # review M-8
@@ -539,7 +539,7 @@ class DocsTest(unittest.TestCase):  # P8.2 task 5: docs/skills.md follows the sh
         doc = flat((ENGINE / "docs/skills.md").read_text(encoding="utf-8"))
         part = doc.split("## Choosing modules by meaning", 1)[1].split(" ## ", 1)[0]
         for needle in (f"`{CLAUDE_CODE}`", f"`{AGENT}`", f"`{CODEX}`",
-                       "reads `match.mode` and `search`", "`--effort deep` to `modsys choose`",
+                       "reads `match.mode` and `search`", "`--effort deep` to `segmently-modules choose`",
                        "A `lexical` config",
                        "is only the command line's default and never skips the search by meaning",
                        "always pass `--match lexical`",

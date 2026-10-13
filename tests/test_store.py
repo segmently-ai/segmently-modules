@@ -11,13 +11,13 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import modsys
-from modsys.output import UsageError
-from modsys.store import RegistryStore, open_store, serialize
-from modsys.workspace import Workspace
+import segmently_modules
+from segmently_modules.output import UsageError
+from segmently_modules.store import RegistryStore, open_store, serialize
+from segmently_modules.workspace import Workspace
 from tests.helpers import FIXTURE, copy_fixture
 
-ENGINE_ROOT = str(Path(modsys.__file__).resolve().parents[1])
+ENGINE_ROOT = str(Path(segmently_modules.__file__).resolve().parents[1])
 
 
 class SerializeTest(unittest.TestCase):
@@ -82,7 +82,7 @@ class StoreTest(unittest.TestCase):
                          "2030-01-01T00:00:00Z")
 
     def test_open_store_uses_configured_path_and_stamp(self):
-        (self.root / ".modsys" / "config.toml").write_text(
+        (self.root / ".segmently-modules" / "config.toml").write_text(
             '[registry]\nupdated_at_path = "metadata.last_updated"\n', encoding="utf-8")
         store = open_store(Workspace.load(self.root))
         self.assertEqual(store.path, self.path.resolve())
@@ -99,7 +99,7 @@ class LockTest(unittest.TestCase):
                  "import sys, time\n"
                  f"sys.path.insert(0, {ENGINE_ROOT!r})\n"
                  "from pathlib import Path\n"
-                 "from modsys.store import RegistryStore\n"
+                 "from segmently_modules.store import RegistryStore\n"
                  f"with RegistryStore(Path({str(path)!r})).locked():\n"
                  "    print('locked', flush=True)\n"
                  "    time.sleep(1.5)\n"
@@ -124,7 +124,7 @@ class LockTest(unittest.TestCase):
             path.write_text('{"modules": {}}\n', encoding="utf-8")
             store = RegistryStore(path, lock_timeout_s=10)
             start = time.monotonic()
-            with mock.patch("modsys.store._try_lock",
+            with mock.patch("segmently_modules.store._try_lock",
                              side_effect=OSError(errno.ENOLCK, "No locks available")):
                 with self.assertRaises(UsageError) as ctx:
                     with store.locked():
@@ -139,7 +139,7 @@ class AtomicWriteFailureTest(unittest.TestCase):  # AC-006
         with tempfile.TemporaryDirectory() as tmp:
             path = copy_fixture(tmp) / "modules" / "registry.json"
             before = path.read_bytes()
-            with mock.patch("modsys.store.os.replace", side_effect=OSError("disk full")):
+            with mock.patch("segmently_modules.store.os.replace", side_effect=OSError("disk full")):
                 with self.assertRaises(OSError):
                     with RegistryStore(path).edit() as reg:
                         reg.raw["modules"]["catalog"]["status"] = "draft"

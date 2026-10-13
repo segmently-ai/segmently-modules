@@ -1,13 +1,13 @@
-"""modsys create: answers, roles, templates, children, rollback."""
+"""segmently-modules create: answers, roles, templates, children, rollback."""
 import io
 import json
 import tempfile
 import unittest
 from unittest import mock
 
-from modsys import create as creator
-from modsys.output import UsageError
-from modsys.workspace import Workspace
+from segmently_modules import create as creator
+from segmently_modules.output import UsageError
+from segmently_modules.workspace import Workspace
 from tests.helpers import copy_fixture, run, run_json
 
 KW = ["--keyword", "review", "--keyword", "rating", "--keyword", "stars",
@@ -28,11 +28,11 @@ class CreateTest(unittest.TestCase):
         return json.loads((self.root / "modules/registry.json").read_text())["modules"]
 
     def team(self, text):
-        (self.root / ".modsys/config.toml").write_text(text, encoding="utf-8")
+        (self.root / ".segmently-modules/config.toml").write_text(text, encoding="utf-8")
 
     def test_new_module_end_to_end_and_lint_clean(self):
         code, env, _ = run_json("create", "reviews", *DESC, *KW, "--non-interactive", *self.R)
-        self.assertEqual((code, env["schema"]), (0, "modsys.create/1"))
+        self.assertEqual((code, env["schema"]), (0, "segmently-modules.create/1"))
         self.assertEqual(env["data"]["files"], [
             "modules/reviews/MODULE.md", "modules/reviews/roles/architect.md",
             "modules/reviews/roles/developer.md", "modules/reviews/roles/po.md",
@@ -121,10 +121,10 @@ class CreateTest(unittest.TestCase):
         self.assertIn("unknown parent module 'nope'", err)
 
     def test_template_resolution_order(self):
-        over = self.root / ".modsys/overrides/templates"
+        over = self.root / ".segmently-modules/overrides/templates"
         over.mkdir(parents=True)
         (over / "MODULE.md").write_text("# ${title} (team template)\n")
-        pack = self.root / ".modsys/packs/bookshop"
+        pack = self.root / ".segmently-modules/packs/bookshop"
         (pack / "templates/roles").mkdir(parents=True)
         (pack / "templates/roles/qa.md").write_text("# ${title} QA from pack\n")
         (pack / "roles").mkdir()
@@ -146,7 +146,7 @@ class CreateTest(unittest.TestCase):
         self.assertFalse((self.root / "modules/reviews").exists())
 
     def test_interactive_prompts_fill_gaps(self):
-        with mock.patch("modsys.create.interactive", return_value=True), \
+        with mock.patch("segmently_modules.create.interactive", return_value=True), \
                 mock.patch("builtins.input", side_effect=[
                     DESC[1], "review, rating, stars, comment, moderation"]):
             code, _, _ = run("create", "reviews", *self.R)
@@ -170,7 +170,7 @@ class CreateTest(unittest.TestCase):
         self.assertEqual(self.reg()["reviews"], before_entry)
 
     def test_registry_failure_rolls_back_docs(self):
-        with mock.patch("modsys.store.RegistryStore.save",
+        with mock.patch("segmently_modules.store.RegistryStore.save",
                         side_effect=UsageError("registry changed since it was read")):
             code, _, err = run("create", "disputes", "--parent", "payments",
                                "--description", "Chargeback disputes raised by card issuers.",
@@ -241,7 +241,7 @@ class PurposeLineTest(unittest.TestCase):  # P5A-AC-005 (D0b)
         return (self.root / "modules/reviews/MODULE.md").read_text(encoding="utf-8")
 
     def override(self, text: str) -> None:
-        path = self.root / ".modsys/overrides/templates/MODULE.md"
+        path = self.root / ".segmently-modules/overrides/templates/MODULE.md"
         path.parent.mkdir(parents=True)
         path.write_text(text, encoding="utf-8")
 

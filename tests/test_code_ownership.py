@@ -40,7 +40,7 @@ class OwnershipLintTest(Repo):
     def test_an_active_module_without_code(self):
         root = self.repo(files=("src/shop/a.py",))  # `later` is planned: never reported
         self.assertEqual(self.findings(root, "MS054", "MS056"), [
-            ("MS054", "info", "theory", "active module maps no code file — map its code (modsys "
+            ("MS054", "info", "theory", "active module maps no code file — map its code (segmently-modules "
              "code-map add), list it in [coverage] doc_only when it owns no code on purpose, or "
              "retire it")])
 
@@ -82,7 +82,7 @@ class NextTest(Repo):
         item = next(i for i in self.items(root) if i["kind"] == "no-code")
         self.assertEqual((item["summary"], item["command"], item["modules"]),
                          ("1 active module(s) map no code file, so drift never fires for them: "
-                          "theory", "modsys lint", ["theory"]))
+                          "theory", "segmently-modules lint", ["theory"]))
 
     def test_a_role_item_lists_the_modules_without_the_doc(self):
         root = self.repo()

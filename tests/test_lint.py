@@ -39,7 +39,7 @@ class LintGapTest(unittest.TestCase):  # AC-025 … AC-029
     def test_whitelisted_and_stub_dirs_are_not_findings(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(tmp)
-            (root / ".modsys" / "config.toml").write_text('[registry]\ndir_whitelist = ["scratch"]\n')
+            (root / ".segmently-modules" / "config.toml").write_text('[registry]\ndir_whitelist = ["scratch"]\n')
             (root / "modules" / "scratch").mkdir()
             self.assertNotIn(("MS014", "error"), lint_codes(root))  # legacy-search stub too
 
@@ -71,7 +71,7 @@ class LintGapTest(unittest.TestCase):  # AC-025 … AC-029
                                   (("catalog", "payments"), {("MS021", "info")})]:
             with self.subTest(holders=holders), tempfile.TemporaryDirectory() as tmp:
                 root = copy_fixture(tmp)
-                (root / ".modsys" / "config.toml").write_text("[budgets]\nkeyword_shared_warn = 3\n")
+                (root / ".segmently-modules" / "config.toml").write_text("[budgets]\nkeyword_shared_warn = 3\n")
                 mutate_registry(root, lambda d: [d["modules"][m]["keywords"].append("order")
                                                  for m in holders])
                 self.assertEqual({c for c in lint_codes(root) if c[0] == "MS021"}, expected)
@@ -87,7 +87,7 @@ class LintGapTest(unittest.TestCase):  # AC-025 … AC-029
             with (root / "modules" / "catalog" / "MODULE.md").open("a") as fh:
                 fh.write(extra)
             self.assertNotIn(("MS040", "warning"), lint_codes(root))
-            (root / ".modsys" / "config.toml").write_text(
+            (root / ".segmently-modules" / "config.toml").write_text(
                 '[lint]\ncomponent_table_heading = "Other"\n')
             self.assertIn(("MS040", "warning"), lint_codes(root))
 
@@ -112,7 +112,7 @@ class LintGapTest(unittest.TestCase):  # AC-025 … AC-029
     def test_invalid_fail_on_config(self):  # AC-029
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(tmp)
-            (root / ".modsys" / "config.toml").write_text('[lint]\nfail_on = "sometimes"\n')
+            (root / ".segmently-modules" / "config.toml").write_text('[lint]\nfail_on = "sometimes"\n')
             code, out, err = run("lint", "--root", str(root))
         self.assertEqual((code, out), (2, ""))
         self.assertIn("never", err)

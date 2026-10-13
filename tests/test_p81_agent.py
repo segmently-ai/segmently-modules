@@ -15,7 +15,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modsys import agent as agent_mod
+from segmently_modules import agent as agent_mod
 from tests import SENTINEL_LOG
 from tests.agent_helpers import AgentRepo, picks
 from tests.helpers import run, run_json
@@ -45,9 +45,9 @@ class Base(AgentRepo, unittest.TestCase):
     def assert_catalog_notes(self, error: str) -> None:
         """P8.3 D6 (baseline update of P81-AC-058/060/062): `catalog` gives the refusal of the
         verbs that run the agent as one note — exit 0, `match.semantic` false."""
-        problem = error.removeprefix("modsys: error: ").removesuffix("\n")
+        problem = error.removeprefix("segmently-modules: error: ").removesuffix("\n")
         code, out, err = run("catalog", *self.R)
-        self.assertEqual((code, err), (0, f"modsys: note: {problem} — match.semantic is false\n"))
+        self.assertEqual((code, err), (0, f"segmently-modules: note: {problem} — match.semantic is false\n"))
         self.assertTrue(out)
         code, env, _ = run_json("catalog", *self.R)
         self.assertEqual((code, env["data"]["match"]["semantic"]), (0, False))
@@ -63,7 +63,7 @@ class TrustBoundaryTest(Base):
             self.assertEqual((code, out), (2, ""), argv)
             self.assertIn(needle, err)
             self.assertIn("[agent] is not read from files", err)
-            self.assertIn("MODSYS_AGENT_COMMAND", err)
+            self.assertIn("SEGMENTLY_MODULES_AGENT_COMMAND", err)
             self.assertNotIn("Traceback", err)
         self.assertEqual(self.calls(), [])
 
@@ -73,10 +73,10 @@ class TrustBoundaryTest(Base):
             for body in (f"[agent]\ncommand = {json.dumps(argv)}\n", "[agent]\ntimeout_s = 10\n"):
                 self.config(body, name)
                 self.refused_everywhere(name)
-            (self.root / ".modsys" / name).unlink()
+            (self.root / ".segmently-modules" / name).unlink()
 
     def test_a_pack_setting_is_refused(self):  # P81-AC-058
-        pack = self.root / ".modsys" / "packs" / "evil"
+        pack = self.root / ".segmently-modules" / "packs" / "evil"
         pack.mkdir(parents=True)
         (pack / "pack.toml").write_text('id = "evil"\nversion = "0.1.0"\n\n[agent]\n'
                                         f'command = {json.dumps(self.behaviour())}\n',
@@ -88,11 +88,11 @@ class TrustBoundaryTest(Base):
         evil = self.tmp / "evil.py"
         evil.write_text(f"import pathlib\npathlib.Path({str(marker)!r}).write_text('x')\n",
                         encoding="utf-8")
-        (self.root / ".modsys").mkdir(exist_ok=True)
-        (self.root / ".modsys" / "Config.User.Toml").write_text(
+        (self.root / ".segmently-modules").mkdir(exist_ok=True)
+        (self.root / ".segmently-modules" / "Config.User.Toml").write_text(
             f'[agent]\ncommand = ["{sys.executable}", "{evil}"]\n', encoding="utf-8")
         self.config('[match]\nmode = "hybrid"\n')
-        os.environ["MODSYS_AGENT_ALLOW_REPO_MODE"] = "1"  # D6: reach the agent settings
+        os.environ["SEGMENTLY_MODULES_AGENT_ALLOW_REPO_MODE"] = "1"  # D6: reach the agent settings
         for argv in (("match", MATCH_TASK), ("context", "--task", MATCH_TASK),
                      ("discover", "--task", MATCH_TASK), ("choose", "--task", "t", "--run"),
                      ("catalog",)):
@@ -113,12 +113,12 @@ class TrustBoundaryTest(Base):
     def test_invalid_env_is_refused(self):  # P81-AC-058 (P8.3 D6: catalog notes it)
         for bad in ("nope", '"a string"', '["ok", 3]', "[]", '{"a": 1}'):
             with self.subTest(bad=bad), mock.patch.dict(os.environ,
-                                                        {"MODSYS_AGENT_COMMAND": bad}):
+                                                        {"SEGMENTLY_MODULES_AGENT_COMMAND": bad}):
                 code, out, err = run("choose", "--task", "t", "--run", *self.R)
                 self.assertEqual((code, out), (2, ""))
-                self.assertIn("MODSYS_AGENT_COMMAND", err)
+                self.assertIn("SEGMENTLY_MODULES_AGENT_COMMAND", err)
                 self.assert_catalog_notes(err)
-        with mock.patch.dict(os.environ, {"MODSYS_AGENT_COMMAND": "  "}):  # empty = unset
+        with mock.patch.dict(os.environ, {"SEGMENTLY_MODULES_AGENT_COMMAND": "  "}):  # empty = unset
             self.assertEqual(run("catalog", *self.R)[0], 0)
 
     def test_timeout_variable_boundaries(self):  # P81-AC-062 / SI-P81-15
@@ -129,7 +129,7 @@ class TrustBoundaryTest(Base):
             self.agent(answer=picks(), timeout_s=bad)
             code, out, err = run("choose", "--task", "t", "--run", *self.R)
             self.assertEqual((code, out), (2, ""), bad)
-            self.assertIn("MODSYS_AGENT_TIMEOUT", err)
+            self.assertIn("SEGMENTLY_MODULES_AGENT_TIMEOUT", err)
             self.assert_catalog_notes(err)  # P8.3 D6
 
 
@@ -147,7 +147,7 @@ class RunningTest(Base):
         self.assertTrue(call["work_order_file"]["exists"])
         self.assertEqual(json.loads(call["work_order_file"]["content"]), order)
         self.assertEqual(json.loads(call["schema_file"]["content"]), order["answer_schema"])
-        skip = ("MODSYS_WORK_ORDER", "MODSYS_SCHEMA")
+        skip = ("SEGMENTLY_MODULES_WORK_ORDER", "SEGMENTLY_MODULES_SCHEMA")
         child = {k: v for k, v in call["env"].items() if k not in skip}
         extra = set(child) - set(before)  # what Python itself adds on macOS
         self.assertLessEqual(extra, {"__CF_USER_TEXT_ENCODING", "LC_CTYPE"})
@@ -179,13 +179,13 @@ class RunningTest(Base):
             self.assertIn(needle, err)
             self.assertIn(repr(item), err)
             self.assert_catalog_notes(err)  # P8.3 D6
-        os.environ["MODSYS_AGENT_COMMAND"] = '["{effort}", "x"]'
+        os.environ["SEGMENTLY_MODULES_AGENT_COMMAND"] = '["{effort}", "x"]'
         code, _, err = run("choose", "--task", "t", "--run", *self.R)
         self.assertEqual(code, 2)
         self.assertIn("argv[0]", err)
         self.assert_catalog_notes(err)
         for bad in ("[]", '[1]', '"string"'):
-            os.environ["MODSYS_AGENT_COMMAND"] = bad
+            os.environ["SEGMENTLY_MODULES_AGENT_COMMAND"] = bad
             code, _, err = run("choose", "--task", "t", "--run", *self.R)
             self.assertEqual(code, 2, bad)
             self.assert_catalog_notes(err)
@@ -242,7 +242,7 @@ class RunningTest(Base):
         code, out, err = self.choose()
         self.assertEqual((code, out), (2, ""))
         self.assertIn("printed nothing", err)
-        os.environ["MODSYS_AGENT_COMMAND"] = '["/nonexistent/agent-x", "--y"]'
+        os.environ["SEGMENTLY_MODULES_AGENT_COMMAND"] = '["/nonexistent/agent-x", "--y"]'
         code, out, err = self.choose()
         self.assertEqual((code, out), (2, ""))
         self.assertIn("/nonexistent/agent-x", err)
@@ -266,7 +266,7 @@ class RunningTest(Base):
                 self.agent(timeout_s=timeout, **cfg)
                 self.choose()
                 self.assertEqual(list(scratch.iterdir()), [], cfg)
-        self.assertFalse(list(self.root.rglob("*modsys-agent*")))
+        self.assertFalse(list(self.root.rglob("*segmently-modules-agent*")))
 
     def test_interrupt_kills_the_child_and_group(self):  # P81-AC-064 / AC-045 / review I1
         for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
@@ -279,7 +279,7 @@ class RunningTest(Base):
         scratch.mkdir()
         self.agent(sleep=60, started=str(started), grandchild=str(grand), answer="{}")
         env = {**os.environ, "PYTHONPATH": str(ENGINE), "TMPDIR": str(scratch)}
-        proc = subprocess.Popen([sys.executable, "-m", "modsys", "choose", "--task", TASK,
+        proc = subprocess.Popen([sys.executable, "-m", "segmently_modules", "choose", "--task", TASK,
                                  "--run", *self.R], env=env, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True, cwd=ENGINE,
                                 preexec_fn=lambda: [signal.signal(x, signal.SIG_DFL) for x in
@@ -332,7 +332,7 @@ class ChooseRunTest(Base):
 
     def test_without_an_agent_and_with_top_zero(self):  # P81-AC-065
         code, out, err = self.choose()
-        self.assertEqual((code, out, err), (2, "", f"modsys: error: {NO_AGENT}\n"))
+        self.assertEqual((code, out, err), (2, "", f"segmently-modules: error: {NO_AGENT}\n"))
         self.agent(answer=self.ANSWER)
         code, out, err = self.choose("--top", "0")
         self.assertEqual((code, out), (2, ""))
@@ -453,7 +453,7 @@ class ModesThroughTheAgentTest(Base):
         self.agent(answer=picks())
         self.no_agent()
         code, out, err = run("match", MATCH_TASK, "--match", "semantic", *self.R)
-        self.assertEqual((code, out, err), (2, "", f"modsys: error: {NO_AGENT}\n"))
+        self.assertEqual((code, out, err), (2, "", f"segmently-modules: error: {NO_AGENT}\n"))
         self.assertEqual(self.calls(), [])
 
 
@@ -474,7 +474,7 @@ class NothingWrittenTest(Base):
         self.assertEqual(tree_hash(self.root), before)
         self.assertFalse(list(self.root.rglob("*.lock")))
         self.assertFalse(list(self.root.rglob("semantic-index.json")))
-        self.assertFalse((self.root / ".modsys" / "cache").exists())
+        self.assertFalse((self.root / ".segmently-modules" / "cache").exists())
 
     def test_init_adds_no_cache_entry(self):  # P81-AC-073
         repo = self.tmp / "fresh"
@@ -487,7 +487,7 @@ class NothingWrittenTest(Base):
 class NoNetworkNoModelTest(Base):
     def test_source_scan(self):  # P81-AC-071
         banned = {"urllib", "http", "socket", "ssl"}
-        for path in sorted((ENGINE / "modsys").rglob("*.py")):
+        for path in sorted((ENGINE / "segmently_modules").rglob("*.py")):
             text = path.read_text(encoding="utf-8")
             for node in ast.walk(ast.parse(text)):
                 if isinstance(node, ast.Import):

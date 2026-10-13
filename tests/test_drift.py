@@ -60,20 +60,20 @@ class DriftLintTest(unittest.TestCase):
         git(self.root, "commit", "-qam", "code only")
         _, env, _ = self.lint()  # base HEAD: nothing changed since the commit
         self.assertEqual(env["data"]["changed"]["modules"], [])
-        (self.root / ".modsys/config.toml").write_text('[lint]\ndrift_severity = "error"\n')
+        (self.root / ".segmently-modules/config.toml").write_text('[lint]\ndrift_severity = "error"\n')
         code, env, _ = run_json("lint", "--changed", "--base", "HEAD~1", *self.R)
         self.assertEqual(code, 1)
         self.assertIn(("MS050", "error", "catalog"), codes(env))
 
     def test_untracked_code_file_counts_via_code_map(self):
-        (self.root / ".modsys/config.toml").write_text(
+        (self.root / ".segmently-modules/config.toml").write_text(
             '[[code_map]]\nid = "src"\npattern = "src/{module}/**"\n')
         (self.root / "src/catalog/new_helper.py").write_text("x = 1\n")
         _, env, _ = self.lint()
         self.assertIn(("MS050", "warning", "catalog"), codes(env))
 
     def test_invalid_drift_severity(self):
-        (self.root / ".modsys/config.toml").write_text('[lint]\ndrift_severity = "loud"\n')
+        (self.root / ".segmently-modules/config.toml").write_text('[lint]\ndrift_severity = "loud"\n')
         code, env, _ = self.lint()
         self.assertEqual((code, env), (2, None))
 
@@ -103,11 +103,11 @@ class DriftLintTest(unittest.TestCase):
                 self.assertFalse(out.exists())
 
     def test_non_ascii_paths_map_to_their_module(self):
-        (self.root / ".modsys/config.toml").write_text(
+        (self.root / ".segmently-modules/config.toml").write_text(
             '[[code_map]]\nid = "src"\npattern = "src/{module}/**"\n', encoding="utf-8")
         tracked = self.root / "src" / "catalog" / "café.py"
         tracked.write_text("x = 1\n", encoding="utf-8")
-        git(self.root, "add", ".modsys/config.toml", str(tracked))
+        git(self.root, "add", ".segmently-modules/config.toml", str(tracked))
         git(self.root, "commit", "-qm", "non-ascii file")
         with tracked.open("a") as fh:  # a tracked change: the diff listing
             fh.write("y = 2\n")
@@ -125,7 +125,7 @@ class DriftLintTest(unittest.TestCase):
 
 
 class DriftInSubdirectoryRootTest(unittest.TestCase):
-    """The modsys root is a subdirectory of the git repository (a monorepo package)."""
+    """The segmently-modules root is a subdirectory of the git repository (a monorepo package)."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

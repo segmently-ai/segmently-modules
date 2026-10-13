@@ -3,8 +3,8 @@
 module docs another tool wrote — extra fields (`stock_paths`, a code pointer; `curator_team`), a
 role no engine default knows (`archivist`), a registry-level timestamp (`last_modified`), a
 directory under `modules/` that is not a module (`_templates/`), a child module — and no
-`.modsys/`. One commit with a fixed author, date and message: every build is the same. A config
-alone (what `modsys adopt` infers) makes `modsys lint --fail-on warning` exit 0.
+`.segmently-modules/`. One commit with a fixed author, date and message: every build is the same. A config
+alone (what `segmently-modules adopt` infers) makes `segmently-modules lint --fail-on warning` exit 0.
 
 Usage: python3 evals/adoption/agents/adopter_repo.py DEST   (DEST must not exist)"""
 import json

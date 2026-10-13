@@ -1,5 +1,5 @@
 """No test depends on the engine's version (P61-AC-002, D9): a scan of tests/*.py for the
-literal of `modsys.__version__` and of its release form (a `v` tag form too), and the
+literal of `segmently_modules.__version__` and of its release form (a `v` tag form too), and the
 version-rewrite logic of the tools at three partitions — a dev version, a release version
 without `.devN`, a later dev version — on throw-away copies. The two partitions of the engine's
 own version are derived from it (a literal would trip the scan); the third is fixed and far
@@ -70,8 +70,8 @@ class HelperTest(unittest.TestCase):
                 self.assertEqual((next_minor(version), next_major(version)), (minor, major))
 
     def test_the_engine_version_is_the_source_line(self):
-        import modsys
-        self.assertEqual(engine_version(), modsys.__version__)
+        import segmently_modules
+        self.assertEqual(engine_version(), segmently_modules.__version__)
 
 
 class PartitionTest(unittest.TestCase):  # P61-AC-002: the version-rewrite logic at 3 partitions
@@ -96,13 +96,13 @@ class PartitionTest(unittest.TestCase):  # P61-AC-002: the version-rewrite logic
                                              bump=lambda v, message: made.append((v, message)))
                 self.assertEqual(release.Release.next_version(step),
                                  f"the engine is at {next_dev(version)}")
-                self.assertEqual(made, [(next_dev(version), "start modsys {}")])
+                self.assertEqual(made, [(next_dev(version), "start segmently-modules {}")])
 
     def test_a_build_of_a_copy_stamps_the_version(self):
         for version in self.PARTITIONS:
             with self.subTest(version=version), tempfile.TemporaryDirectory() as tmp:
                 engine = copy_engine(Path(tmp).resolve() / "engine")
-                for rel, pattern in (("modsys/__init__.py", r'^__version__ = "[^"]*"$'),
+                for rel, pattern in (("segmently_modules/__init__.py", r'^__version__ = "[^"]*"$'),
                                      ("pyproject.toml", r'^version = "[^"]*"$')):
                     text = (engine / rel).read_text(encoding="utf-8")
                     key = "__version__" if rel.endswith(".py") else "version"
@@ -111,9 +111,9 @@ class PartitionTest(unittest.TestCase):  # P61-AC-002: the version-rewrite logic
                 out = Path(tmp).resolve() / "out"
                 proc = run_tool(engine, "build_plugins", "--out", str(out))
                 self.assertEqual(proc.returncode, 0, proc.stderr)
-                self.assertTrue(proc.stdout.startswith(f"built modsys {version}: "), proc.stdout)
+                self.assertTrue(proc.stdout.startswith(f"built segmently-modules {version}: "), proc.stdout)
                 self.assertIn(f'__version__ = "{version}"',
-                              (out / "modsys/runtime/modsys/__init__.py").read_text())
+                              (out / "segmently-modules/runtime/segmently_modules/__init__.py").read_text())
 
 
 if __name__ == "__main__":

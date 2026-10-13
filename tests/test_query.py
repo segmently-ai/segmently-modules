@@ -70,7 +70,7 @@ class ShowExtensionsTest(unittest.TestCase):
         refunds.update({"sla_tier": 2, "file_paths": ["src/payments/refunds.py"]})
         mods["payments"]["file_paths"] = ["src/payments/"]
         reg_path.write_text(json.dumps(reg, indent=2), encoding="utf-8")
-        (root / ".modsys" / "config.toml").write_text(self.FIELDS, encoding="utf-8")
+        (root / ".segmently-modules" / "config.toml").write_text(self.FIELDS, encoding="utf-8")
         return root
 
     def test_extra_docs_in_every_shape_lint_accepts(self):
@@ -155,7 +155,7 @@ class ContractAndQueryGapTest(unittest.TestCase):  # AC-001, AC-021 … AC-024
         self.assertIn("usage", err.lower())
         code, out, err = run("show", "nope", "--json", *R)  # UsageError
         self.assertEqual((code, out), (2, ""))
-        self.assertTrue(err.startswith("modsys: error:"))
+        self.assertTrue(err.startswith("segmently-modules: error:"))
 
     def test_bare_module_typo_hint_path_outside_and_abs_path(self):
         _, env, _ = run_json("show", "catalog", *R)

@@ -13,7 +13,7 @@ READ_VERBS = [("match", "refund a partial refund for an order"), ("show", "catal
 def convert(root) -> None:
     """Split the fixture's registry into module.json files and switch the layout."""
     assert run("index", "split", "--root", str(root))[0] == 0
-    (root / ".modsys" / "config.toml").write_text(
+    (root / ".segmently-modules" / "config.toml").write_text(
         '[paths]\nregistry_layout = "per-module"\n', encoding="utf-8")
 
 
@@ -71,7 +71,7 @@ class PerModuleLayoutTest(unittest.TestCase):
 
     def test_index_build_stamps_updated_at_only_when_modules_changed(self):
         R = ("--root", str(self.per))
-        (self.per / ".modsys" / "config.toml").write_text(
+        (self.per / ".segmently-modules" / "config.toml").write_text(
             '[paths]\nregistry_layout = "per-module"\n'
             '[registry]\nupdated_at_path = "metadata.last_updated"\n', encoding="utf-8")
         run("index", "build", *R)
@@ -90,7 +90,7 @@ class PerModuleLayoutTest(unittest.TestCase):
         code, _, err = run("list", "--root", str(self.per))
         self.assertEqual(code, 2)
         self.assertIn("catalog/module.json: invalid JSON", err)
-        (self.single / ".modsys" / "config.toml").write_text(
+        (self.single / ".segmently-modules" / "config.toml").write_text(
             '[paths]\nregistry_layout = "sharded"\n', encoding="utf-8")
         code, _, err = run("list", "--root", str(self.single))
         self.assertEqual(code, 2)

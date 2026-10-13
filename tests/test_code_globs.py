@@ -29,7 +29,7 @@ class CodeGlobsTest(unittest.TestCase):
         self.assertEqual((data["code"], data["code_globs"]), (["src/catalog/service.py"], []))
 
     def test_globs_per_target(self):
-        (self.root / ".modsys" / "config.toml").write_text(RULES, encoding="utf-8")
+        (self.root / ".segmently-modules" / "config.toml").write_text(RULES, encoding="utf-8")
         catalog = self.show("catalog")
         self.assertEqual(catalog["code"], ["src/catalog/service.py"])  # code pointers, unchanged
         self.assertEqual(catalog["code_globs"], ["src/catalog/**", "lib/isbn.py"])
@@ -39,7 +39,7 @@ class CodeGlobsTest(unittest.TestCase):
         self.assertEqual(self.show("payments/refunds")["code_globs"], ["billing/refunds/**"])
 
     def test_context_rows_carry_code_globs(self):
-        (self.root / ".modsys" / "config.toml").write_text(RULES, encoding="utf-8")
+        (self.root / ".segmently-modules" / "config.toml").write_text(RULES, encoding="utf-8")
         code, env, _ = run_json("context", "--task", "isbn check digit", *self.R)
         self.assertEqual(code, 0)
         row = env["data"]["modules"][0]
@@ -47,7 +47,7 @@ class CodeGlobsTest(unittest.TestCase):
                          ("catalog", ["src/catalog/service.py"], ["src/catalog/**", "lib/isbn.py"]))
 
     def test_text_output_prints_globs_as_code_lines(self):
-        (self.root / ".modsys" / "config.toml").write_text(RULES, encoding="utf-8")
+        (self.root / ".segmently-modules" / "config.toml").write_text(RULES, encoding="utf-8")
         _, out, _ = run("show", "catalog", *self.R)
         self.assertIn("  code  src/catalog/service.py\n  code  src/catalog/**\n"
                       "  code  lib/isbn.py\n", out)

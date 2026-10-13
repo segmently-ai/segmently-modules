@@ -27,12 +27,12 @@ class SyncMappingTest(unittest.TestCase):
             fh.write("# changed\n")
         git(self.root, "commit", "-qam", "change")
         code, env, _ = run_json("sync", "--from-diff", "HEAD~1..HEAD", *self.R)
-        self.assertEqual((code, env["schema"]), (0, "modsys.sync/1"))
+        self.assertEqual((code, env["schema"]), (0, "segmently-modules.sync/1"))
         self.assertEqual(self.modules(env), {"catalog": ["code_pointer:file_paths"]})
         self.assertEqual(env["data"]["changed_files"], ["src/catalog/service.py"])
 
     def test_code_map_pattern_and_globs(self):
-        (self.root / ".modsys" / "config.toml").write_text(
+        (self.root / ".segmently-modules" / "config.toml").write_text(
             '[[code_map]]\nid = "apps"\npattern = "apps/{module}/**"\n'
             '[[code_map]]\nid = "billing"\nmodule = "payments"\nglobs = ["billing/**", "*.pay"]\n',
             encoding="utf-8")
@@ -43,7 +43,7 @@ class SyncMappingTest(unittest.TestCase):
         self.assertEqual(env["data"]["unmapped"], ["README.md", "apps/unknown/x.py"])
 
     def test_file_matched_twice_for_the_same_target_is_listed_once(self):
-        (self.root / ".modsys" / "config.toml").write_text(
+        (self.root / ".segmently-modules" / "config.toml").write_text(
             '[[code_map]]\nid = "src"\npattern = "src/{module}/**"\n', encoding="utf-8")
         # src/catalog/service.py is already catalog's code_pointer (file_paths); the code_map
         # pattern routes it to "catalog" too — same target, two `via` sources, one file entry.
@@ -66,14 +66,14 @@ class SyncMappingTest(unittest.TestCase):
                 code, out, err = run("sync", *argv, *self.R)
                 self.assertEqual((code, out), (2, ""))
                 self.assertIn(needle, err)
-        (self.root / ".modsys" / "config.toml").write_text(
+        (self.root / ".segmently-modules" / "config.toml").write_text(
             '[[code_map]]\nid = "x"\npattern = "apps/**"\n', encoding="utf-8")
         code, _, err = run("sync", "--files", "a.py", *self.R)
         self.assertEqual(code, 2)
         self.assertIn('pattern "apps/**" has no {module} segment', err)  # D5 wording
 
     def test_code_map_rule_needs_a_pattern_or_globs(self):
-        (self.root / ".modsys" / "config.toml").write_text(
+        (self.root / ".segmently-modules" / "config.toml").write_text(
             '[[code_map]]\nid = "x"\n', encoding="utf-8")
         code, out, err = run("sync", "--files", "a.py", *self.R)
         self.assertEqual((code, out), (2, ""))
@@ -94,7 +94,7 @@ class SyncHooksAndProposalsTest(unittest.TestCase):
             "  'proposals': [{'op': 'append', 'module': m, 'field': 'keywords',\n"
             "                 'value': 'touched', 'reason': 'sync'} for m in p['changed_modules']]}))\n",
             encoding="utf-8")
-        (self.root / ".modsys" / "config.toml").write_text(
+        (self.root / ".segmently-modules" / "config.toml").write_text(
             f'[[hooks.post_sync]]\nid = "tag"\nrun = [{json.dumps(sys.executable)}, "./tools/tag.py"]\n',
             encoding="utf-8")
 
@@ -116,10 +116,10 @@ class SyncHooksAndProposalsTest(unittest.TestCase):
                                 "--apply-proposals", *self.R)
         self.assertEqual((code, env["data"]["hooks"]), (0, None))
         self.assertEqual((self.root / "modules/registry.json").read_bytes(), before)
-        self.assertFalse((self.root / ".modsys/proposals").exists())
+        self.assertFalse((self.root / ".segmently-modules/proposals").exists())
 
     def test_required_hook_failure_is_exit_1(self):
-        (self.root / ".modsys" / "config.toml").write_text(
+        (self.root / ".segmently-modules" / "config.toml").write_text(
             f'[[hooks.post_sync]]\nid = "gate"\nrequired = true\n'
             f'run = [{json.dumps(sys.executable)}, "-c", "import sys; sys.exit(1)"]\n',
             encoding="utf-8")
@@ -140,7 +140,7 @@ class SyncHooksAndProposalsTest(unittest.TestCase):
     def test_sources_are_exclusive_and_run_id_defaults(self):
         self.assertEqual(run("sync", *self.R)[0], 2)
         self.assertEqual(run("sync", "--files", "a.py", "--from-diff", "a..b", *self.R)[0], 2)
-        with mock.patch.dict(os.environ, {"MODSYS_RUN_ID": "envrun"}):
+        with mock.patch.dict(os.environ, {"SEGMENTLY_MODULES_RUN_ID": "envrun"}):
             _, env, _ = run_json("sync", "--files", "a.py", "--dry-run", *self.R)
         self.assertEqual(env["data"]["run_id"], "envrun")
 
@@ -148,12 +148,12 @@ class SyncHooksAndProposalsTest(unittest.TestCase):
         run("propose", "--module", "checkout", "--op", "set", "--field", "status",
             "--value", '"draft"', "--reason", "r", "--run-id", "r1", *self.R)
         with mock.patch.dict(os.environ):
-            os.environ.pop("MODSYS_RUN_ID", None)
+            os.environ.pop("SEGMENTLY_MODULES_RUN_ID", None)
             code, env, _ = run_json("sync", "--files", "src/catalog/service.py",
                                     "--apply-proposals", *self.R)
         self.assertEqual(code, 0)
         # r1's unrelated 'checkout' proposal plus this sync's own hook-queued 'catalog'
-        # proposal both apply: with no --run-id / $MODSYS_RUN_ID, apply-proposals is not
+        # proposal both apply: with no --run-id / $SEGMENTLY_MODULES_RUN_ID, apply-proposals is not
         # scoped to the run id sync generated for its own hook run.
         self.assertEqual(env["data"]["proposals"]["summary"]["applied"], 2)
         reg = json.loads((self.root / "modules/registry.json").read_text())

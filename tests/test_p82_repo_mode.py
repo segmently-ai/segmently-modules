@@ -1,5 +1,5 @@
 """P8.2 task 2 (D6): a `[match] mode` from a config file runs the user's agent command only with
-`MODSYS_AGENT_ALLOW_REPO_MODE=1`; otherwise the run is lexical (stdout byte-identical to
+`SEGMENTLY_MODULES_AGENT_ALLOW_REPO_MODE=1`; otherwise the run is lexical (stdout byte-identical to
 `--match lexical`) with one stderr note, printed only when the run exits 0."""
 import json
 import os
@@ -7,21 +7,21 @@ import re
 import unittest
 from pathlib import Path
 
-from modsys.agent import NESTED
+from segmently_modules.agent import NESTED
 from tests.agent_helpers import AgentRepo, picks
 from tests.helpers import changelog_release, git, run
 
-OPT = "MODSYS_AGENT_ALLOW_REPO_MODE"
+OPT = "SEGMENTLY_MODULES_AGENT_ALLOW_REPO_MODE"
 TASK = "partial refund for a returned book"
-NO_AGENT = ("semantic matching needs your agent: set MODSYS_AGENT_COMMAND (a JSON array); "
-            "in Claude Code / Codex the skills do it with modsys choose")
+NO_AGENT = ("semantic matching needs your agent: set SEGMENTLY_MODULES_AGENT_COMMAND (a JSON array); "
+            "in Claude Code / Codex the skills do it with segmently-modules choose")
 NO_AGENT_NOTE = "semantic part skipped: no agent command configured"
 NESTED_NOTE = "semantic part skipped: nested agent call"
 ENGINE = Path(__file__).resolve().parents[1]
 
 
 def note(mode: str) -> str:
-    return (f'modsys: note: [match] mode "{mode}" is set in a config file; it runs your agent '
+    return (f'segmently-modules: note: [match] mode "{mode}" is set in a config file; it runs your agent '
             f'command only with {OPT}=1 (or pass --match {mode}) — ran lexical\n')
 
 
@@ -63,7 +63,7 @@ class DecisionTableTest(Repo):  # P82-AC-015
                     for cmd in ("valid", "malformed"):
                         results = []
                         for cfg in (None, "lexical", "semantic", "hybrid"):
-                            (self.root / ".modsys" / "config.toml").unlink(missing_ok=True)
+                            (self.root / ".segmently-modules" / "config.toml").unlink(missing_ok=True)
                             if cfg:
                                 self.mode(cfg)
                             for value in (None, "garbage", "1", "0"):
@@ -71,7 +71,7 @@ class DecisionTableTest(Repo):  # P82-AC-015
                                 if value is not None:
                                     os.environ[OPT] = value
                                 if cmd == "malformed":
-                                    os.environ["MODSYS_AGENT_COMMAND"] = "not json"
+                                    os.environ["SEGMENTLY_MODULES_AGENT_COMMAND"] = "not json"
                                 else:
                                     self.good_agent()
                                 results.append(self.go(argv, "--match", flag, json_out=js))
@@ -82,12 +82,12 @@ class DecisionTableTest(Repo):  # P82-AC-015
                             if cmd == "malformed" and flag != "lexical":
                                 self.assertEqual(code, 2)
                                 self.assertTrue(
-                                    err.startswith("modsys: error: MODSYS_AGENT_COMMAND:"), err)
+                                    err.startswith("segmently-modules: error: SEGMENTLY_MODULES_AGENT_COMMAND:"), err)
                             else:
                                 self.assertEqual((code, err), (0, ""))
 
     def test_r2_a_lexical_or_absent_config_reads_nothing(self):
-        os.environ["MODSYS_AGENT_COMMAND"] = "not json"
+        os.environ["SEGMENTLY_MODULES_AGENT_COMMAND"] = "not json"
         os.environ[OPT] = "garbage"
         for cfg in (None, "lexical"):
             if cfg:
@@ -96,10 +96,10 @@ class DecisionTableTest(Repo):  # P82-AC-015
                 for js in (False, True):
                     with self.subTest(cfg=cfg, verb=name, json=js):
                         plain = self.go(argv, json_out=js)
-                        os.environ.pop("MODSYS_AGENT_COMMAND")
+                        os.environ.pop("SEGMENTLY_MODULES_AGENT_COMMAND")
                         os.environ.pop(OPT)
                         again = self.go(argv, json_out=js)
-                        os.environ["MODSYS_AGENT_COMMAND"] = "not json"
+                        os.environ["SEGMENTLY_MODULES_AGENT_COMMAND"] = "not json"
                         os.environ[OPT] = "garbage"
                         self.assertEqual(plain, again)
                         self.assertEqual((plain[0], plain[2]), (0, ""))
@@ -121,8 +121,8 @@ class DecisionTableTest(Repo):  # P82-AC-015
                             self.assertEqual(self.calls(), [])  # the agent never ran
 
     def test_r3_r4_malformed_agent_variables_are_not_read(self):
-        os.environ["MODSYS_AGENT_COMMAND"] = "[]"
-        os.environ["MODSYS_AGENT_TIMEOUT"] = "five"
+        os.environ["SEGMENTLY_MODULES_AGENT_COMMAND"] = "[]"
+        os.environ["SEGMENTLY_MODULES_AGENT_TIMEOUT"] = "five"
         for mode in ("semantic", "hybrid"):
             self.mode(mode)
             for name, argv in self.verbs():
@@ -147,7 +147,7 @@ class DecisionTableTest(Repo):  # P82-AC-015
                     with self.subTest(mode=mode, verb=verb, json=js):
                         self.assertEqual((code, out), (2, ""))
                         self.assertEqual(err.count("\n"), 1)
-                        self.assertTrue(err.startswith("modsys: error:"), err)
+                        self.assertTrue(err.startswith("segmently-modules: error:"), err)
                         self.assertNotIn("note:", err)
         # nothing leaks into the next run in the same process
         code, out, err = run("list", *self.R)
@@ -156,7 +156,7 @@ class DecisionTableTest(Repo):  # P82-AC-015
     def test_the_note_comes_after_stdout(self):
         import contextlib
         import io
-        from modsys.cli import main
+        from segmently_modules.cli import main
         self.mode("semantic")
         events = []
 
@@ -182,7 +182,7 @@ class DecisionTableTest(Repo):  # P82-AC-015
             self.mode(mode)
             for name, argv in self.verbs():
                 for js in (False, True):
-                    cmd = [sys.executable, "-m", "modsys", *argv, *self.R,
+                    cmd = [sys.executable, "-m", "segmently_modules", *argv, *self.R,
                            *(("--json",) if js else ())]
                     env = {**os.environ, "PYTHONPATH": str(ENGINE)}
                     merged = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -201,12 +201,12 @@ class DecisionTableTest(Repo):  # P82-AC-015
                     with self.subTest(mode=mode, verb=name, json=js):
                         self.assertEqual(
                             self.go(argv, json_out=js),
-                            (2, "", f"modsys: error: {OPT}: expected 1 or 0, got 'true'\n"))
-        os.environ["MODSYS_AGENT_COMMAND"] = "not json"  # the opt-in is validated first
+                            (2, "", f"segmently-modules: error: {OPT}: expected 1 or 0, got 'true'\n"))
+        os.environ["SEGMENTLY_MODULES_AGENT_COMMAND"] = "not json"  # the opt-in is validated first
         for name, argv in self.verbs():
             self.assertEqual(
                 self.go(argv),
-                (2, "", f"modsys: error: {OPT}: expected 1 or 0, got 'true'\n"))
+                (2, "", f"segmently-modules: error: {OPT}: expected 1 or 0, got 'true'\n"))
 
     def test_r6_semantic_opted_in_asks_the_agent_once(self):
         os.environ[OPT] = "1"
@@ -232,7 +232,7 @@ class DecisionTableTest(Repo):  # P82-AC-015
             for js in (False, True):
                 with self.subTest(verb=name, json=js):
                     self.assertEqual(self.go(argv, json_out=js),
-                                     (2, "", f"modsys: error: {NO_AGENT}\n"))
+                                     (2, "", f"segmently-modules: error: {NO_AGENT}\n"))
 
     def test_r8_hybrid_opted_in_without_a_command_runs_lexically_with_a_stdout_note(self):
         os.environ[OPT] = "1"
@@ -249,14 +249,14 @@ class DecisionTableTest(Repo):  # P82-AC-015
 
     def test_r9_r10_nested(self):
         os.environ[OPT] = "1"
-        os.environ["MODSYS_WORK_ORDER"] = "/nonexistent"
+        os.environ["SEGMENTLY_MODULES_WORK_ORDER"] = "/nonexistent"
         self.good_agent()
         for name, argv in self.verbs():
             for js in (False, True):
                 self.mode("semantic")
                 with self.subTest(verb=name, mode="semantic", json=js):
                     self.assertEqual(self.go(argv, json_out=js),
-                                     (2, "", f"modsys: error: {NESTED}\n"))
+                                     (2, "", f"segmently-modules: error: {NESTED}\n"))
                 self.mode("hybrid")
                 with self.subTest(verb=name, mode="hybrid", json=js):
                     code, out, err = self.go(argv, json_out=js)
@@ -269,14 +269,14 @@ class DecisionTableTest(Repo):  # P82-AC-015
         os.environ[OPT] = "1"
         for mode in ("semantic", "hybrid"):
             self.mode(mode)
-            os.environ["MODSYS_AGENT_COMMAND"] = "not json"
+            os.environ["SEGMENTLY_MODULES_AGENT_COMMAND"] = "not json"
             for name, argv in self.verbs():
                 for js in (False, True):
                     with self.subTest(mode=mode, verb=name, json=js):
                         code, out, err = self.go(argv, json_out=js)
                         self.assertEqual((code, out), (2, ""))
                         self.assertTrue(
-                            err.startswith("modsys: error: MODSYS_AGENT_COMMAND:"), err)
+                            err.startswith("segmently-modules: error: SEGMENTLY_MODULES_AGENT_COMMAND:"), err)
 
     def test_r12_hybrid_opted_in_with_a_command(self):
         os.environ[OPT] = "1"
@@ -300,31 +300,31 @@ class NotReadingAgentVariablesTest(Repo):  # P82-AC-016
         self.mode("hybrid")
         text = ("match", "refund a partial refund")
         lex = self.lex(text)
-        for var, value in (("MODSYS_AGENT_COMMAND", "not json"), ("MODSYS_AGENT_COMMAND", "[]"),
-                           ("MODSYS_AGENT_TIMEOUT", "0"), ("MODSYS_AGENT_TIMEOUT", "five")):
+        for var, value in (("SEGMENTLY_MODULES_AGENT_COMMAND", "not json"), ("SEGMENTLY_MODULES_AGENT_COMMAND", "[]"),
+                           ("SEGMENTLY_MODULES_AGENT_TIMEOUT", "0"), ("SEGMENTLY_MODULES_AGENT_TIMEOUT", "five")):
             for opted in (False, True):
                 with self.subTest(var=var, value=value, opted=opted):
                     self.no_agent()
                     os.environ.pop(OPT, None)
                     os.environ[var] = value
-                    if var == "MODSYS_AGENT_TIMEOUT":
-                        os.environ["MODSYS_AGENT_COMMAND"] = json.dumps(["true"])
+                    if var == "SEGMENTLY_MODULES_AGENT_TIMEOUT":
+                        os.environ["SEGMENTLY_MODULES_AGENT_COMMAND"] = json.dumps(["true"])
                     if not opted:
                         self.assertEqual(self.go(text), (0, lex, note("hybrid")))
                     else:
                         os.environ[OPT] = "1"
                         code, out, err = self.go(text)
                         self.assertEqual((code, out), (2, ""))
-                        self.assertTrue(err.startswith(f"modsys: error: {var}:"), err)
+                        self.assertTrue(err.startswith(f"segmently-modules: error: {var}:"), err)
 
     def test_an_invalid_opt_in_with_a_lexical_config_changes_nothing(self):
         self.mode("lexical")
         os.environ[OPT] = "garbage"
-        os.environ["MODSYS_AGENT_COMMAND"] = "not json"
+        os.environ["SEGMENTLY_MODULES_AGENT_COMMAND"] = "not json"
         code, out, err = self.go(("match", TASK))
         self.assertEqual((code, err), (0, ""))
         os.environ.pop(OPT)
-        os.environ.pop("MODSYS_AGENT_COMMAND")
+        os.environ.pop("SEGMENTLY_MODULES_AGENT_COMMAND")
         self.assertEqual(out, self.lex(("match", TASK)))
 
 
@@ -353,7 +353,7 @@ class OptInValuesTest(Repo):  # P82-AC-017
                 os.environ[OPT] = value
                 code, out, err = self.go(("match", "x"))
                 self.assertEqual((code, out), (2, ""))
-                self.assertEqual(err, f"modsys: error: {OPT}: expected 1 or 0, "
+                self.assertEqual(err, f"segmently-modules: error: {OPT}: expected 1 or 0, "
                                       f"got {value[:40]!r}\n")
         os.environ[OPT] = "a" * 41
         self.assertIn("got '" + "a" * 40 + "'\n", self.go(("match", "x"))[2])
@@ -364,9 +364,9 @@ class OptInValuesTest(Repo):  # P82-AC-017
 
 class LayersTest(Repo):  # P82-AC-018
     def write_layer(self, layer: str, mode: str) -> None:
-        for p in (self.root / ".modsys").glob("config*.toml"):
+        for p in (self.root / ".segmently-modules").glob("config*.toml"):
             p.unlink()
-        pack = self.root / ".modsys" / "packs" / "team"
+        pack = self.root / ".segmently-modules" / "packs" / "team"
         if pack.exists():
             (pack / "pack.toml").unlink()
         if layer == "pack":
@@ -376,7 +376,7 @@ class LayersTest(Repo):  # P82-AC-018
                 encoding="utf-8")
         elif layer == "config.user.tracked.toml":  # a personal config the repository tracks
             self.mode(mode, "config.user.toml")
-            git(self.root, "add", "-f", ".modsys/config.user.toml")
+            git(self.root, "add", "-f", ".segmently-modules/config.user.toml")
             git(self.root, "commit", "-q", "-m", "track the personal config")
         else:
             self.mode(mode, layer)
@@ -481,7 +481,7 @@ class DocsTest(unittest.TestCase):  # P82-AC-021
     def test_cli_contract(self):
         doc = " ".join(self.text("docs/cli-contract.md").split())
         self.assertIn(note("<mode>").rstrip("\n"), doc)
-        self.assertIn(f"modsys: error: {OPT}: expected 1 or 0, got '<value>'", doc)
+        self.assertIn(f"segmently-modules: error: {OPT}: expected 1 or 0, got '<value>'", doc)
         self.assertIn("only when the run exits `0`", doc)
 
     def test_skills_doc_no_longer_promises_exit_2_for_a_plain_call(self):
@@ -494,7 +494,7 @@ class DocsTest(unittest.TestCase):  # P82-AC-021
         self.assertNotIn("its `[match] mode` decides whether", readme)
         self.assertIn(OPT, readme)
         unreleased = changelog_release(self.text("CHANGELOG.md"), "0.1.1")
-        self.assertIn(OPT, unreleased)
+        self.assertIn("MODSYS_AGENT_ALLOW_REPO_MODE", unreleased)  # 0.1.1 named it before the rename
         self.assertIn("checked only when a config file sets a non-lexical mode",
                       " ".join(unreleased.split()))
         self.assertTrue(re.search(r"\[match\] mode", unreleased))

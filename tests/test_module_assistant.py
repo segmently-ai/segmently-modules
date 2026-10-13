@@ -6,8 +6,8 @@ real."""
 import re
 import unittest
 
-from modsys.config import builtin_packs_root
-from modsys.skills import read_front_matter
+from segmently_modules.config import builtin_packs_root
+from segmently_modules.skills import read_front_matter
 from tests.helpers import run
 from tests.test_p84_routing import placeholder_problems
 
@@ -19,8 +19,8 @@ FILES = sorted(["SKILL.md", "references/exit-codes.md", *SCENARIOS.values(),
                 *(f"references/how-to/{t}.md" for t in TOPICS)])
 NEXT_KINDS = ["setup", "lint-error", "skills", "agents-md", "role", "ejected", "proposals",
               "lint-warning", "unmapped", "drift"]  # docs/cli-contract.md, `next`
-IF_LINE = "If a `modsys` command exits 1 or 2, read `references/exit-codes.md`."
-COMMAND = re.compile(r"`(?:[^`\n]*?/)?modsys ([a-z][a-z-]+)([^`\n]*)`")
+IF_LINE = "If a `segmently-modules` command exits 1 or 2, read `references/exit-codes.md`."
+COMMAND = re.compile(r"`(?:[^`\n]*?/)?segmently-modules ([a-z][a-z-]+)([^`\n]*)`")
 
 
 def files() -> dict[str, str]:
@@ -84,7 +84,7 @@ class ShapeTest(unittest.TestCase):
 
 
 class CommandsAreRealTest(unittest.TestCase):
-    """Every `modsys <verb> …` the skill names in backticks is a verb, and every flag after it is
+    """Every `segmently-modules <verb> …` the skill names in backticks is a verb, and every flag after it is
     one that verb's `--help` shows: the skill never teaches a command that does not exist."""
 
     def test_every_named_command_and_flag_exists(self):
@@ -95,16 +95,16 @@ class CommandsAreRealTest(unittest.TestCase):
                     code, out, _ = run(verb, "--help")
                     helps[verb] = out if code == 0 else None
                 if helps[verb] is None:
-                    problems.append(f"{name}: modsys {verb}")
+                    problems.append(f"{name}: segmently-modules {verb}")
                     continue
-                problems += [f"{name}: modsys {verb} {flag}"
+                problems += [f"{name}: segmently-modules {verb} {flag}"
                              for flag in re.findall(r"(--[a-z][a-z-]+)", rest)
                              if flag not in helps[verb]]
         self.assertGreater(len(helps), 20)
         self.assertEqual(problems, [])
 
     def test_the_check_can_fail(self):
-        self.assertEqual(COMMAND.findall("run `modsys next --nope` and `modsys frobnicate`"),
+        self.assertEqual(COMMAND.findall("run `segmently-modules next --nope` and `segmently-modules frobnicate`"),
                          [("next", " --nope"), ("frobnicate", "")])
 
 
@@ -112,7 +112,7 @@ class AgentsBlockTest(unittest.TestCase):
     def test_the_block_points_to_the_assistant(self):
         template = (builtin_packs_root().parent / "templates" / "agents-md.md").read_text("utf-8")
         self.assertIn("The `module-assistant` skill of the `core` pack", template)
-        self.assertIn("`modsys next` lists what the repository needs now", template)
+        self.assertIn("`segmently-modules next` lists what the repository needs now", template)
 
 
 if __name__ == "__main__":

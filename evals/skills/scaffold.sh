@@ -10,7 +10,7 @@ export GIT_AUTHOR_NAME=eval GIT_AUTHOR_EMAIL=eval@example.invalid
 export GIT_COMMITTER_NAME=eval GIT_COMMITTER_EMAIL=eval@example.invalid
 cp -R "@RUNTIME@/fixture/." .
 printf '[packs]\nbuiltin = ["core", "ui", "qa"]\n\n[[code_map]]\nid = "src"\npattern = "src/{module}/**"\n' \
-  > .modsys/config.toml
+  > .segmently-modules/config.toml
 git init -q -b main
-git add -- .modsys modules src
+git add -- .segmently-modules modules src
 git commit -q -m "bookshop"
