@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-13
+
 ### Added
 
 - The repository is public under the MIT license: `LICENSE`, `CONTRIBUTING.md` (how to run the tests, the skill-text rules, pull requests) and `SECURITY.md` (private reports, the trust model). The README installs over https from the public repositories, pinned to the latest release; a stable release moves the pin.
