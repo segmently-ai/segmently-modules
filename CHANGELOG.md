@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-10-13
+
 ### Added
 
 - lint checks the module docs as files. MS005 (error): a registered doc that holds NUL bytes or is not valid UTF-8 — a damaged doc used to pass with only its length checked. MS016 (warning): a doc in a module's `roles/` directory that no registry entry names, with the role its name reads as (`ARCHITECTURE.md` → `architect`) and how to register it. MS017 (info, one per module): unregistered docs directly in a module's directory. MS041 (`[lint] link_severity`, default warning): a link in a registered doc whose target is missing — a root-relative `src/x.ts` counts when it exists from the root, and a wrong `../` depth is named. MS042 (info): an anchor that names no heading of its target doc. MS043 (info, one per module, plain `lint` only): backticked repository paths outside the components table that are missing on disk (read from the root, next to the doc and under the module's code directories; build output and git-ignored directories are never checked). The doc checks read only `*.md` docs inside the root.
