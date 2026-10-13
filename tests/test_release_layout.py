@@ -22,7 +22,7 @@ TESTS = ENGINE / "tests"
 # P83-PRE-005: the 44 tests of tests/test_release.py at 758d085 — (class, method, the class
 # line's comment, the def line's comment, sha256[:16] of the method's source lines)
 REFERENCE = [
-    ("RunTest", "test_dev_then_stable", "P6-AC-014, 015, 017", "", "b86d3a04aba983ee"),
+    ("RunTest", "test_dev_then_stable", "P6-AC-014, 015, 017", "", "6baedbaa97a7bebc"),  # the rename: git lists pyproject.toml first
     ("RunTest", "test_both_channels_start_from_the_same_main_commit", "P6-AC-014, 015, 017", "",
      "789a56076d846fcd"),
     ("RunTest", "test_push_only_with_push", "P6-AC-014, 015, 017", "", "f29f59f776742d36"),
@@ -40,9 +40,9 @@ REFERENCE = [
     ("OwnershipTest", "test_foreign_content_is_kept", "P6-AC-016 (SI-17), P6-AC-021", "",
      "c784cfb4ac73876f"),
     ("OwnershipTest", "test_the_organisation_anywhere_in_the_engine",
-     "P6-AC-016 (SI-17), P6-AC-021", "", "2f82708fff111322"),
+     "P6-AC-016 (SI-17), P6-AC-021", "", "60383a85bc68c1c7"),  # the rename: the two public slugs
     ("OwnershipTest", "test_the_organisation_scan_names_places_not_hashes",
-     "P6-AC-016 (SI-17), P6-AC-021", "", "6c6d312d4a2ef0b1"),
+     "P6-AC-016 (SI-17), P6-AC-021", "", "8c1723ddafb1efb7"),  # the rename: the two public slugs
     ("NoopTest", "test_twice_then_a_change", "P6-AC-029", "", "badf6fdb1f8d796c"),
     ("NoopTest", "test_stable_again_is_refused", "P6-AC-029", "", "331578689d7b4f9f"),
     ("RefusalTest", "test_the_guard", "P6-AC-030 (SI-1, SI-16, SI-17)", "", "a489668e1c3f2bf4"),
@@ -110,7 +110,7 @@ REFERENCE = [
 # the helpers of the test classes and of the base, and the module's constants, at 758d085
 # (P8.9: SKILL names the ui pack's skill by its new directory, `designer`)
 HELPERS = [("files", "279c159e7bff31a4"), ("committed", "32c9fd83b2b6d873"),
-           ("refused", "342ce0815e5c6c05"), ("failed", "8133e2db9d1dd991"),
+           ("refused", "342ce0815e5c6c05"), ("failed", "8c64fe4afcae49d4"),
            ("planted", "6b018d6bb95cbc27"), ("setUp", "00b616d7e6204801"),
            ("refused", "cdf165789a31f414"), ("index", "4f758577aff67cd4"),
            ("refused_at_step_1", "77d2cf7081b54bb0"), ("setUp", "3f53c88864a910e6"),
@@ -152,6 +152,13 @@ def comment(line: str) -> str:
 
 
 def digest(text: str) -> str:
+    """The first 16 hex digits of the text's sha256, taken under the name the digests were
+    recorded with (modsys, before the rename): the rename changed names only, and still matches.
+    Both new forms map to the one old name, so a package/command swap inside a digested test is
+    invisible here — the tests themselves catch that."""
+    for name in ("SEGMENTLY_MODULES_", "segmently_modules", "segmently-modules",
+                 "Segmently Modules"):
+        text = text.replace(name, "MODSYS_" if name.endswith("_") and name.isupper() else "modsys")
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 

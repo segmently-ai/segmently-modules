@@ -29,12 +29,12 @@ ENG = engine_version()  # the engine copies under test carry this version
 REL = release_version(ENG)  # what the first stable run releases
 NXT = next_release(ENG)  # the release after it
 NXT_DEV = next_dev(ENG)  # the engine after the first stable run
-SLUG = "example-org/modsys-plugins"
-DATE = "2026-10-15"  # MODSYS_RELEASE_DATE of every run (SI-P61-9): never the clock
+SLUG = "example-org/segmently-modules-plugins"
+DATE = "2026-10-15"  # SEGMENTLY_MODULES_RELEASE_DATE of every run (SI-P61-9): never the clock
 CHANGELOG = ("# Changelog\n\nAll notable changes to this copy are documented in this file.\n\n"
              "## [Unreleased]\n\n- First planted note.\n- Second planted note.\n\n"
              "## [0.0.1] - 2026-01-01\n\n- The first planted release.\n")  # the copies' notes
-LOG_BEGIN, LOG_END = "<!-- modsys:changelog:begin -->", "<!-- modsys:changelog:end -->"
+LOG_BEGIN, LOG_END = "<!-- segmently-modules:changelog:begin -->", "<!-- segmently-modules:changelog:end -->"
 PLANT = """import os, subprocess, unittest
 from pathlib import Path
 
@@ -54,7 +54,7 @@ EXTRA = {"tests/__init__.py": "",
          "tests/test_plant.py": PLANT,
          "evals/adoption/run_eval.py": "import sys\n\nprint('adoption eval: stub ok', "
                                        "file=sys.stderr)\n",
-         "README.md": "# modsys (a test copy)\n", "CHANGELOG.md": CHANGELOG}
+         "README.md": "# segmently-modules (a test copy)\n", "CHANGELOG.md": CHANGELOG}
 GUARD = """import os, signal, sys, time
 target = sys.argv[sys.argv.index("--target") + 1]
 mode = os.environ.get("FAKE_GUARD_MODE")
@@ -89,8 +89,8 @@ CREDENTIALS = {"ANTHROPIC_API_KEY": "dummy-key", "ANTHROPIC_AUTH_TOKEN": "dummy-
 MACHINE_PATHS = ("/" + "Users/", "/" + "home/")  # joined here: this file holds no such path
 STEPS = ["leak guard", "clean trees", "tests", "build", "validate", "publish repo", "commit",
          "smoke install"]
-SKILL = "modsys/defaults/packs/ui/skills/designer/SKILL.md"
-TAGS = ["modsys--v{0}", "modsys-qa--v{0}", "modsys-ui--v{0}", "v{0}"]
+SKILL = "segmently_modules/defaults/packs/ui/skills/designer/SKILL.md"
+TAGS = ["segmently-modules--v{0}", "segmently-modules-qa--v{0}", "segmently-modules-ui--v{0}", "v{0}"]
 
 
 def tree_hash(root: Path) -> str:
@@ -180,7 +180,7 @@ class ReleaseRepo(unittest.TestCase):
             self.engine, self.started = self.base / "engine", self.snapshot_run
         else:
             self.engine = copy_engine(self.base / "engine", EXTRA,
-                                      prefixes=("modsys/", "tools/", "tests/fixtures/bookshop/"))
+                                      prefixes=("segmently_modules/", "tools/", "tests/fixtures/bookshop/"))
             self.pub.mkdir()
             git(self.pub, "init", "-q", "-b", "main")
         self.bin = self.base / "bin"
@@ -194,9 +194,9 @@ class ReleaseRepo(unittest.TestCase):
         self.tmpdir = self.base / "tmp"
         self.tmpdir.mkdir()
         self.env = {**IDENTITY, **CREDENTIALS, "PATH": f"{self.bin}:/usr/bin:/bin",
-                    "MODSYS_GUARD": str(self.base / "guard.py"),
+                    "SEGMENTLY_MODULES_GUARD": str(self.base / "guard.py"),
                     "FAKE_CLAUDE_LOG": str(self.base / "claude.log"), "TMPDIR": str(self.tmpdir),
-                    "MODSYS_PYTHON": sys.executable, "MODSYS_RELEASE_DATE": DATE,
+                    "SEGMENTLY_MODULES_PYTHON": sys.executable, "SEGMENTLY_MODULES_RELEASE_DATE": DATE,
                     # as under a git hook: the tools drop git's location variables
                     "GIT_INDEX_FILE": str(self.base / "another-index")}
 
@@ -287,7 +287,7 @@ class ReleaseRepo(unittest.TestCase):
         return git(repo, "log", "--format=%s", ref).splitlines()
 
     def entries(self, branch: str) -> list[tuple]:
-        """The modsys entries of the publish repository's CHANGELOG.md on `branch`, newest
+        """The segmently-modules entries of the publish repository's CHANGELOG.md on `branch`, newest
         first: (version, channel, the engine commit its short sha names, its indented lines)."""
         text = git(self.pub, "show", f"{branch}:CHANGELOG.md")
         section = text.split(LOG_BEGIN + "\n", 1)[1].split(LOG_END, 1)[0]
@@ -299,7 +299,7 @@ class ReleaseRepo(unittest.TestCase):
             elif line.startswith("  "):
                 found[-1][3].append(line[2:])
             else:
-                self.assertIn(line, ("## modsys", ""), section)
+                self.assertIn(line, ("## segmently-modules", ""), section)
         return found
 
     def refs(self, repo: Path) -> list[str]:
@@ -312,6 +312,7 @@ class AllOrNothingBase(ReleaseRepo):
     def failed(self, channel: str, step: str, env: dict | None = None, code: int = 1) -> str:
         before = self.both()
         notes = (self.engine / "CHANGELOG.md").read_bytes()
+        readme = (self.engine / "README.md").read_bytes()
         proc = self.last = self.release(channel, env=env)
         self.assertEqual(proc.returncode, code, proc.stdout + proc.stderr)
         self.assertIn(step, proc.stderr)
@@ -321,6 +322,7 @@ class AllOrNothingBase(ReleaseRepo):
         self.assertEqual(self.both(), before)
         # P61-AC-036: a stable run past step 4 had dated the notes — the put-back restores them
         self.assertEqual((self.engine / "CHANGELOG.md").read_bytes(), notes)
+        self.assertEqual((self.engine / "README.md").read_bytes(), readme)  # and its install pin
         self.assertEqual(list(self.tmpdir.iterdir()), [])
         return proc.stderr
 
@@ -337,8 +339,8 @@ NO_HEADING = ("CHANGELOG.md has no `## [Unreleased]` heading — a stable releas
 NO_FILE = ("CHANGELOG.md is missing in the engine — a stable release publishes the notes under "
            "its `## [Unreleased]` heading: add the file (Keep a Changelog) with the notes of "
            "this release")
-MARKER = ("CHANGELOG.md: the note '- `<!-- modsys:changelog:end -->` closes our section.' "
-          "under `## [Unreleased]` holds `<!-- modsys:changelog:` — the marker of the publish "
+MARKER = ("CHANGELOG.md: the note '- `<!-- segmently-modules:changelog:end -->` closes our section.' "
+          "under `## [Unreleased]` holds `<!-- segmently-modules:changelog:` — the marker of the publish "
           "repository's changelog section, which the entry would damage: reword the note")
 UNTRACKED = ("CHANGELOG.md is not tracked in the engine — commit it: the release commit dates "
              "its `## [Unreleased]` heading")

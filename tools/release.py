@@ -1,6 +1,6 @@
-"""Release the modsys plugins from this engine tree into a publish repository (P6 D7).
+"""Release the segmently-modules plugins from this engine tree into a publish repository (P6 D7).
 
-    MODSYS_GUARD=<the private leak guard> python3 tools/release.py \\
+    SEGMENTLY_MODULES_GUARD=<the private leak guard> python3 tools/release.py \\
         --publish-repo DIR --channel dev|stable --publish-slug OWNER/REPO [--push] \\
         [--jobs N] [--suite-passed TREE]
 
@@ -12,15 +12,16 @@ Steps, in this order (each printed with its result):
                  `stable` refuses when the file is missing or git does not track it, has no
                  such heading, or holds no note there — no line starting with `- ` or `* `
                  (blank lines, comment lines and `### ` sub-headings alone are empty) — and
-                 when MODSYS_RELEASE_DATE is set but not a date; `dev` publishes "no notes yet"
+                 when SEGMENTLY_MODULES_RELEASE_DATE is set but not a date; `dev` publishes "no notes yet"
                  then. Two such headings (named by line) or a note holding
-                 `<!-- modsys:changelog:` (the publish section's marker) are a refusal on either
-                 channel. Then the private guard `MODSYS_GUARD` names (run as `<python>
+                 `<!-- segmently-modules:changelog:` (the publish section's marker) are a refusal on either
+                 channel. Then the private guard `SEGMENTLY_MODULES_GUARD` names (run as `<python>
                  <guard> --target DIR` from the caller's working directory) exits 0 with a
                  `… CLEAN` line on this engine (files and history), and the organisation of
-                 --publish-slug appears nowhere in it (files, commit and tag messages, patch
-                 text — the guard allows the engine's own slug phrase, this scan allows
-                 nothing); the guard is never copied or vendored
+                 --publish-slug appears in it (files, commit and tag messages, patch text)
+                 only in the two public slugs — `<org>/segmently-modules` and --publish-slug,
+                 whole slugs, never a longer one built on them; the guard is never copied or
+                 vendored
   2 clean trees  this engine and the publish repository have no change git would see; the
                  publish repository's `plugins`, `.claude-plugin`, `.agents` and
                  `.agents/plugins` are directories (or absent), never symlinks; its channel
@@ -43,14 +44,17 @@ Steps, in this order (each printed with its result):
   4 build        `stable`: first the release commit here (`__version__` and pyproject.toml
                  X.Y.Z.devN → X.Y.Z; CHANGELOG.md's `## [Unreleased]` becomes `## [X.Y.Z] -
                  DATE` below a new empty `## [Unreleased]`, the notes under it, the file's line
-                 endings kept — DATE is MODSYS_RELEASE_DATE, else the local date); then
+                 endings kept — DATE is SEGMENTLY_MODULES_RELEASE_DATE, else the local date;
+                 every `segmently-modules.git@vX.Y.Z` install pin in README.md → the release's
+                 X.Y.Z, README.md in the same commit when one moved); then
                  tools/build_plugins.py with the channel's version (tools/publish.py) into a
                  temp directory
-  5 validate     the guard and the organisation scan over the build; our checks of the laid-out
+  5 validate     the guard and the organisation scan (the same two slugs) over the build; our
+                 checks of the laid-out
                  publish tree; `claude plugin validate --strict` of each plugin and of the
                  marketplace (skipped when `claude` is not on PATH)
-  6 publish repo the channel's branch gets exactly `plugins/modsys`, `plugins/modsys-ui`,
-                 `plugins/modsys-qa` replaced, both marketplace files merged by plugin name
+  6 publish repo the channel's branch gets exactly `plugins/segmently-modules`, `plugins/segmently-modules-ui`,
+                 `plugins/segmently-modules-qa` replaced, both marketplace files merged by plugin name
                  (entries it does not own are kept), and its own sections of README.md (the
                  install lines with --publish-slug) and CHANGELOG.md (the newest entry first:
                  `- <version> (<channel>): engine <sha>`, then each line of the notes indented
@@ -59,12 +63,12 @@ Steps, in this order (each printed with its result):
                  nothing committed). A missing branch is created from `origin/<channel>` when
                  the clone has it, else from the first commit behind HEAD that is not a release
                  commit of this tool (an orphan branch when there is none)
-  7 commit       `release modsys <version> (<channel>)` in the publish repository — the commit
+  7 commit       `release segmently-modules <version> (<channel>)` in the publish repository — the commit
                  must hold the build, path by path, mode and content; `stable` tags
                  `v<version>` and `<plugin>--v<version>` there and `v<version>` here
-  8 smoke install a throw-away CLAUDE_CONFIG_DIR: marketplace add, install modsys-ui (its
-                 dependency modsys comes with it) and modsys-qa, list, details, the installed
-                 `bin/modsys --version` and `lint` on a copy of the bookshop fixture — no model
+  8 smoke install a throw-away CLAUDE_CONFIG_DIR: marketplace add, install segmently-modules-ui (its
+                 dependency segmently-modules comes with it) and segmently-modules-qa, list, details, the installed
+                 `bin/segmently-modules --version` and `lint` on a copy of the bookshop fixture — no model
                  call (skipped when `claude` is not on PATH; then --push is refused)
   then, for `stable`, the commit that starts the next version here (X.Y.(Z+1).dev0; it leaves
   CHANGELOG.md alone), and only with --push: `git push --atomic origin` of the channel branch
@@ -80,8 +84,8 @@ and the run's first write to it is a refusal that writes nothing there. The put-
 checked: "as they were" is printed only when it is true. A failed or interrupted push is never
 put back: the release stands locally and the commands left to run are printed. Exit 0 done (or
 nothing to release) · 1 a step failed · 2 a refusal (stderr names it) · 130 interrupted. Test
-seams: MODSYS_RELEASE_INTERRUPT=6 raises Ctrl-C in the middle of step 6, =7 in step 7 between
-the commit and the tags; MODSYS_RELEASE_DATE=YYYY-MM-DD is the date step 4 gives the notes (a
+seams: SEGMENTLY_MODULES_RELEASE_INTERRUPT=6 raises Ctrl-C in the middle of step 6, =7 in step 7 between
+the commit and the tags; SEGMENTLY_MODULES_RELEASE_DATE=YYYY-MM-DD is the date step 4 gives the notes (a
 run across midnight is not flaky)."""
 import argparse
 import datetime
@@ -105,23 +109,26 @@ import publish  # noqa: E402
 ENGINE = build_plugins.ENGINE
 PROG = "release.py"
 SLUG = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?/[A-Za-z0-9._-]+$")
-README_BEGIN, README_END = "<!-- modsys:begin -->", "<!-- modsys:end -->"
-LOG_BEGIN, LOG_END = "<!-- modsys:changelog:begin -->", "<!-- modsys:changelog:end -->"
-LOG_MARK = "<!-- modsys:changelog:"  # what both begin with: never inside a published note
+README_BEGIN, README_END = "<!-- segmently-modules:begin -->", "<!-- segmently-modules:end -->"
+LOG_BEGIN, LOG_END = "<!-- segmently-modules:changelog:begin -->", "<!-- segmently-modules:changelog:end -->"
+LOG_MARK = "<!-- segmently-modules:changelog:"  # what both begin with: never inside a published note
 OWNED = [f"plugins/{name}" for name in build_plugins.PLUGINS]
 MARKETPLACE_FILES = [publish.CLAUDE_MARKETPLACE, publish.CODEX_MARKETPLACE]
 WRITTEN = [*OWNED, *MARKETPLACE_FILES, "README.md", "CHANGELOG.md"]  # all step 6 writes
 PARENTS = ["plugins", ".claude-plugin", ".agents", ".agents/plugins"]  # never a symlink
-VERSION_FILES = ["modsys/__init__.py", "pyproject.toml"]  # both version commits write these
+VERSION_FILES = ["segmently_modules/__init__.py", "pyproject.toml"]  # both version commits write these
 CHANGES = "CHANGELOG.md"  # the engine's release notes (Keep a Changelog), dated by step 4
-ENGINE_FILES = [*VERSION_FILES, CHANGES]  # all the run writes in the engine
+README = "README.md"  # the engine's README: the stable release commit pins its install lines
+ENGINE_FILES = [*VERSION_FILES, CHANGES, README]  # all the run writes in the engine
+ENGINE_REPO = "segmently-modules"  # the engine's repository, under the organisation of --publish-slug
+PIN = re.compile(r"(?<=segmently-modules\.git@v)\d+\.\d+\.\d+(?![\w.-])")  # a README install pin
 UNRELEASED = "## [Unreleased]"  # the heading of the notes of the next release
-DATE = "MODSYS_RELEASE_DATE"  # the test seam of the release commit's date (YYYY-MM-DD)
-RELEASE_SUBJECT = re.compile(r"^release modsys \S+ \((?:dev|stable)\)$")  # step 7's commits
-GUARD = "MODSYS_GUARD"  # the environment variable naming the private leak guard
+DATE = "SEGMENTLY_MODULES_RELEASE_DATE"  # the test seam of the release commit's date (YYYY-MM-DD)
+RELEASE_SUBJECT = re.compile(r"^release segmently-modules \S+ \((?:dev|stable)\)$")  # step 7's commits
+GUARD = "SEGMENTLY_MODULES_GUARD"  # the environment variable naming the private leak guard
 CLEAN = re.compile(r"^\S+: CLEAN$", re.M)  # its verdict line (its name is never spelled here)
 HITS = re.compile(r"(\d+) hit\(s\)")
-INTERRUPT = "MODSYS_RELEASE_INTERRUPT"
+INTERRUPT = "SEGMENTLY_MODULES_RELEASE_INTERRUPT"
 SECRETS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN")
 CLAUDE_TIMEOUT = 300  # seconds per `claude` call: a hanging CLI fails the step, never the run
 NAMES = {1: "leak guard", 2: "clean trees", 3: "tests", 4: "build", 5: "validate",
@@ -259,18 +266,35 @@ def run_guard(guard: Path, target: Path, where: str) -> None:
     raise Refused(f"the leak guard failed on {where} (exit {proc.returncode}): {why}")
 
 
-def org_hits(engine: Repo, org: str) -> list[str]:
-    """Where the organisation appears in the engine (any case): `file <path>` for a tracked
-    file, `history` for a commit message, an annotated tag's message or patch text in its
-    history — never a commit id or an `index` line: a short or hex-like name is not a hit
-    there."""
+def public_slugs(publish_slug: str) -> list[str]:
+    """The two repository slugs the organisation may appear in: the engine's own
+    (`<org>/segmently-modules`) and --publish-slug, the longer first."""
+    org = publish_slug.split("/")[0]
+    return sorted({f"{org}/{ENGINE_REPO}", publish_slug}, key=len, reverse=True)
+
+
+def without_slugs(text: str, slugs: list[str]) -> str:
+    """`text` with each allowed slug removed (any case, whole slugs only: a longer slug built
+    on one, like `<org>/segmently-modules-private`, stays)."""
+    for slug in slugs:
+        text = re.sub(r"(?<![\w-])" + re.escape(slug) + r"(?![\w-])", " ", text,
+                      flags=re.IGNORECASE)
+    return text
+
+
+def org_hits(engine: Repo, org: str, slugs: list[str] = ()) -> list[str]:
+    """Where the organisation appears in the engine (any case) outside the allowed `slugs`:
+    `file <path>` for a tracked file, `history` for a commit message, an annotated tag's
+    message or patch text in its history — never a commit id or an `index` line: a short or
+    hex-like name is not a hit there."""
     needle = org.lower()
     hits = []
     for rel in engine.out("ls-files", "-z").split("\0"):
         path = engine.path / rel
         if rel and path.is_file() and not path.is_symlink():
             try:
-                if needle.encode() in path.read_bytes().lower():
+                text = path.read_bytes().decode("utf-8", "replace")
+                if needle in without_slugs(text, slugs).lower():
                     hits.append(f"file {rel}")
             except OSError as e:
                 raise Refused(f"cannot read {rel}: {e.strerror or e}") from None
@@ -279,16 +303,17 @@ def org_hits(engine: Repo, org: str) -> list[str]:
     for proc in (log, tags):
         if proc.returncode:
             raise Refused(f"cannot read the engine's history: {proc.stderr.strip()}")
-    if any(needle in line.lower() for text in (log.stdout, tags.stdout)
+    if any(needle in without_slugs(line, slugs).lower() for text in (log.stdout, tags.stdout)
            for line in text.splitlines() if not line.startswith("index ")):
         hits.append("history")
     return hits
 
 
-def dir_hits(root: Path, org: str) -> list[str]:
-    needle = org.lower().encode()
+def dir_hits(root: Path, org: str, slugs: list[str] = ()) -> list[str]:
+    needle = org.lower()
     return [f"build {p.relative_to(root).as_posix()}" for p in sorted(root.rglob("*"))
-            if p.is_file() and needle in p.read_bytes().lower()]
+            if p.is_file() and needle in without_slugs(
+                p.read_bytes().decode("utf-8", "replace"), slugs).lower()]
 
 
 def linked_parents(root: Path) -> list[str]:
@@ -312,7 +337,7 @@ def markers(text: str, begin: str, end: str, where: str) -> bool:
     if found == (0, 0):
         return False
     if found != (1, 1) or text.index(begin) > text.index(end):
-        raise Failed(f"{where}: the markers of the modsys section are damaged ({found[0]} "
+        raise Failed(f"{where}: the markers of the segmently-modules section are damaged ({found[0]} "
                      f"`{begin}`, {found[1]} `{end}`"
                      f"{', the end first' if found == (1, 1) else ''}) — fix the file: one "
                      f"begin marker before one end marker, or neither")
@@ -333,20 +358,42 @@ def replace_section(text: str, begin: str, end: str, body: str,
 
 
 def readme_section(slug: str, channel: str, version: str) -> str:
-    return (f"## modsys\n\n"
-            f"Module-registry skills for coding agents and the modsys CLI: the plugins "
-            f"`modsys`, `modsys-ui` and `modsys-qa`. This branch: `{channel}`, modsys "
-            f"{version}.\n\n"
+    """The publish repository's README section: the install lines with --publish-slug and the
+    engine's repository beside it; the command line pinned to `version` on `stable` (the dev
+    channel follows the engine's main)."""
+    engine = f"https://github.com/{slug.split('/')[0]}/{ENGINE_REPO}"
+    cli = f"git+{engine}.git" + (f"@v{version}" if channel == "stable" else "")
+    return (f"## Segmently Modules\n\n"
+            f"Module-registry skills for coding agents and the `segmently-modules` command line: "
+            f"the plugins `segmently-modules`, `segmently-modules-ui` and `segmently-modules-qa`. "
+            f"This branch: `{channel}`, segmently-modules {version}. The engine, its docs and its "
+            f"issues: {engine}.\n\n"
             f"- Claude Code: `claude plugin marketplace add {slug}#stable`, then `claude plugin "
-            f"install modsys@modsys` (and `modsys-ui@modsys`, `modsys-qa@modsys`).\n"
-            f"- Codex: `codex plugin marketplace add {slug} --ref stable`, then `codex plugin "
-            f"add modsys@modsys`; install the modsys CLI first (`uv tool install` or `pipx "
-            f"install` from the engine repository — its README says how).\n"
-            f"- The dev channel: `#dev` / `--ref dev` and the marketplace `modsys-dev`.\n")
+            f"install segmently-modules@segmently-modules` (and "
+            f"`segmently-modules-ui@segmently-modules`, `segmently-modules-qa@segmently-modules`).\n"
+            f"- Codex: install the command line first — `uv tool install {cli}` or `pipx install "
+            f"{cli}`"
+            + ("" if channel == "stable" else " (the engine's `main`, which the dev channel follows; "
+               "for the stable plugins add `@v` and their version)")
+            + f" — then `codex plugin marketplace add {slug} --ref stable` and `codex plugin "
+            f"add segmently-modules@segmently-modules`.\n"
+            f"- The dev channel: `#dev` / `--ref dev` and the marketplace `segmently-modules-dev`.\n")
+
+
+def pin_readme(engine: Path, version: str) -> bool:
+    """Point every install pin of the engine's README (`segmently-modules.git@vX.Y.Z`) at
+    `version`; False, nothing written, when it holds none or all point there already."""
+    if not (engine / README).is_file():
+        return False
+    text = read_text(engine, README, "engine")
+    pinned = PIN.sub(version, text)
+    if pinned != text:
+        write_text(engine, README, pinned)
+    return pinned != text
 
 
 def changelog(text: str, entry: str, where: str = "CHANGELOG.md") -> str:
-    """CHANGELOG.md with `entry` (one line or more) added at the top of the modsys section (the
+    """CHANGELOG.md with `entry` (one line or more) added at the top of the segmently-modules section (the
     file's line endings kept)."""
     nl = newline_of(text)
     if markers(text, LOG_BEGIN, LOG_END, where):
@@ -359,7 +406,7 @@ def changelog(text: str, entry: str, where: str = "CHANGELOG.md") -> str:
             at += 1
         lines[at:at] = entry.split("\n")  # the newest first
         return head + LOG_BEGIN + nl + nl.join(lines) + nl + LOG_END + tail
-    return replace_section(text, LOG_BEGIN, LOG_END, f"## modsys\n\n{entry}\n", where)
+    return replace_section(text, LOG_BEGIN, LOG_END, f"## segmently-modules\n\n{entry}\n", where)
 
 
 def log_entry(version: str, channel: str, sha: str, notes: list[str]) -> str:
@@ -411,7 +458,7 @@ def pending_notes(text: str | None, channel: str) -> list[str]:
     """The notes a release publishes: the `## [Unreleased]` lines of the engine's CHANGELOG.md
     (`text`; None: there is no such file). Without a note — no line starting with `- ` or `* `
     there (SI-P61-10) — a `stable` release is refused and a `dev` one has none (`no notes
-    yet`). A note holding the publish section's marker (`<!-- modsys:changelog:`) is a refusal
+    yet`). A note holding the publish section's marker (`<!-- segmently-modules:changelog:`) is a refusal
     on either channel."""
     if text is None:
         if channel == "stable":
@@ -472,7 +519,7 @@ def date_notes(root: Path, version: str, date: str) -> list[str]:
 
 
 def release_date() -> str:
-    """The date the release commit gives the notes: MODSYS_RELEASE_DATE (YYYY-MM-DD, a real
+    """The date the release commit gives the notes: SEGMENTLY_MODULES_RELEASE_DATE (YYYY-MM-DD, a real
     date — anything else is a refusal), else the local date."""
     value = os.environ.get(DATE)
     if not value:
@@ -533,6 +580,7 @@ class Release:
         self.engine = Repo(ENGINE, "engine")
         self.pub = Repo(publish_repo, "publish repo")
         self.org = args.publish_slug.split("/")[0]
+        self.slugs = public_slugs(args.publish_slug)
         self.market = publish.MARKETPLACES[self.channel]
         self.claude = shutil.which("claude")
         self.temps: list[Path] = []
@@ -566,7 +614,7 @@ class Release:
     def pending(self) -> list[str]:
         """Step 1's first check, before any work: the notes this release publishes (see
         `pending_notes`); `stable` also needs CHANGELOG.md tracked — its release commit dates
-        it — and a MODSYS_RELEASE_DATE that is a date, when set."""
+        it — and a SEGMENTLY_MODULES_RELEASE_DATE that is a date, when set."""
         text = read_changes(ENGINE)
         if self.channel == "stable" and text is not None and not self.engine.out(
                 "ls-files", "--", CHANGES).strip():
@@ -590,12 +638,14 @@ class Release:
             raise Refused(f"{GUARD} points into the engine — the guard is private: it is "
                           f"never copied or vendored here")
         run_guard(self.guard, ENGINE, "the engine")
-        hits = org_hits(self.engine, self.org)
+        hits = org_hits(self.engine, self.org, self.slugs)
         if hits:
-            raise Refused(f"the organisation of --publish-slug appears in the engine: "
-                          f"{listed(hits)} — no repository slug before the public release")
+            raise Refused(f"the organisation of --publish-slug appears in the engine outside "
+                          f"{' and '.join(self.slugs)}: {listed(hits)} — no other repository "
+                          f"slug")
         count = len(self.notes)
-        return (f"CLEAN (files and history); the organisation appears nowhere; {CHANGES} "
+        return (f"CLEAN (files and history); the organisation appears only in "
+                f"{' and '.join(self.slugs)}; {CHANGES} "
                 f"[Unreleased]: " + (f"{count} line{'s' * (count != 1)}" if count else
                                      "no notes yet"))
 
@@ -662,7 +712,7 @@ class Release:
         if not modules:
             raise Failed("the unit suite has no tests/test_*.py module")
         jobs = self.args.jobs or default_jobs()
-        logs = self.temp("modsys-release-suite-")
+        logs = self.temp("segmently-modules-release-suite-")
         codes = Suite(ENGINE, logs, jobs).run(modules)
         tests = skipped = 0
         failing = []
@@ -687,18 +737,20 @@ class Release:
             version = publish.base_version(build_plugins.engine_version(ENGINE))
             date = release_date()
             self.notes = date_notes(ENGINE, version, date)  # what the release commit holds
-            self.bump(version, "release modsys {}", CHANGES)
-            notes = f"; {CHANGES} [Unreleased] dated [{version}] - {date}"
-        self.build = self.temp("modsys-release-build-")
+            pinned = pin_readme(ENGINE, version)
+            self.bump(version, "release segmently-modules {}", CHANGES, *([README] * pinned))
+            notes = (f"; {CHANGES} [Unreleased] dated [{version}] - {date}"
+                     + (f"; {README} pinned to v{version}" if pinned else ""))
+        self.build = self.temp("segmently-modules-release-build-")
         self.version = publish.build_channel(ENGINE, self.build, self.channel)
-        return f"modsys {self.version} ({', '.join(build_plugins.PLUGINS)}){notes}"
+        return f"segmently-modules {self.version} ({', '.join(build_plugins.PLUGINS)}){notes}"
 
     def bump(self, version: str, message: str, *also: str) -> None:
         """Set `__version__` and pyproject.toml's version, and commit them here — with `also`,
         the files the caller wrote for this commit (the release commit's CHANGELOG.md)."""
         self.own[self.engine.label].add(self.engine.branch())
         for rel, pattern, line in (
-                ("modsys/__init__.py", r'^__version__ = "[^"]*"$', f'__version__ = "{version}"'),
+                ("segmently_modules/__init__.py", r'^__version__ = "[^"]*"$', f'__version__ = "{version}"'),
                 ("pyproject.toml", r'^version = "[^"]*"$', f'version = "{version}"')):
             text, n = re.subn(pattern, line, read_text(ENGINE, rel, "engine"), count=1,
                               flags=re.M)
@@ -711,18 +763,19 @@ class Release:
 
     def step5(self) -> str:
         run_guard(self.guard, self.build, f"the build directory {self.build}")
-        hits = dir_hits(self.build, self.org)
+        hits = dir_hits(self.build, self.org, self.slugs)
         if hits:
-            raise Refused(f"the organisation of --publish-slug appears in the build directory: "
+            raise Refused(f"the organisation of --publish-slug appears in the build directory "
+                          f"outside {' and '.join(self.slugs)}: "
                           f"{listed(hits)}")
-        tree = self.temp("modsys-release-tree-") / "publish"
+        tree = self.temp("segmently-modules-release-tree-") / "publish"
         publish.layout(self.build, tree, self.channel)
         problems = publish.codex_problems(tree) + publish.plugin_problems(tree, self.version)
         if problems:
             raise Failed("the laid-out publish tree: " + "; ".join(problems))
         if not self.claude:
             return "our checks passed; claude plugin validate skipped: claude not on PATH"
-        config = self.temp("modsys-release-claude-")
+        config = self.temp("segmently-modules-release-claude-")
         for target in [*(self.build / name for name in build_plugins.PLUGINS), tree]:
             proc = run_child([self.claude, "plugin", "validate", "--strict", "--json",
                               str(target)], text=True, env=self.claude_env(config),
@@ -819,7 +872,7 @@ class Release:
                 flag = "+x" if want[path][0] == "100755" else "-x"  # mode through the index
                 pub.git("update-index", f"--chmod={flag}", "--", path)
         if pub.git("diff", "--cached", "--quiet", check=False).returncode == 0:
-            raise NothingToRelease(f"the {self.channel} branch already holds modsys "
+            raise NothingToRelease(f"the {self.channel} branch already holds segmently-modules "
                                    f"{self.version} — nothing to release")  # git sees no change
         engine_head = self.engine.out("rev-parse", "--short", "HEAD").strip()
         write_text(root, "CHANGELOG.md", changelog(log_old, log_entry(
@@ -853,27 +906,27 @@ class Release:
 
     def step7(self) -> str:
         pub = self.pub
-        pub.git("commit", "-q", "-m", f"release modsys {self.version} ({self.channel})")
+        pub.git("commit", "-q", "-m", f"release segmently-modules {self.version} ({self.channel})")
         self.committed()
         if os.environ.get(INTERRUPT) == "7":  # the seam: Ctrl-C after the commit, before a tag
             raise KeyboardInterrupt
         sha = pub.out("rev-parse", "--short", "HEAD").strip()
         if self.channel != "stable":
-            return f"{sha} release modsys {self.version} ({self.channel}); no tag"
-        tags = {f"v{self.version}": "modsys"}
+            return f"{sha} release segmently-modules {self.version} ({self.channel}); no tag"
+        tags = {f"v{self.version}": "segmently-modules"}
         tags.update({f"{name}--v{self.version}": name for name in build_plugins.PLUGINS})
         for tag, what in tags.items():  # annotated, as `claude plugin tag` makes them
             self.own[pub.label].add(f"refs/tags/{tag}")
             pub.git("tag", "-a", tag, "-m", f"{what} {self.version}")
         self.own[self.engine.label].add(f"refs/tags/v{self.version}")
-        self.engine.git("tag", "-a", f"v{self.version}", "-m", f"modsys {self.version}")
-        return (f"{sha} release modsys {self.version} (stable); tags {', '.join(tags)}; the "
+        self.engine.git("tag", "-a", f"v{self.version}", "-m", f"segmently-modules {self.version}")
+        return (f"{sha} release segmently-modules {self.version} (stable); tags {', '.join(tags)}; the "
                 f"engine's release commit tagged v{self.version}")
 
     def step8(self) -> str:
         if not self.claude:
             return "skipped: claude not on PATH"
-        config = self.temp("modsys-release-smoke-")
+        config = self.temp("segmently-modules-release-smoke-")
         env = self.claude_env(config)
 
         def claude(*argv: str) -> str:
@@ -885,43 +938,43 @@ class Release:
 
         claude("--version")
         claude("plugin", "marketplace", "add", str(self.pub.path))
-        claude("plugin", "install", f"modsys-ui@{self.market}", "--scope", "user")
+        claude("plugin", "install", f"segmently-modules-ui@{self.market}", "--scope", "user")
         enabled = self.enabled(claude)
-        if not {f"modsys@{self.market}", f"modsys-ui@{self.market}"} <= set(enabled):
-            raise Failed(f"installing modsys-ui did not install its dependency modsys: "
+        if not {f"segmently-modules@{self.market}", f"segmently-modules-ui@{self.market}"} <= set(enabled):
+            raise Failed(f"installing segmently-modules-ui did not install its dependency segmently-modules: "
                          f"{sorted(enabled)}")
-        claude("plugin", "install", f"modsys-qa@{self.market}", "--scope", "user")
+        claude("plugin", "install", f"segmently-modules-qa@{self.market}", "--scope", "user")
         enabled = self.enabled(claude)
         missing = sorted({f"{n}@{self.market}" for n in build_plugins.PLUGINS} - set(enabled))
         if missing:
             raise Failed(f"not installed and enabled: {', '.join(missing)}")
-        installed = Path(enabled[f"modsys@{self.market}"])
+        installed = Path(enabled[f"segmently-modules@{self.market}"])
         core = sorted(build_plugins.pack_skills(ENGINE, "core"))
         found = sorted(p.parent.name for p in installed.glob("skills/*/SKILL.md"))
         if found != core:
-            raise Failed(f"the installed modsys holds the skills {found}, not {core}")
-        details = claude("plugin", "details", f"modsys@{self.market}")
+            raise Failed(f"the installed segmently-modules holds the skills {found}, not {core}")
+        details = claude("plugin", "details", f"segmently-modules@{self.market}")
         named = set(re.findall(r"[\w-]+", details))  # whole names: `module` is not `module-init`
         absent = [s for s in core if s not in named]
         if absent:
-            raise Failed(f"claude plugin details modsys does not name {', '.join(absent)}")
-        launcher = str(installed / "bin/modsys")
+            raise Failed(f"claude plugin details segmently-modules does not name {', '.join(absent)}")
+        launcher = str(installed / "bin/segmently-modules")
         version = build_plugins.engine_version(ENGINE)
         proc = run_child([launcher, "--version"], text=True)
-        if proc.returncode or proc.stdout.strip() != f"modsys {version}":
-            raise Failed(f"bin/modsys --version: exit {proc.returncode} "
-                         f"{(proc.stdout + proc.stderr).strip()} (want modsys {version})")
-        shop = self.temp("modsys-release-shop-") / "bookshop"
+        if proc.returncode or proc.stdout.strip() != f"segmently-modules {version}":
+            raise Failed(f"bin/segmently-modules --version: exit {proc.returncode} "
+                         f"{(proc.stdout + proc.stderr).strip()} (want segmently-modules {version})")
+        shop = self.temp("segmently-modules-release-shop-") / "bookshop"
         shutil.copytree(ENGINE / "tests/fixtures/bookshop", shop)
         proc = run_child([launcher, "lint", "--root", str(shop)], text=True)
         if proc.returncode:
-            raise Failed(f"bin/modsys lint on the bookshop fixture: exit {proc.returncode} "
+            raise Failed(f"bin/segmently-modules lint on the bookshop fixture: exit {proc.returncode} "
                          f"{(proc.stdout + proc.stderr).strip()[-400:]}")
         caches = [p for root in (installed, self.pub.path) for p in root.rglob("__pycache__")]
         if caches:
             raise Failed(f"__pycache__ written: {caches[0]}")
-        return (f"modsys, modsys-ui (its dependency modsys installed with it) and modsys-qa "
-                f"from {self.market}: {len(core)} core skills, bin/modsys --version = modsys "
+        return (f"segmently-modules, segmently-modules-ui (its dependency segmently-modules installed with it) and segmently-modules-qa "
+                f"from {self.market}: {len(core)} core skills, bin/segmently-modules --version = segmently-modules "
                 f"{version}, lint exit 0")
 
     def enabled(self, claude) -> dict[str, str]:
@@ -942,7 +995,7 @@ class Release:
             return "the engine keeps its version (dev)"
         major, minor, patch = self.version.split(".")
         following = f"{major}.{minor}.{int(patch) + 1}.dev0"
-        self.bump(following, "start modsys {}")
+        self.bump(following, "start segmently-modules {}")
         return f"the engine is at {following}"
 
     def pushes(self) -> list[tuple[Repo, list[str]]]:
@@ -985,7 +1038,7 @@ class Release:
             say(f"{NAMES[step]}: {self.next_version()}")
             step = 10
             say(f"{NAMES[step]}: {self.push()}")
-            say(f"done: modsys {self.version} ({self.channel})")
+            say(f"done: segmently-modules {self.version} ({self.channel})")
             return 0
         except NothingToRelease as e:
             return self.stop(step, 0, str(e))
@@ -1284,7 +1337,7 @@ def refusal(args, repo: Path) -> str | None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog=PROG, description="Release the modsys plugins of "
+    parser = argparse.ArgumentParser(prog=PROG, description="Release the segmently-modules plugins of "
                                      "this engine into a publish repository.")
     parser.add_argument("--publish-repo", required=True, type=Path,
                         help="the publish repository's local clone")
@@ -1309,7 +1362,7 @@ def main(argv: list[str] | None = None) -> int:
         if why:
             print(f"{PROG}: error: {why}", file=sys.stderr)
             return 2
-        say(f"release modsys: channel {args.channel} (marketplace "
+        say(f"release segmently-modules: channel {args.channel} (marketplace "
             f"{publish.MARKETPLACES[args.channel]}), publish repo {repo}")
         return Release(args, repo).run()
     except KeyboardInterrupt:

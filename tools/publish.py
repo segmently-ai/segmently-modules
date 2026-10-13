@@ -1,4 +1,4 @@
-"""The publish tree of the modsys plugins (P6 D4): channel versions, the two marketplace files
+"""The publish tree of the segmently-modules plugins (P6 D4): channel versions, the two marketplace files
 and their merge, the structural check of the Codex one — stdlib only.
 
     python3 tools/publish.py --channel dev|stable --out DIR
@@ -9,7 +9,7 @@ builds the three plugins (tools/build_plugins.py) with the channel's version int
 plugin marketplace add` read; `tools/release.py` writes the same into the publish repository.
 
 Channels are branches of the publish repository; each has its own marketplace name:
-`stable` → `modsys`, `dev` → `modsys-dev` (two marketplaces can be added side by side).
+`stable` → `segmently-modules`, `dev` → `segmently-modules-dev` (two marketplaces can be added side by side).
 Versions (one source: the engine's `__version__`, X.Y.Z or X.Y.Z.devN): `stable` = X.Y.Z;
 `dev` = X.Y.Z-dev.h<8 hex> — the content hash of the three plugin trees, their manifests
 read with the `version` blanked (the one value made from the hash), so a rebuild of the same
@@ -32,12 +32,14 @@ sys.dont_write_bytecode = True  # running a tool never leaves tools/__pycache__ 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_plugins  # noqa: E402  (a sibling script)
 
-MARKETPLACES = {"stable": "modsys", "dev": "modsys-dev"}  # channel (branch) -> marketplace
+MARKETPLACES = {"stable": "segmently-modules", "dev": "segmently-modules-dev"}  # channel (branch) -> marketplace
 CLAUDE_MARKETPLACE = ".claude-plugin/marketplace.json"
 CODEX_MARKETPLACE = ".agents/plugins/marketplace.json"
-OWNER = {"name": "modsys maintainers"}
-DESCRIPTION = {"stable": "The modsys plugins: module-registry skills and the modsys CLI",
-               "dev": "The modsys plugins, dev channel: every change before a release"}
+OWNER = {"name": "Segmently Modules maintainers"}
+DESCRIPTION = {"stable": "The Segmently Modules plugins: module-registry skills and the "
+                         "segmently-modules CLI",
+               "dev": "The Segmently Modules plugins, dev channel: every change before a release"}
+README_PIN = re.compile(rb"segmently-modules\.git@v\d+\.\d+\.\d+")  # a stable build's pin
 ENGINE_VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:\.dev\d+)?$")
 PROG = "publish.py"
 
@@ -68,8 +70,9 @@ def blank_version(data: bytes) -> bytes:
 
 def content_hash(plugins: Path) -> str:
     """sha256 over (path, mode, bytes) of every file of the three plugin directories in
-    `plugins`, in path order — a manifest with its `version` blanked (the version is made from
-    this hash; any other manifest change moves it)."""
+    `plugins`, in path order — a manifest with its `version` blanked and a README with its
+    install pins (`segmently-modules.git@vX.Y.Z`) unpinned (the version is made from this hash;
+    any other change moves it)."""
     h = hashlib.sha256()
     for name in sorted(build_plugins.PLUGINS):
         root = plugins / name
@@ -78,6 +81,8 @@ def content_hash(plugins: Path) -> str:
             data = path.read_bytes()
             if rel in build_plugins.MANIFESTS:
                 data = blank_version(data)
+            elif rel == "README.md":
+                data = README_PIN.sub(b"segmently-modules.git", data)
             h.update(f"{name}/{rel}\0{path.stat().st_mode & 0o777:o}\0{len(data)}\0".encode())
             h.update(data)
     return h.hexdigest()
@@ -251,7 +256,7 @@ def write_error(e: OSError, fallback: Path) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog=PROG, description="Lay out the modsys publish tree "
+    parser = argparse.ArgumentParser(prog=PROG, description="Lay out the segmently-modules publish tree "
                                      "of a channel: the plugins and both marketplace files.")
     parser.add_argument("--channel", required=True, choices=sorted(MARKETPLACES))
     parser.add_argument("--out", required=True, type=Path,

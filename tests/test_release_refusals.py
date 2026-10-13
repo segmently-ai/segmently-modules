@@ -28,21 +28,21 @@ class RefusalTest(ReleaseRepo):  # P6-AC-030 (SI-1, SI-16, SI-17)
         return proc.stderr
 
     def test_the_guard(self):
-        self.assertIn("MODSYS_GUARD is not set", self.refused(env={"MODSYS_GUARD": ""}))
-        self.assertIn("MODSYS_GUARD: /nonexistent/guard.py not found",
-                      self.refused(env={"MODSYS_GUARD": "/nonexistent/guard.py"}))
+        self.assertIn("SEGMENTLY_MODULES_GUARD is not set", self.refused(env={"SEGMENTLY_MODULES_GUARD": ""}))
+        self.assertIn("SEGMENTLY_MODULES_GUARD: /nonexistent/guard.py not found",
+                      self.refused(env={"SEGMENTLY_MODULES_GUARD": "/nonexistent/guard.py"}))
         err = self.refused(env={"FAKE_GUARD_HIT": str(self.engine)})
         self.assertIn("the leak guard found 2 hit(s) in the engine", err)
         self.assertIn("LEAK  'secret'  in file a.md", err)  # the operator's terminal only
         self.assertIn("the leak guard failed on the engine (exit 2): guard: error: planted",
                       self.refused(env={"FAKE_GUARD_ERROR": "1"}))
-        err = self.refused(env={"FAKE_GUARD_HIT": "modsys-release-build-"})
+        err = self.refused(env={"FAKE_GUARD_HIT": "segmently-modules-release-build-"})
         self.assertIn("in the build directory", err)
         vendored = self.engine / "dist/guard.py"  # git-ignored: the tree stays clean
         vendored.parent.mkdir()
         vendored.write_text(GUARD)
-        self.assertIn("MODSYS_GUARD points into the engine",
-                      self.refused(env={"MODSYS_GUARD": str(vendored)}))
+        self.assertIn("SEGMENTLY_MODULES_GUARD points into the engine",
+                      self.refused(env={"SEGMENTLY_MODULES_GUARD": str(vendored)}))
 
     def test_a_guard_that_fails_is_not_a_guard_with_hits(self):  # final review M-3
         for mode, line in (
@@ -55,7 +55,7 @@ class RefusalTest(ReleaseRepo):  # P6-AC-030 (SI-1, SI-16, SI-17)
                 self.assertEqual(err, f"release.py: error: {line}\n")
         script = self.base / "guard.sh"  # not Python at all
         script.write_text("#!/bin/sh\necho 'guard: CLEAN'\n")
-        err = self.refused(channel="dev", env={"MODSYS_GUARD": str(script)})
+        err = self.refused(channel="dev", env={"SEGMENTLY_MODULES_GUARD": str(script)})
         self.assertIn("the leak guard failed on the engine (exit 1): ", err)
         self.assertNotIn("hit(s)", err)
         self.assertEqual(err.count("\n"), 1)
@@ -74,7 +74,7 @@ class RefusalTest(ReleaseRepo):  # P6-AC-030 (SI-1, SI-16, SI-17)
         self.assertIn(f"v{REL} already exists in the engine", self.refused())
         git(self.engine, "tag", "-d", f"v{REL}")
         self.commit(self.pub, "x.txt", "x\n", "x")
-        for tag in (f"v{REL}", f"modsys-ui--v{REL}"):
+        for tag in (f"v{REL}", f"segmently-modules-ui--v{REL}"):
             git(self.pub, "tag", tag)
             self.assertIn(f"{tag} already exists in the publish repo", self.refused())
             git(self.pub, "branch", tag)  # a branch of the same name hides nothing
@@ -84,8 +84,8 @@ class RefusalTest(ReleaseRepo):  # P6-AC-030 (SI-1, SI-16, SI-17)
 
     def test_a_version_without_devn_and_a_symlinked_directory(self):  # final M-7, M-5
         outside = self.base / "outside"
-        (outside / "modsys").mkdir(parents=True)
-        (outside / "modsys/THEIRS.txt").write_text("not the release's\n")
+        (outside / "segmently-modules").mkdir(parents=True)
+        (outside / "segmently-modules/THEIRS.txt").write_text("not the release's\n")
         for rel in ("plugins", ".claude-plugin", ".agents"):
             with self.subTest(link=rel):
                 os.symlink(outside, self.pub / rel)
@@ -98,10 +98,10 @@ class RefusalTest(ReleaseRepo):  # P6-AC-030 (SI-1, SI-16, SI-17)
         self.commit(self.pub, ".agents/plugins", "a file\n", "a file where a directory goes")
         self.assertIn(".agents/plugins in the publish repo is a symlink or a file",
                       self.refused(channel="dev"))
-        self.assertEqual(sorted(p.name for p in outside.rglob("*")), ["THEIRS.txt", "modsys"])
+        self.assertEqual(sorted(p.name for p in outside.rglob("*")), ["THEIRS.txt", "segmently-modules"])
         git(self.pub, "rm", "-q", "--", ".agents/plugins")
         git(self.pub, "commit", "-q", "-m", "no file")
-        for rel, old, new in (("modsys/__init__.py", f'__version__ = "{ENG}"',
+        for rel, old, new in (("segmently_modules/__init__.py", f'__version__ = "{ENG}"',
                                f'__version__ = "{REL}"'),
                               ("pyproject.toml", f'version = "{ENG}"', f'version = "{REL}"')):
             path = self.engine / rel

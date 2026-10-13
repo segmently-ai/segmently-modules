@@ -1,24 +1,24 @@
-"""Build the modsys agent plugins from this engine tree (P6 D1) — stdlib only, deterministic.
+"""Build the segmently-modules agent plugins from this engine tree (P6 D1) — stdlib only, deterministic.
 
     python3 tools/build_plugins.py [--out dist/plugins] [--version V]
 
 writes three plugin directories into --out (default `dist/plugins` of this engine tree):
-  modsys     the `core` pack's skills, `bin/modsys` (tools/launcher.sh, mode 0755) and
-             `runtime/modsys/` (the tracked files of `modsys/`, byte for byte) and `agents/`, mode
-             0644: every tracked file directly in `modsys/defaults/agents/` (the `module-chooser`
+  segmently-modules     the `core` pack's skills, `bin/segmently-modules` (tools/launcher.sh, mode 0755) and
+             `runtime/segmently_modules/` (the tracked files of `segmently_modules/`, byte for byte) and `agents/`, mode
+             0644: every tracked file directly in `segmently_modules/defaults/agents/` (the `module-chooser`
              subagent; a subdirectory never ships) and one agent per row of the engine's agent
-             table (`SKILL_AGENTS` in `modsys/skills.py`, read without importing the engine): its
-             front matter (`skills:` preloads its skill, `modsys:<skill>`), a blank line, then a
+             table (`SKILL_AGENTS` in `segmently_modules/skills.py`, read without importing the engine): its
+             front matter (`skills:` preloads its skill, `segmently-modules:<skill>`), a blank line, then a
              short body that runs the skill and returns its output (`AGENT_BODY` +
              `CLAUDE_FALLBACK`; no skill text is copied, P8.6 D1); a skill the core pack does not
              declare, or a tracked agent file of the same name, is a refusal
-  modsys-ui  the `ui` pack's skills;  modsys-qa  the `qa` pack's skills
+  segmently-modules-ui  the `ui` pack's skills;  segmently-modules-qa  the `qa` pack's skills
 each with `.claude-plugin/plugin.json` (Claude Code), `plugin.json` (Agent Plugins, read by
 Codex), `.codex-plugin/plugin.json` (Codex's compatibility manifest) and a README.md, every
 manifest rendered from the one PLUGINS table below. The engine is read from git's index and
-this work tree — never from an installed copy: `git ls-files modsys/` decides what ships (an
+this work tree — never from an installed copy: `git ls-files segmently_modules/` decides what ships (an
 untracked file never does), a file's mode comes from the index (100755 → 0755, else 0644;
-`bin/modsys` 0755), directories are 0755, and nothing carries a timestamp: two builds of one
+`bin/segmently-modules` 0755), directories are 0755, and nothing carries a timestamp: two builds of one
 tree are byte-identical. A tracked file that differs from its commit still ships as it is on
 disk; one stderr `warning:` line names such files.
 The three plugins are built in a temp directory inside --out and renamed into place at the end,
@@ -47,35 +47,39 @@ sys.dont_write_bytecode = True  # running a tool never leaves tools/__pycache__ 
 ENGINE = Path(__file__).resolve().parents[1]
 PROG = "build_plugins.py"
 SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"  # Agent Plugins manifest
-AUTHOR = {"name": "modsys maintainers"}
-KEYWORDS = ["modsys", "module-registry", "documentation", "agent-skills"]
+AUTHOR = {"name": "Segmently Modules maintainers"}
+HOMEPAGE = "https://github.com/segmently-ai/segmently-modules"  # the engine: its docs and issues
+MARKETPLACE = "segmently-ai/segmently-modules-plugins"  # the publish repository (both channels)
+LICENSE = "MIT"
+KEYWORDS = ["segmently-modules", "module-registry", "documentation", "agent-skills"]
 # The one table every manifest and README is rendered from: plugin -> the pack it ships.
 PLUGINS = {
-    "modsys": {"pack": "core", "keywords": ["modules", "cli"],
+    "segmently-modules": {"pack": "core", "keywords": ["modules", "cli"],
                "description": "Module-registry skills for coding agents — find, read, update, "
                               "create, split and lint module docs, start them from existing "
-                              "code or adopt a registry — with the modsys CLI they run"},
-    "modsys-ui": {"pack": "ui", "keywords": ["ui", "design-review"],
-                  "description": "The modsys designer skill: prototypes, audits and reviews UI "
-                                 "work against the designer docs of the modules it touches"},
-    "modsys-qa": {"pack": "qa", "keywords": ["qa", "acceptance-criteria"],
-                  "description": "The modsys acceptance-criteria skills: a task's criteria "
-                                 "before the code, and a module's acceptance baseline"},
+                              "code or adopt a registry — with the segmently-modules CLI they run"},
+    "segmently-modules-ui": {"pack": "ui", "keywords": ["ui", "design-review"],
+                  "description": "The Segmently Modules designer skill: prototypes, audits and "
+                                 "reviews UI work against the designer docs of the modules it "
+                                 "touches"},
+    "segmently-modules-qa": {"pack": "qa", "keywords": ["qa", "acceptance-criteria"],
+                  "description": "The Segmently Modules acceptance-criteria skills: a task's "
+                                 "criteria before the code, and a module's acceptance baseline"},
 }
-CORE = "modsys"  # the plugin with the CLI; the others depend on it (Claude Code)
-AGENTS_DIR = "modsys/defaults/agents/"  # its direct children ship in the core plugin's agents/
-AGENT_TABLE = "modsys/skills.py"  # SKILL_AGENTS and PROCEDURE: the engine's one agent table
+CORE = "segmently-modules"  # the plugin with the CLI; the others depend on it (Claude Code)
+AGENTS_DIR = "segmently_modules/defaults/agents/"  # its direct children ship in the core plugin's agents/
+AGENT_TABLE = "segmently_modules/skills.py"  # SKILL_AGENTS and PROCEDURE: the engine's one agent table
 AGENT_TOOLS = "Read, Grep, Glob, Bash, Agent, Skill"  # the generated agents' tools (Claude Code)
 AGENT_MODEL = "sonnet"
 MANIFESTS = (".claude-plugin/plugin.json", "plugin.json", ".codex-plugin/plugin.json")
-NOT_SHIPPED = {".DS_Store", ".modsys-managed", ".modsys-ejected"}
+NOT_SHIPPED = {".DS_Store", ".segmently-modules-managed", ".segmently-modules-ejected"}
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
                     r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
                     r"(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
                     r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$")  # semver.org, SemVer 2.0
 # Test seam: `<plugin>` = Ctrl-C after building that plugin; `swap:<plugin>` = Ctrl-C after that
 # plugin was renamed into --out.
-INTERRUPT_AFTER = "MODSYS_BUILD_INTERRUPT_AFTER"
+INTERRUPT_AFTER = "SEGMENTLY_MODULES_BUILD_INTERRUPT_AFTER"
 # git's location variables (a parent git hook exports them): they would point git at another
 # repository or index — the same list as the engine's `changes.git_env`.
 GIT_LOCATION_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
@@ -123,19 +127,19 @@ def git(engine: Path, *args: str) -> str:
 
 
 def engine_version(engine: Path) -> str:
-    """`__version__` of the engine tree's `modsys/__init__.py` (read as text, never imported)."""
+    """`__version__` of the engine tree's `segmently_modules/__init__.py` (read as text, never imported)."""
     try:
-        text = (engine / "modsys/__init__.py").read_text(encoding="utf-8")
+        text = (engine / "segmently_modules/__init__.py").read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as e:
-        raise BuildError(f"cannot read modsys/__init__.py: {e}") from None
+        raise BuildError(f"cannot read segmently_modules/__init__.py: {e}") from None
     m = re.search(r'^__version__ = "([^"]+)"$', text, re.M)
     if not m:
-        raise BuildError("modsys/__init__.py holds no __version__ = \"…\" line")
+        raise BuildError("segmently_modules/__init__.py holds no __version__ = \"…\" line")
     return m.group(1)
 
 
 def tracked(engine: Path) -> dict[str, int]:
-    """{path: mode} of the files git tracks under `modsys/` — each one a regular file on disk.
+    """{path: mode} of the files git tracks under `segmently_modules/` — each one a regular file on disk.
     A symlink or submodule in the index, a tracked file missing on disk or a symlink there is
     a refusal naming it; `__pycache__`, `*.pyc` and the engine's markers never ship."""
     try:
@@ -144,12 +148,12 @@ def tracked(engine: Path) -> dict[str, int]:
         raise
     except BuildError:
         raise BuildError(f"{engine} is not a git work tree — the build ships the files git "
-                         f"tracks under modsys/ (build from a clone, not an export)") from None
+                         f"tracks under segmently_modules/ (build from a clone, not an export)") from None
     if os.path.realpath(top) != os.path.realpath(engine):
         raise BuildError(f"{engine} is not the top of a git work tree — the build ships the "
-                         f"files git tracks under modsys/ (build from a clone, not an export)")
+                         f"files git tracks under segmently_modules/ (build from a clone, not an export)")
     out = {}
-    for entry in git(engine, "ls-files", "-s", "-z", "--", "modsys").split("\0"):
+    for entry in git(engine, "ls-files", "-s", "-z", "--", "segmently_modules").split("\0"):
         if not entry:
             continue
         meta, path = entry.split("\t", 1)
@@ -168,13 +172,13 @@ def tracked(engine: Path) -> dict[str, int]:
                              f"-- {path}) or commit its removal")
         out[path] = 0o755 if mode & 0o111 else 0o644
     if not out:
-        raise BuildError("git tracks no file under modsys/")
+        raise BuildError("git tracks no file under segmently_modules/")
     return out
 
 
 def pack_skills(engine: Path, pack: str) -> dict[str, str]:
     """{skill id: its directory, engine-relative} of a built-in pack, from its pack.toml."""
-    rel = f"modsys/defaults/packs/{pack}/pack.toml"
+    rel = f"segmently_modules/defaults/packs/{pack}/pack.toml"
     try:
         data = tomllib.loads((engine / rel).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as e:
@@ -184,13 +188,13 @@ def pack_skills(engine: Path, pack: str) -> dict[str, str]:
                                                isinstance(s.get("path"), str)
                                                for s in skills.values()):
         raise BuildError(f"{rel}: [skills.<id>] tables with a path are expected")
-    return {sid: os.path.normpath(f"modsys/defaults/packs/{pack}/{spec['path']}")
+    return {sid: os.path.normpath(f"segmently_modules/defaults/packs/{pack}/{spec['path']}")
             for sid, spec in sorted(skills.items())}
 
 
 def agent_table(engine: Path) -> tuple[dict, str]:
     """(SKILL_AGENTS, the agents' body template: AGENT_BODY + CLAUDE_FALLBACK) of the engine
-    tree's `modsys/skills.py` — its literal assignments, read with `ast` (the engine is never
+    tree's `segmently_modules/skills.py` — its literal assignments, read with `ast` (the engine is never
     imported)."""
     try:
         tree = ast.parse(read(engine, AGENT_TABLE), AGENT_TABLE)
@@ -225,7 +229,7 @@ def agent_header(name: str, description: str, skill: str) -> bytes:
 
 def agent_files(engine: Path, files: dict[str, int]) -> dict[str, bytes]:
     """{file name in the core plugin's `agents/`: bytes}: every tracked file directly in
-    `modsys/defaults/agents/` (one in a subdirectory never ships), then one generated agent per
+    `segmently_modules/defaults/agents/` (one in a subdirectory never ships), then one generated agent per
     row of the agent table — a refusal when its skill is not in the core pack or a tracked
     agent file has its name."""
     out, source = {}, {}
@@ -260,13 +264,15 @@ def license_of(engine: Path) -> str | None:
 
 def manifests(name: str, version: str, spdx: str | None = None) -> dict[str, dict]:
     """The three manifests of plugin `name` — {path in the plugin: JSON value}, key order fixed —
-    all rendered from PLUGINS: `dependencies` (a bare name, no range) only for Claude Code."""
+    all rendered from PLUGINS: `dependencies` (a bare name, no range), `homepage`, `repository`
+    and `license` only for Claude Code (the keys its manifest schema defines)."""
     spec = PLUGINS[name]
     shared = {"name": name, "version": version, "description": spec["description"],
               "author": dict(AUTHOR), "keywords": KEYWORDS + spec["keywords"]}
     if spdx:
         shared["license"] = spdx
-    claude = dict(shared)
+    claude = {**shared, "homepage": HOMEPAGE, "repository": HOMEPAGE,
+              "license": shared.get("license", LICENSE)}
     if name != CORE:
         claude["dependencies"] = [CORE]
     return {".claude-plugin/plugin.json": claude,
@@ -274,56 +280,57 @@ def manifests(name: str, version: str, spdx: str | None = None) -> dict[str, dic
             ".codex-plugin/plugin.json": {**shared, "skills": "./skills/"}}
 
 
-def readme(name: str, skills: list[str], agents: list[str] = ()) -> str:
-    """The plugin's README: what it holds and one install line per agent; `<owner>/<publish
-    repo>` and `<owner>/<repo>` are placeholders (no repository slug before the public release)."""
+def readme(name: str, skills: list[str], agents: list[str] = (), version: str = "") -> str:
+    """The plugin's README: what it holds and one install line per agent, with the public
+    repositories; the command line pinned to `version` when it is a stable X.Y.Z (a dev build
+    follows the engine's main)."""
     spec = PLUGINS[name]
     generated: list[str] = []
     listed = ", ".join(f"`{s}`" for s in skills)
-    what = (f"The `{spec['pack']}` pack of modsys as a plugin: {listed}.")
+    cli = f"git+{HOMEPAGE}.git" + (f"@v{version}" if re.fullmatch(r"\d+\.\d+\.\d+", version)
+                                   else "")  # a dev build comes from main: so does its CLI
+    what = (f"The `{spec['pack']}` pack of Segmently Modules as a plugin: {listed}.")
     if name == CORE:
-        what += (" It also carries the modsys command line those skills run: `bin/modsys` runs "
+        what += (" It also carries the segmently-modules command line those skills run: `bin/segmently-modules` runs "
                  "the engine in `runtime/` with Python 3.11 or newer (or `uv`); set "
-                 "`MODSYS_PYTHON` to choose the interpreter. It ships the read-only "
-                 "`module-chooser` agent (`modsys:module-chooser`, Claude Code) that the skills "
-                 "hand a `modsys choose` work order; every plugin update replaces it, so change "
-                 "how modules are chosen with `modsys templates override choose/rules.md`.")
+                 "`SEGMENTLY_MODULES_PYTHON` to choose the interpreter. It ships the read-only "
+                 "`module-chooser` agent (`segmently-modules:module-chooser`, Claude Code) that the skills "
+                 "hand a `segmently-modules choose` work order; every plugin update replaces it, so change "
+                 "how modules are chosen with `segmently-modules templates override choose/rules.md`.")
         generated = sorted(a[:-3] for a in agents if a != "module-chooser.md")
         if generated:
             what += (" It also ships the agents "
                      + ", ".join(f"`{a}`" for a in generated[:-1]) + f" and `{generated[-1]}`"
-                     + " (`modsys:<name>`): each one runs its skill in the agent's own context "
+                     + " (`segmently-modules:<name>`): each one runs its skill in the agent's own context "
                        "and returns the skill's output.")
-        needs = ("- Codex: `codex plugin marketplace add <owner>/<publish repo> --ref stable`, "
-                 f"then `codex plugin add {name}@modsys`. Codex puts no plugin command on "
-                 "PATH, so install the CLI first, at the plugin's version: `uv tool install "
-                 "git+ssh://git@github.com/<owner>/<repo>.git@v<version>` (or `pipx install "
-                 "git+ssh://git@github.com/<owner>/<repo>.git@v<version>`)."
-                 + (" Codex reads no plugin agents: `modsys setup` and `modsys packs sync "
+        needs = (f"- Codex: `codex plugin marketplace add {MARKETPLACE} --ref stable`, "
+                 f"then `codex plugin add {name}@segmently-modules`. Codex puts no plugin command on "
+                 f"PATH, so install the CLI first, at the plugin's version: `uv tool "
+                 f"install {cli}` (or `pipx install {cli}`)."
+                 + (" Codex reads no plugin agents: `segmently-modules setup` and `segmently-modules packs sync "
                     "--agent codex` write the three skills' agents to `.codex/agents/` in the "
                     "repository." if generated else "") + "\n")
     else:
-        what += (" It needs the `modsys` plugin (the modsys command line and the core skills).")
-        needs = ("- Codex: `codex plugin marketplace add <owner>/<publish repo> --ref stable`, "
-                 f"then `codex plugin add modsys@modsys` and `codex plugin add {name}@modsys` — "
+        what += (" It needs the `segmently-modules` plugin (the segmently-modules command line and the core skills).")
+        needs = (f"- Codex: `codex plugin marketplace add {MARKETPLACE} --ref stable`, "
+                 f"then `codex plugin add segmently-modules@segmently-modules` and `codex plugin add {name}@segmently-modules` — "
                  "Codex has no plugin dependencies, so add both — and install the CLI first, "
-                 "at the plugins' version: `uv tool install "
-                 "git+ssh://git@github.com/<owner>/<repo>.git@v<version>` (or `pipx install "
-                 "git+ssh://git@github.com/<owner>/<repo>.git@v<version>`).\n")
+                 f"at the plugins' version: `uv tool install {cli}` (or `pipx install "
+                 f"{cli}`).\n")
     return (f"# {name}\n\n{spec['description']}.\n\n{what}\n\n## Install\n\n"
-            f"- Claude Code: `claude plugin marketplace add <owner>/<publish repo>#stable`, then "
-            f"`claude plugin install {name}@modsys`"
-            + (" (it installs `modsys` too)" if name != CORE else "") + ".\n"
+            f"- Claude Code: `claude plugin marketplace add {MARKETPLACE}#stable`, then "
+            f"`claude plugin install {name}@segmently-modules`"
+            + (" (it installs `segmently-modules` too)" if name != CORE else "") + ".\n"
             + needs
             + "- Cursor, Gemini CLI, GitHub Copilot: there is no plugin for them — install the "
-              "CLI, set modsys up in the repository (`modsys init` enables the `core` pack; or "
-              "set `[packs] builtin` in `.modsys/config.toml`), then run `modsys packs sync "
+              "CLI, set Segmently Modules up in the repository (`segmently-modules init` enables the `core` pack; or "
+              "set `[packs] builtin` in `.segmently-modules/config.toml`), then run `segmently-modules packs sync "
               "--agent cursor` (`--agent gemini`, `--agent copilot`): it copies the skills into "
               "`.agents/skills/`; these agents need the default `\"repo\"` delivery.\n\n"
-              "The `dev` channel: `#dev` / `--ref dev` and the marketplace `modsys-dev` (e.g. "
-              f"`{name}@modsys-dev`).\n\n"
+              "The `dev` channel: `#dev` / `--ref dev` and the marketplace `segmently-modules-dev` (e.g. "
+              f"`{name}@segmently-modules-dev`).\n\n"
               "In a repository whose agents get the built-in skills from these plugins, set "
-              "`builtin_delivery = \"plugin\"` under `[packs]` in `.modsys/config.toml`: `modsys "
+              "`builtin_delivery = \"plugin\"` under `[packs]` in `.segmently-modules/config.toml`: `segmently-modules "
               "packs sync` then copies none of them and removes the copies it made (with the "
               "default `\"repo\"` delivery and the plugin, an agent sees each built-in skill "
               "twice)"
@@ -369,7 +376,7 @@ def build_one(engine: Path, files: dict[str, int], name: str, version: str,
             write(dest / "skills" / sid / rel[len(prefix):], read(engine, rel), files[rel])
             count += 1
     if name == CORE:
-        write(dest / "bin/modsys", read(engine, "tools/launcher.sh"), 0o755)
+        write(dest / "bin/segmently-modules", read(engine, "tools/launcher.sh"), 0o755)
         for rel in sorted(files):
             write(dest / "runtime" / rel, read(engine, rel), files[rel])
         count += 1 + len(files)
@@ -379,18 +386,19 @@ def build_one(engine: Path, files: dict[str, int], name: str, version: str,
     for rel, value in manifests(name, version, spdx).items():
         write(dest / rel, (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode(),
               0o644)
-    write(dest / "README.md", readme(name, list(skills), list(agents) if name == CORE else [])
-          .encode(), 0o644)
+    write(dest / "README.md", readme(name, list(skills), list(agents) if name == CORE else [],
+                                     version).encode(), 0o644)
+    write(dest / "LICENSE", read(engine, "LICENSE"), 0o644)  # MIT: the notice travels with copies
     for d in [dest, *(p for p in dest.rglob("*") if p.is_dir())]:
         os.chmod(d, 0o755)
-    return count + len(MANIFESTS) + 1
+    return count + len(MANIFESTS) + 2
 
 
 def modified(engine: Path) -> list[str]:
-    """The tracked files that ship (`modsys/`, tools/launcher.sh) and differ from their commit —
+    """The tracked files that ship (`segmently_modules/`, tools/launcher.sh) and differ from their commit —
     staged or not: the build ships them as they are on disk."""
     out = git(engine, "--no-optional-locks", "status", "--porcelain", "-z",
-              "--untracked-files=no", "--", "modsys", "tools/launcher.sh").split("\0")
+              "--untracked-files=no", "--", "segmently_modules", "tools/launcher.sh").split("\0")
     names, skip = [], False
     for entry in out:
         if skip or len(entry) < 4:  # the second path of a rename / copy, or the end
@@ -418,6 +426,9 @@ def check_out(engine: Path, out: Path) -> None:
     itself or a directory holding it (real paths — replacing it would delete the engine, `.git`
     included), or anything that exists and is not an earlier build of that plugin."""
     here = Path(os.path.realpath(engine))
+    if Path(os.path.realpath(out)) == here:
+        raise BuildError(f"--out {out} is this engine tree — the plugins would land among its "
+                         f"files; build into a directory of their own")
     for name in PLUGINS:
         final = out / name
         real = Path(os.path.realpath(final))
@@ -531,7 +542,7 @@ def build(engine: Path, out: Path, version: str | None = None) -> dict:
     staging, keep, built, left = None, False, False, None
     try:
         try:
-            staging = Path(tempfile.mkdtemp(prefix=".modsys-build-", dir=out))
+            staging = Path(tempfile.mkdtemp(prefix=".segmently-modules-build-", dir=out))
         except OSError as e:
             raise BuildError(f"cannot write {out}: {e.strerror or e}") from None
         counts = {}
@@ -557,8 +568,8 @@ def build(engine: Path, out: Path, version: str | None = None) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog=PROG, description="Build the modsys plugins "
-                                     "(modsys, modsys-ui, modsys-qa) from this engine tree.")
+    parser = argparse.ArgumentParser(prog=PROG, description="Build the segmently-modules plugins "
+                                     "(segmently-modules, segmently-modules-ui, segmently-modules-qa) from this engine tree.")
     parser.add_argument("--out", type=Path, default=ENGINE / "dist/plugins",
                         help="the directory to build into (default: dist/plugins of the engine)")
     parser.add_argument("--version", help="the version to stamp (SemVer 2.0; default: the "

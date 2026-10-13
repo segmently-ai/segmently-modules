@@ -27,18 +27,18 @@ def default_signals() -> None:
         signal.signal(sig, signal.SIG_DFL)
 
 
-def engine_files(prefixes=("modsys/", "tools/")) -> list[str]:
+def engine_files(prefixes=("segmently_modules/", "tools/")) -> list[str]:
     """This engine's files under `prefixes` that git tracks or would track (untracked but not
-    ignored: a task's new file before its commit), plus pyproject.toml and .gitignore."""
+    ignored: a task's new file before its commit), plus pyproject.toml, .gitignore and LICENSE."""
     out = subprocess.run(["git", "-C", str(ENGINE), "ls-files", "-z", "--cached", "--others",
                           "--exclude-standard"], capture_output=True, text=True,
                          check=True).stdout.split("\0")
     return sorted(p for p in out if p and (p.startswith(prefixes) or p in (
-        "pyproject.toml", ".gitignore")) and (ENGINE / p).is_file())
+        "pyproject.toml", ".gitignore", "LICENSE")) and (ENGINE / p).is_file())
 
 
 def copy_engine(dest: Path, extra: dict[str, str] | None = None,
-                prefixes=("modsys/", "tools/")) -> Path:
+                prefixes=("segmently_modules/", "tools/")) -> Path:
     """A git repository at `dest` holding this engine's files (modes kept) and `extra`
     {path: text}, committed once — what the tools see in a clone of the engine."""
     for rel in engine_files(prefixes):
@@ -56,7 +56,7 @@ def copy_engine(dest: Path, extra: dict[str, str] | None = None,
 def load_tool(name: str):
     """`tools/<name>.py` of this engine as a module (the tools are scripts, not a package)."""
     path = ENGINE / "tools" / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(f"modsys_tool_{name}", path)
+    spec = importlib.util.spec_from_file_location(f"segmently_modules_tool_{name}", path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)

@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import modsys
+import segmently_modules
 from tests.helpers import engine_version, git, release_version
 from tests.plugin_helpers import (CLAUDE, ENGINE, NO_CLAUDE, claude_env, copy_engine, load_tool,
                                   run_tool)
@@ -26,7 +26,7 @@ publish = load_tool("publish")
 builder = publish.build_plugins
 ENG = engine_version()  # the tree under test: never a literal
 REL = release_version(ENG)
-NAMES = ["modsys", "modsys-qa", "modsys-ui"]
+NAMES = ["segmently-modules", "segmently-modules-qa", "segmently-modules-ui"]
 
 
 def precedence(version: str) -> tuple:
@@ -56,7 +56,7 @@ class VersionTest(unittest.TestCase):  # P6-AC-013 (SI-5, SI-6)
 
     def test_one_version_source(self):
         data = tomllib.loads((ENGINE / "pyproject.toml").read_text(encoding="utf-8"))
-        self.assertEqual(data["project"]["version"], modsys.__version__)
+        self.assertEqual(data["project"]["version"], segmently_modules.__version__)
 
 
 class ContentHashTest(unittest.TestCase):  # P6-AC-013 (the hash input)
@@ -82,7 +82,7 @@ class ContentHashTest(unittest.TestCase):  # P6-AC-013 (the hash input)
         (self.engine / "tests").mkdir(exist_ok=True)
         (self.engine / "tests/new_test.txt").write_text("x\n")
         self.assertEqual(self.hash_of("d"), first)  # outside the shipped trees
-        skill = self.engine / "modsys/defaults/packs/qa/skills/qa-acceptance/SKILL.md"
+        skill = self.engine / "segmently_modules/defaults/packs/qa/skills/qa-acceptance/SKILL.md"
         original = skill.read_bytes()
         skill.write_bytes(original + b"\n")
         try:
@@ -90,7 +90,7 @@ class ContentHashTest(unittest.TestCase):  # P6-AC-013 (the hash input)
         finally:
             skill.write_bytes(original)
         self.assertEqual(self.hash_of("f"), first)
-        rel = "modsys/defaults/packs/qa/skills/qa-acceptance/SKILL.md"
+        rel = "segmently_modules/defaults/packs/qa/skills/qa-acceptance/SKILL.md"
         git(self.engine, "update-index", "--chmod=+x", rel)  # a mode in the index moves it
         try:
             self.assertNotEqual(self.hash_of("g"), first)
@@ -98,7 +98,7 @@ class ContentHashTest(unittest.TestCase):  # P6-AC-013 (the hash input)
             git(self.engine, "update-index", "--chmod=-x", rel)
         for key, value in (("keywords", ["qa", "criteria"]), ("description", "Another text")):
             with self.subTest(manifest=key):  # a manifest-only change moves it too
-                with mock.patch.dict(builder.PLUGINS["modsys-qa"], {key: value}):
+                with mock.patch.dict(builder.PLUGINS["segmently-modules-qa"], {key: value}):
                     self.assertNotEqual(self.hash_of(f"h-{key}"), first)
         with mock.patch.dict(builder.AUTHOR, {"name": "someone else"}):
             self.assertNotEqual(self.hash_of("i"), first)
@@ -112,10 +112,10 @@ class ContentHashTest(unittest.TestCase):  # P6-AC-013 (the hash input)
         for name in NAMES:
             for rel in builder.MANIFESTS:
                 self.assertEqual(json.loads((out / name / rel).read_text())["version"], version)
-        proc = subprocess.run([str(out / "modsys/bin/modsys"), "--version"],
+        proc = subprocess.run([str(out / "segmently-modules/bin/segmently-modules"), "--version"],
                               capture_output=True, text=True,
-                              env={**os.environ, "MODSYS_PYTHON": sys.executable})
-        self.assertEqual((proc.returncode, proc.stdout.strip()), (0, f"modsys {ENG}"))
+                              env={**os.environ, "SEGMENTLY_MODULES_PYTHON": sys.executable})
+        self.assertEqual((proc.returncode, proc.stdout.strip()), (0, f"segmently-modules {ENG}"))
 
 
 class MarketplaceTest(unittest.TestCase):  # P6-AC-012
@@ -123,16 +123,16 @@ class MarketplaceTest(unittest.TestCase):  # P6-AC-012
         files = {ch: publish.marketplaces(ch) for ch in ("stable", "dev")}
         claude, codex = files["stable"]
         self.assertEqual(list(claude), ["name", "owner", "description", "plugins"])
-        self.assertEqual((claude["name"], claude["owner"]), ("modsys", {"name": "modsys "
+        self.assertEqual((claude["name"], claude["owner"]), ("segmently-modules", {"name": "Segmently Modules "
                                                                          "maintainers"}))
         self.assertEqual([e["name"] for e in claude["plugins"]], NAMES)
         for entry in claude["plugins"]:
             self.assertEqual(list(entry), ["name", "source", "description"])
             self.assertEqual(entry["source"], f"./plugins/{entry['name']}")
-        self.assertEqual(codex, {"name": "modsys", "plugins": [
+        self.assertEqual(codex, {"name": "segmently-modules", "plugins": [
             {"name": n, "source": {"source": "local", "path": f"./plugins/{n}"}} for n in NAMES]})
         dev_claude, dev_codex = files["dev"]
-        self.assertEqual((dev_claude["name"], dev_codex["name"]), ("modsys-dev", "modsys-dev"))
+        self.assertEqual((dev_claude["name"], dev_codex["name"]), ("segmently-modules-dev", "segmently-modules-dev"))
         self.assertEqual({k: v for k, v in dev_claude.items() if k not in ("name",
                                                                            "description")},
                          {k: v for k, v in claude.items() if k not in ("name", "description")})
@@ -140,46 +140,46 @@ class MarketplaceTest(unittest.TestCase):  # P6-AC-012
 
     def test_the_merge_keeps_what_is_not_ours(self):
         other = {"name": "other-tool", "source": "./plugins/other-tool", "category": "x"}
-        stale = {"name": "modsys", "source": "./old", "version": "0.0.1"}
+        stale = {"name": "segmently-modules", "source": "./old", "version": "0.0.1"}
         claude, codex = publish.marketplaces(
             "stable", {"name": "x", "owner": {"name": "someone"}, "metadata": {"a": 1},
                        "plugins": [other, stale]},
             {"name": "x", "interface": {"displayName": "X"},
              "plugins": [{"name": "other-tool", "source": {"source": "git", "url": "u"}}]})
         self.assertEqual([e["name"] for e in claude["plugins"]],
-                         ["other-tool", "modsys", "modsys-qa", "modsys-ui"])
+                         ["other-tool", "segmently-modules", "segmently-modules-qa", "segmently-modules-ui"])
         self.assertEqual(claude["plugins"][0], other)
         self.assertNotIn("version", claude["plugins"][1])
-        self.assertEqual((claude["name"], claude["metadata"]), ("modsys", {"a": 1}))
+        self.assertEqual((claude["name"], claude["metadata"]), ("segmently-modules", {"a": 1}))
         self.assertEqual(codex["interface"], {"displayName": "X"})
         self.assertEqual(codex["plugins"][0], {"name": "other-tool",
                                                "source": {"source": "git", "url": "u"}})
 
     def test_the_merge_with_entries_of_every_shape(self):
-        extra = {"name": "modsys-extra", "source": "./plugins/modsys-extra",  # not ours: a
+        extra = {"name": "segmently-modules-extra", "source": "./plugins/segmently-modules-extra",  # not ours: a
                  "description": "An add-on, café — keeps its bytes"}  # glob would have caught it
-        odd = [{"name": ["modsys"]}, {"name": {"a": 1}}, {"name": 7}, {"source": "./x"}, "text",
+        odd = [{"name": ["segmently-modules"]}, {"name": {"a": 1}}, {"name": 7}, {"source": "./x"}, "text",
                None]
-        stale = {"name": "modsys", "source": "./old"}
-        again = {"name": "modsys", "source": "./older"}
+        stale = {"name": "segmently-modules", "source": "./old"}
+        again = {"name": "segmently-modules", "source": "./older"}
         old = {"name": "x", "plugins": [extra, stale, *odd, again,
-                                        {"name": "modsys-ui", "source": "./a"},
-                                        {"name": "modsys-ui", "source": "./b"}]}
+                                        {"name": "segmently-modules-ui", "source": "./a"},
+                                        {"name": "segmently-modules-ui", "source": "./b"}]}
         for which in (0, 1):
             with self.subTest(file=("claude", "codex")[which]):
                 new = publish.marketplaces("dev", old if which == 0 else None,
                                            old if which == 1 else None)[which]
                 ours = [e for e in new["plugins"] if isinstance(e, dict)
                         and isinstance(e.get("name"), str) and e["name"] in NAMES]
-                self.assertEqual([e["name"] for e in ours], ["modsys", "modsys-ui",
-                                                             "modsys-qa"])  # never twice
+                self.assertEqual([e["name"] for e in ours], ["segmently-modules", "segmently-modules-ui",
+                                                             "segmently-modules-qa"])  # never twice
                 self.assertEqual(new["plugins"][:2], [extra, ours[0]])
                 self.assertEqual(new["plugins"][2:8], odd)  # kept as they are, where they are
                 self.assertEqual(new["plugins"][8:], ours[1:])
                 text = publish.dump(new)
                 self.assertIn(textwrap.indent(json.dumps(extra, indent=2, ensure_ascii=False),
                                               "    "), text)  # the same bytes in the file
-                self.assertEqual(text.count('"name": "modsys"'), 1)
+                self.assertEqual(text.count('"name": "segmently-modules"'), 1)
 
     def test_an_old_file_the_merge_cannot_use(self):
         for bad in ([], "text", 5, [{"name": "other-tool"}]):
@@ -192,7 +192,7 @@ class MarketplaceTest(unittest.TestCase):  # P6-AC-012
                     publish.marketplaces("dev", None, bad)
                 self.assertIn(".agents/plugins/marketplace.json is not a JSON object",
                               str(caught.exception))
-        for bad in ({"other-tool": {}}, "modsys", 3):
+        for bad in ({"other-tool": {}}, "segmently-modules", 3):
             with self.subTest(plugins=bad):
                 with self.assertRaises(builder.BuildError) as caught:
                     publish.marketplaces("dev", {"name": "x", "plugins": bad}, None)
@@ -217,13 +217,13 @@ class MarketplaceTest(unittest.TestCase):  # P6-AC-012
             path.write_text(publish.dump(codex))
             self.assertEqual(publish.codex_problems(root), [])
             for change, problem in (
-                    ({"path": "../x"}, "plugin 'modsys': source.path '../x' does not start "
+                    ({"path": "../x"}, "plugin 'segmently-modules': source.path '../x' does not start "
                                        "with ./"),
-                    ({"path": "./../x"}, "plugin 'modsys': source.path './../x' leaves the "
+                    ({"path": "./../x"}, "plugin 'segmently-modules': source.path './../x' leaves the "
                                          "marketplace root"),
-                    ({"path": "/abs"}, "plugin 'modsys': source.path '/abs' does not start "
+                    ({"path": "/abs"}, "plugin 'segmently-modules': source.path '/abs' does not start "
                                        "with ./"),
-                    ({"path": "./plugins/missing"}, "plugin 'modsys': source.path "
+                    ({"path": "./plugins/missing"}, "plugin 'segmently-modules': source.path "
                                                     "'./plugins/missing' is not a directory")):
                 with self.subTest(change=change):
                     bad = json.loads(publish.dump(codex))
@@ -231,14 +231,14 @@ class MarketplaceTest(unittest.TestCase):  # P6-AC-012
                     path.write_text(json.dumps(bad))
                     self.assertEqual(publish.codex_problems(root), [problem])
             bad = json.loads(publish.dump(codex))
-            bad["plugins"][1]["name"] = "modsys"
+            bad["plugins"][1]["name"] = "segmently-modules"
             del bad["plugins"][2]["name"]
             path.write_text(json.dumps(bad))
             self.assertEqual(publish.codex_problems(root), [
-                "plugin 'modsys': the name is used twice", "plugins[2]: name is missing"])
+                "plugin 'segmently-modules': the name is used twice", "plugins[2]: name is missing"])
             bad = json.loads(publish.dump(codex))
-            source = {"source": "local", "path": "./plugins/modsys"}
-            bad["plugins"] += [{"name": ["modsys"], "source": source},
+            source = {"source": "local", "path": "./plugins/segmently-modules"}
+            bad["plugins"] += [{"name": ["segmently-modules"], "source": source},
                                {"name": {"a": 1}, "source": source}, {"name": 7}, "text"]
             path.write_text(json.dumps(bad))
             self.assertEqual(publish.codex_problems(root), [
@@ -255,12 +255,12 @@ class MarketplaceTest(unittest.TestCase):  # P6-AC-012
             for name in NAMES:
                 (root / "plugins" / name).mkdir(parents=True)
             (tmp / "outside").mkdir()
-            shutil.rmtree(root / "plugins/modsys-ui")
-            os.symlink(tmp / "outside", root / "plugins/modsys-ui")  # a link out of the root
+            shutil.rmtree(root / "plugins/segmently-modules-ui")
+            os.symlink(tmp / "outside", root / "plugins/segmently-modules-ui")  # a link out of the root
             _, codex = publish.marketplaces("dev")
             (root / publish.CODEX_MARKETPLACE).parent.mkdir(parents=True)
             (root / publish.CODEX_MARKETPLACE).write_text(publish.dump(codex))
-            problem = ["plugin 'modsys-ui': source.path './plugins/modsys-ui' leaves the "
+            problem = ["plugin 'segmently-modules-ui': source.path './plugins/segmently-modules-ui' leaves the "
                        "marketplace root"]
             self.assertEqual(publish.codex_problems(root), problem)
             (tmp / "other").mkdir()  # the same root spelled with `..`: nothing more leaves it
@@ -311,7 +311,7 @@ class LayoutTest(unittest.TestCase):  # P6-AC-011 (the marketplace), P6-AC-012
         self.assertEqual(proc.returncode, 0, proc.stderr)
         for path in [out, *out.rglob("*")]:
             rel = path.relative_to(out).as_posix()
-            want = 0o755 if path.is_dir() or rel == "plugins/modsys/bin/modsys" else 0o644
+            want = 0o755 if path.is_dir() or rel == "plugins/segmently-modules/bin/segmently-modules" else 0o644
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), want, rel)
         self.assertFalse((self.engine / "tools/__pycache__").exists())
 
@@ -334,8 +334,8 @@ class LayoutTest(unittest.TestCase):  # P6-AC-011 (the marketplace), P6-AC-012
 
     def test_a_failure_removes_out_and_the_parents_it_made(self):
         def half_written(plugins, dest, channel):
-            (dest / "plugins/modsys").mkdir(parents=True)
-            (dest / "plugins/modsys/README.md").write_text("half\n")
+            (dest / "plugins/segmently-modules").mkdir(parents=True)
+            (dest / "plugins/segmently-modules/README.md").write_text("half\n")
             raise failure
 
         for failure, code, line in (
@@ -375,7 +375,7 @@ class LayoutTest(unittest.TestCase):  # P6-AC-011 (the marketplace), P6-AC-012
                 self.assertEqual((proc.returncode, report["manifest"]["type"],
                                   report["manifest"]["errors"], report["manifest"]["warnings"]),
                                  (0, "marketplace", [], []))
-        for n, change in enumerate(({"name": "modsys"}, {"source": "../plugins/modsys-qa"})):
+        for n, change in enumerate(({"name": "segmently-modules"}, {"source": "../plugins/segmently-modules-qa"})):
             with self.subTest(change=change):  # the check can fail (PR: a missing directory
                 broken = self.base / f"broken-{n}"  # passes Claude's check — ours catches it)
                 shutil.copytree(self.trees["dev"][0], broken)

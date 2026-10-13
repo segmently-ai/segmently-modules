@@ -18,8 +18,16 @@ class AllOrNothingTest(AllOrNothingBase):  # P6-AC-031 (SI-16)
         self.assertEqual(sorted(p.name for p in self.pub.iterdir()), [".git", "keep.me"])
         self.assert_ok(self.release("dev"))
         git(self.pub, "checkout", "-q", "--detach")
-        self.failed("stable", "interrupted", env={"MODSYS_RELEASE_INTERRUPT": "7"}, code=130)
+        self.failed("stable", "interrupted", env={"SEGMENTLY_MODULES_RELEASE_INTERRUPT": "7"}, code=130)
         self.assertEqual((self.pub / "keep.me").read_text(), "ignored, the owner's\n")
+
+    def test_a_failed_stable_run_puts_the_readme_pin_back(self):  # the README pin (D-R10)
+        (self.engine / "README.md").write_text(
+            "# a test copy\n\n`uv tool install git+https://github.com/example-org/"
+            "segmently-modules.git@v0.0.9`\n")
+        git(self.engine, "commit", "-q", "-am", "a pinned README")
+        self.failed("stable", "step 8 smoke install failed", env={"FAKE_CLAUDE_FAIL": "install"})
+        self.assertIn("segmently-modules.git@v0.0.9`", (self.engine / "README.md").read_text())
 
     def test_a_publish_file_the_release_cannot_use(self):
         git(self.pub, "checkout", "-q", "-b", "dev")
@@ -28,7 +36,7 @@ class AllOrNothingTest(AllOrNothingBase):  # P6-AC-031 (SI-16)
         outside = self.base / "outside.md"
         outside.write_text("not the release's\n")
         os.symlink(outside, self.pub / "CHANGELOG.md")
-        lost = ("# Plugins\n\n<!-- modsys:begin -->\nold text\n\n## Other tool\n\n"
+        lost = ("# Plugins\n\n<!-- segmently-modules:begin -->\nold text\n\n## Other tool\n\n"
                 "KEEP THIS PARAGRAPH.\n")  # the end marker was lost in a hand edit
         (self.pub / "README.md").write_text(lost)
         git(self.pub, "add", "--", ".claude-plugin", "CHANGELOG.md", "README.md")
@@ -43,8 +51,8 @@ class AllOrNothingTest(AllOrNothingBase):  # P6-AC-031 (SI-16)
         (self.pub / ".claude-plugin/marketplace.json").write_text('{"name": "x", "plugins": []}')
         git(self.pub, "commit", "-q", "-am", "valid again")
         err = self.failed("dev", "step 6 publish repo failed")
-        self.assertIn("README.md: the markers of the modsys section are damaged (1 "
-                      "`<!-- modsys:begin -->`, 0 `<!-- modsys:end -->`)", err)
+        self.assertIn("README.md: the markers of the segmently-modules section are damaged (1 "
+                      "`<!-- segmently-modules:begin -->`, 0 `<!-- segmently-modules:end -->`)", err)
         self.assertEqual((self.pub / "README.md").read_text(), lost)
         (self.pub / "README.md").write_text("# Plugins\n")
         git(self.pub, "commit", "-q", "-am", "markers gone")
@@ -54,8 +62,8 @@ class AllOrNothingTest(AllOrNothingBase):  # P6-AC-031 (SI-16)
 
     def test_a_symlinked_directory_on_the_channel_branch(self):  # re-review N-1
         outside = self.base / "outside"
-        (outside / "modsys").mkdir(parents=True)
-        (outside / "modsys/THEIRS.txt").write_text("not the release's\n")
+        (outside / "segmently-modules").mkdir(parents=True)
+        (outside / "segmently-modules/THEIRS.txt").write_text("not the release's\n")
         self.commit(self.pub, "README.md", "# Plugins\n", "root")
         git(self.pub, "switch", "-q", "-c", "dev")
         os.symlink(outside, self.pub / "plugins")  # on `dev` only: step 2 sees `main`
@@ -79,8 +87,8 @@ class AllOrNothingTest(AllOrNothingBase):  # P6-AC-031 (SI-16)
         self.assertTrue(proc.stderr.rstrip().endswith("both repositories are as they were"))
         self.assertEqual(self.state(clone), before)
         self.assertEqual(sorted(p.relative_to(outside).as_posix() for p in outside.rglob("*")),
-                         ["modsys", "modsys/THEIRS.txt"])  # nothing written outside
-        self.assertEqual((outside / "modsys/THEIRS.txt").read_text(), "not the release's\n")
+                         ["segmently-modules", "segmently-modules/THEIRS.txt"])  # nothing written outside
+        self.assertEqual((outside / "segmently-modules/THEIRS.txt").read_text(), "not the release's\n")
 
     def test_what_appears_beside_the_run_is_never_put_back(self):  # final review I-2
         kept = [True, ["refs/heads/hotfix", "refs/tags/my-mark"]]
@@ -110,7 +118,7 @@ class AllOrNothingTest(AllOrNothingBase):  # P6-AC-031 (SI-16)
         git(self.pub, "tag", "-d", "my-mark")
         plant = " ".join(f'echo mine > "{repo}/NOTES.txt"; "$real" -C "{repo}" branch hotfix; '
                          f'"$real" -C "{repo}" tag my-mark;' for repo in (self.engine, self.pub))
-        self.git_wrapper('case "$*" in *"commit -q -m release modsys"*"(stable)"*) '
+        self.git_wrapper('case "$*" in *"commit -q -m release segmently-modules"*"(stable)"*) '
                          f'"$real" "$@"; rc=$?; {plant} exit $rc ;; esac')
         proc = self.release("stable", env={"FAKE_CLAUDE_FAIL": "install"})  # 3. after the
         self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)  # writes: step 8 fails
@@ -129,7 +137,7 @@ class AllOrNothingTest(AllOrNothingBase):  # P6-AC-031 (SI-16)
 
     def test_the_put_back_finishes_and_says_what_is_true(self):  # task-8 review C2
         self.git_wrapper('case "$*" in *update-ref*) kill -INT $PPID ;; esac')  # Ctrl-C again,
-        self.failed("stable", "interrupted", env={"MODSYS_RELEASE_INTERRUPT": "7"},  # inside
+        self.failed("stable", "interrupted", env={"SEGMENTLY_MODULES_RELEASE_INTERRUPT": "7"},  # inside
                     code=130)  # the put-back: ignored, both repositories are put back
         self.git_wrapper()
         self.commit(self.pub, "README.md", "# Plugins\n", "root")
