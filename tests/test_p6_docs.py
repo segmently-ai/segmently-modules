@@ -3,6 +3,7 @@ import re
 import unittest
 from pathlib import Path
 
+from segmently_modules.config import builtin_packs_root
 from tests.plugin_helpers import load_tool
 
 ENGINE = Path(__file__).resolve().parents[1]
@@ -16,7 +17,7 @@ class DeliveryDocsTest(unittest.TestCase):  # P6-AC-025 (the D2 part)
     def test_configuration_skills_and_the_contract(self):
         config = flat("docs/configuration.md")
         for needle in ('| `builtin_delivery` | `"repo"` |',
-                       "`core` → `modsys`, `ui` → `modsys-ui`, `qa` → `modsys-qa`",
+                       "`core` → `segmently-modules`, `ui` → `segmently-modules-ui`, `qa` → `segmently-modules-qa`",
                        "a pack cannot set it", "the user's wins", "`repo, plugin`",
                        "| MS067 | info |"):
             self.assertIn(needle, config)
@@ -43,8 +44,8 @@ class AgentsDocsTest(unittest.TestCase):  # P6-AC-025 (the D5 part)
                        "a marker in `.agents/skills` means codex"):
             self.assertIn(needle, contract)
         skills = flat("docs/skills.md")
-        for needle in ("## Other agents", "`modsys packs sync --agent cursor --remove`",
-                       "Cursor, Gemini CLI and GitHub Copilot have no modsys plugin"):
+        for needle in ("## Other agents", "`segmently-modules packs sync --agent cursor --remove`",
+                       "Cursor, Gemini CLI and GitHub Copilot have no Segmently Modules plugin"):
             self.assertIn(needle, skills)
 
 
@@ -52,14 +53,14 @@ class ReleasingDocsTest(unittest.TestCase):  # P6-AC-025 (docs/releasing.md: D1,
     def test_the_maintainer_doc(self):
         text = flat("docs/releasing.md")
         for needle in ("python3 tools/build_plugins.py", "python3 tools/publish.py --channel dev",
-                       "python3 tools/release.py", "--publish-slug <owner>/<publish repo>",
-                       "| `stable` | `stable` | `modsys` | `X.Y.Z` |",
-                       "| `dev` | `dev` | `modsys-dev` | `X.Y.Z-dev.h<8 hex>` |",
-                       "`<plugin>--v<version>`", "`MODSYS_GUARD` names the private leak guard",
-                       "The organisation of `--publish-slug` must appear nowhere",
+                       "python3 tools/release.py", "--publish-slug segmently-ai/segmently-modules-plugins",
+                       "| `stable` | `stable` | `segmently-modules` | `X.Y.Z` |",
+                       "| `dev` | `dev` | `segmently-modules-dev` | `X.Y.Z-dev.h<8 hex>` |",
+                       "`<plugin>--v<version>`", "`SEGMENTLY_MODULES_GUARD` names the private leak guard",
+                       "The organisation of `--publish-slug` may appear in this repository (files, history) and in the build only as `<org>/segmently-modules`",
                        "a throw-away `CLAUDE_CONFIG_DIR`", "no model call", "All or nothing",
                        "an owner command, each time", "Creating the publish repository on GitHub "
-                       "is the owner's as well", "`MODSYS_PYTHON`",
+                       "is the owner's as well", "`SEGMENTLY_MODULES_PYTHON`",
                        "## Before a stable release: the skill evals",
                        "should-trigger at least 0.8 and false-trigger at most 0.1",
                        "never in a pipeline"):
@@ -72,13 +73,15 @@ class ReleasingDocsTest(unittest.TestCase):  # P6-AC-025 (docs/releasing.md: D1,
 
 
 class InstallFromGitDocsTest(unittest.TestCase):  # P6-AC-025 (the D6 part), P6-AC-021
-    def test_the_readme_lines_use_placeholders(self):
+    def test_the_readme_lines_install_from_the_public_repository(self):
         readme = (ENGINE / "README.md").read_text(encoding="utf-8")
-        for needle in ("uv tool install git+ssh://git@github.com/<owner>/<repo>.git",
-                       "uvx --from git+ssh://git@github.com/<owner>/<repo>.git modsys --version",
-                       "pipx install git+ssh://git@github.com/<owner>/<repo>.git",
-                       "Add `@v<version>` to the URL"):
+        for needle in ("uv tool install git+https://github.com/segmently-ai/segmently-modules.git@v",
+                       "uvx --from git+https://github.com/segmently-ai/segmently-modules.git@v",
+                       "pipx install git+https://github.com/segmently-ai/segmently-modules.git@v",
+                       "pins the latest release tag"):
             self.assertIn(needle, readme)
+        pinned = r"git\+https://github\.com/segmently-ai/segmently-modules\.git@v\d+\.\d+\.\d+"
+        self.assertRegex(readme, "uvx --from " + pinned + " segmently-modules --version")
 
 
 class CiDocsTest(unittest.TestCase):  # P6-AC-025 (the D8 part, SI-2)
@@ -96,16 +99,16 @@ class CiDocsTest(unittest.TestCase):  # P6-AC-025 (the D8 part, SI-2)
 class InstallDocsTest(unittest.TestCase):  # P6-AC-025 (D10), P6-AC-021 (D13)
     def test_the_five_routes(self):
         readme = flat("README.md")
-        for needle in ("claude plugin marketplace add <owner>/<publish repo>#stable",
-                       "claude plugin install modsys@modsys",
-                       "codex plugin marketplace add <owner>/<publish repo> --ref stable",
-                       "codex plugin add modsys@modsys",
-                       "uv tool install git+ssh://git@github.com/<owner>/<repo>.git",
-                       "modsys packs sync --agent cursor", "--agent gemini, --agent copilot",
-                       "uvx --from git+ssh://git@github.com/<owner>/<repo>.git modsys --version",
-                       "pipx install git+ssh://git@github.com/<owner>/<repo>.git",
+        for needle in ("claude plugin marketplace add segmently-ai/segmently-modules-plugins#stable",
+                       "claude plugin install segmently-modules@segmently-modules",
+                       "codex plugin marketplace add segmently-ai/segmently-modules-plugins --ref stable",
+                       "codex plugin add segmently-modules@segmently-modules",
+                       "uv tool install git+https://github.com/segmently-ai/segmently-modules.git@v",
+                       "segmently-modules packs sync --agent cursor", "--agent gemini, --agent copilot",
+                       "uvx --from git+https://github.com/segmently-ai/segmently-modules.git@v",
+                       "pipx install git+https://github.com/segmently-ai/segmently-modules.git@v",
                        "`#dev` instead of `#stable`, `--ref dev`, and the marketplace "
-                       "`modsys-dev`", '`builtin_delivery = "plugin"`',
+                       "`segmently-modules-dev`", '`builtin_delivery = "plugin"`',
                        "[docs/releasing.md](docs/releasing.md)"):
             self.assertIn(needle, readme)
 
@@ -113,29 +116,36 @@ class InstallDocsTest(unittest.TestCase):  # P6-AC-025 (D10), P6-AC-021 (D13)
         readme = (ENGINE / "README.md").read_text(encoding="utf-8")
         other = readme.split("**Cursor, Gemini CLI, GitHub Copilot**", 1)[1].split("\n**", 1)[0]
         plugins = [load_tool("build_plugins").readme(name, ["x"]).split("- Cursor", 1)[1]
-                   .split("\n", 1)[0] for name in ("modsys", "modsys-ui", "modsys-qa")]
-        for text in (other, *plugins):  # modsys set up in the repository, then the sync
-            self.assertLess(text.index("`modsys init` enables the `core` pack"),
+                   .split("\n", 1)[0] for name in ("segmently-modules", "segmently-modules-ui", "segmently-modules-qa")]
+        for text in (other, *plugins):  # segmently-modules set up in the repository, then the sync
+            self.assertLess(text.index("`segmently-modules init` enables the `core` pack"),
                             text.index("packs sync --agent cursor"))
             self.assertIn("`[packs] builtin`", text)
             self.assertIn('the default `"repo"` delivery', text)
         codex = readme.split("**Codex**", 1)[1].split("\n**", 1)[0]  # the CLI at the plugin's
-        self.assertIn("uv tool install git+ssh://git@github.com/<owner>/<repo>.git@v<version>",
+        self.assertIn("uv tool install git+https://github.com/segmently-ai/segmently-modules.git@v",
                       codex)  # version, not the default branch
-        self.assertIn('keeps the default `"repo"` delivery and has run `modsys packs sync` '
+        self.assertIn('keeps the default `"repo"` delivery and has run `segmently-modules packs sync` '
                       "shows a plugin user every built-in skill twice", " ".join(codex.split()))
-        self.assertNotIn("<owner>/modsys", readme)
+        self.assertNotIn("<owner>", readme)
 
-    def test_every_repository_url_is_a_placeholder(self):
-        docs = [ENGINE / "README.md", *sorted((ENGINE / "docs").glob("*.md"))]
-        self.assertIn(ENGINE / "docs/releasing.md", docs)
+    def test_every_repository_url_is_a_public_one(self):  # the two public repositories only
+        texts = {p.relative_to(ENGINE).as_posix(): p.read_text(encoding="utf-8") for p in
+                 [ENGINE / "README.md", *sorted((ENGINE / "docs").glob("*.md")),
+                  *sorted(builtin_packs_root().glob("*/skills/**/*.md"))]}
+        builder = load_tool("build_plugins")
+        for name in ("segmently-modules", "segmently-modules-ui", "segmently-modules-qa"):
+            texts[f"plugin {name}"] = builder.readme(name, ["x"], [], "1.2.3")
+        self.assertIn("docs/releasing.md", texts)
+        public = re.compile(r"github\.com/segmently-ai/segmently-modules(?:-plugins)?"
+                            r"(?:\.git(?:@v\d+\.\d+\.\d+)?)?(?![\w.@/-])")
         seen = 0
-        for doc in docs:
-            for url in re.findall(r"github\.com[:/]\S*", doc.read_text(encoding="utf-8")):
-                with self.subTest(doc=doc.name, url=url):
-                    self.assertTrue(url[len("github.com") + 1:].startswith("<owner>/"), url)
+        for where, text in texts.items():
+            for m in re.finditer(r"github\.com[:/]", text):
+                with self.subTest(where=where, url=text[m.start():m.start() + 70]):
+                    self.assertTrue(public.match(text, m.start()))
                 seen += 1
-        self.assertGreaterEqual(seen, 6)
+        self.assertGreaterEqual(seen, 40)
 
 
 if __name__ == "__main__":

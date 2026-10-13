@@ -10,7 +10,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from modsys.config import builtin_packs_root
+from segmently_modules.config import builtin_packs_root
 from tests.helpers import copy_fixture, init_git, run
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -23,9 +23,9 @@ SYNC_NAME = "module-sync"
 SYNC_DESCRIPTION = (
     "Brings module docs and registry fields in line with a work session — what it decided, "
     "rejected, discovered and changed. Takes the session's knowledge first and the code "
-    "change second, asks modsys sync-instructions which docs to update, prints findings and a "
+    "change second, asks sync-instructions which docs to update, prints findings and a "
     "proposal per module, edits docs, keywords and links, runs the sync hooks and checks with "
-    "modsys ci. Autonomous, it asks only in four ambiguous cases and never commits. Use at "
+    "ci. Autonomous, it asks only in four ambiguous cases and never commits. Use at "
     "the end of a session that changed module code or revealed module knowledge, when the "
     "user says \"sync the session\", \"sync the docs\", or a CI drift check fails.")
 
@@ -56,24 +56,24 @@ class ModuleSyncRoleSectionTest(unittest.TestCase):
     def test_the_section_has_the_five_steps_in_order(self):
         steps = re.findall(r"^(\d)\. (.*)", self.section(), re.M)
         self.assertEqual([n for n, _ in steps], ["1", "2", "3", "4", "5"])
-        starts = ["`modsys roles add ROLE --all --dry-run`", "`modsys roles add ROLE --all --json`",
-                  "Fill each new doc", "`modsys lint", "`modsys next"]
+        starts = ["`segmently-modules roles add ROLE --all --dry-run`", "`segmently-modules roles add ROLE --all --json`",
+                  "Fill each new doc", "`segmently-modules lint", "`segmently-modules next"]
         for (n, line), start in zip(steps, starts):
             self.assertTrue(line.startswith(start), f"step {n}: {line!r}")
 
     def test_an_undeclared_role_is_declared_before_step_1(self):  # fix wave item 8
         before = " ".join(self.section().split("\n1. ", 1)[0].split())
-        for fact in ("`modsys roles list --json`", "[roles.", ".modsys/config.toml", "order",
+        for fact in ("`segmently-modules roles list --json`", "[roles.", ".segmently-modules/config.toml", "order",
                      "standard = true", "description", "ask the user", "pack",
                      "continue with step 1"):
             self.assertIn(fact, before, fact)
 
-    def test_the_section_names_no_tool_but_modsys_and_git(self):
+    def test_the_section_names_no_tool_but_segmently_modules_and_git(self):
         spans = re.findall(r"`([^`]+)`", self.section())
         commands = [s for s in spans if not s.startswith("-")]  # a flag is not a command
         self.assertTrue(commands)
         for command in commands:
-            self.assertRegex(command, r"^(modsys|git) ", command)
+            self.assertRegex(command, r"^(segmently-modules|git) ", command)
 
     def test_the_section_keeps_the_placeholder_out(self):
         self.assertNotIn("<owner>", self.section())
@@ -86,7 +86,7 @@ class ReadmeTest(unittest.TestCase):
         self.text = doc("README.md")
 
     def test_the_three_verbs(self):
-        for verb in ("modsys setup", "modsys next", "modsys roles add"):
+        for verb in ("segmently-modules setup", "segmently-modules next", "segmently-modules roles add"):
             self.assertIn(verb, self.text)
 
     def test_the_python_note(self):
@@ -96,8 +96,9 @@ class ReadmeTest(unittest.TestCase):
     def test_gemini_target(self):
         self.assertIn("--target GEMINI.md", self.text)
 
-    def test_placeholders_stay_and_no_comparison_section(self):
-        self.assertIn("<owner>/<repo>", self.text)
+    def test_the_public_repository_and_no_comparison_section(self):
+        self.assertNotIn("<owner>", self.text)
+        self.assertIn("segmently-ai/segmently-modules", self.text)
         self.assertNotIn("How it compares", self.text)
 
     def shortest_start(self) -> list[tuple[str, str]]:
@@ -112,24 +113,24 @@ class ReadmeTest(unittest.TestCase):
         self.assertEqual((sorted(role), role["standard"]),
                          (["description", "order", "standard"], True))
         commands = [shlex.split(line, comments=True) for line in blocks[2][1].splitlines()]
-        self.assertEqual(commands, [["modsys", "roles", "add", "security", "--all", "--dry-run"],
-                                    ["modsys", "roles", "add", "security", "--all"]])
+        self.assertEqual(commands, [["segmently-modules", "roles", "add", "security", "--all", "--dry-run"],
+                                    ["segmently-modules", "roles", "add", "security", "--all"]])
         self.assertNotIn("roles add designer", self.text)
 
     def test_the_shortest_start_runs_as_written(self):  # final review I-3
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(Path(tmp).resolve())
-            shutil.rmtree(root / ".modsys/packs")  # the engine's roles only, as after a setup
+            shutil.rmtree(root / ".segmently-modules/packs")  # the engine's roles only, as after a setup
             init_git(root)
             results = []
             for lang, body in self.shortest_start():
                 if lang == "toml":  # the snippet goes into the team config setup wrote
-                    with open(root / ".modsys/config.toml", "a", encoding="utf-8") as fh:
+                    with open(root / ".segmently-modules/config.toml", "a", encoding="utf-8") as fh:
                         fh.write("\n" + body)
                     continue
                 for line in body.splitlines():
                     argv = shlex.split(line, comments=True)
-                    self.assertEqual(argv[0], "modsys", line)
+                    self.assertEqual(argv[0], "segmently-modules", line)
                     code, out, err = run(*argv[1:], "--json", "--root", str(root))
                     self.assertEqual((code, err), (0, ""), line)
                     results.append(json.loads(out)["data"])
@@ -145,7 +146,7 @@ class ContractTest(unittest.TestCase):
                 re.finditer(r"^\| `(roles|next|setup)\b[^\n]*", doc("docs/cli-contract.md"), re.M)}
         self.assertEqual(sorted(rows), ["next", "roles", "setup"])
         for verb, row in rows.items():
-            self.assertIn(f"modsys.{verb}/1", row, verb)
+            self.assertIn(f"segmently-modules.{verb}/1", row, verb)
             self.assertRegex(row, r"exit (0|1|2)", verb)
 
 
@@ -155,13 +156,13 @@ class DocPagesTest(unittest.TestCase):
     def test_roles_add_for_existing_modules(self):
         for name in ("docs/configuration.md", "docs/writing-a-pack.md"):
             text = doc(name)
-            for fact in ("modsys roles add", "--all", "--dry-run", "--recreate", "modsys roles list",
-                         "modsys next"):
+            for fact in ("segmently-modules roles add", "--all", "--dry-run", "--recreate", "segmently-modules roles list",
+                         "segmently-modules next"):
                 self.assertIn(fact, text, f"{name}: {fact}")
 
     def test_releasing_notes_and_ci_triggers(self):
         text = doc("docs/releasing.md")
-        for fact in ("[Unreleased]", "CHANGELOG.md", "MODSYS_RELEASE_DATE", "no notes yet",
+        for fact in ("[Unreleased]", "CHANGELOG.md", "SEGMENTLY_MODULES_RELEASE_DATE", "no notes yet",
                      "pull requests", "version tags"):
             self.assertIn(fact, text)
 
@@ -174,7 +175,7 @@ class DocPagesTest(unittest.TestCase):
             self.assertIn(fact, steps["4"], fact)  # the release commit dates the section
         notes = text.split("\n## Release notes\n", 1)[1].split("\n## ", 1)[0]
         flat = " ".join(notes.split())
-        for fact in ("two `## [Unreleased]` headings", "`<!-- modsys:changelog:`",
+        for fact in ("two `## [Unreleased]` headings", "`<!-- segmently-modules:changelog:`",
                      "dev as well as stable", "comment line", "dropped"):
             self.assertIn(fact, flat, fact)
 
