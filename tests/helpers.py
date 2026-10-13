@@ -122,6 +122,13 @@ def engine_version(engine: Path | None = None) -> str:
     return _VERSION_LINE.search(text).group(1)
 
 
+def dev_version(version: str | None = None) -> str:
+    """`version` (default: the engine's) as a dev version: X.Y.Z.devN stays, X.Y.Z (a release tag's
+    checkout) -> X.Y.Z.dev0 — what a stable release run needs to start from."""
+    version = version or engine_version()
+    return version if _VERSION_FORM.fullmatch(version).group(4) is not None else f"{version}.dev0"
+
+
 def release_version(version: str | None = None) -> str:
     """The release form of `version` (default: the engine's): X.Y.Z.devN -> X.Y.Z."""
     major, minor, patch, _ = _VERSION_FORM.fullmatch(version or engine_version()).groups()

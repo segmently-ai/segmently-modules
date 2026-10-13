@@ -22,10 +22,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.helpers import engine_version, git, next_dev, next_release, release_version
+from tests.helpers import dev_version, engine_version, git, next_dev, next_release, release_version
 from tests.plugin_helpers import ENGINE, copy_engine, run_tool
 
-ENG = engine_version()  # the engine copies under test carry this version
+ENG = dev_version()  # the engine copies under test carry this version (on a tag: X.Y.Z.dev0)
 REL = release_version(ENG)  # what the first stable run releases
 NXT = next_release(ENG)  # the release after it
 NXT_DEV = next_dev(ENG)  # the engine after the first stable run
@@ -128,6 +128,21 @@ def copy_repos(source: Path, dest: Path) -> list[str]:
     return names
 
 
+
+def dev_files() -> dict[str, str]:
+    """The version files of an engine copy at ENG: nothing when the engine is already there, else
+    (a release tag's checkout, X.Y.Z) both version lines set to ENG — a stable run starts from a
+    dev version."""
+    if engine_version() == ENG:
+        return {}
+    out = {}
+    for rel, pattern, line in (("segmently_modules/__init__.py", r'^__version__ = "[^"]*"$',
+                                f'__version__ = "{ENG}"'),
+                               ("pyproject.toml", r'^version = "[^"]*"$', f'version = "{ENG}"')):
+        out[rel] = re.sub(pattern, line, (ENGINE / rel).read_text(encoding="utf-8"), count=1,
+                          flags=re.M)
+    return out
+
 class ReleaseRepo(unittest.TestCase):
     """Every release runs through `run_tool`: SIGINT, SIGTERM and SIGHUP at their defaults in
     the release, however the suite itself was started (a detached suite ignores two of them).
@@ -179,7 +194,7 @@ class ReleaseRepo(unittest.TestCase):
             copy_repos(self.snapshot, self.base)
             self.engine, self.started = self.base / "engine", self.snapshot_run
         else:
-            self.engine = copy_engine(self.base / "engine", EXTRA,
+            self.engine = copy_engine(self.base / "engine", {**EXTRA, **dev_files()},
                                       prefixes=("segmently_modules/", "tools/", "tests/fixtures/bookshop/"))
             self.pub.mkdir()
             git(self.pub, "init", "-q", "-b", "main")

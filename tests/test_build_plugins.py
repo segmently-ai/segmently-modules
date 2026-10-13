@@ -16,7 +16,7 @@ from pathlib import Path
 
 from segmently_modules.config import BUILTIN_PLUGINS
 from segmently_modules.skills import SKILL_AGENTS
-from tests.helpers import engine_version, git
+from tests.helpers import engine_version, git, release_version
 from tests.plugin_helpers import (CLAUDE, ENGINE, NO_CLAUDE, claude_env, copy_engine, load_tool,
                                   run_tool, tree)
 
@@ -217,11 +217,12 @@ class ManifestTest(BuilderRepo):  # P6-AC-009
                            "`segmently-modules packs sync --agent cursor`", 'builtin_delivery = "plugin"',
                            "`#dev` / `--ref dev`",
                            "`claude plugin marketplace add segmently-ai/segmently-modules-plugins#stable`",
-                           "`uv tool install git+https://github.com/segmently-ai/segmently-modules.git`"):
+                           "`uv tool install git+https://github.com/segmently-ai/segmently-modules.git"):
                 self.assertIn(needle, text)
             self.assertNotIn("<owner>", text)
-            for url in re.findall(r"github\.com[:/][^\s`]*", text):  # the public engine only, and
-                self.assertEqual(url, "github.com/segmently-ai/segmently-modules.git")  # a dev build pins none
+            pin = f"@v{release_version(ENG)}" if ENG == release_version(ENG) else ""  # a stable build
+            for url in re.findall(r"github\.com[:/][^\s`]*", text):  # pins its own version: the
+                self.assertEqual(url, "github.com/segmently-ai/segmently-modules.git" + pin)  # tag's
         for name in ("segmently-modules-ui", "segmently-modules-qa"):
             text = (self.out / name / "README.md").read_text(encoding="utf-8")
             self.assertIn("It needs the `segmently-modules` plugin", text)

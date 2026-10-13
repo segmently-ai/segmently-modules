@@ -121,7 +121,8 @@ HELPERS = [("files", "279c159e7bff31a4"), ("committed", "32c9fd83b2b6d873"),
            ("change_a_skill", "1a847d0bd49cb7c4"), ("notes", "23d71885fd53fc1e"),
            ("remotes", "d133f6a188cbdd68"), ("log", "71c5ec419a37f3ed"),
            ("entries", "cba12c4597b16c8a"), ("refs", "7eaeaac89aaf4cc7")]
-CONSTANTS = [("ENG", "9c38b07097adda6a"), ("REL", "1434606f64af146b"),
+# ENG moved once: dev_version(), so that a release tag's checkout runs the release tests too
+CONSTANTS = [("ENG", "b535f6aec9393fb8"), ("REL", "1434606f64af146b"),
              ("NXT", "0a820ae9d519fb43"), ("NXT_DEV", "d8e71a70b5dd1f4a"),
              ("SLUG", "56b4fc0f4f63fd8b"), ("DATE", "b3ef3d9158fe5fe0"),
              ("CHANGELOG", "db1ed4d42a418b33"), ("(LOG_BEGIN, LOG_END)", "fd6ee0206c1ee46e"),
