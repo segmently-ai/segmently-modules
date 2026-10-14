@@ -4,6 +4,7 @@ import: every module may import this one."""
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 
 _ASCII_WORD = re.compile(r"[a-z]+")
 _VOWEL = re.compile(r"[aeiouy]")
@@ -12,6 +13,7 @@ SIBILANT = ("s", "x", "z", "ch", "sh")  # boxes, matches, classes: the plural ad
 KEEP = frozenset({"news", "setting", "evening"})  # forms of their own: never `new`, `set`, `even`
 
 
+@lru_cache(maxsize=1 << 16)  # pure: every keyword of every module, once per process
 def word_keys(word: str) -> frozenset:
     """The keys of one word, shared by its endings -s, -es, -ies, -ed and -ing: `save`,
     `saves`, `saved` and `saving` all hold `save`; two words match when their keys meet. Only
@@ -80,6 +82,7 @@ def word_set_keys(words, normalize: bool) -> set:
     return out
 
 
+@lru_cache(maxsize=1 << 14)  # a registry has thousands of keywords: more than re's own cache
 def term_pattern(term: str) -> re.Pattern:
     # Boundary only on an edge that is a word char: identical to \b for word-edged
     # terms ("book" never hits "books"), and a superset for terms with a non-word
