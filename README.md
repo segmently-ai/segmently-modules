@@ -252,8 +252,9 @@ segmently-modules create reminders --non-interactive \
 keyword at a time — use it for a keyword that itself contains a comma. Each `create` is its own
 write: when one in a batch like this fails, the modules before it stay created — fix that one and
 run it again. `create` warns (on stderr; it still creates the module) about keywords that route
-poorly: 3 characters or fewer, a generic word such as `data` or `list`, or a word whose plain
-plural or singular is missing (`task` without `tasks`).
+poorly: 3 characters or fewer, a generic word such as `data`, `user` or `delete` (in any form),
+more than 40 distinct words (`[create] max_keywords`), or a second form of one word (`tasks` next
+to `task`: one form is enough).
 
 Matching (`match`, `context`, `discover --task`) is by whole words, case-insensitive, and the
 forms of one word match each other: the keyword `save` matches a task that says "saving",

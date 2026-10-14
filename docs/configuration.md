@@ -175,21 +175,30 @@ engine reads none), and the engine ships, installs and suggests no model.
 | Key | Default | Meaning |
 |---|---|---|
 | `min_keywords` | `5` | distinct keywords a top-level module needs (a child needs 1) |
+| `max_keywords` | `40` | the most distinct words a module's keywords may hold (forms of one word count once under `[match] normalize`): `init done` refuses more, `init verify` fails a new module with more, `create` warns; lint keeps MS020 (`[budgets] keywords_soft`) for existing modules; less than 1 is exit 2 |
+| `generic_keywords` | `[]` | words added to the built-in generic list (below): `create` and `init done` warn about them, `init verify` fails a new module that holds one, lint reports them as MS023 (info) |
 | `description_min` | `20` | shortest description, in characters |
 | `description_max` | `200` | longest description |
 | `default_status` | `"planned"` | status of a new module when none is given |
 
 `create` also checks the keywords it is given and warns — it never refuses and never changes
 what it writes (`--non-interactive` included; `segmently-modules: warning: …` lines on stderr — one per
-short or generic keyword, and ONE line for all the plural hints of the run, naming their count
-and the first three pairs —, with `--json` the list `data.warnings`, one entry per keyword). It warns about a keyword of 3 characters or fewer (`api`,
-`ui`), a generic word (`common`, `data`, `helper`, `info`, `item`, `list`, `misc`, `stuff`,
-`util`; any case), and a single lowercase word of 4 letters or more whose plain singular or
-plural is not a keyword too (matching is exact-token: `book` does not match "books"). The plural
-rule is a hint by suffix, not linguistics: `ies` ↔ a consonant + `y` (`categories` ↔
+short or generic keyword, one when there are too many, and ONE line for all the form (or plural)
+hints of the run, naming their count and the first three pairs —, with `--json` the list
+`data.warnings`, one entry per keyword, then the one for too many). It warns about a keyword of 3
+characters or fewer (`api`, `ui`); a generic word — `common`, `data`, `helper`, `info`, `item`,
+`list`, `misc`, `stuff`, `util`, `create`, `edit`, `add`, `delete`, `remove`, `update`, `save`,
+`load`, `get`, `set`, `search`, `select`, `copy`, `open`, `close`, `show`, `user`, `screen`, `app`,
+`module`, `test`, plus `generic_keywords`; any case and, under `[match]
+normalize`, any form (`deletes`) — unless it is a word of the module's own name (`module-tools`
+may keep `module`); and more distinct words than `max_keywords`. Under `normalize = "suffix"` (the
+default) it says when a keyword is a form of an earlier one (`loans` after `loan`: one form is
+enough). Under `normalize = "none"` it says instead when a single lowercase word of 4 letters or
+more has no plain singular or plural keyword (matching is exact: `book` does not match "books").
+That plural rule is a hint by suffix, not linguistics: `ies` ↔ a consonant + `y` (`categories` ↔
 `category`), `sses` / `xes` / `zes` / `ches` / `shes` ↔ the word without `es`, otherwise `s`; a
 word ending in `ss`, `us` or `is` counts as singular (`class` → `classes`). The hint never
-suggests a generic word (`utils` gets no "add `util`").
+suggests a generic word (one of the first nine: `utils` gets no "add `util`").
 
 ## `[coverage]`
 
@@ -615,6 +624,7 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS020 | info | more keywords than `[budgets] keywords_soft` |
 | MS021 | info | a keyword shared by `[budgets] keyword_shared_warn` modules or more (plain `lint` only) |
 | MS022 | warning | an empty keyword (matches every task) |
+| MS023 | info | a keyword is a generic word (`[create] generic_keywords` and the built-in list, any form under `[match] normalize`; never a word of the module's own name) |
 | MS030 | warning | `MODULE.md` longer than `module_doc_split_signal` |
 | MS031 | error | `MODULE.md` longer than `module_doc_hard_stop` |
 | MS032 | warning | a role doc longer than `role_doc_max` |

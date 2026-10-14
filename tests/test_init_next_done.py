@@ -183,6 +183,38 @@ class DoneTest(DriverRepo):  # P5B-AC-005 (init done, the table)
         self.assertEqual((code, got, state(self.root)["modules"]["cart"]["status"]),
                          (0, [], "done"))
 
+    def test_the_keyword_ceiling_and_generic_words(self):  # FoodMate init, 2026-10-14
+        words = [f"basket{chr(97 + i // 26)}{chr(97 + i % 26)}" for i in range(41)]
+        code, got = self.outcome(lambda: self.entry(keywords=words))
+        self.assertEqual((code, got), (1, [
+            "at most 40 keywords, forms of one word counted once (got 41): keep the words that "
+            "point to this module and no other"]))
+        forms = words[:39] + ["checkout", "checkouts", "checked out"]  # 41 keywords, 40 words
+        code, got = self.outcome(lambda: self.entry(keywords=forms))
+        self.assertEqual((code, got), (1, [
+            "at most 40 keywords, forms of one word counted once (got 41): keep the words that "
+            "point to this module and no other"]))
+        s = state(self.root)
+        self.assertEqual(s["modules"]["cart"]["status"], "running")
+        code, got = self.outcome(lambda: self.entry(keywords=words[:38] + ["checkout",
+                                                                           "checkouts"]))
+        self.assertEqual((code, got), (0, []))
+        s["modules"]["cart"]["status"] = "running"
+        (self.root / WORK / "state.json").write_text(json.dumps(s))
+        shutil.rmtree(self.staging, ignore_errors=True)
+        write_docs(self.root, self.item)
+        self.entry(keywords=["basket", "deletes", "Users", "line item", "cart total"])
+        code, out, err = text(self.root, "init", "done", "cart", "--json")
+        data = json.loads(out)["data"]
+        warned = ["keyword 'deletes' is a generic word: it matches many tasks — leave it out, or "
+                  "use a word only this module would answer",
+                  "keyword 'Users' is a generic word: it matches many tasks — leave it out, or "
+                  "use a word only this module would answer"]
+        self.assertEqual((code, data["status"], data["problems"], data["warnings"]),
+                         (0, "done", [], warned))
+        self.assertEqual(err.splitlines(), [f"segmently-modules: cart: warning: {w}"
+                                            for w in warned])
+
     def test_the_text_of_a_check_with_problems(self):  # Task 5 review M1 (_render_done)
         write_docs(self.root, self.item)
         (self.staging / "roles/qa.md").unlink()
@@ -419,7 +451,8 @@ class InventedAtDoneTest(DriverRepo):  # P5C-AC-004…007, 021, 022 (D2, SI-1, S
             (staging / "entry.json").write_text(json.dumps({**doc, **entry}))
         code, out, err = text(root, "init", "done", "cart", "--json")
         data = json.loads(out)["data"]
-        self.assertEqual(set(data), {"action", "module", "status", "problems", "message"})
+        self.assertEqual(set(data), {"action", "module", "status", "problems", "warnings",
+                                     "message"})
         self.assertEqual((code, err.splitlines()), (1 if data["problems"] else 0,
                                                     [f"segmently-modules: cart: {p}"
                                                      for p in data["problems"]]))

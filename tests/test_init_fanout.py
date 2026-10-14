@@ -99,16 +99,15 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
                        "- `catalog` (1 import(s))", f"`{WORK}/staging/cart/`",
                        "### `MODULE.md`", "### `roles/developer.md`", "### `roles/qa.md`",
                        "### `roles/po.md`", "### `roles/architect.md`", "### `entry.json`",
-                       "one sentence of 20–200 characters", "at least 5 distinct words",
+                       "one sentence of 20–200 characters", "at least 5 and at most 40 distinct words",
                        "`related_modules` (optional)", "depends-on, complements",
                        "| Name | Path | Purpose |", "Describe only components that exist",
                        "Never write outside", "# Cart — developer", "## Where the code lives"):
             self.assertIn(needle, prompt)
         flat = " ".join(prompt.split())  # the real-agent findings of G9 / G11 (the keyword
         for needle in (  # forms, the paths the invented check verifies)
-                "Routing matches whole words exactly, without stemming",
-                "the plural and verb forms of the key nouns (`suggestion`, `suggestions`, "
-                "`suggest`)", "a phrase of several words only when developers write exactly "
+                "Routing ignores word endings (`-s`, `-es`, `-ed`, `-ing`), so give one form "
+                "per word", "a phrase of several words only when developers write exactly "
                 "that phrase", "backticks mark a path the check verifies",
                 "written from the repository root, not from the package",
                 "Never backtick a path that does not exist", "an import specifier such as "
@@ -125,22 +124,32 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
             prompt = self.item(root, module)["prompt"]
             self.assertNotIn("${", prompt)
             flat = " ".join(prompt.split())
-            for needle in ("Routing matches whole words exactly, without stemming",
-                           "the plural and verb forms of the key nouns (`suggestion`, "
-                           "`suggestions`, `suggest`)",
+            for needle in ("at least 5 and at most 40 distinct words a developer would type "
+                           "in a task about this module — and about no other module",
+                           "Routing ignores word endings (`-s`, `-es`, `-ed`, `-ing`), so give "
+                           "one form per word (`charge`, not also `charges`, `charged`, "
+                           "`charging`)",  # FoodMate init, 2026-10-14: every form was noise
+                           "generic words that fit any module: `common`, `data`,",
+                           "(a word of this module's own name is fine)",
+                           "the things another module owns (the list above), even when this "
+                           "module stores, caches, syncs or calls them",
+                           "unless this module is that tool",
                            "Give the words for what the module handles as a task would name "
                            "them, including the things and actions its `## Purpose` paragraph "
                            "names, even where the code names them differently (a payments "
-                           "module: `card`, `decline`, `charge`)",
-                           "each key verb in every form tasks use — base, `-s`, `-ed`, `-ing` "
-                           "(`charge`, `charges`, `charged`, `charging`)"):
+                           "module: `card`, `decline`, `charge`)"):
                 self.assertIn(needle, flat)
+            self.assertNotIn("every form", flat)
+            others = prompt.split("what they own is not this module's:\n", 1)[1].split(
+                "\n\nFiles:", 1)[0]
+            self.assertEqual(len(others.splitlines()), len(SIX) - 1, others)
+            self.assertNotIn(f"- `{module}` —", others)
             self.assertNotIn("copy the paragraph", flat)  # SI-25: the words, not the text
         source = (engine_templates() / "init/module_prompt.md").read_text(encoding="utf-8")
         self.assertEqual(placeholder_names(source), {  # f1f5e46's set
             "ask_fields", "description_max", "description_min", "docs", "files", "files_note",
             "min_keywords", "module", "module_doc", "modules_dir", "neighbours", "paths",
-            "relations", "staging_dir"})
+            "relations", "staging_dir", "max_keywords", "generic_words", "others"})
 
     def test_only_the_keywords_bullet_changed(self):  # P6-AC-041 (D15)
         old_bullet = (  # the bullet at f1f5e46, pinned

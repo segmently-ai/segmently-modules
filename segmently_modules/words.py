@@ -63,7 +63,7 @@ def normalizing(cfg: dict) -> bool:
 GENERIC_KEYWORDS = ("common", "data", "helper", "info", "item", "list", "misc", "stuff", "util",
                     "create", "edit", "add", "delete", "remove", "update", "save", "load", "get",
                     "set", "search", "select", "copy", "open", "close", "show", "user", "screen",
-                    "app", "module", "test", "page", "view", "button")
+                    "app", "module", "test")
 
 
 def generic_words(cfg: dict) -> tuple:
@@ -88,6 +88,15 @@ def is_generic(keyword: str, generic, normalize: bool, own=()) -> bool:
     if any(keys & _keys(o, normalize) for o in own):
         return False
     return any(keys & _keys(g, normalize) for g in generic)
+
+
+def generic_keywords(cfg: dict, module: str, keywords) -> list[str]:
+    """The keywords of `module` that are generic words (`is_generic` with the config's words
+    and normalize, the module name's words as its own), in order, each once."""
+    generic, normalize = generic_words(cfg), normalizing(cfg.get("match", {}))
+    own = name_words(module)
+    return [k for k in dict.fromkeys(k for k in keywords if isinstance(k, str))
+            if is_generic(k, generic, normalize, own)]
 
 
 def name_words(name: str) -> list[str]:

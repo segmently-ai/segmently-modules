@@ -439,11 +439,16 @@ def run_action(args, root: Path, config_dir: Path) -> int:
         return EXIT_OK
     if args.action == "done":
         status, problems = phase4.done(args.module)
+        warnings = [] if problems or status == "already done" else \
+            phase4.entry_warnings(args.module)
         data = {"action": "done", "module": args.module,
                 "status": "done" if status == "already done" else status, "problems": problems,
+                "warnings": warnings,
                 "message": "already done" if status == "already done" else None}
         for problem in problems:
             print(f"segmently-modules: {args.module}: {problem}", file=sys.stderr)
+        for warning in warnings:
+            print(f"segmently-modules: {args.module}: warning: {warning}", file=sys.stderr)
         emit("init", data, args.json, _render_done)
         return EXIT_FINDINGS if problems else EXIT_OK
     if args.action == "reconcile":

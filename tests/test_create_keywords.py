@@ -65,8 +65,15 @@ class CreateKeywordsTest(unittest.TestCase):  # P32-AC-017
 NEUTRAL = ["shelf mark", "loan period", "reading room", "due date", "front desk"]
 
 
+EXACT = "[match]\nnormalize = \"none\"\n"  # the plural hints: exact matching only
+
+
+def exact(root):
+    (root / ".segmently-modules" / "config.toml").write_text(EXACT, encoding="utf-8")
+
+
 class KeywordWarningsTest(unittest.TestCase):  # P5A-AC-006 (D0b)
-    TABLE = [  # (keywords, [a needle of each warning, in keyword order])
+    TABLE = [  # (keywords, [a needle of each warning, in keyword order]) — under `none`
         (["book"], ["has no plural 'books'"]),
         (["books"], ["has no singular 'book'"]),
         (["categories"], ["has no singular 'category'"]),
@@ -98,6 +105,7 @@ class KeywordWarningsTest(unittest.TestCase):  # P5A-AC-006 (D0b)
         return out + (["--parent", parent] if parent else [])
 
     def test_the_table(self):
+        exact(self.root)
         for keywords, needles in self.TABLE:
             with self.subTest(keywords=keywords):
                 code, env, err = run_json(*self.argv(keywords + NEUTRAL), "--dry-run",
@@ -115,6 +123,7 @@ class KeywordWarningsTest(unittest.TestCase):  # P5A-AC-006 (D0b)
     ]
 
     def test_no_plural_hint_to_a_generic_word(self):
+        exact(self.root)
         for keywords, needles in self.GENERIC_COUNTERPARTS:
             with self.subTest(keywords=keywords):
                 code, env, err = run_json(*self.argv(keywords + NEUTRAL), "--dry-run",
@@ -135,7 +144,7 @@ class KeywordWarningsTest(unittest.TestCase):  # P5A-AC-006 (D0b)
                 self.assertEqual(code, 0)
                 self.assertEqual(err.splitlines(), [
                     l for l in err.splitlines() if l.startswith("segmently-modules: warning: ")])
-                self.assertEqual(len(err.splitlines()), 3)  # short, generic, the plural line
+                self.assertEqual(len(err.splitlines()), 2)  # short, generic: `book` is enough
                 self.assertIn("loans", out)
                 if "--dry-run" not in mode:
                     reg = json.loads((self.root / "modules/registry.json").read_text())
@@ -181,6 +190,7 @@ class OneLineHintsTest(unittest.TestCase):  # P5B-AC-045 (D15(c))
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = copy_fixture(self._tmp.name)
+        exact(self.root)
         self.R = ("--root", str(self.root), "--dry-run", "--non-interactive")
 
     def tearDown(self):
@@ -209,6 +219,72 @@ class OneLineHintsTest(unittest.TestCase):  # P5B-AC-045 (D15(c))
             "'loan' does not match it — add it if tasks use it",
             "keyword 'reviews' has no singular 'review': matching is exact, so a task that says "
             "'review' does not match it — add it if tasks use it"])
+
+
+class NormalizedHintsTest(unittest.TestCase):  # 0.3.0: routing ignores word endings
+    """Under `[match] normalize = "suffix"` (the default) `create` never asks for another form:
+    it says when a keyword is a form of an earlier one, warns about a generic word in any of its
+    forms (never a word of the module's own name) and about more distinct words than `[create]
+    max_keywords`."""
+    FORMS = ("segmently-modules: warning: {n} keyword(s) that are a form of another keyword "
+             "(matching ignores word endings: one form is enough): {pairs} — --json lists each")
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = copy_fixture(self._tmp.name)
+        self.R = ("--root", str(self.root), "--dry-run", "--non-interactive")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def create(self, name, keywords, json_out=True):
+        argv = ["create", name, *DESC, *[a for k in keywords + NEUTRAL for a in ("--keyword", k)]]
+        if json_out:
+            code, env, err = run_json(*argv, *self.R)
+            self.assertEqual((code, err), (0, ""))
+            return env["data"]["warnings"]
+        code, _, err = run(*argv, *self.R)
+        self.assertEqual(code, 0)
+        return err.splitlines()
+
+    def test_one_form_is_enough(self):
+        self.assertEqual(self.create("loans", ["book", "loan", "fine"]), [])
+        self.assertEqual(self.create("loans", ["loan", "loans", "loaned", "lending"]), [
+            "keyword 'loans' is a form of 'loan': matching ignores word endings — one form is "
+            "enough",
+            "keyword 'loaned' is a form of 'loan': matching ignores word endings — one form is "
+            "enough"])
+        self.assertEqual(self.create("loans", ["loan", "loans", "loaned"], json_out=False),
+                         [self.FORMS.format(n=2, pairs="loans → loan, loaned → loan")])
+
+    def test_generic_in_any_form_but_not_in_the_own_name(self):
+        warnings = self.create("loans", ["deletes", "users", "module"])
+        self.assertEqual([w.split("'")[1] for w in warnings], ["deletes", "users", "module"])
+        self.assertTrue(all("is a generic word" in w for w in warnings))
+        self.assertEqual(self.create("module-tools", ["module", "modules"]), [
+            "keyword 'modules' is a form of 'module': matching ignores word endings — one form "
+            "is enough"])
+
+    def test_more_words_than_max_keywords(self):
+        words = [f"shelf{chr(97 + i // 26)}{chr(97 + i % 26)}" for i in range(36)]
+        self.assertEqual(self.create("loans", words[:35]), [])  # + 5 neutral phrases: 40
+        (self.root / ".segmently-modules" / "config.toml").write_text(
+            "[create]\nmax_keywords = 41\n", encoding="utf-8")
+        self.assertEqual(self.create("loans", words), [])
+        (self.root / ".segmently-modules" / "config.toml").write_text(
+            "[create]\nmax_keywords = 40\n", encoding="utf-8")
+        self.assertEqual(self.create("loans", words), [
+            "41 keywords > [create] max_keywords 40: keep the words that point to this module "
+            "and no other"])
+        self.assertEqual(self.create("loans", words + [w + "s" for w in words[:3]])[-1][:3],
+                         "41 ")  # forms of one word count once
+
+    def test_a_bad_max_keywords_is_refused(self):
+        (self.root / ".segmently-modules" / "config.toml").write_text(
+            "[create]\nmax_keywords = 0\n", encoding="utf-8")
+        code, _, err = run("create", "loans", *DESC, "--keyword", "loan", *self.R)
+        self.assertEqual(code, 2)
+        self.assertIn("[create] max_keywords: expected an integer >= 1, got 0", err)
 
 
 if __name__ == "__main__":

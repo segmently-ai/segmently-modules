@@ -190,7 +190,7 @@ class WriterTest(Spawn):
         return root
 
     def writers(self):
-        words = [a for k in ("review", "reviews", "rating", "ratings", "moderation", "moderations")
+        words = [a for k in ("review", "rating", "moderation", "comment", "stars")  # no warning
                  for a in ("--keyword", k)]
         return {
             "create": ("create", "reviews", "--description",

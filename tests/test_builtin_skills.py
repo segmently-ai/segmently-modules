@@ -557,9 +557,8 @@ class InitAndAdoptSkillsTest(unittest.TestCase):  # P5B-AC-028, P5B-AC-029 (D6, 
         phases = " ".join((root / "references/phases.md").read_text("utf-8").split())
         for needle in ("including the things and actions its `## Purpose` paragraph names even "
                        "where the code names them differently",
-                       "routing matches whole words without stemming, so single words with the "
-                       "plural and verb forms of the key nouns",  # kept from f1f5e46
-                       "each key verb in every form tasks use: base, `-s`, `-ed`, `-ing`"):
+                       "routing ignores word endings, so one form per word; no generic word, "
+                       "no thing another module owns, no word for the developer's own tools"):
             self.assertIn(needle, phases)
 
     def test_module_init_step_5_names_the_invented_check(self):  # P5C-AC-014 (D2, D5)

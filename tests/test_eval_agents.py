@@ -111,8 +111,8 @@ class AdopterRepoTest(unittest.TestCase):  # P5A-AC-040: the builder, checked by
             R = ("--root", str(root))
             before = {p: p.read_bytes() for p in (root / "modules").rglob("*") if p.is_file()}
             lint = run_json("lint", "--fail-on", "never", *R)[1]["data"]
-            self.assertEqual(sorted({f["code"] for f in lint["findings"]}),
-                             ["MS012", "MS014", "MS015"])
+            self.assertEqual(sorted({f["code"] for f in lint["findings"]}),  # MS023 (info):
+                             ["MS012", "MS014", "MS015", "MS023"])  # `copies`, a form of `copy`
             self.assertEqual(run("adopt", *R)[0], 0)
             self.assertEqual({p: p.read_bytes() for p in (root / "modules").rglob("*")
                               if p.is_file()}, before)

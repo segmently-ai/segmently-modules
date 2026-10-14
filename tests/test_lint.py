@@ -170,6 +170,21 @@ class LintAdditionsTest(unittest.TestCase):  # MS015, MS022, MS040 alias/placeho
             mutate_registry(root, lambda d: d["modules"]["catalog"].update(keywords=["catalog", " "]))
             self.assertIn(("MS022", "warning"), lint_codes(root))
 
+    def test_a_generic_keyword_is_info_unless_the_module_is_named_by_it(self):  # MS023
+        with tempfile.TemporaryDirectory() as tmp:
+            root = copy_fixture(tmp)
+            mutate_registry(root, lambda d: (
+                d["modules"]["catalog"].update(keywords=["catalog", "book", "Searches", "users"]),
+                d["modules"]["checkout"].update(keywords=["cart", "checkout", "order"])))
+            _, env, _ = run_json("lint", "--root", str(root), "--fail-on", "never")
+            rows = [(f["code"], f["severity"], f["module"], f["message"].split("'")[1])
+                    for f in env["data"]["findings"] if f["code"] == "MS023"]
+            self.assertEqual(rows, [("MS023", "info", "catalog", "Searches"),
+                                    ("MS023", "info", "catalog", "users")])
+            mutate_registry(root, lambda d: d["modules"]["catalog"].update(
+                keywords=["catalog", "book", "catalogs"]))  # no generic word left
+            self.assertNotIn(("MS023", "info"), lint_codes(root))
+
     def test_component_aliases_and_placeholders_are_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(tmp)

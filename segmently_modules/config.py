@@ -46,8 +46,8 @@ LAYER_SCHEMA = {
                                     "min_score", "top")}, "mode": "str", "normalize": "str"},
     "lint": {"fail_on": "str", "component_table_heading": "str", "drift_severity": "str",
              "overlap_severity": "str", "link_severity": "str"},
-    "create": {"min_keywords": "int", "description_min": "int", "description_max": "int",
-               "default_status": "str"},
+    "create": {"min_keywords": "int", "max_keywords": "int", "description_min": "int",
+               "description_max": "int", "default_status": "str", "generic_keywords": "list[str]"},
     "coverage": {"include": "list[str]", "exclude": "list[str]", "doc_only": "list[str]"},
     "ci": {"fail_on": "str", "base": "str", "coverage_fail_under": "number"},
     "packs": {"agents": "list[str]", "builtin": "list[str]", "builtin_delivery": "str|table"},
@@ -177,6 +177,10 @@ def validate_layer(layer: dict, source) -> None:
     if mode is not None and mode not in MATCH_MODES:
         raise UsageError(f"{source}: [match] mode: expected one of {', '.join(MATCH_MODES)}, "
                          f"got {mode!r}")
+    most = layer.get("create", {}).get("max_keywords")
+    if most is not None and most < 1:
+        raise UsageError(f"{source}: [create] max_keywords: expected an integer >= 1, got "
+                         f"{most!r}")
     normalize = layer.get("match", {}).get("normalize")
     if normalize is not None and normalize not in NORMALIZE:
         raise UsageError(f"{source}: [match] normalize: expected one of {', '.join(NORMALIZE)}, "
