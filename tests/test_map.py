@@ -547,6 +547,44 @@ class InitKeysTest(MapRepo):  # P5A-AC-032 (the effect of [init] exclude and co_
         self.assertEqual([len(mapper.co_change(small, n)) for n in (2, 3, 4)], [2, 3, 3])
 
 
+class SizeSplitHintTest(MapRepo):  # 0.3.0: a 65k-line Swift app was one candidate
+    def repo(self, limit: str):
+        swift = lambda n: "".join(f"let v{i} = {i}\n" for i in range(n))  # noqa: E731
+        root = write_files(self.base / "app", {
+            "App/AppDelegate.swift": swift(5),  # right in the unit: never a child
+            "App/Services/Sync.swift": swift(15),
+            "App/Tabs/Diary/Diary.swift": swift(12),
+            "App/Tabs/Mood/Mood.swift": swift(11),
+            "App/Tabs/Mood/Chart/Chart.swift": swift(3),
+            "Tools/run.swift": swift(4),
+            ".segmently-modules/config.toml": f"[init]\nco_change_commits = 0\n{limit}"})
+        commit(root, [])
+        return proposal(root)
+
+    def test_a_big_candidate_gets_its_subdirectories(self):
+        doc = self.repo("split_hint_lines = 20\n")
+        self.assertEqual([c["name"] for c in doc["candidates"]], ["app", "tools"])
+        self.assertEqual(doc["hints"], [{
+            "kind": "split", "candidates": ["app"],
+            "reason": "46 lines of code, more than [init] split_hint_lines 20: start from its "
+                      "subdirectories",
+            "children": [{"dir": "App/Services", "lines": 15},  # Tabs (26 > 20): its own
+                         {"dir": "App/Tabs/Diary", "lines": 12},
+                         {"dir": "App/Tabs/Mood", "lines": 14}]}])  # Chart stays inside
+
+    def test_below_the_limit_or_off(self):
+        self.assertEqual(self.repo("split_hint_lines = 46\n")["hints"], [])
+        self.assertEqual(self.repo("split_hint_lines = 0\n")["hints"], [])
+
+    def test_a_bad_value_is_refused(self):
+        root = write_files(self.base / "bad", {
+            "App/a.swift": "let a = 1\n",
+            ".segmently-modules/config.toml": "[init]\nsplit_hint_lines = -1\n"})
+        code, _, err = run("init", "map", "--dry-run", "--root", str(root))
+        self.assertEqual(code, 2)
+        self.assertIn("[init] split_hint_lines: expected an integer >= 0, got -1", err)
+
+
 class CostTest(MapRepo):  # P5A-AC-045 (the spies; the timings are recorded at the gate)
     def test_one_listing_one_log_one_read_per_file(self):
         root = build(self.base / "shop")

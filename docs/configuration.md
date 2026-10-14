@@ -258,6 +258,7 @@ finish (every phase: [init.md](init.md)).
 |---|---|---|
 | `exclude` | `[]` | globs (the `[[code_map]]` grammar) of files the init file set leaves out — preflight counts, candidates, `unassigned` and the file claims `init confirm` checks; a list of strings (anything else is exit 2 naming the file and the key); like every array, the user config's list adds to the team's |
 | `co_change_commits` | `500` | how many recent commits `init map` reads for the co-change signal (`git log`); an integer `>= 0` (`0` turns the signal off: no `git log` runs); `true` / `false`, text or a fraction is exit 2 naming the file and the key |
+| `split_hint_lines` | `10000` | `init map` gives a candidate with more lines of code than this a `split` hint whose `children` are its code-holding subdirectories (`{dir, lines}`; one over the limit replaced by its own, at most 3 levels down); `0` turns it off; below `0` is exit 2 |
 | `routing_min_hit_rate` | `0.8` | the lowest routing hit rate `init verify` and `segmently-modules eval routing` pass (`--min-hit-rate` overrides it for `eval routing`): a number from `0` to `1` (anything else is exit 2 naming the file and the key); a run passes when hits ≥ this × tasks, unrounded |
 | `max_parallel` | `4` | how many work items `init run --executor` (and the `module-init` skill's subagents) write at a time; an integer `>= 1`, no upper bound (never more than the pending items); `0`, a negative number, `true` / `false`, a fraction or text is exit 2 `[init] max_parallel must be an integer >= 1` naming the file |
 

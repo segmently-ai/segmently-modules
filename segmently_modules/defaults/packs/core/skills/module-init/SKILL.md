@@ -46,8 +46,9 @@ If `segmently-modules` is not found, tell the user how to install it — the `se
    ```
 
    It writes `<config_dir>/init/proposal.json`. Present the candidates in a short table —
-   name, paths, confidence, the rationale in a few words — then the `hints` (`merge`, `split`)
-   and the `unassigned` code files. The seed keywords are already filtered (no npm scope, no
+   name, paths, confidence, the rationale in a few words — then the `hints` (`merge`, `split`;
+   a `split` with `children` is a candidate too big for one module: offer its subdirectories,
+   grouped by feature, as the split) and the `unassigned` code files. The seed keywords are already filtered (no npm scope, no
    token of 3 characters or fewer).
 
 3. **STOP — gate 3.** Ask the user which candidates to keep, merge, split, rename or exclude.

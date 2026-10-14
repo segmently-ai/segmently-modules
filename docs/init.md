@@ -25,7 +25,10 @@ and never touches the modules dir, the registry or the config before the last ga
 ## Gate 3: the candidates
 
 `segmently-modules init map` proposes candidate modules from the package manifests, the source
-directories, the imports, CODEOWNERS and the files that change together. Edit
+directories, the imports, CODEOWNERS and the files that change together; a candidate with more
+lines of code than `[init] split_hint_lines` (10000) gets a `split` hint listing its
+subdirectories with their lines (`children`) — a starting point when the directory layout alone
+gives one big candidate. Edit
 `<config_dir>/init/proposal.json` — each candidate's `include`, `name` and `paths` — to merge,
 split, rename or drop candidates, then `segmently-modules init confirm`: it names every problem at once
 (a name that breaks the `create` rule, a glob that matches no file, two candidates that claim

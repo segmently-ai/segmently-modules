@@ -132,7 +132,8 @@ class InitConfigTest(unittest.TestCase):  # P5A-AC-032 (the keys; their effect: 
         from segmently_modules.preflight import list_files
         self.assertEqual(load_config(self.root / ".segmently-modules")["init"],
                          {"exclude": [], "co_change_commits": 500, "max_parallel": 4,
-                          "routing_min_hit_rate": 0.8})  # P5B-AC-009 (D1), P5B-AC-017 (D3)
+                          "routing_min_hit_rate": 0.8,  # P5B-AC-009 (D1), P5B-AC-017 (D3)
+                          "split_hint_lines": 10000})  # 0.3.0
         write(self.root / ".segmently-modules/config.toml", '[init]\nexclude = ["a/**"]\n')
         write(self.root / ".segmently-modules/config.user.toml", '[init]\nexclude = ["b/**"]\n')
         for rel in ("a/x.py", "b/y.py", "c/z.py", "tools/t.py"):

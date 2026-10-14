@@ -52,7 +52,7 @@ LAYER_SCHEMA = {
     "ci": {"fail_on": "str", "base": "str", "coverage_fail_under": "number"},
     "packs": {"agents": "list[str]", "builtin": "list[str]", "builtin_delivery": "str|table"},
     "init": {"exclude": "list[str]", "co_change_commits": "int", "max_parallel": "int",
-             "routing_min_hit_rate": "number"},
+             "routing_min_hit_rate": "number", "split_hint_lines": "int"},
 }
 CI_FAIL_ON = ("error", "never", "warning")
 MATCH_MODES = ("lexical", "semantic", "hybrid")  # [match] mode / --match (P8.1 S1)
@@ -185,6 +185,10 @@ def validate_layer(layer: dict, source) -> None:
     if normalize is not None and normalize not in NORMALIZE:
         raise UsageError(f"{source}: [match] normalize: expected one of {', '.join(NORMALIZE)}, "
                          f"got {normalize!r}")
+    split = layer.get("init", {}).get("split_hint_lines")
+    if split is not None and split < 0:
+        raise UsageError(f"{source}: [init] split_hint_lines: expected an integer >= 0, got "
+                         f"{split!r}")
     commits = layer.get("init", {}).get("co_change_commits")
     if commits is not None and commits < 0:
         raise UsageError(f"{source}: [init] co_change_commits: expected an integer >= 0, got "
