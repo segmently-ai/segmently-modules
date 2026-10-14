@@ -62,9 +62,10 @@ KEYWORDS = ["segmently-modules", "module-registry", "documentation", "agent-skil
 # The one table every manifest and README is rendered from: plugin -> the pack it ships.
 PLUGINS = {
     "segmently-modules": {"pack": "core", "keywords": ["modules", "cli"],
-               "description": "Module-registry skills for coding agents — find, read, update, "
-                              "create, split and lint module docs, start them from existing "
-                              "code or adopt a registry — with the segmently-modules CLI they run"},
+               "description": "Notes for AI coding agents, excellent workers with amnesia and a "
+                              "limited memory: notes to start work on any part of the project, "
+                              "found before a task, updated after it, kept per role — with the "
+                              "segmently-modules CLI the skills run"},
     "segmently-modules-ui": {"pack": "ui", "keywords": ["ui", "design-review"],
                   "description": "The Segmently Modules designer skill: prototypes, audits and "
                                  "reviews UI work against the designer docs of the modules it "
@@ -74,6 +75,89 @@ PLUGINS = {
                                  "criteria before the code, and a module's acceptance baseline"},
 }
 CORE = "segmently-modules"  # the plugin with the CLI; the others depend on it (Claude Code)
+# What the plugins are for, in the owner's words (2026-10-14): the plugin READMEs, the publish
+# repository's README section and the npm README carry it; the engine's README says it at length.
+PURPOSE = ("An AI coding agent is an excellent worker with amnesia and a memory of limited size. "
+           "Segmently Modules solves both problems:\n\n"
+           "1. it writes the notes for starting work on any part of the project — a specific page "
+           "or a server feature;\n"
+           "2. it finds the notes a task needs before the work starts;\n"
+           "3. it brings the notes up to date when the work is done;\n"
+           "4. it keeps the notes per role, so the agent reads only the notes it needs right now: "
+           "its memory is limited.\n")
+CHECK_TOOLS = ("git --version and python3 --version — git must answer, and Python must be 3.9 or "
+               "newer. On macOS, if either one asks for the command line developer tools, run "
+               "xcode-select --install, ask me to finish the installer it opens, then run both "
+               "again. If Python is still missing or older than 3.9, tell me how to get Python 3.9 "
+               "or newer on this operating system and stop there.")
+FIRST_REQUEST = ("\"Use the module-assistant skill to set Segmently Modules up in this repository:\n"
+                 "- it has a module registry another tool or team already wrote: adopt it with the "
+                 "module-adopt skill;\n"
+                 "- it has code but no module registry: run segmently-modules setup, then map the "
+                 "code into modules and write their notes with the module-init skill;\n"
+                 "- it is a new repository: run segmently-modules setup, then the module-create "
+                 "skill for the first module.\n"
+                 "segmently-modules setup also adds the Segmently Modules section to CLAUDE.md and "
+                 "AGENTS.md, so every session knows the skills and the module system.\"")
+# What `segmently-modules setup` writes into the agents' instruction files (the agents-md block).
+INSTRUCTIONS_NOTE = ("Nothing goes into `CLAUDE.md` by hand: `segmently-modules setup` (the first "
+                     "request above runs it) adds a short \"Module docs (Segmently Modules)\" section "
+                     "to `CLAUDE.md` (Claude Code) and `AGENTS.md` (Codex, Cursor, Copilot; Gemini CLI "
+                     "reads `GEMINI.md`). It "
+                     "tells every session to read a task's notes before the work (`segmently-modules "
+                     "context`), to bring them up to date after it (`segmently-modules "
+                     "sync-instructions`, the `module-sync` skill), to start module work with "
+                     "`segmently-modules next`, and it lists the skills. `segmently-modules agents-md` "
+                     "refreshes the section; the text around it stays yours.")
+
+
+PROMPTS_INTRO = ("Paste the block for your agent into a fresh session. It checks git and Python, "
+                 "installs the plugin and stops: an agent picks a newly installed plugin up only "
+                 "after a reload — `/reload-plugins` in Claude Code — or in a new session (Codex), "
+                 "and the prompt then hands you the first request.")
+RELOAD_NOTE = ("Then run `/reload-plugins` in Claude Code, or start a new session: an agent picks a "
+               "newly installed plugin up only then (Codex: a new session).")
+
+
+def install_prompts(cli: str) -> dict[str, str]:
+    """The one-prompt installs, {agent: the text to paste into a fresh session}: they set the
+    machine up and stop — the plugin is picked up after `/reload-plugins` (Claude Code) or in a
+    new session; `cli` is the `uv tool install` source of the command line (pinned on a stable
+    release)."""
+    tail = ("Tell me the setup is done, then ask me to {pick_up} in the repository I want to work "
+            "on, and to paste the request below there.\n\n"
+            f"The request to paste then:\n{FIRST_REQUEST}\n")
+    claude = (
+        "Set up Segmently Modules for Claude Code on this machine, then stop and tell me to restart.\n\n"
+        f"Marketplace: {MARKETPLACE}#stable. Plugin: segmently-modules@segmently-modules.\n\n"
+        "Run the steps in order and show me the exact output of every command:\n"
+        f"1. {CHECK_TOOLS}\n"
+        f"2. claude plugin marketplace add {MARKETPLACE}#stable --scope user\n"
+        "   claude plugin install segmently-modules@segmently-modules --scope user\n"
+        "   If the marketplace is already there, run claude plugin marketplace update "
+        "segmently-modules and then claude plugin update segmently-modules@segmently-modules "
+        "--scope user.\n"
+        "3. claude plugin list — the output must name segmently-modules. If it does not, say so "
+        "plainly and do not continue.\n"
+        "4. Do not use the skills yet: Claude Code picks a newly installed plugin up only after "
+        "/reload-plugins or in a new session. "
+        + tail.format(pick_up="run /reload-plugins (or restart Claude Code)"))
+    codex = (
+        "Set up Segmently Modules for Codex on this machine, then stop and tell me to restart.\n\n"
+        f"Marketplace: {MARKETPLACE} on ref stable. Plugin: segmently-modules@segmently-modules.\n\n"
+        "Run the steps in order and show me the exact output of every command:\n"
+        f"1. {CHECK_TOOLS}\n"
+        "2. npm install -g @segmently/modules, then segmently-modules --version — it must print "
+        f"segmently-modules and a version. Without npm, run uv tool install {cli} instead.\n"
+        f"3. codex plugin marketplace add {MARKETPLACE} --ref stable\n"
+        "   codex plugin add segmently-modules@segmently-modules\n"
+        "   If the marketplace is already there, run codex plugin marketplace upgrade "
+        "segmently-modules and then codex plugin add segmently-modules@segmently-modules again.\n"
+        "4. List the installed plugins and show me that segmently-modules is among them. If it is "
+        "not, say so plainly and do not continue.\n"
+        "5. Do not use the skills yet: Codex picks a newly installed plugin up only in a new "
+        "session. " + tail.format(pick_up="restart Codex"))
+    return {"Claude Code": claude, "Codex": codex}
 AGENTS_DIR = "segmently_modules/defaults/agents/"  # its direct children ship in the core plugin's agents/
 AGENT_TABLE = "segmently_modules/skills.py"  # SKILL_AGENTS and PROCEDURE: the engine's one agent table
 AGENT_TOOLS = "Read, Grep, Glob, Bash, Agent, Skill"  # the generated agents' tools (Claude Code)
@@ -312,8 +396,8 @@ def readme(name: str, skills: list[str], agents: list[str] = (), version: str = 
                        "and returns the skill's output.")
         needs = (f"- Codex: `codex plugin marketplace add {MARKETPLACE} --ref stable`, "
                  f"then `codex plugin add {name}@segmently-modules`. Codex puts no plugin command on "
-                 f"PATH, so install the CLI first, at the plugin's version: `uv tool "
-                 f"install {cli}` (or `pipx install {cli}`)."
+                 f"PATH, so install the CLI first: `npm install -g @segmently/modules`, or at "
+                 f"the plugin's version `uv tool install {cli}` (or `pipx install {cli}`)."
                  + (" Codex reads no plugin agents: `segmently-modules setup` and `segmently-modules packs sync "
                     "--agent codex` write the three skills' agents to `.codex/agents/` in the "
                     "repository." if generated else "") + "\n")
@@ -324,7 +408,8 @@ def readme(name: str, skills: list[str], agents: list[str] = (), version: str = 
                  "Codex has no plugin dependencies, so add both — and install the CLI first, "
                  f"at the plugins' version: `uv tool install {cli}` (or `pipx install "
                  f"{cli}`).\n")
-    return (f"# {name}\n\n{spec['description']}.\n\n{what}\n\n## Install\n\n"
+    purpose = f"## What it is for\n\n{PURPOSE}\n## What it holds\n\n" if name == CORE else ""
+    return (f"# {name}\n\n{spec['description']}.\n\n{purpose}{what}\n\n## Install\n\n"
             f"- Claude Code: `claude plugin marketplace add {MARKETPLACE}#stable`, then "
             f"`claude plugin install {name}@segmently-modules`"
             + (" (it installs `segmently-modules` too)" if name != CORE else "") + ".\n"
@@ -334,6 +419,7 @@ def readme(name: str, skills: list[str], agents: list[str] = (), version: str = 
               "set `[packs] builtin` in `.segmently-modules/config.toml`), then run `segmently-modules packs sync "
               "--agent cursor` (`--agent gemini`, `--agent copilot`): it copies the skills into "
               "`.agents/skills/`; these agents need the default `\"repo\"` delivery.\n\n"
+              f"{RELOAD_NOTE}\n\n"
               "The `dev` channel: `#dev` / `--ref dev` and the marketplace `segmently-modules-dev` (e.g. "
               f"`{name}@segmently-modules-dev`).\n\n"
               "In a repository whose agents get the built-in skills from these plugins, set "

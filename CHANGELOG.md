@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The READMEs say what Segmently Modules is for — an AI coding agent is an excellent worker with amnesia and a memory of limited size, and the notes solve both: written for any part of the project, found before a task, updated after it, kept per role — in a section of its own, and carry a one-prompt install for Claude Code and for Codex (paste it into a fresh session; it sets the machine up and stops: the agent picks the plugin up after `/reload-plugins` in Claude Code, or in a new session). The prompt's first request names the way in — adopt an existing registry (`module-adopt`), or `segmently-modules setup` and then `module-init` for code without one, `module-create` for a new repository — and a note says what `setup` adds to `CLAUDE.md` and `AGENTS.md`, so nothing is written there by hand. The by-hand install lines name the reload too. The engine's README, the core plugin's README, the plugin marketplace's README section and the npm README share the text; the core plugin's and the marketplace's descriptions say it in one line. The Codex install lines take the command line from npm first.
+
 ## [0.2.1] - 2026-10-14
 
 ### Added

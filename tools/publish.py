@@ -38,8 +38,9 @@ MARKETPLACES = {"stable": "segmently-modules", "dev": "segmently-modules-dev"}  
 CLAUDE_MARKETPLACE = ".claude-plugin/marketplace.json"
 CODEX_MARKETPLACE = ".agents/plugins/marketplace.json"
 OWNER = {"name": "Segmently Modules maintainers"}
-DESCRIPTION = {"stable": "The Segmently Modules plugins: module-registry skills and the "
-                         "segmently-modules CLI",
+DESCRIPTION = {"stable": "The Segmently Modules plugins: notes for AI coding agents — written for "
+                         "any part of the project, found before a task, updated after it, kept "
+                         "per role — and the segmently-modules CLI",
                "dev": "The Segmently Modules plugins, dev channel: every change before a release"}
 README_PIN = re.compile(rb"segmently-modules\.git@v\d+\.\d+\.\d+")  # a stable build's pin
 ENGINE_VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:\.dev\d+)?$")

@@ -360,26 +360,32 @@ def replace_section(text: str, begin: str, end: str, body: str,
 
 
 def readme_section(slug: str, channel: str, version: str) -> str:
-    """The publish repository's README section: the install lines with --publish-slug and the
-    engine's repository beside it; the command line pinned to `version` on `stable` (the dev
-    channel follows the engine's main)."""
+    """The publish repository's README section: what the plugins are for, the one-prompt
+    installs, then the install lines with --publish-slug and the engine's repository beside it;
+    the command line pinned to `version` on `stable` (the dev channel follows the engine's main)."""
     engine = f"https://github.com/{slug.split('/')[0]}/{ENGINE_REPO}"
     cli = f"git+{engine}.git" + (f"@v{version}" if channel == "stable" else "")
-    return (f"## Segmently Modules\n\n"
-            f"Module-registry skills for coding agents and the `segmently-modules` command line: "
-            f"the plugins `segmently-modules`, `segmently-modules-ui` and `segmently-modules-qa`. "
-            f"This branch: `{channel}`, segmently-modules {version}. The engine, its docs and its "
-            f"issues: {engine}.\n\n"
+    prompts = "".join(f"**{agent}**\n\n```text\n{text}```\n\n"
+                      for agent, text in build_plugins.install_prompts(cli).items())
+    return (f"## Segmently Modules\n\n### What it is for\n\n{build_plugins.PURPOSE}\n"
+            f"The plugins: `segmently-modules` (the core skills and the `segmently-modules` "
+            f"command line), `segmently-modules-ui` (the designer skill) and "
+            f"`segmently-modules-qa` (the acceptance-criteria skills). This branch: `{channel}`, "
+            f"segmently-modules {version}. The engine, its docs and its issues: {engine}.\n\n"
+            f"### Install with one prompt\n\n{build_plugins.PROMPTS_INTRO}\n\n{prompts}"
+            f"{build_plugins.INSTRUCTIONS_NOTE}\n\n"
+            f"### Install by hand\n\n"
             f"- Claude Code: `claude plugin marketplace add {slug}#stable`, then `claude plugin "
             f"install segmently-modules@segmently-modules` (and "
             f"`segmently-modules-ui@segmently-modules`, `segmently-modules-qa@segmently-modules`).\n"
-            f"- Codex: install the command line first — `uv tool install {cli}` or `pipx install "
-            f"{cli}`"
+            f"- Codex: install the command line first — `npm install -g @segmently/modules`, "
+            f"`uv tool install {cli}` or `pipx install {cli}`"
             + ("" if channel == "stable" else " (the engine's `main`, which the dev channel follows; "
                "for the stable plugins add `@v` and their version)")
             + f" — then `codex plugin marketplace add {slug} --ref stable` and `codex plugin "
             f"add segmently-modules@segmently-modules`.\n"
-            f"- The dev channel: `#dev` / `--ref dev` and the marketplace `segmently-modules-dev`.\n")
+            f"- The dev channel: `#dev` / `--ref dev` and the marketplace `segmently-modules-dev`.\n\n"
+            f"{build_plugins.RELOAD_NOTE}\n")
 
 
 def pin_readme(engine: Path, version: str) -> bool:

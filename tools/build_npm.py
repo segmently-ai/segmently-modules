@@ -90,8 +90,9 @@ def readme(version: str, about: str) -> bytes:
     docs = f"{HOMEPAGE}/tree/v{version}" if STABLE.match(version) else HOMEPAGE
     text = f"""# Segmently Modules
 
-{about}: a module registry, per-module interface docs and per-role context files, maintained
-by a command line and agent skills.
+{build_plugins.PURPOSE}
+This package is the command line: {about[0].lower()}{about[1:]} — a module registry, per-module
+interface docs and per-role context files. The skills come as Claude Code and Codex plugins.
 
 ```bash
 npm install -g {NAME}

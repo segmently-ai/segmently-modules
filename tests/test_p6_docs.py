@@ -123,7 +123,8 @@ class InstallDocsTest(unittest.TestCase):  # P6-AC-025 (D10), P6-AC-021 (D13)
                             text.index("packs sync --agent cursor"))
             self.assertIn("`[packs] builtin`", text)
             self.assertIn('the default `"repo"` delivery', text)
-        codex = readme.split("**Codex**", 1)[1].split("\n**", 1)[0]  # the CLI at the plugin's
+        by_hand = readme.split("\n## Install by hand\n", 1)[1]  # after the one-prompt installs
+        codex = by_hand.split("**Codex**", 1)[1].split("\n**", 1)[0]  # the CLI at the plugin's
         self.assertIn("uv tool install git+https://github.com/segmently-ai/segmently-modules.git@v",
                       codex)  # version, not the default branch
         self.assertIn('keeps the default `"repo"` delivery and has run `segmently-modules packs sync` '
