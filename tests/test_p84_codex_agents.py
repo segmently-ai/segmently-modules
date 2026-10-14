@@ -2,6 +2,8 @@
 core pack's wrapped skills for Codex as `.codex/agents/<name>.toml` — managed files with a marker
 line, `data.agent_files` rows, `--check`, removal and conflicts, only when `codex` is synced — the
 stdlib TOML encoder that round-trips any procedure, and the docs (P84-AC-002, 006…010, 038)."""
+from __future__ import annotations
+
 import hashlib
 import json
 import os
@@ -10,13 +12,13 @@ import stat
 import subprocess
 import sys
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 from unittest import mock
 
 import segmently_modules
 from segmently_modules import skill_sync, skills
+from segmently_modules._toml import tomllib
 from segmently_modules.config import builtin_packs_root
 from tests.helpers import changelog_since_first_release, copy_fixture, init_git, run, run_json
 

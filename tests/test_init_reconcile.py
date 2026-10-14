@@ -1,6 +1,8 @@
 """`init reconcile` (D2, phase 5): the staging registry and its edges, keyword collisions,
 duplicate names and the judgement items; the phase's order, determinism and a re-run over hand
 edits."""
+from __future__ import annotations
+
 import json
 import shutil
 import subprocess

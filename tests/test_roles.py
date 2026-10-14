@@ -1,6 +1,8 @@
 """`segmently-modules roles list` / `roles add` (P6.1 W3, D1, D3, SI-P61-1…3): every configured role with
 its owner and the targets that have (or lack) its doc; a role doc added to EXISTING modules —
 rendered exactly as `create` renders it, registered in either layout, all or nothing."""
+from __future__ import annotations
+
 import contextlib
 import errno
 import json
@@ -556,7 +558,7 @@ class UpgradeTest(unittest.TestCase):  # P61-AC-010 (steps 1, 3, 4; Task 4 adds 
 
             def new_engine(*argv):
                 proc = subprocess.run(
-                    [sys.executable, "-P", "-m", "segmently_modules", *argv, "--json", "--root", str(root)],
+                    [sys.executable, "-m", "segmently_modules", *argv, "--json", "--root", str(root)],
                     capture_output=True, text=True, cwd=tmp, preexec_fn=default_signals,
                     env={**os.environ, "PYTHONPATH": str(engine)})
                 return proc.returncode, json.loads(proc.stdout), proc.stderr

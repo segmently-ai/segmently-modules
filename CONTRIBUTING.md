@@ -4,8 +4,11 @@ Thank you for helping. This file says how the code is kept and how a change gets
 
 ## Principles
 
-- Python ≥ 3.11, stdlib only: Segmently Modules has no runtime dependency, and a change does not
-  add one.
+- Python ≥ 3.9 — the `python3` of macOS's Command Line Tools — and stdlib only:
+  Segmently Modules has no runtime dependency, and a change does not add one. On Python 3.9 and
+  3.10 the TOML reader is the vendored tomli (`segmently_modules/_vendor/`, unchanged from its
+  release); no code uses syntax or a stdlib call newer than 3.9, and an annotation with
+  `X | Y` needs `from __future__ import annotations` (`tests/test_python39.py` checks both).
 - The command line is a contract. [`docs/cli-contract.md`](docs/cli-contract.md) describes every
   verb's JSON output, exit codes and messages; pipelines and the skills parse them. A change to the
   contract is deliberate: the doc and a `CHANGELOG.md` line come in the same change.
@@ -24,7 +27,7 @@ python3 -m segmently_modules lint --root tests/fixtures/bookshop
 
 - Run the tests of what you touched: `python3 -m unittest tests.test_<area>`.
 - The whole suite, `python3 -m unittest discover -s tests -t .`, takes about 35 minutes; CI runs it on
-  Python 3.11 and 3.14 for every pull request.
+  Python 3.11 and 3.14, and on macOS's own Python 3.9, for every pull request.
 - The adoption eval, `python3 evals/adoption/run_eval.py`, replays scripted adoption scenarios
   against the command line; CI runs it too.
 

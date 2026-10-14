@@ -4,6 +4,8 @@
 `--apply -`; N-4 the `--top 0` wording of semantic `match` / `context`; N-6 card lines of the text
 work order longer than 2,000 characters wrap; `catalog` with a malformed agent variable is exit 0
 with one note."""
+from __future__ import annotations
+
 import contextlib
 import errno
 import hashlib

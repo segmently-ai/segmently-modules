@@ -89,7 +89,8 @@ class CiDocsTest(unittest.TestCase):  # P6-AC-025 (the D8 part, SI-2)
         text = flat("docs/releasing.md")
         for needle in ("## CI", "`.github/workflows/ci.yml` runs on a push to `main`, on version "
                        "tags (`v*`) and on pull requests",
-                       "on Python 3.11 and 3.14", "without credentials", "It makes no model call "
+                       "On Python 3.11 and 3.14", "On macOS's own Python 3.9 (the floor",
+                       "without credentials", "It makes no model call "
                        "and reads no secret; nothing runs on a schedule",
                        "The private guard is not part of CI",
                        "The release repeats the validation and runs the full smoke install"):

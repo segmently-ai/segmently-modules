@@ -1,6 +1,8 @@
 """`segmently-modules setup [--agent A]… [--target FILE]… [--dry-run]` (P6.1 W5, D5, SI-P61-13): the
 one-command start — bare `init`, `packs sync` for the chosen agents and `agents-md` for the
 chosen instruction files, run in-process, idempotently, each step reporting its status."""
+from __future__ import annotations
+
 import json
 import os
 import stat

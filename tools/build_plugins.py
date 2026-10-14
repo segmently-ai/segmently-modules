@@ -27,6 +27,8 @@ first and renamed back on any failure), so an interrupted or refused build leave
 was — and does not create it. --out is refused when `<out>/<plugin>` is this engine tree or
 holds it, or exists and is not a build of that plugin: the builder replaces only its own output.
 Exit 0 built · 2 a refusal (stdout empty, stderr `build_plugins.py: error: …`) · 130 Ctrl-C."""
+from __future__ import annotations
+
 import argparse
 import ast
 import json
@@ -39,10 +41,15 @@ import subprocess
 import sys
 import tempfile
 import threading
-import tomllib
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # running a tool never leaves tools/__pycache__ in the engine
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.9, 3.10: the reader the engine vendors, never the engine
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "segmently_modules/_vendor"))
+    import tomli as tomllib  # noqa: E402
 
 ENGINE = Path(__file__).resolve().parents[1]
 PROG = "build_plugins.py"
@@ -292,7 +299,7 @@ def readme(name: str, skills: list[str], agents: list[str] = (), version: str = 
     what = (f"The `{spec['pack']}` pack of Segmently Modules as a plugin: {listed}.")
     if name == CORE:
         what += (" It also carries the segmently-modules command line those skills run: `bin/segmently-modules` runs "
-                 "the engine in `runtime/` with Python 3.11 or newer (or `uv`); set "
+                 "the engine in `runtime/` with Python 3.9 or newer (or `uv`); set "
                  "`SEGMENTLY_MODULES_PYTHON` to choose the interpreter. It ships the read-only "
                  "`module-chooser` agent (`segmently-modules:module-chooser`, Claude Code) that the skills "
                  "hand a `segmently-modules choose` work order; every plugin update replaces it, so change "

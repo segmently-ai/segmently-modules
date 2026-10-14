@@ -11,6 +11,8 @@ dating them, the publish entry carrying them; step 3's parallel unit suite and -
 three small tests, its E-A a stub, its CHANGELOG.md planted: the heavy steps are the
 rehearsal's) with a stub leak guard. Shared helpers live here, outside `test_*.py`: every
 `tests/test_*.py` module holds tests (SI-P83-14)."""
+from __future__ import annotations
+
 import hashlib
 import json
 import os
@@ -386,6 +388,16 @@ def note(event, **more):
         (Path(RECORD) / f"{STEM}.{os.getpid()}.{event}").write_text(json.dumps({**row, **more}))
 
 
+def command_line():
+    """The interpreter's arguments: sys.orig_argv[1:] (3.10+); before it, `-m unittest` and its
+    arguments when unittest's __main__ runs -- the release starts a module no other way."""
+    if hasattr(sys, "orig_argv"):
+        return sys.orig_argv[1:]
+    if sys.argv[0] == "python -m unittest":  # what unittest's __main__ sets argv[0] to
+        return ["-m", "unittest", *sys.argv[1:]]
+    return sys.argv
+
+
 def failure(stem):
     return "".join(f"{stem}: planted failure, line {n:02d}\\n" for n in range(40))
 
@@ -401,7 +413,7 @@ if named("R1_TEMP"):  # removed at exit by its finalizer -- never after a SIGKIL
     note("temp", path=TEMP.name)
 if named("R1_TRAILER"):  # a line on stderr after unittest's verdict
     atexit.register(print, "planted: a line after the verdict", file=sys.stderr)
-note("start", python=sys.executable, argv=sys.orig_argv[1:], cwd=os.getcwd(), parent=os.getppid(),
+note("start", python=sys.executable, argv=command_line(), cwd=os.getcwd(), parent=os.getppid(),
      parent_pgid=os.getpgid(os.getppid()), bytecode=os.environ.get("PYTHONDONTWRITEBYTECODE"),
      hup_ignored=signal.getsignal(signal.SIGHUP) is signal.SIG_IGN)
 

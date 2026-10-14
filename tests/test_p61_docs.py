@@ -6,10 +6,10 @@ import re
 import shlex
 import shutil
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 
+from segmently_modules._toml import tomllib
 from segmently_modules.config import builtin_packs_root
 from tests.helpers import copy_fixture, init_git, run
 
@@ -90,7 +90,8 @@ class ReadmeTest(unittest.TestCase):
             self.assertIn(verb, self.text)
 
     def test_the_python_note(self):
-        for fact in ("Python ≥ 3.11", "3.9", "/usr/bin/python3", "uvx", "brew install python"):
+        for fact in ("Python ≥ 3.9", "On macOS the `python3` of the Command Line Tools", "git",
+                     "uvx"):
             self.assertIn(fact, self.text)
 
     def test_gemini_target(self):

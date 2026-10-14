@@ -37,6 +37,8 @@ Switches (anything else on the command line is ignored, so a test can pass odd a
   --tasks-mode MODE   eval-tasks: `unknown` (one task names `nosuch`), `partial` (the last module
                       gets none), `invalid` (not JSON), `nothing` (no file), `fail` (exit 3),
                       `half` (six tasks per module, three name the next one: hit rate 0.5)"""
+from __future__ import annotations
+
 import hashlib
 import json
 import os

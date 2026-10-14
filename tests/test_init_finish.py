@@ -1,15 +1,17 @@
 """`init finish` (D4, gate 7): the staging docs moved, the registry written through its writer,
 the code-map rules and the agents' block — never a commit; its refusals; `--open-pr` against a
 local bare remote and a `gh` stand-in."""
+from __future__ import annotations
+
 import json
 import os
 import shutil
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 from unittest import mock
 
+from segmently_modules._toml import tomllib
 from segmently_modules.config import builtin_packs_root
 from tests.helpers import git, run, run_json
 from tests.init_helpers import (IDENTITY, SIX, WORK, bare_remote, executor, gh_shim, ok,

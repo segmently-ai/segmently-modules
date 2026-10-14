@@ -5,11 +5,11 @@ import json
 import os
 import shutil
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 from unittest import mock
 
+from segmently_modules._toml import tomllib
 from segmently_modules.create import engine_templates
 from tests.agent_helpers import AgentRepo, picks
 from tests.helpers import changelog_since_first_release, run, run_json

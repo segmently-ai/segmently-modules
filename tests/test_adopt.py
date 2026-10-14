@@ -2,17 +2,19 @@
 paths, roles, fields, the dir whitelist, updated_at_path, a code-map rule, budgets (commented
 out); written to config.toml or adopt.proposed.toml, never touching the registry or its docs;
 lint in report mode; the fixture regenerates equivalent declarations (row 5.1)."""
+from __future__ import annotations
+
 import hashlib
 import json
 import os
 import re
 import shutil
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 from unittest import mock
 
+from segmently_modules._toml import tomllib
 from segmently_modules.adopt_cmd import ADOPT_OPENING, STARTER_OPENING, adopt_header
 from segmently_modules.cli import build_parser
 from segmently_modules.config import load_config

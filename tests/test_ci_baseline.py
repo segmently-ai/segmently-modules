@@ -1,5 +1,7 @@
 """`segmently-modules ci --baseline FILE|-`: a finding of lint or drift that an earlier run already held is
 `known`, and a step fails only on findings that are not (P83-AC-001 … 009)."""
+from __future__ import annotations
+
 import io
 import json
 import os
@@ -581,6 +583,8 @@ class IdenticalWithoutTheFlagTest(CiBaselineCase):  # P83-AC-008
                   "findings that are not (MS050 / MS051 are never known)")
         self.assertIn(option, flat)
         flat = flat.replace(" [--baseline FILE|-]", "").replace(" " + option, "")
+        if sys.version_info < (3, 10):  # argparse's heading before 3.10
+            flat = flat.replace(" optional arguments: ", " options: ")
         self.assertEqual(flat + "\n", (GOLDEN / "help.txt").read_text(encoding="utf-8"))
 
 

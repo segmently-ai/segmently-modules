@@ -2,12 +2,11 @@
 every verb, `init`, `setup` and `adopt` exit 2 and write nothing, naming the rename command — the
 engine defaults never replace the team's config silently. An explicit `--config-dir` is the user's
 choice; with both directories present the new one wins. (Until 0.3.0.)"""
-import contextlib
 import shutil
 import tempfile
 import unittest
 
-from tests.helpers import copy_fixture, git, init_git, run, run_json
+from tests.helpers import chdir, copy_fixture, git, init_git, run, run_json
 
 RENAME = "git mv .modsys .segmently-modules"
 
@@ -55,7 +54,7 @@ class LegacyConfigDirTest(unittest.TestCase):
         app.mkdir()
         (self.root / ".modsys").rename(app / ".modsys")
         (app / "src").mkdir()
-        with contextlib.chdir(app / "src"):
+        with chdir(app / "src"):
             code, out, err = run("lint")
         self.assertEqual((code, out), (2, ""), err)
         self.assertIn(f"{app / '.modsys'} is the config of modsys 0.1.x", err)

@@ -35,13 +35,15 @@ that is not SemVer 2.0, git missing), a failure or Ctrl-C is exit 2 (130) and le
 as it was — a missing `--out` is not even created.
 
 `bin/segmently-modules` (source: `tools/launcher.sh`, POSIX `sh`) runs the plugin's own engine with the
-first Python 3.11 or newer it finds: `SEGMENTLY_MODULES_PYTHON`; `python3.14` … `python3.11`, `python3` on
+first Python 3.9 or newer it finds: `SEGMENTLY_MODULES_PYTHON`; `python3.14` … `python3.9`, `python3` on
 `PATH`; the same names in `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` (one directory at a
 time — they work where a sandbox denies the home directory); then `uv run`. Nothing found is
 exit 127 naming the three ways out; an unusable `SEGMENTLY_MODULES_PYTHON` is exit 127 too — never a
-silent fall-through — and so is a plugin without its `runtime/`. The engine runs with
-`python -P`: the working directory never shadows the plugin's engine, while an executor or a
-hook the engine starts imports its own modules as it would anywhere.
+silent fall-through — and so is a plugin without its `runtime/`. The engine runs through a
+`python -c` line that drops the working directory from that process's `sys.path` (what `-P`
+does from 3.11) and then runs the package: the working directory never shadows the plugin's
+engine, while an executor or a hook the engine starts imports its own modules as it would
+anywhere.
 
 ## Channels, versions, tags
 
@@ -181,6 +183,30 @@ is a refusal that writes nothing there. Exit `0` done · `1` a step failed · `2
   nothing to release, `stable` would release the next version). Creating the publish
   repository on GitHub is the owner's as well.
 
+## npm
+
+`tools/build_npm.py [--out dist/npm] [--version V]` builds the package `@segmently/modules` from
+this tree: `package.json`, `README.md`, `LICENSE`, `bin/segmently-modules` (the plugin's
+launcher, `tools/launcher.sh`) and `runtime/segmently_modules/` (the tracked files, as the core
+plugin carries them). Node runs nothing: npm puts the launcher on `PATH`, and the launcher runs
+the engine with the first Python 3.9 or newer it finds (macOS and Linux). The engine's `X.Y.Z`
+is npm's `X.Y.Z` on the dist-tag `latest`; `X.Y.Z.devN` is `X.Y.Z-dev.N` on `next`. Two builds of
+one tree are byte-identical, and `--out` is replaced only when it holds an earlier build;
+`tests/test_build_npm.py` packs the package, installs it with npm into a throw-away prefix and
+runs it.
+
+Publishing is a maintainer's step after a release, from a clone at the release tag:
+
+```bash
+git clone --branch vX.Y.Z https://github.com/segmently-ai/segmently-modules.git sm && cd sm
+python3 tools/build_npm.py --out ../sm-npm       # prints the publish command with its dist-tag
+npm publish ../sm-npm --tag latest               # --tag next for a dev version
+```
+
+Run the private leak guard over the built package first, as over the plugin build. npm asks
+for the account's one-time password. A published version is never replaced: a wrong one is
+deprecated (`npm deprecate @segmently/modules@X.Y.Z "<why>"`) and fixed by the next patch release.
+
 ## Before a stable release: the skill evals
 
 Evals are model calls, so they run before a stable release, as subagents of a Claude Code
@@ -200,7 +226,9 @@ to run the `claude plugin eval` suite by hand on a machine that allows it.
 ## CI
 
 `.github/workflows/ci.yml` runs on a push to `main`, on version tags (`v*`) and on pull requests
-(a pull request's branch is not run twice), on Python 3.11 and 3.14, within 45 minutes: the unit
+(a pull request's branch is not run twice). On macOS's own Python 3.9 (the floor, a virtual
+environment of the Command Line Tools' `/usr/bin/python3`) it runs the unit suite and the
+adoption eval, within 60 minutes. On Python 3.11 and 3.14, within 45 minutes: the unit
 suite, the adoption eval, two plugin builds compared byte for byte, the launcher test under
 `dash`, and — with Claude Code installed as it comes, without credentials — `claude plugin
 validate --strict` on the three plugins and the dev marketplace plus a throw-away install

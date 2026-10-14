@@ -56,7 +56,7 @@ class UpdateRulesTest(BlockRepo):  # P4A-AC-019
             with self.subTest(before=before):
                 self.claude.unlink(missing_ok=True)
                 if before is not None:
-                    self.claude.write_text(before, encoding="utf-8", newline="")
+                    self.claude.write_bytes(before.encode("utf-8"))  # as written: no newline translation
                 data = self.agents_md()
                 self.assertEqual(self.statuses(data), [("CLAUDE.md", status)])
                 self.assertEqual(self.claude.read_bytes().decode("utf-8"), after)

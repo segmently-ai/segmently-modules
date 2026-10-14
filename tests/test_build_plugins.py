@@ -2,6 +2,8 @@
 from one table, a byte-reproducible build with the modes of git's index, `claude plugin
 validate` (when `claude` is on PATH) and the refusals. The builder runs in a throw-away git copy
 of this engine: it builds the tree it lives in."""
+from __future__ import annotations
+
 import json
 import os
 import re
@@ -10,10 +12,10 @@ import subprocess
 import sys
 import tempfile
 import time
-import tomllib
 import unittest
 from pathlib import Path
 
+from segmently_modules._toml import tomllib
 from segmently_modules.config import BUILTIN_PLUGINS
 from segmently_modules.skills import SKILL_AGENTS
 from tests.helpers import engine_version, git, release_version

@@ -3,6 +3,7 @@ text), so they are deterministic. The descriptions are a hard budget (every sess
 description). A skill, a route file or a pack above its split signal (D5, owner 2026-10-04) is a
 decomposition decision, never a cap: route it, split it, or record the discussion with the owner
 in SPLIT_DECISIONS — a shipped skill is never trimmed to fit a number."""
+from __future__ import annotations
 
 import ast
 import json

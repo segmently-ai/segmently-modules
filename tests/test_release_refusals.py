@@ -2,6 +2,8 @@
 taken tags, a version without .devN, symlinked directories, the flags, an export of the
 engine — and the default signals of a tool the tests start. Split from
 `test_release.py` (P8.3 D5 R-3)."""
+from __future__ import annotations
+
 import os
 import shutil
 import signal

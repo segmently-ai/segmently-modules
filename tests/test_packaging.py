@@ -2,7 +2,8 @@
 a second top-level directory (like `evals/`) otherwise makes `pip install` / `pip wheel` fail
 with "Multiple top-level packages discovered in a flat-layout" (C1) — and ship every file under
 `segmently_modules/defaults/`, the built-in packs at any depth included (P4B-AC-010)."""
-import glob
+from __future__ import annotations
+
 import importlib.metadata
 import importlib.util
 import os
@@ -10,11 +11,12 @@ import re
 import subprocess
 import sys
 import tempfile
-import tomllib
 import unittest
 import zipfile
 from pathlib import Path
 
+from segmently_modules._toml import tomllib
+from tests.helpers import glob_in
 from tests.plugin_helpers import copy_engine
 
 ENGINE = Path(__file__).resolve().parents[1]
@@ -50,9 +52,7 @@ class PackagingTest(unittest.TestCase):
                          "defaults/packs/ui/pack.toml", "defaults/packs/qa/pack.toml"}
                         <= set(files))
         # what setuptools ships: each pattern globbed from the package, `**` recursive, files only
-        shipped = {Path(f).as_posix() for g in globs
-                   for f in glob.glob(g, root_dir=package, recursive=True)
-                   if (package / f).is_file()}
+        shipped = {f for g in globs for f in glob_in(package, g) if (package / f).is_file()}
         self.assertEqual(sorted(set(files) - shipped), [])
 
     def test_the_build_backend(self):  # P6-AC-018, P6-AC-035 (SI-14)

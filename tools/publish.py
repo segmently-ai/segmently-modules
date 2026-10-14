@@ -18,6 +18,8 @@ keeps an all-digit hash a valid SemVer identifier. A version lives only in each 
 manifests, never in a marketplace entry.
 Exit 0 laid out · 2 a refusal or a write failure (stdout empty, stderr `publish.py: error: …`;
 --out and every directory the run created are removed) · 130 Ctrl-C (the same clean-up)."""
+from __future__ import annotations
+
 import argparse
 import hashlib
 import json

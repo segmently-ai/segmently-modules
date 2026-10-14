@@ -21,6 +21,8 @@ cannot read it), and so must the Python that runs this script. Stdlib only; neve
 unittest.
 
 Usage: python3 evals/skills/run.py [--dry-run] [--out DIR] [claude plugin eval flags…]"""
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -29,8 +31,13 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.9, 3.10: the reader the engine vendors, never the engine
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "segmently_modules/_vendor"))
+    import tomli as tomllib  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 ENGINE = HERE.parents[1]

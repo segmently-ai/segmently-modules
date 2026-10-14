@@ -1,6 +1,8 @@
 """`tools/release.py`: only our sections of the publish README and CHANGELOG change
 (P6-AC-016); the release notes (P6.1 D6) — the pure parts, whole runs, and the engine's
 own CHANGELOG.md. Split from `test_release.py` (P8.3 D5 R-3)."""
+from __future__ import annotations
+
 import datetime
 import os
 import re

@@ -1,7 +1,6 @@
 """P8.2 task 4: the shipped choice agent `segmently-modules:module-chooser` (D4): its source, the build that
 ships it in the core plugin only, the reproducible build, the thin read-only text, the package
 data and the docs (P82-AC-013 agents glob, 029…033)."""
-import glob
 import json
 import os
 import re
@@ -9,11 +8,11 @@ import stat
 import subprocess
 import sys
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 
-from tests.helpers import changelog_since_first_release, git
+from segmently_modules._toml import tomllib
+from tests.helpers import changelog_since_first_release, git, glob_in
 from tests.plugin_helpers import CLAUDE, ENGINE, NO_CLAUDE, claude_env, copy_engine, run_tool, tree
 
 AGENT_REL = "segmently_modules/defaults/agents/module-chooser.md"
@@ -88,8 +87,7 @@ class PackageDataTest(unittest.TestCase):  # P82-AC-013 (the agents glob)
         data = tomllib.loads((ENGINE / "pyproject.toml").read_text(encoding="utf-8"))
         globs = data["tool"]["setuptools"]["package-data"]["segmently_modules"]
         self.assertIn("defaults/agents/*.md", globs)
-        shipped = {f for g in globs for f in glob.glob(g, root_dir=ENGINE / "segmently_modules",
-                                                       recursive=True)}
+        shipped = {f for g in globs for f in glob_in(ENGINE / "segmently_modules", g)}
         self.assertIn("defaults/agents/module-chooser.md", shipped)
 
 

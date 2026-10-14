@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import contextlib
+import glob
 import io
 import json
 import os
@@ -30,6 +33,24 @@ os.environ.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1",
 
 
 os.environ.pop("SEGMENTLY_MODULES_AGENT_COMMAND", None)  # a developer's own agent never reaches a test
+
+
+@contextlib.contextmanager
+def chdir(path: Path):
+    """`contextlib.chdir` (Python 3.11) on every Python."""
+    before = os.getcwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(before)
+
+
+def glob_in(root: Path, pattern: str) -> set[str]:
+    """`glob.glob(pattern, root_dir=root, recursive=True)` (Python 3.10) on every Python: the
+    matches relative to `root`, in posix form."""
+    return {Path(f).relative_to(root).as_posix()
+            for f in glob.glob(os.path.join(glob.escape(str(root)), pattern), recursive=True)}
 
 
 def run(*argv):

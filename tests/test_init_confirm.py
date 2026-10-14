@@ -1,6 +1,8 @@
 """`segmently-modules init confirm` (D3, gate 3): an edited proposal is validated — names by the `create`
 rule and unique, every included candidate with globs that match files, no file claimed twice —
 every problem named at once; an unedited proposal always passes."""
+from __future__ import annotations
+
 import json
 import tempfile
 import unittest

@@ -12,6 +12,8 @@ goes to segmently-modules through a file (final review M-6), and every `match` /
 given a task in a shipped skill, reference or template runs `--match lexical` (final review I-1,
 P8.2 ruling M-6): a repository's `[match] mode` never turns a skill's keyword check into an agent
 run."""
+from __future__ import annotations
+
 import io
 import json
 import re

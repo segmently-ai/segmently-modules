@@ -3,6 +3,8 @@ chooses — `SEGMENTLY_MODULES_PYTHON`, the names on PATH, the directories outsi
 `uv` — and how it runs the plugin's engine. Stub interpreters (sh scripts) log every start; a
 temp copy of the launcher points its directory line at stub directories (SI-11). Each case
 runs under `sh` and, when present, `dash` (without it, `DashTest` is a visible skip)."""
+from __future__ import annotations
+
 import json
 import os
 import re
@@ -16,12 +18,13 @@ from pathlib import Path
 
 ENGINE = Path(__file__).resolve().parents[1]
 LAUNCHER = ENGINE / "tools/launcher.sh"
+RUN = re.search(r"^RUN='([^']*)'$", LAUNCHER.read_text(encoding="utf-8"), re.M).group(1)
 DIRS_LINE = 'DIRS="/opt/homebrew/bin /usr/local/bin /usr/bin"\n'
 DASH = shutil.which("dash")
 SHELLS = ["sh"] + (["dash"] if DASH else [])
 GOOD = """#!/bin/sh
 echo "start $0" >> "$STUB_LOG"
-[ "$1" = "-c" ] && exit 0
+[ "$1" = "-c" ] && case $2 in *version_info*) exit 0 ;; esac  # the probe
 echo "run $0" >> "$STUB_LOG"
 echo "PYTHONPATH=$PYTHONPATH" >> "$STUB_LOG"
 echo "PYTHONDONTWRITEBYTECODE=$PYTHONDONTWRITEBYTECODE PYTHONSAFEPATH=${PYTHONSAFEPATH-unset}" \\
@@ -30,7 +33,7 @@ for a in "$@"; do echo "arg=[$a]" >> "$STUB_LOG"; done
 if [ -n "$STUB_STDIN" ]; then read -r line; echo "stdin=$line" >> "$STUB_LOG"; fi
 exit "${STUB_EXIT:-0}"
 """
-OLD = '#!/bin/sh\necho "start $0" >> "$STUB_LOG"\nexit 1\n'  # the probe fails: Python 3.9
+OLD = '#!/bin/sh\necho "start $0" >> "$STUB_LOG"\nexit 1\n'  # the probe fails: Python 3.8
 BROKEN = '#!/bin/sh\necho "start $0" >> "$STUB_LOG"\nexit 127\n'
 UV = ('#!/bin/sh\necho "start $0 $*" >> "$STUB_LOG"\n[ "$1" = "--version" ] && '
       'exit "${UV_VERSION_EXIT:-0}"\nfor a in "$@"; do echo "arg=[$a]" >> "$STUB_LOG"; done\n'
@@ -128,15 +131,15 @@ class ChoiceTest(LauncherRepo):  # P6-AC-006
                 self.assertEqual(self.ran(lines), str(self.stand_in[2] / "python3"))
 
     def test_uv_and_nothing(self):  # rows 7, 8, 9
-        self.stub(self.stand_in[2], "python3", OLD)  # the macOS 3.9 case
+        self.stub(self.stand_in[2], "python3", OLD)  # older than 3.9
         self.stub(self.path_dir, "uv", UV)
         for shell in SHELLS:
             with self.subTest(shell=shell, row=7):
                 proc, lines = self.launch(shell, "lint", "--json")
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertEqual([l for l in lines if l.startswith("arg=")], [
-                    "arg=[run]", "arg=[--no-project]", "arg=[--python]", "arg=[>=3.11]",
-                    "arg=[python]", "arg=[-P]", "arg=[-m]", "arg=[segmently_modules]", "arg=[lint]",
+                    "arg=[run]", "arg=[--no-project]", "arg=[--python]", "arg=[>=3.9]",
+                    "arg=[python]", "arg=[-c]", f"arg=[{RUN}]", "arg=[lint]",
                     "arg=[--json]"])
             for row, env in ((8, {"UV_VERSION_EXIT": "1"}), (9, None)):
                 with self.subTest(shell=shell, row=row):
@@ -145,7 +148,7 @@ class ChoiceTest(LauncherRepo):  # P6-AC-006
                     proc, lines = self.launch(shell, "list", env=env)
                     self.assertEqual((proc.returncode, proc.stdout), (127, ""))
                     self.assertEqual(proc.stderr.count("\n"), 1)
-                    for needle in ("Python 3.11 or newer", "SEGMENTLY_MODULES_PYTHON", "uv"):
+                    for needle in ("Python 3.9 or newer", "SEGMENTLY_MODULES_PYTHON", "uv"):
                         self.assertIn(needle, proc.stderr)
                     self.assertIsNone(self.ran(lines))
                     self.stub(self.path_dir, "uv", UV)
@@ -156,7 +159,7 @@ class ChoiceTest(LauncherRepo):  # P6-AC-006
         broken = self.stub(self.tmp, "broken", BROKEN)
         plain = self.stub(self.tmp, "plain", GOOD, mode=0o644)
         for shell in SHELLS:
-            for value, why in ((old, "is older than Python 3.11"),
+            for value, why in ((old, "is older than Python 3.9"),
                                (broken, "does not run (exit 127)"),
                                (plain, ""), ("/nonexistent", ": not found")):
                 with self.subTest(shell=shell, value=value):
@@ -171,7 +174,7 @@ class ChoiceTest(LauncherRepo):  # P6-AC-006
                 proc, _ = self.launch(shell, "list", env={"SEGMENTLY_MODULES_PYTHON": "/no/such\\ndir"})
                 self.assertEqual((proc.returncode, proc.stdout), (127, ""))
                 self.assertEqual(proc.stderr, "segmently-modules: SEGMENTLY_MODULES_PYTHON=/no/such\\ndir: not found — "
-                                              "unset it, or point it at Python 3.11 or newer\n")
+                                              "unset it, or point it at Python 3.9 or newer\n")
 
     def reset(self) -> None:
         for d in [self.path_dir, *self.stand_in]:
@@ -194,10 +197,11 @@ class InvocationTest(LauncherRepo):  # P6-AC-007
                                           env={"PYTHONPATH": "/elsewhere"})
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertIn(f"PYTHONPATH={self.plugin}/runtime:/elsewhere", lines)
-                # -P is a flag of the engine's process: nothing it starts inherits it
+                # $RUN drops the working directory in the engine's process only: nothing it
+                # starts inherits that (no PYTHONSAFEPATH)
                 self.assertIn("PYTHONDONTWRITEBYTECODE=1 PYTHONSAFEPATH=unset", lines)
                 self.assertEqual([l for l in lines if l.startswith("arg=")], [
-                    "arg=[-P]", "arg=[-m]", "arg=[segmently_modules]", "arg=[a b]", 'arg=["q"]',
+                    "arg=[-c]", f"arg=[{RUN}]", "arg=[a b]", 'arg=["q"]',
                     "arg=[$HOME]", "arg=[]"])
                 self.assertEqual([l for l in lines if l.startswith("start ")],
                                  [f"start {self.path_dir}/python3.14"] * 2)  # probe + run
@@ -335,7 +339,7 @@ class RealEngineTest(unittest.TestCase):  # P6-AC-007 (the Then): the real engin
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp).resolve()
             plugin = self.plugin(tmp)
-            shadow = tmp / "cwd/segmently-modules"  # a `segmently-modules` package in the working directory and on
+            shadow = tmp / "cwd/segmently_modules"  # a `segmently_modules` package in the working directory and on
             shadow.mkdir(parents=True)  # the caller's PYTHONPATH never wins
             (shadow / "__init__.py").write_text("raise SystemExit('the wrong segmently-modules')\n")
             (shadow / "__main__.py").write_text("raise SystemExit('the wrong segmently-modules')\n")

@@ -50,6 +50,8 @@ Usage: python3 evals/adoption/run_eval.py
 Test seams: SEGMENTLY_MODULES_EVAL_FAIL_STEP="<scenario>:<step name>" forces that step to fail;
 SEGMENTLY_MODULES_EVAL_SCENARIOS="<scenario>,…" runs only those scenarios (an unknown name: exit 2).
 """
+from __future__ import annotations
+
 import json
 import os
 import shlex

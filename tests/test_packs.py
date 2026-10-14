@@ -3,11 +3,11 @@ and the list of installed packs."""
 import builtins
 import shutil
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 from unittest import mock
 
+from segmently_modules._toml import tomllib
 from segmently_modules.skills import front_matter, source_problem
 from tests.helpers import copy_fixture, make_repo, run, run_json
 

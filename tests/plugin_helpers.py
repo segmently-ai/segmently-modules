@@ -1,6 +1,8 @@
 """Helpers of the P6 packaging tests: a throw-away copy of this engine as its own git repository
 (the tools build and release the tree they live in), the tools loaded by path, and a
 throw-away Claude Code configuration for the real `claude` when it is on PATH."""
+from __future__ import annotations
+
 import importlib.util
 import os
 import shutil

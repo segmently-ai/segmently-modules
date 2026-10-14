@@ -1,5 +1,7 @@
 """The pack skills model (D3): `[skills.<id>]` shape errors, the Agent Skills name rule,
 shadowing between packs, and the stdlib-only `SKILL.md` front-matter reader."""
+from __future__ import annotations
+
 import tempfile
 import unittest
 from pathlib import Path

@@ -1,6 +1,8 @@
 """`segmently-modules init map|confirm|status|resume` (D3): the init state machine — valid and invalid
 transitions, an interrupted phase and `init resume` (row 5.2 for phases 1–2), the data of each
 action, atomic writes and the headless contract."""
+from __future__ import annotations
+
 import copy
 import io
 import json

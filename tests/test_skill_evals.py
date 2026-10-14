@@ -2,6 +2,8 @@
 front matter and grader types, the graders every kind of case needs, and `run.py --dry-run`,
 which assembles the plugin (byte-equal skills, a scaffold per case, a segmently-modules launcher) and prints
 the command without running `claude`. The seeded workspace itself is built and checked here."""
+from __future__ import annotations
+
 import ast
 import importlib.util
 import json
@@ -199,13 +201,14 @@ class RunnerTest(unittest.TestCase):  # P4B-AC-019
                           if f["severity"] != "info"],  # MS054 notes the modules without code
                          ["MS030"])  # the seed: a doc past the split signal
 
+    @unittest.skipIf(sys.version_info < (3, 10), "sys.stdlib_module_names is 3.10's")
     def test_run_py_is_stdlib_only(self):
         tree = ast.parse((SUITE / "run.py").read_text(encoding="utf-8"))
         names = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import)
                  for a in n.names}
         names |= {n.module.split(".")[0] for n in ast.walk(tree)
                   if isinstance(n, ast.ImportFrom) and n.module}
-        self.assertEqual(names - set(sys.stdlib_module_names), set())
+        self.assertEqual(names - set(sys.stdlib_module_names), {"tomli"})  # the engine's vendored copy
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 """Row 5.2 for phase 4 (D1): `init run` killed mid-phase (the fake executor SIGKILLs it on its
 third call), then `init resume` (or a second `init run`) — every module done once, its staging
 dir holding exactly one set of docs, the same bytes as an uninterrupted run."""
+from __future__ import annotations
+
 import hashlib
 import json
 import os

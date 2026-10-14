@@ -1,5 +1,5 @@
-# segmently-modules CI: the unit suite on two Pythons, the adoption eval, a reproducible plugin build, the
-# launcher under dash, and Claude Code's own validator with a throw-away install of the built
+# segmently-modules CI: the unit suite on two Pythons and on macOS's own Python 3.9 (the floor), the
+# adoption eval, a reproducible plugin build, the launcher under dash, and Claude Code's own validator with a throw-away install of the built
 # plugins. No model call and no credential: Claude Code is installed as it comes and only its
 # `plugin validate`, `plugin marketplace add`, `plugin install` and `plugin list` commands run;
 # the installed plugins are checked (all three enabled) and the installed launcher runs.
@@ -70,3 +70,22 @@ jobs:
           print(subprocess.run([launcher, "--version"], check=True, capture_output=True,
                                text=True).stdout.strip())
           '
+
+  floor:
+    # The floor the engine promises: the python3 of macOS's Command Line Tools (3.9), as a Mac
+    # without any other Python has it. The unit suite and the adoption eval only; the plugin
+    # build and Claude Code's validator run in `test`.
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Apple's Python is 3.9
+        run: /usr/bin/python3 -c 'import sys; print(sys.version); sys.exit(sys.version_info[:2] != (3, 9))'
+      - name: A virtual environment of it, with the build backend for the packaging test
+        run: |
+          /usr/bin/python3 -m venv "$RUNNER_TEMP/py39"
+          "$RUNNER_TEMP/py39/bin/python" -m pip install --quiet "setuptools>=62.3" wheel
+      - name: Unit suite
+        run: '"$RUNNER_TEMP/py39/bin/python" -m unittest discover -s tests'
+      - name: Adoption eval (E-A)
+        run: '"$RUNNER_TEMP/py39/bin/python" evals/adoption/run_eval.py > /dev/null'

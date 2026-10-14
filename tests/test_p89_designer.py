@@ -10,11 +10,11 @@ import json
 import re
 import shutil
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 from unittest import mock
 
+from segmently_modules._toml import tomllib
 from segmently_modules.config import builtin_packs_root, core_defaults
 from segmently_modules.skills import file_hashes, read_front_matter
 from tests.helpers import changelog_since_first_release, copy_fixture, run_json

@@ -3,16 +3,18 @@ built-in pack: names, loadability, description and file lengths, every `segmentl
 parsed by the real CLI parser (the guard can fail: SI-7), no machine paths, `--json` for what a
 skill parses, the sections, each core skill's scope and verbs (D3), the writer rules, generic
 text. `CORE` and `PACK_SKILLS` list what each skill must say; a skill is added with its row."""
+from __future__ import annotations
+
 import contextlib
 import hashlib
 import io
 import re
 import shlex
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 
+from segmently_modules._toml import tomllib
 from segmently_modules.cli import build_parser
 from segmently_modules.config import BUILTIN_PACKS, builtin_packs_root
 from segmently_modules.skills import read_front_matter, source_problem

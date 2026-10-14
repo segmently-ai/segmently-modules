@@ -1,10 +1,10 @@
 """D8: the docs describe the built-in packs — `docs/skills.md` (new), the README "Core skills"
 section and reference list, `writing-a-pack.md` (built-in packs, reserved ids), the
 configuration reference and the `init` starter that enables `core`."""
-import tomllib
 import unittest
 from pathlib import Path
 
+from segmently_modules._toml import tomllib
 from segmently_modules.init_cmd import starter_config
 from tests.test_builtin_content import PACKS
 

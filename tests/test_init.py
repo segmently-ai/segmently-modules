@@ -1,10 +1,10 @@
 """`segmently-modules init`: starter config, empty registry, .gitignore lines — idempotent."""
 import os
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 
+from segmently_modules._toml import tomllib
 from segmently_modules.config import core_defaults, validate_layer
 from segmently_modules.fields import load_field_defs
 from segmently_modules.init_cmd import starter_config

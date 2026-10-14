@@ -1,5 +1,7 @@
 """The sequential driver (D1, driver 2): `init next` claims the next pending module and returns
 its work item; `init done MODULE` checks the files written into its staging directory (SI-8)."""
+from __future__ import annotations
+
 import json
 import os
 import shutil

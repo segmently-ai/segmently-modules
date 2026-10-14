@@ -425,7 +425,7 @@ class NothingToDoTest(unittest.TestCase):  # P61-AC-012
 
 def engine_cli(engine: Path, root: Path, *argv) -> tuple[int, str, str]:
     """Run the CLI of the engine copy `engine` (its own `segmently-modules` package) on `root`."""
-    proc = subprocess.run([sys.executable, "-P", "-m", "segmently_modules", *argv, "--root", str(root)],
+    proc = subprocess.run([sys.executable, "-m", "segmently_modules", *argv, "--root", str(root)],
                           capture_output=True, text=True, cwd=engine.parent,
                           preexec_fn=default_signals,
                           env={**os.environ, "PYTHONPATH": str(engine)})

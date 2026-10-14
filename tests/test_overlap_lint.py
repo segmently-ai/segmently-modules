@@ -1,4 +1,6 @@
 """Lint MS053: two [[code_map]] rules route the same file to two different targets."""
+from __future__ import annotations
+
 import subprocess
 import tempfile
 import unittest

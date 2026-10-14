@@ -1,6 +1,8 @@
 """`tools/publish.py` (P6 D4, row 6.2): the channel versions, the two marketplace files per
 channel and their merge by name, the structural check of the Codex marketplace and `claude
 plugin validate` of the laid-out tree (when `claude` is on PATH)."""
+from __future__ import annotations
+
 import contextlib
 import io
 import json
@@ -12,12 +14,12 @@ import subprocess
 import sys
 import tempfile
 import textwrap
-import tomllib
 import unittest
 from pathlib import Path
 from unittest import mock
 
 import segmently_modules
+from segmently_modules._toml import tomllib
 from tests.helpers import engine_version, git, release_version
 from tests.plugin_helpers import (CLAUDE, ENGINE, NO_CLAUDE, claude_env, copy_engine, load_tool,
                                   run_tool)

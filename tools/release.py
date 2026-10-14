@@ -87,6 +87,8 @@ nothing to release) · 1 a step failed · 2 a refusal (stderr names it) · 130 i
 seams: SEGMENTLY_MODULES_RELEASE_INTERRUPT=6 raises Ctrl-C in the middle of step 6, =7 in step 7 between
 the commit and the tags; SEGMENTLY_MODULES_RELEASE_DATE=YYYY-MM-DD is the date step 4 gives the notes (a
 run across midnight is not flaky)."""
+from __future__ import annotations
+
 import argparse
 import datetime
 import json
@@ -1252,7 +1254,7 @@ class Suite:
                     [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p",
                      f"{name}.py"], cwd=self.root, stdin=subprocess.DEVNULL, stdout=out,
                     stderr=err, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
-                    process_group=0)
+                    start_new_session=True)  # its own process group (`process_group` is 3.11's)
         finally:
             self.starting = False
         if self.pending and not self.ending:

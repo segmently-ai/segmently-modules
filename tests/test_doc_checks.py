@@ -4,6 +4,8 @@ reads as · MS017 (info) the unregistered docs directly in a module's directory,
 module · MS041 a link whose target is missing (`[lint] link_severity`) · MS042 (info) an anchor
 that names no heading · MS043 (info) backticked repository paths missing on disk, one finding per
 module."""
+from __future__ import annotations
+
 import json
 import tempfile
 import unittest

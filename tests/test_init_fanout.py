@@ -4,13 +4,13 @@ created by hand after gate 3 (D15(d), SI-30)."""
 import json
 import os
 import re
-import string
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from segmently_modules.create import engine_templates
+from segmently_modules.init_work import placeholder_names
 from tests.helpers import git, run_json
 from tests.init_helpers import ROLES, SIX, WORK, ok, shop, state, text, tree_sha
 
@@ -137,7 +137,7 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
                 self.assertIn(needle, flat)
             self.assertNotIn("copy the paragraph", flat)  # SI-25: the words, not the text
         source = (engine_templates() / "init/module_prompt.md").read_text(encoding="utf-8")
-        self.assertEqual(set(string.Template(source).get_identifiers()), {  # f1f5e46's set
+        self.assertEqual(placeholder_names(source), {  # f1f5e46's set
             "ask_fields", "description_max", "description_min", "docs", "files", "files_note",
             "min_keywords", "module", "module_doc", "modules_dir", "neighbours", "paths",
             "relations", "staging_dir"})
@@ -194,7 +194,7 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
                               "files", "docs", "description_min", "description_max",
                               "min_keywords", "relations", "ask_fields", "modules_dir",
                               "module_doc"},
-                             set(string.Template(source).get_identifiers()))
+                             placeholder_names(source))
         prose = source.split("## Rules", 1)[1]  # the template's own words hold no `${` but
         self.assertEqual(set(re.findall(r"\$\{(\w+)\}", prose)),  # the values it renders
                          {"modules_dir", "module", "module_doc", "staging_dir"})

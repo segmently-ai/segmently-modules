@@ -1,5 +1,7 @@
 """P8.1 tasks 3a/3b: `segmently-modules catalog` (S2), `[match] mode` and `--match` (S1), the no-agent
 refusal and note (S4), the config shape of `[match]` (an invalid mode)."""
+from __future__ import annotations
+
 import contextlib
 import hashlib
 import json

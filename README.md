@@ -11,8 +11,8 @@ change without its docs?" (`lint --changed`). Every verb prints a JSON envelope 
 and uses exit codes a pipeline can branch on ([docs/cli-contract.md](docs/cli-contract.md)).
 
 Status: 0.x — the JSON contract ([docs/cli-contract.md](docs/cli-contract.md)) is versioned per
-verb, and a minor release that changes it says so in [CHANGELOG.md](CHANGELOG.md). Python ≥ 3.11,
-stdlib only; git for `coverage`, `lint --changed` and `--from-diff`. MIT licensed
+verb, and a minor release that changes it says so in [CHANGELOG.md](CHANGELOG.md). Python ≥ 3.9,
+no dependency; git for `coverage`, `lint --changed` and `--from-diff`. MIT licensed
 ([LICENSE](LICENSE)); contributions: [CONTRIBUTING.md](CONTRIBUTING.md); security reports:
 [SECURITY.md](SECURITY.md).
 
@@ -20,9 +20,9 @@ stdlib only; git for `coverage`, `lint --changed` and `--from-diff`. MIT license
 
 Pick the route your agent uses — every one gives the same `segmently-modules` command line.
 
-**Python.** Segmently Modules needs Python ≥ 3.11. Stock macOS ships 3.9 at `/usr/bin/python3`, which is too
-old: `uvx` (or `uv tool install`) fetches a suitable Python by itself, or `brew install python`
-and use that one.
+**Python.** Segmently Modules needs Python ≥ 3.9. On macOS the `python3` of the Command Line Tools —
+the package that brings git — is enough; elsewhere any Python 3.9 or newer is, and `uvx` (or
+`uv tool install`) fetches one when there is none.
 
 **Claude Code** — the plugin carries the skills and the command line:
 
@@ -44,7 +44,7 @@ own context and returns the skill's output; for Codex, `segmently-modules packs 
 nothing on `PATH`), at the released version the plugin comes from:
 
 ```bash
-uv tool install git+https://github.com/segmently-ai/segmently-modules.git@v0.2.0   # or pipx install, below
+uv tool install git+https://github.com/segmently-ai/segmently-modules.git@v0.2.0   # or npm install -g @segmently/modules, below
 codex plugin marketplace add segmently-ai/segmently-modules-plugins --ref stable
 codex plugin add segmently-modules@segmently-modules
 ```
@@ -71,7 +71,15 @@ whose agents get the built-in skills from the plugins sets `builtin_delivery = "
 `[packs]`, so `packs sync` does not copy them a second time
 ([docs/skills.md](docs/skills.md#from-the-repository-or-from-a-plugin)).
 
-**The command line alone** — in a virtual environment, from a checkout or the repository:
+**The command line alone** — from npm (macOS and Linux: the package carries the engine and runs
+it with your Python 3.9 or newer; Node runs nothing):
+
+```bash
+npm install -g @segmently/modules       # `segmently-modules` on PATH
+npx @segmently/modules --help           # or run it without installing
+```
+
+Or in a virtual environment, from a checkout or the repository:
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
@@ -80,12 +88,12 @@ pip install git+https://github.com/segmently-ai/segmently-modules.git@v0.2.0   #
 segmently-modules --help
 ```
 
-Or from git, without a checkout (Python 3.11 or newer; no other dependency):
+Or from git, without a checkout (Python 3.9 or newer; no other dependency):
 
 ```bash
 uv tool install git+https://github.com/segmently-ai/segmently-modules.git@v0.2.0   # on PATH; uv fetches a Python when none fits
 uvx --from git+https://github.com/segmently-ai/segmently-modules.git@v0.2.0 segmently-modules --version   # or run it without installing
-pipx install git+https://github.com/segmently-ai/segmently-modules.git@v0.2.0      # needs a Python 3.11+ already installed
+pipx install git+https://github.com/segmently-ai/segmently-modules.git@v0.2.0      # needs a Python 3.9+ already installed
 ```
 
 The `@v…` suffix pins the latest release tag (each stable release moves it); without it you get

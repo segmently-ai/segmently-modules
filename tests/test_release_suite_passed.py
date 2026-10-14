@@ -3,6 +3,8 @@ the engine's `HEAD^{tree}` skips step 3's unit suite (no test process starts) wh
 still runs, on both channels; any other 40-hex tree is a refusal in step 2 that writes nothing;
 a malformed TREE is a usage error; after a put-back the same TREE is accepted again, after a
 finished stable release it is refused."""
+from __future__ import annotations
+
 import os
 import unittest
 

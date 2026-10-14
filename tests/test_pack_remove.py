@@ -1,6 +1,8 @@
 """`packs sync --agent A --remove` (P6 D5, row 6.3's uninstall): every copy `packs sync` made in
 A's skill directory goes; an edited copy stays a conflict; unmanaged files, the ejected copies
 and the config are never touched; the refusals that keep a shared directory safe."""
+from __future__ import annotations
+
 import hashlib
 import json
 import os

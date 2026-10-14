@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "segmently-modules"
 version = "0.2.1.dev0"
 description = "Code-structure-centric context layer for AI coding agents"
-requires-python = ">=3.11"
+requires-python = ">=3.9"
 dependencies = []
 
 [project.urls]
@@ -19,7 +19,8 @@ segmently-modules = "segmently_modules.cli:main"
 include = ["segmently_modules*"]
 
 [tool.setuptools.package-data]
-segmently_modules = ["defaults/*.toml", "defaults/templates/*.md", "defaults/templates/roles/*.md",
+segmently_modules = ["_vendor/tomli/LICENSE",
+                     "defaults/*.toml", "defaults/templates/*.md", "defaults/templates/roles/*.md",
                      "defaults/templates/init/*.md",
                      "defaults/templates/choose/*.md", "defaults/agents/*.md",
                      "defaults/scaffold/*", "defaults/packs/**/*"]

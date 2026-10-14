@@ -2,6 +2,8 @@
 co-change and hints, confidence and keywords, `unassigned` — and row 5.3: `init map` on the
 synthetic `bookshop_monorepo` (its history built by `tests/fixtures/build_monorepo.py`) yields
 exactly the pinned proposal."""
+from __future__ import annotations
+
 import json
 import subprocess
 import tempfile

@@ -5,10 +5,10 @@ import hashlib
 import json
 import re
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 
+from segmently_modules._toml import tomllib
 from segmently_modules.agents_md_cmd import render_block
 from segmently_modules.config import BUILTIN_PACKS, builtin_packs_root
 from segmently_modules.skills import read_front_matter

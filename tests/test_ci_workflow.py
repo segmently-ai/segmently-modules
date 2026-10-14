@@ -34,7 +34,19 @@ class CiWorkflowTest(unittest.TestCase):  # P6-AC-020
 
     def test_the_actions_run_on_node_24(self):  # P61-AC-004, SI-P61-12
         uses = [l[len("- uses: "):] for l in self.lines if l.startswith("- uses: ")]
-        self.assertEqual(uses, list(NODE24_ACTIONS))
+        self.assertEqual(uses, [*NODE24_ACTIONS, NODE24_ACTIONS[0]])  # `floor`: checkout only
+
+    def test_the_floor_job_runs_on_apples_python(self):
+        floor = self.text.split("\n  floor:\n", 1)[1]
+        lines = [l.strip() for l in floor.splitlines()]
+        for line in ("runs-on: macos-latest", "timeout-minutes: 60",
+                     "run: /usr/bin/python3 -c 'import sys; print(sys.version); "
+                     "sys.exit(sys.version_info[:2] != (3, 9))'",
+                     '/usr/bin/python3 -m venv "$RUNNER_TEMP/py39"',
+                     'run: \'"$RUNNER_TEMP/py39/bin/python" -m unittest discover -s tests\'',
+                     'run: \'"$RUNNER_TEMP/py39/bin/python" evals/adoption/run_eval.py > /dev/null\''):
+            self.assertIn(line, lines)
+        self.assertNotIn("setup-python", floor)
 
     def test_the_matrix_and_the_steps(self):
         self.assertIn('python: ["3.11", "3.14"]', self.lines)

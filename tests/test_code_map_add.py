@@ -4,10 +4,10 @@ import hashlib
 import os
 import stat
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 
+from segmently_modules._toml import tomllib
 from tests.helpers import git, make_repo, run, run_json
 
 DESC = "Task items: create, complete, reorder; the home of a single task."

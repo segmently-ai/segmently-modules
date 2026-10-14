@@ -7,12 +7,12 @@ import os
 import shutil
 import stat
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from segmently_modules import skill_sync
+from segmently_modules._toml import tomllib
 from segmently_modules.init_cmd import starter_config
 from tests.helpers import copy_fixture, run, run_json
 

@@ -2,6 +2,8 @@
 packs' skills) or "plugin" (the segmently-modules plugins provide them) — the values and layers, one
 delivery at a time across `packs sync`, `eject`, `agents-md` and lint MS067, and the transitions
 between the two."""
+from __future__ import annotations
+
 import json
 import shutil
 import tempfile
