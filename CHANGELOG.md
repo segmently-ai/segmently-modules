@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-14
+
 ### Added
 
 - npm: `tools/build_npm.py` builds the package `@segmently/modules` — the command line on macOS and Linux with `npm install -g @segmently/modules` or `npx @segmently/modules`. It carries the engine and the plugin's launcher and runs with the Python 3.9 or newer it finds; Node runs nothing. Publishing is a maintainer's step after a release ([docs/releasing.md](docs/releasing.md#npm)).

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "segmently-modules"
-version = "0.2.1.dev0"
+version = "0.2.1"
 description = "Code-structure-centric context layer for AI coding agents"
 requires-python = ">=3.9"
 dependencies = []
