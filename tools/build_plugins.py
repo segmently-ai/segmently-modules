@@ -97,8 +97,8 @@ FIRST_REQUEST = ("\"Use the module-assistant skill to set Segmently Modules up i
                  "code into modules and write their notes with the module-init skill;\n"
                  "- it is a new repository: run segmently-modules setup, then the module-create "
                  "skill for the first module.\n"
-                 "segmently-modules setup also adds the Segmently Modules section to CLAUDE.md and "
-                 "AGENTS.md, so every session knows the skills and the module system.\"")
+                 "The setup also adds the Segmently Modules section to CLAUDE.md and AGENTS.md, so "
+                 "every session knows the skills and the module system.\"")
 # What `segmently-modules setup` writes into the agents' instruction files (the agents-md block).
 INSTRUCTIONS_NOTE = ("Nothing goes into `CLAUDE.md` by hand: `segmently-modules setup` (the first "
                      "request above runs it) adds a short \"Module docs (Segmently Modules)\" section "

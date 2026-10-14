@@ -64,7 +64,7 @@ Setup is done. Two steps for you:
 - it has a module registry another tool or team already wrote: adopt it with the module-adopt skill;
 - it has code but no module registry: run segmently-modules setup, then map the code into modules and write their notes with the module-init skill;
 - it is a new repository: run segmently-modules setup, then the module-create skill for the first module.
-segmently-modules setup also adds the Segmently Modules section to CLAUDE.md and AGENTS.md, so every session knows the skills and the module system."
+The setup also adds the Segmently Modules section to CLAUDE.md and AGENTS.md, so every session knows the skills and the module system."
 ```
 
 **Codex** — the plugin carries the skills; the command line comes from npm:
@@ -90,7 +90,7 @@ Setup is done. Two steps for you:
 - it has a module registry another tool or team already wrote: adopt it with the module-adopt skill;
 - it has code but no module registry: run segmently-modules setup, then map the code into modules and write their notes with the module-init skill;
 - it is a new repository: run segmently-modules setup, then the module-create skill for the first module.
-segmently-modules setup also adds the Segmently Modules section to CLAUDE.md and AGENTS.md, so every session knows the skills and the module system."
+The setup also adds the Segmently Modules section to CLAUDE.md and AGENTS.md, so every session knows the skills and the module system."
 ```
 
 **What goes into `CLAUDE.md`.** Nothing goes into `CLAUDE.md` by hand: `segmently-modules setup`
