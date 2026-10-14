@@ -128,7 +128,8 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
                            "in a task about this module — and about no other module",
                            "Routing ignores word endings (`-s`, `-es`, `-ed`, `-ing`), so give "
                            "one form per word (`charge`, not also `charges`, `charged`, "
-                           "`charging`)",  # FoodMate init, 2026-10-14: every form was noise
+                           "`charging`; `score` and `scoring` are one word, `suggest` and "
+                           "`suggestion` two)",  # FoodMate init 2026-10-14; an eval run's doubt
                            "generic words that fit any module: `common`, `data`,",
                            "(a word of this module's own name is fine)",
                            "the things another module owns (the list above), even when this "

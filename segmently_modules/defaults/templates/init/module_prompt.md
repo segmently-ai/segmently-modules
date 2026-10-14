@@ -33,7 +33,8 @@ A JSON object with exactly these keys:
   the module handles as a task would name them, including the things and actions its
   `## Purpose` paragraph names, even where the code names them differently (a payments module:
   `card`, `decline`, `charge`). Routing ignores word endings (`-s`, `-es`, `-ed`, `-ing`), so
-  give one form per word (`charge`, not also `charges`, `charged`, `charging`); single words,
+  give one form per word (`charge`, not also `charges`, `charged`, `charging`; `score` and
+  `scoring` are one word, `suggest` and `suggestion` two); single words,
   and a phrase of several words only when developers write exactly that phrase. Leave out:
   - generic words that fit any module: ${generic_words} (a word of this module's own name is
     fine);
