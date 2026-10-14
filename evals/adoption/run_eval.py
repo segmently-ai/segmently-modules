@@ -957,10 +957,9 @@ def init_flow(sc: Scenario) -> None:
         collisions = [(c["keyword"], c["owner"], c["removed"]) for c in data["collisions"]]
         staged = json.loads((work / "staging/registry.json").read_text(encoding="utf-8"))
         negated = [m for m, e in staged["modules"].items() if "negative_keywords" in e]
-        kept = "price" in staged["modules"]["catalog"]["keywords"]  # D14: catalog files hold it
+        kept = "price" in staged["modules"]["catalog"]["keywords"]  # D14: a catalog file holds it
         check((duplicates, collisions, negated, kept) == ([("formatPrice", ["catalog", "ui-kit"])],
-                                                          # 0.3.0: formatPrice counts — a tie
-                                                          [("price", None, [])], [], True),
+                                                          [("price", "cart", [])], [], True),
               f"duplicates {duplicates}, collisions {collisions}, negated {negated}, "
               f"catalog keeps price {kept}")
         check((work / "staging/registry.json").read_bytes() == seen["registry"],

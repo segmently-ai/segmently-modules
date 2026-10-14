@@ -11,9 +11,9 @@ from the writers' `entry.json` files, and what the writers could not see from on
 Edges: the proposal's import edges between confirmed modules become `depends-on` edges ("imports
 from <m> (<n> import(s), init reconcile)"), one per direction; a writer's own edge to the same
 module (any relation) wins. Collisions: a keyword that two new modules or more hold (any case; under `[match] normalize`
-any form, `word_groups`) belongs to the module with the most files (under its confirmed paths)
-whose path, text or identifiers' parts hold it (`words.text_words`: `saveMeal` holds `save`; a
-file counts once); another holder loses it from `keywords` only when none of its own files
+any form, `word_groups`: `save` and `saving` are one collision) belongs to the module with the
+most files (under its confirmed paths) whose path or text holds one of its listed forms as a
+whole word (a file counts once; never a part of an identifier — see `holds`); another holder loses it from `keywords` only when none of its own files
 holds it (D14: a module whose code holds the word keeps it) — never a negative keyword, which
 would pull it out of every task that uses the word — unless that leaves it below `[create]
 min_keywords` (a `keyword-floor` judgement item) or the most files are a tie (a `keyword-tie`
@@ -41,7 +41,7 @@ from segmently_modules.create import ask_fields
 from segmently_modules.output import UsageError
 from segmently_modules.preflight import BIG, SNIFF
 from segmently_modules.store import serialize
-from segmently_modules.words import FileWords, normalizing, word_groups
+from segmently_modules.words import normalizing, term_pattern, word_groups
 
 TEST_FILE = re.compile(r"(?:^|/)(?:tests/|test_[^/]*\.py$|[^/]*_test\.py$"
                        r"|[^/]*\.(?:test|spec)\.[^/]+$)")
@@ -58,7 +58,7 @@ class Reconcile:
         self.report_path = self.flow.work / "reconcile.json"
         self.texts: dict[str, str | None] = {}
         self.normalize = normalizing(work.ws.config["match"])
-        self.words = FileWords(self.text, self.normalize)
+        self.lowered: dict[str, str] = {}
 
     # --- inputs ---------------------------------------------------------------------------
 
@@ -132,6 +132,17 @@ class Reconcile:
                      "source": "imports"} for e in added]
         return sorted(out, key=lambda e: (e["from"], e["to"], e["source"]))
 
+    def holds(self, rel: str, forms) -> bool:
+        """Whether file `rel` holds one of `forms` — a listed form of the word, whole, in its
+        path or its text: the evidence of 0.2.1, kept strict on purpose. Measured on the 76 ties
+        of a real run (2026-10-14): with every form of the word and the parts of identifiers
+        (`saveMeal`) as evidence, generic verbs looked owned by most modules — 8 words dropped,
+        not 68 — and `bought` went to the wrong module."""
+        if rel not in self.lowered:
+            self.lowered[rel] = (self.text(rel) or "").lower()
+        return any((rx := term_pattern(k)).search(rel.lower()) or rx.search(self.lowered[rel])
+                   for k in forms)
+
     def collisions(self, new: dict, files: dict) -> tuple[list[dict], list[dict], list[dict]]:
         """(rows, judgement, dropped) for every word two new modules or more hold (any case;
         under `[match] normalize` any form: `save` and `saving` are one word)."""
@@ -146,7 +157,7 @@ class Reconcile:
             if len(mods) > 1:
                 shared.append((sorted(forms)[0], forms, mods))
         for kw, forms, mods in sorted(shared):
-            counts = {m: sum(1 for f in files[m] if self.words.holds(f, forms)) for m in mods}
+            counts = {m: sum(1 for f in files[m] if self.holds(f, forms)) for m in mods}
             top = max(counts.values())
             owners = [m for m in mods if counts[m] == top]
             if top == 0:  # no holder's code holds it: a word for every task, dropped from all

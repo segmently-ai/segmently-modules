@@ -7,9 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `eval routing` and `init verify` say how precise the routing is, not only whether the module is among the first three: `top1_hit_rate`, `mean_matched` (the modules a task matched on average) and, per module, `top1_hits` and `unused_keywords` (no task matched the keyword and no code file of the module holds it). None of them fails a run.
+- `init verify` checks the keywords of every new module: more distinct words than `[create] max_keywords` (40) or a generic word fails it (`keywords` in `verify.json`).
+- lint MS023 (info): a keyword is a generic word — the CRUD verbs, `user`, `screen`, `app`, `module`, `test` and the words `create` warned about before, any form, plus `[create] generic_keywords`; never a word of the module's own name.
+- `init map` gives a candidate with more lines of code than `[init] split_hint_lines` (10000) a `split` hint listing its subdirectories with their lines (`children`).
+
 ### Changed
 
 - The READMEs say what Segmently Modules is for — an AI coding agent is an excellent worker with amnesia and a memory of limited size, and the notes solve both: written for any part of the project, found before a task, updated after it, kept per role — in a section of its own, and carry a one-prompt install for Claude Code and for Codex (paste it into a fresh session; it sets the machine up and stops: the agent picks the plugin up after `/reload-plugins` in Claude Code, or in a new session). The prompt's first request names the way in — adopt an existing registry (`module-adopt`), or `segmently-modules setup` and then `module-init` for code without one, `module-create` for a new repository — and a note says what `setup` adds to `CLAUDE.md` and `AGENTS.md`, so nothing is written there by hand. The by-hand install lines name the reload too. The engine's README, the core plugin's README, the plugin marketplace's README section and the npm README share the text; the core plugin's and the marketplace's descriptions say it in one line. The Codex install lines take the command line from npm first.
+- Routing ignores word endings: a keyword and a task word match when one is a form of the other (`save`, `saves`, `saved`, `saving`; `entry`, `entries`), so one form of a word is enough. A module that lists several forms scores the word once, so registries written with every form keep their scores. `[match] normalize = "none"` keeps the exact matching of 0.2.1.
+- The init writer's prompt asks for at most `[create] max_keywords` words that point to this module and no other — one form per word, no generic word, nothing another module owns, no word for the developer's own tools — and lists the other modules of the repository. `init done` refuses more than `max_keywords` distinct words and warns about generic keywords.
+- `create` no longer asks for the missing plural: it says when a keyword is a form of another one, and warns about generic words in any form and about more than `max_keywords` words (the plural hint stays under `normalize = "none"`).
+- `init reconcile` drops a keyword no holder's code holds from every module that holds it (as far as the keyword minimum allows; `dropped` in `reconcile.json`) and treats the forms of one word held by different modules as one collision. On the 76 ties of a real run this drops 68 words and leaves the 8 real disputes. The evidence stays a listed form, whole, in a file's path or text: counting every form and the parts of identifiers made generic verbs look owned by most modules.
+
+### Fixed
+
+- A backticked path with a space or a `#` in it (`…/Custom cells/Row.swift`, `…/onboarding-v#1-47.json`) is checked as the path it names when it exists — `init done`, `init verify` and lint MS040 cut it or skipped it before.
+- The README's one-prompt install no longer has a line starting with the command's name inside its text block, which broke the docs test on `main`.
 
 ## [0.2.1] - 2026-10-14
 

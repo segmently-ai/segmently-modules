@@ -139,8 +139,8 @@ files and reports in `reconcile.json`:
 - `edges` — the import edges between modules become `depends-on` edges (a writer's own edge to
   the same module wins);
 - `collisions` — a keyword two new modules hold (any case; under `[match] normalize` any form:
-  `save` and `saving` are one word) belongs to the one with the most files whose path, text or
-  identifiers hold it (`saveMeal` holds `save` and `meal`); another module loses it from its
+  `save` and `saving` are one word) belongs to the one with the most files whose path or text
+  holds one of its listed forms as a whole word; another module loses it from its
   keywords only when none of its own files holds it — a module whose code holds the word keeps
   it — and never as a negative keyword, which would pull it out of every task that uses the
   word (unless removing it leaves one below the keyword minimum, or it is a tie: nothing is

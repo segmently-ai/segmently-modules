@@ -179,15 +179,16 @@ class CollisionsTest(ReconcileRepo):  # P5B-AC-013 (SI-10), P5C-AC-001, P6-AC-03
                 self.assertIn("zeta", self.registry()["modules"]["cart"]["keywords"])
                 self.assertNotIn("negative_keywords", self.registry()["modules"]["cart"])
 
-    def test_identifier_parts_and_forms_count(self):  # 0.3.0 (FoodMate init, 2026-10-14)
+    def test_forms_are_one_collision_and_identifiers_no_evidence(self):  # 0.3.0
         self.keywords("catalog", self.CATALOG)
         self.keywords("cart", ["cart", "basket", "line", "total", "quantity", "zetas"])
-        for i in range(3):  # only inside identifiers: saveZeta, zeta_count
-            (self.root / f"packages/catalog/src/zz{i}.ts").write_text(
+        self.plant("packages/catalog/src", 2, "the zetas")  # a listed form, whole
+        for i in range(3):  # parts of identifiers only: never evidence
+            (self.root / f"packages/cart/src/zz{i}.ts").write_text(
                 f"export function saveZeta{i}() {{ return zeta_count; }}\n")
         row = self.collision("zeta")  # `zeta` and `zetas`: one word
         self.assertEqual(row, {"keyword": "zeta", "owner": "catalog", "others": ["cart"],
-                               "files": {"cart": 0, "catalog": 3}, "removed": ["cart"]})
+                               "files": {"cart": 0, "catalog": 2}, "removed": ["cart"]})
         self.assertNotIn("zetas", self.registry()["modules"]["cart"]["keywords"])
 
     def test_an_ownerless_word_and_the_floor(self):  # 0.3.0: dropped where the floor allows
@@ -225,11 +226,11 @@ class CollisionsTest(ReconcileRepo):  # P5B-AC-013 (SI-10), P5C-AC-001, P6-AC-03
         self.assertEqual((row["files"], row["removed"]), ({"cart": 1, "catalog": 3}, []))
         self.assertIn("zeta", self.registry()["modules"]["cart"]["keywords"])
 
-    def test_the_fixture_collision(self):  # SI-22: catalog's files hold `price` — it stays
-        self.reconcile()  # 0.3.0: `formatPrice` counts too (identifier parts) — now a tie
+    def test_the_fixture_collision(self):  # SI-22: one catalog file holds `price` — it stays
+        self.reconcile()  # (`formatPrice` is no evidence: never a part of an identifier)
         self.assertEqual(self.report()["collisions"], [
-            {"keyword": "price", "owner": None, "others": ["cart", "catalog"],
-             "files": {"cart": 2, "catalog": 2}, "removed": []}])
+            {"keyword": "price", "owner": "cart", "others": ["catalog"],
+             "files": {"cart": 2, "catalog": 1}, "removed": []}])
         self.assertIn("price", self.registry()["modules"]["catalog"]["keywords"])
 
     def test_three_modules_the_floor_reached_and_every_case_form(self):  # rows 4, 8, 10
@@ -326,8 +327,7 @@ class DuplicatesTest(ReconcileRepo):  # P5B-AC-014 (SI-11)
         self.assertEqual([j for j in self.report()["judgement"] if j["kind"] == "duplicate"],
                          [{"kind": "duplicate", "name": "formatPrice",
                            "definitions": definitions}])
-        self.assertEqual([j["kind"] for j in self.report()["judgement"]],
-                         ["duplicate", "keyword-tie"])  # `price`: formatPrice in both
+        self.assertEqual([j["kind"] for j in self.report()["judgement"]], ["duplicate"])
 
     def test_what_counts_as_a_definition(self):
         py = self.root / "services/payments/payments"
