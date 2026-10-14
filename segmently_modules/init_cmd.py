@@ -596,11 +596,20 @@ def _render_verify(d) -> None:
     else:
         r = d["routing"]
         print(f"routing       hit rate {r['hit_rate']} ({r['hits']}/{r['tasks']}, top "
-              f"{r['top']}; threshold {r['min_hit_rate']})")
+              f"{r['top']}; threshold {r['min_hit_rate']}); first place {r['top1_hit_rate']}; "
+              f"{r['mean_matched']} module(s) matched per task")
         for row in r["per_module"]:
             for miss in row["misses"]:
                 print(f"  miss  {row['module']}: \"{miss['task']}\" → "
                       f"{', '.join(miss['got']) or '(no module)'}")
+            if row["unused_keywords"]:
+                print(f"  unused  {row['module']}: {', '.join(row['unused_keywords'])}")
+    print(f"keywords      {len(d['keywords'])} module(s) with too many words or a generic word")
+    for k in d["keywords"]:
+        over = (f"{k['words']} words > max_keywords {k['max_keywords']}"
+                if k["words"] > k["max_keywords"] else "")
+        generic = f"generic: {', '.join(k['generic'])}" if k["generic"] else ""
+        print(f"  {k['module']}: {'; '.join(x for x in (over, generic) if x)}")
     print(f"{'passed' if d['passed'] else 'FAILED':<13} {d['verify']}")
     print(f"next: {d['next']}")
 

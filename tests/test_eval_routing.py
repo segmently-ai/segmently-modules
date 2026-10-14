@@ -77,11 +77,44 @@ class HitsTest(RoutingRepo):  # P5B-AC-016
         path = self.tasks([(t, m) for t, m, _ in TABLE])
         code, out, err = run("eval", "routing", "--tasks", str(path), *self.R)
         lines = out.splitlines()
-        self.assertEqual((code, err, lines[0]), (1, "", "hit rate 0.5 (3/6, top 3)"))
-        self.assertIn("catalog  2/4", lines)
+        self.assertEqual((code, err, lines[0]), (1, "", "hit rate 0.5 (3/6, top 3); first "
+                                                       "place 0.333; 1.66 module(s) matched "
+                                                       "per task"))
+        self.assertIn("catalog  2/4 (first 1)", lines)
+        self.assertIn("  unused  author, title, shelf", lines)
         self.assertIn('  miss  "nothing about the shop at all" → (no module)', lines)
         self.assertIn('  miss  "charge the card through the gateway" → payments', lines)
         self.assertEqual(lines[-1], "threshold 0.8: FAILED")
+
+
+class PrecisionTest(RoutingRepo):  # 0.3.0: how precise, not only whether the module is there
+    def test_first_place_modules_per_task_and_unused_words(self):
+        path = self.tasks([("catalog isbn lookup", "catalog"),  # first
+                           ("the cart basket page window and the isbn", "catalog"),  # third
+                           ("a partial refund please", "payments")])  # its child, first
+        data = self.evaluate("--tasks", str(path))
+        self.assertEqual({k: data[k] for k in ("hit_rate", "top1_hit_rate", "mean_matched")},
+                         {"hit_rate": 1.0, "top1_hit_rate": 0.666, "mean_matched": 1.66})
+        rows = {r["module"]: r for r in data["per_module"]}
+        self.assertEqual((rows["catalog"]["hits"], rows["catalog"]["top1_hits"]), (2, 1))
+        self.assertEqual(rows["catalog"]["unused_keywords"], ["author", "title", "shelf"])
+        self.assertEqual(rows["payments/refunds"]["unused_keywords"], [])
+        self.assertEqual(list(data), ["hit_rate", "top1_hit_rate", "mean_matched", "top",
+                                      "tasks", "per_module", "hits", "min_hit_rate", "passed"])
+        self.assertEqual(list(rows["catalog"]), ["module", "tasks", "hits", "top1_hits",
+                                                 "misses", "unused_keywords"])
+
+    def test_a_word_the_code_holds_is_used(self):
+        root = make_repo(self.base / "code", MODULES, config=(
+            '[[code_map]]\nid = "catalog-code"\nglobs = ["src/catalog/**"]\nmodule = "catalog"\n'))
+        (root / "src/catalog").mkdir(parents=True)
+        (root / "src/catalog/shelf_view.py").write_text("def findAuthorTitles():\n    pass\n")
+        git(root, "init", "-q")
+        path = self.tasks([("catalog isbn lookup", "catalog")])
+        code, env, err = run_json("eval", "routing", "--tasks", str(path), "--root", str(root))
+        rows = {r["module"]: r for r in env["data"]["per_module"]}
+        self.assertEqual((code, err), (0, ""))  # the path's `shelf_view` holds `shelf`, the
+        self.assertEqual(rows["catalog"]["unused_keywords"], [])  # identifier the rest
 
 
 class ThresholdTest(RoutingRepo):  # P5B-AC-017 (SI-14)

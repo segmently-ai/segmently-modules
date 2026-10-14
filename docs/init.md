@@ -52,8 +52,9 @@ resume`, or take them out of the registry and the modules dir first). After `ini
 import edges to other confirmed modules; `roles` the role docs `create` would scaffold. The
 `prompt` tells the writer what to write into `staging_dir`: `MODULE.md`, one `roles/<role>.md`
 per role (from the doc templates, embedded), and `entry.json` — `description` (the `[create]`
-length limits), `keywords` (at least `[create] min_keywords`, the words a task about the module
-would use), optional `related_modules` edges — describing only components that exist.
+length limits), `keywords` (at least `[create] min_keywords` and at most `[create] max_keywords` words that
+point to this module and no other — one form per word, no generic word, nothing another module
+owns; the prompt lists the other modules), optional `related_modules` edges — describing only components that exist.
 
 A module the registry already has (someone created it by hand after gate 3) is `done` from the
 start (`existing: true`, no prompt) and never rewritten; a `<modules_dir>/<name>/` without a
@@ -172,9 +173,13 @@ segmently-modules eval routing --tasks .segmently-modules/init/routing-tasks.jso
 
 A task hits when its module (or one of its children) is among the first 3 modules `context`
 ranks for it. The eval passes when hits ≥ `[init] routing_min_hit_rate` × tasks (0.8 by default);
-`hit_rate` is rounded down to 3 decimals.
+`hit_rate` is rounded down to 3 decimals. A hit within 3 says nothing about noise, so the report
+also says how precise the routing is, without failing on it: `top1_hit_rate` (the module came
+first), `mean_matched` (how many modules a task matched on average — every one at `min_score`,
+uncapped) and, per module, `top1_hits` and `unused_keywords` — the keywords no task matched and
+no file of the module holds (its text, its identifiers' parts, its path): the first ones to cut.
 
-`segmently-modules init verify` reads the staging tree as if it were in place and runs three checks:
+`segmently-modules init verify` reads the staging tree as if it were in place and runs four checks:
 
 1. **lint** — clean means no error and no warning (info is fine);
 2. **invented components** — every backticked repository path in a staging doc exists inside
@@ -182,7 +187,12 @@ ranks for it. The eval passes when hits ≥ `[init] routing_min_hit_rate` × tas
    `Name` column and a `Path` column, a backticked symbol occurs, as a whole identifier, in the
    file of its row's `Path` cell (a table without a `Path` column is not checked; a file that
    cannot be read as text — a directory, unreadable, binary — is `no file to check`);
-3. **routing** — the eval above, when `routing-tasks.json` exists (else `routing: not
+3. **keywords** — every new module holds at most `[create] max_keywords` distinct words (forms
+   of one word count once) and no generic word (`create`, `user`, `screen`, … in any form; a word
+   of the module's own name is fine): `keywords: [{module, words, max_keywords, generic}]`, each
+   one fails verify — trim them in `staging/registry.json` (lint only reports these, MS020 and
+   MS023, for a registry already in use);
+4. **routing** — the eval above, when `routing-tasks.json` exists (else `routing: not
    measured`).
 
 It writes `verify.json` with a hash of the staging tree (files and symlinks): `init finish`
@@ -239,7 +249,7 @@ then the engine):
 
 | Template | Renders |
 |---|---|
-| `init/module_prompt.md` | a work item's `prompt`: `${module}`, `${paths}`, `${files}`, `${files_note}`, `${neighbours}`, `${staging_dir}`, `${docs}`, `${roles}`, `${relations}`, `${description_min}`, `${description_max}`, `${min_keywords}`, `${ask_fields}`, `${modules_dir}`, `${module_doc}` (`[paths]`: the final doc paths `init done` checks) |
+| `init/module_prompt.md` | a work item's `prompt`: `${module}`, `${paths}`, `${files}`, `${files_note}`, `${neighbours}`, `${staging_dir}`, `${docs}`, `${roles}`, `${relations}`, `${description_min}`, `${description_max}`, `${min_keywords}`, `${max_keywords}`, `${generic_words}`, `${others}` (the other modules of the repository), `${ask_fields}`, `${modules_dir}`, `${module_doc}` (`[paths]`: the final doc paths `init done` checks) |
 | `init/routing_prompt.md` | the task writer's prompt: `${count}`, `${per_module}`, `${modules}` |
 
 ```bash

@@ -38,11 +38,10 @@ from pathlib import PurePosixPath
 
 from segmently_modules.changes import glob_to_regex
 from segmently_modules.create import ask_fields
-from segmently_modules.match import term_pattern
 from segmently_modules.output import UsageError
 from segmently_modules.preflight import BIG, SNIFF
 from segmently_modules.store import serialize
-from segmently_modules.words import ONE_WORD, normalizing, text_words, word_groups, word_set_keys
+from segmently_modules.words import FileWords, normalizing, word_groups
 
 TEST_FILE = re.compile(r"(?:^|/)(?:tests/|test_[^/]*\.py$|[^/]*_test\.py$"
                        r"|[^/]*\.(?:test|spec)\.[^/]+$)")
@@ -58,8 +57,8 @@ class Reconcile:
         self.registry_path = work.staging / "registry.json"
         self.report_path = self.flow.work / "reconcile.json"
         self.texts: dict[str, str | None] = {}
-        self.keys: dict[str, tuple[str, str, set]] = {}
         self.normalize = normalizing(work.ws.config["match"])
+        self.words = FileWords(self.text, self.normalize)
 
     # --- inputs ---------------------------------------------------------------------------
 
@@ -133,27 +132,6 @@ class Reconcile:
                      "source": "imports"} for e in added]
         return sorted(out, key=lambda e: (e["from"], e["to"], e["source"]))
 
-    def evidence(self, rel: str) -> tuple[str, str, set]:
-        """A file's (text lowercased, path lowercased, the keys of its words and of its
-        identifiers' parts — `words.text_words` — and of its path's), worked out once."""
-        if rel not in self.keys:
-            text = self.text(rel) or ""
-            words = text_words(text) | text_words(rel)
-            self.keys[rel] = (text.lower(), rel.lower(), word_set_keys(words, self.normalize))
-        return self.keys[rel]
-
-    def holds(self, rel: str, forms) -> bool:
-        """Whether file `rel` holds one of `forms`: a one-word keyword by its keys (so
-        `saveMeal` holds `save`), any other by its whole text in the path or the text."""
-        low, path, keys = self.evidence(rel)
-        for kw in forms:
-            if ONE_WORD.fullmatch(kw):
-                if word_set_keys([kw.lower()], self.normalize) & keys:
-                    return True
-            elif (rx := term_pattern(kw)).search(path) or rx.search(low):
-                return True
-        return False
-
     def collisions(self, new: dict, files: dict) -> tuple[list[dict], list[dict], list[dict]]:
         """(rows, judgement, dropped) for every word two new modules or more hold (any case;
         under `[match] normalize` any form: `save` and `saving` are one word)."""
@@ -168,7 +146,7 @@ class Reconcile:
             if len(mods) > 1:
                 shared.append((sorted(forms)[0], forms, mods))
         for kw, forms, mods in sorted(shared):
-            counts = {m: sum(1 for f in files[m] if self.holds(f, forms)) for m in mods}
+            counts = {m: sum(1 for f in files[m] if self.words.holds(f, forms)) for m in mods}
             top = max(counts.values())
             owners = [m for m in mods if counts[m] == top]
             if top == 0:  # no holder's code holds it: a word for every task, dropped from all

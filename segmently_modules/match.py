@@ -6,10 +6,9 @@ from segmently_modules.output import EXIT_OK, UsageError, emit
 from segmently_modules.registry import as_dict, as_list
 from segmently_modules.semantic import NO_CARDS_NOTE, TOP_ZERO, add_match_flag, ranked, resolve
 from segmently_modules.workspace import Workspace
-from segmently_modules.words import normalizing, word_keys
+from segmently_modules.words import normalizing, term_pattern, word_keys
 
 
-_WORD = re.compile(r"\w")
 _TOKEN = re.compile(r"\w+")
 _PHRASE = re.compile(r"\w+(?:\s+\w+)*")
 
@@ -47,17 +46,6 @@ class TaskText:
                 return ("phrase", tuple(keys))
             return None
         return term.lower() if term_pattern(term).search(self.lower) else None
-
-
-def term_pattern(term: str) -> re.Pattern:
-    # Boundary only on an edge that is a word char: identical to \b for word-edged
-    # terms ("book" never hits "books"), and a superset for terms with a non-word
-    # edge (".epub", "c++ code", "modules/xyz"), which \b matched only by accident.
-    # Verified in the 2026-09-25 dry-run: 0 parity diffs on the real corpus.
-    t = term.lower()
-    left = r"(?<!\w)" if t and _WORD.match(t[0]) else ""
-    right = r"(?!\w)" if t and _WORD.match(t[-1]) else ""
-    return re.compile(left + re.escape(t) + right)
 
 
 def matched_terms(text, terms) -> list:

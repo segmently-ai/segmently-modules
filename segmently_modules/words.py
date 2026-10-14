@@ -51,6 +51,7 @@ def _verb_keys(w: str) -> set:
     return {w}
 
 
+_WORD_CHAR = re.compile(r"\w")
 _TOKEN = re.compile(r"\w+")
 _PART = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
 ONE_WORD = re.compile(r"\w+")
@@ -77,6 +78,45 @@ def word_set_keys(words, normalize: bool) -> set:
     for w in words:
         out |= word_keys(w)
     return out
+
+
+def term_pattern(term: str) -> re.Pattern:
+    # Boundary only on an edge that is a word char: identical to \b for word-edged
+    # terms ("book" never hits "books"), and a superset for terms with a non-word
+    # edge (".epub", "c++ code", "modules/xyz"), which \b matched only by accident.
+    # Verified in the 2026-09-25 dry-run: 0 parity diffs on the real corpus.
+    t = term.lower()
+    left = r"(?<!\w)" if t and _WORD_CHAR.match(t[0]) else ""
+    right = r"(?!\w)" if t and _WORD_CHAR.match(t[-1]) else ""
+    return re.compile(left + re.escape(t) + right)
+
+
+class FileWords:
+    """Which keywords files hold — by their text, the parts of their identifiers and their
+    path — each file read once (`read(rel)`: its text, or None for none to read)."""
+
+    def __init__(self, read, normalize: bool):
+        self.read, self.normalize = read, normalize
+        self.seen: dict[str, tuple[str, str, set]] = {}
+
+    def evidence(self, rel: str) -> tuple[str, str, set]:
+        if rel not in self.seen:
+            text = self.read(rel) or ""
+            words = text_words(text) | text_words(rel)
+            self.seen[rel] = (text.lower(), rel.lower(), word_set_keys(words, self.normalize))
+        return self.seen[rel]
+
+    def holds(self, rel: str, forms) -> bool:
+        """Whether file `rel` holds one of `forms`: a one-word keyword by its keys (so
+        `saveMeal` holds `save`), any other by its whole text in the path or the text."""
+        low, path, keys = self.evidence(rel)
+        for kw in forms:
+            if ONE_WORD.fullmatch(kw):
+                if word_set_keys([kw.lower()], self.normalize) & keys:
+                    return True
+            elif (rx := term_pattern(kw)).search(path) or rx.search(low):
+                return True
+        return False
 
 
 def normalizing(cfg: dict) -> bool:

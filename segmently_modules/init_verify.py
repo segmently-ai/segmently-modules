@@ -11,11 +11,14 @@ write it (`segmently_modules.init_overlay`), nothing moved.
                                         run left behind: moved aside, so the next step is
                                         `init eval-tasks` again (the phase stays `running`)
   <config_dir>/init/verify.json         {lint: {summary, findings}, invented, routing,
-                                        staging_sha256, passed}
+                                        keywords, staging_sha256, passed}
 
-Verify runs three checks: lint (clean = no error and no warning; info is fine), the invented-
-component check over the new modules' staging docs, and the routing eval when the tasks file
-exists (`routing: null` — "not measured" — otherwise). The invented-component check: every
+Verify runs four checks: lint (clean = no error and no warning; info is fine), the invented-
+component check over the new modules' staging docs, the keywords of the new modules (more
+distinct words than `[create] max_keywords` or a generic word fails — `keyword_findings`), and
+the routing eval when the tasks file exists (`routing: null` — "not measured" — otherwise; it
+also reports the first-place hit rate, the modules a task matches on average and each module's
+unused keywords, which never fail it). The invented-component check: every
 backticked repository path (MS040's rule: holds a `/`, no space, no `*`, no URL, no `<`, `{`,
 `[` or leading `@`; `:line` and `#L…` cut) exists inside the root — the staging docs count at
 their final paths; an absolute path or one that climbs out with `..` never does —, and in a
@@ -49,6 +52,7 @@ from segmently_modules.lint import component_path, lint_registry, severity_count
 from segmently_modules.output import UsageError
 from segmently_modules.preflight import SNIFF
 from segmently_modules.store import serialize
+from segmently_modules.words import distinct_words, generic_keywords, normalizing
 
 REJECTED = "routing-tasks.rejected.json"
 REFUSED_TASKS = ("the routing tasks were refused — run segmently-modules init eval-tasks (or write the file "
@@ -176,6 +180,24 @@ def invented(ws, docs: dict) -> list[dict]:
     return sorted(out, key=lambda f: (f["doc"], f["line"], f["kind"], f["token"]))
 
 
+def keyword_findings(ws, modules: list[str]) -> list[dict]:
+    """{module, words, max_keywords, generic} for every new module of `modules` whose
+    keywords hold more distinct words than `[create] max_keywords` (forms of one word once) or
+    a generic word (`words.generic_keywords`) — what MS020 / MS023 only report for a registry
+    already in use fails a module `init` wrote (FoodMate init, 2026-10-14)."""
+    cfg, out = ws.config, []
+    most, normalize = cfg["create"]["max_keywords"], normalizing(cfg["match"])
+    for name in modules:
+        entry = ws.registry.modules.get(name)
+        kws = entry.get("keywords") if isinstance(entry, dict) else None
+        kws = [k for k in kws if isinstance(k, str)] if isinstance(kws, list) else []
+        words, generic = distinct_words(kws, normalize), generic_keywords(cfg, name, kws)
+        if words > most or generic:
+            out.append({"module": name, "words": words, "max_keywords": most,
+                        "generic": generic})
+    return out
+
+
 class Verify:
     def __init__(self, work):
         self.work, self.flow = work, work.flow
@@ -291,9 +313,12 @@ class Verify:
             routed = routing(ws, tasks, 3, ws.config["init"]["routing_min_hit_rate"], targets)
         found = invented(ws, ws.overlay)
         clean = not (lint["summary"]["error"] or lint["summary"]["warning"])
-        doc = {"lint": lint, "invented": found, "routing": routed,
+        noisy = keyword_findings(ws, sorted(m for m, e in state["modules"].items()
+                                            if not e.get("existing")))
+        doc = {"lint": lint, "invented": found, "routing": routed, "keywords": noisy,
                "staging_sha256": tree_sha(self.work.staging),
-               "passed": clean and not found and (routed is None or routed["passed"])}
+               "passed": clean and not found and not noisy
+               and (routed is None or routed["passed"])}
         self.flow.mark(state, "verify", "running")
         text = serialize(doc)
         self.flow.write(self.verify_path, text)

@@ -112,7 +112,11 @@ import x from `packages/catalog/src/fenced.ts`;
                              for n, k, t in ((12, "path", "src/lines.ts"),
                                              (20, "symbol", "lineTotals"),
                                              (21, "no-file", "lineTotal"))],
-                "routing": None, "passed": False, "verify": f"{WORK}/verify.json", "next": "x"}
+                "routing": None, "passed": False, "verify": f"{WORK}/verify.json", "next": "x",
+                "keywords": [{"module": "cart", "words": 45, "max_keywords": 40,
+                              "generic": ["deletes", "user"]},
+                             {"module": "catalog", "words": 12, "max_keywords": 40,
+                              "generic": ["save"]}]}
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             _render_verify(data)
@@ -121,6 +125,10 @@ import x from `packages/catalog/src/fenced.ts`;
             "  modules/cart/MODULE.md:12: path does not exist: src/lines.ts",
             "  modules/cart/MODULE.md:20: symbol not found in its row's file: lineTotals",
             "  modules/cart/MODULE.md:21: no file to check: lineTotal"])
+        self.assertEqual(out.getvalue().splitlines()[6:9], [  # FoodMate init, 2026-10-14
+            "keywords      2 module(s) with too many words or a generic word",
+            "  cart: 45 words > max_keywords 40; generic: deletes, user",
+            "  catalog: generic: save"])
 
 
 class VerifyRepo(unittest.TestCase):
@@ -154,19 +162,44 @@ class VerifyRepo(unittest.TestCase):
         return code, json.loads(out)["data"], out
 
 
+class KeywordsTest(VerifyRepo):  # 0.3.0: a new module's keywords (FoodMate init, 2026-10-14)
+    def test_too_many_words_or_a_generic_word_fails(self):
+        many = [f"basket{chr(97 + i // 26)}{chr(97 + i % 26)}" for i in range(41)]
+        self.edit(lambda m: (m["cart"].update(keywords=many),
+                             m["catalog"]["keywords"].extend(["Deletes", "users"])))
+        code, data, _ = self.verify()
+        self.assertEqual((code, data["passed"]), (1, False))
+        cart, catalog = data["keywords"]
+        self.assertEqual(cart, {"module": "cart", "words": 41, "max_keywords": 40,
+                                "generic": []})
+        self.assertEqual((catalog["module"], catalog["generic"]), ("catalog",
+                                                                  ["Deletes", "users"]))
+        self.assertLess(catalog["words"], 40)
+        self.edit(lambda m: (m["cart"].update(keywords=many[:38] + ["checkout", "checkouts"]),
+                             m["catalog"].update(keywords=[k for k in m["catalog"]["keywords"]
+                                                           if k not in ("Deletes", "users")])))
+        code, data, _ = self.verify()
+        self.assertEqual((code, data["keywords"], data["passed"]), (0, [], True))
+
+
 class VerifyTest(VerifyRepo):  # P5B-AC-022 (SI-16, SI-17)
     def test_a_clean_verify(self):
         before = protected_sha(self.root)
         code, data, _ = self.verify()
         self.assertEqual(code, 0)
         self.assertEqual(set(data), {"action", "verify", "lint", "invented", "routing",
-                                     "staging_sha256", "passed", "next"})
+                                     "keywords", "staging_sha256", "passed", "next"})
+        self.assertEqual(data["keywords"], [])
         self.assertEqual((data["lint"]["summary"], data["invented"], data["passed"]),
                          ({"error": 0, "warning": 0, "info": 0}, [], True))
         self.assertEqual((data["routing"]["hit_rate"], data["routing"]["passed"]), (1.0, True))
         written = json.loads((self.root / WORK / "verify.json").read_text())
-        self.assertEqual(list(written), ["lint", "invented", "routing", "staging_sha256",
-                                         "passed"])
+        self.assertEqual(list(written), ["lint", "invented", "routing", "keywords",
+                                         "staging_sha256", "passed"])
+        r = data["routing"]  # 0.3.0: how precise, never a gate
+        self.assertEqual(set(r) - {"hit_rate", "top", "tasks", "per_module", "hits",
+                                   "min_hit_rate", "passed"},
+                         {"top1_hit_rate", "mean_matched"})
         self.assertEqual(protected_sha(self.root), before)  # nothing moved (P5B-AC-011)
         self.assertFalse((self.root / "modules/cart").exists())
         self.assertEqual(state(self.root)["phases"]["verify"]["status"], "done")

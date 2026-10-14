@@ -127,9 +127,11 @@ If `segmently-modules` is not found, tell the user how to install it — the `se
 
 8. **Fix what verify found.** Lint findings: fix the staging docs or the staging registry.
    Invented components (a path that does not exist, a symbol not in its file): remove or
-   correct them in the staging docs. Routing misses below the threshold: change keywords, never
-   the tasks — at most 2 rounds; after that, report the remaining misses. Each round, in this
-   order:
+   correct them in the staging docs. Keywords (`keywords` rows: too many words, a generic
+   word): trim them in the staging registry — the module's `unused_keywords` first, then the
+   words other modules would answer as well. Routing misses below the threshold: change
+   keywords, never the tasks — at most 2 rounds; after that, report the remaining misses. Each
+   round, in this order:
    - First, a missed module that was already in the registry (`done (existing)`): it is never
      changed in the staging registry — the finish step refuses that. Ask the user, change it in
      the registry itself, then run `segmently-modules init reconcile --force --json`. It rebuilds the
@@ -139,7 +141,8 @@ If `segmently-modules` is not found, tell the user how to install it — the `se
    - Then verify again.
 
 9. **STOP — gate 7.** Show the verify summary: lint counts, invented components, the hit rate
-   and its misses, the judgement items still open. End that message with one direct yes/no
+   and its misses, the first-place rate and the modules matched per task, the judgement items
+   still open. End that message with one direct yes/no
    question — "Shall I run segmently-modules init finish now?" — and wait for the answer: naming the next
    command is not asking. Only on a yes:
 

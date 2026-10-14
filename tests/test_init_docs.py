@@ -22,7 +22,7 @@ class InitDocsTest(unittest.TestCase):  # P5B-AC-037
                        "`files_total`", "`init/module_prompt.md`", "`init/routing_prompt.md`",
                        "segmently-modules templates override init/module_prompt.md",
                        "`SEGMENTLY_MODULES_INIT_MODULE`, `SEGMENTLY_MODULES_INIT_STAGING` and `SEGMENTLY_MODULES_INIT_WORK`",
-                       "1. **lint**", "2. **invented components**", "3. **routing**",
+                       "1. **lint**", "2. **invented components**", "3. **keywords**", "4. **routing**",
                        "segmently-modules eval routing --prompt", "segmently-modules init finish --open-pr",
                        "segmently-modules init resume --non-interactive --executor", "`[init] max_parallel`",
                        "`[init] routing_min_hit_rate`", "never the tasks", "never a commit",
