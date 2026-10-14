@@ -62,12 +62,18 @@ class PackagingTest(unittest.TestCase):
         self.assertEqual(data["project"]["dependencies"], [])
         self.assertEqual(data["project"]["scripts"], {"segmently-modules": "segmently_modules.cli:main"})
 
-    def test_every_data_file_lies_under_defaults(self):  # D6 x D1: the wheel ships
+    def test_every_data_file_is_package_data(self):  # D6 x D1: the wheel ships every data file
         tracked = subprocess.run(["git", "-C", str(ENGINE), "ls-files", "-z", "--", "segmently_modules"],
                                  capture_output=True, text=True, check=True).stdout.split("\0")
-        self.assertIn("segmently_modules/defaults/packs/core/pack.toml", tracked)  # `segmently_modules/defaults/`
-        self.assertEqual([p for p in tracked if p and not p.endswith(".py")  # as package data,
-                          and not p.startswith("segmently_modules/defaults/")], [])  # the plugin all of it
+        self.assertIn("segmently_modules/defaults/packs/core/pack.toml", tracked)
+        data = [p for p in tracked if p and not p.endswith(".py")]  # the plugin ships all of them
+        globs = tomllib.loads((ENGINE / "pyproject.toml").read_text(encoding="utf-8"))[
+            "tool"]["setuptools"]["package-data"]["segmently_modules"]
+        package = ENGINE / "segmently_modules"
+        shipped = {f"segmently_modules/{f}" for g in globs for f in glob_in(package, g)}
+        self.assertEqual([p for p in data if p not in shipped], [])
+        self.assertEqual([p for p in data if not p.startswith("segmently_modules/defaults/")],
+                         ["segmently_modules/_vendor/tomli/LICENSE"])  # the vendored code's licence
 
     @unittest.skipIf(no_wheel_backend(), no_wheel_backend() or "")
     def test_a_wheel_ships_every_default_file_and_no_tool(self):  # P6-AC-018 (offline)
