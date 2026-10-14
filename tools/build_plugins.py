@@ -112,9 +112,10 @@ INSTRUCTIONS_NOTE = ("Nothing goes into `CLAUDE.md` by hand: `segmently-modules 
 
 
 PROMPTS_INTRO = ("Paste the block for your agent into a fresh session. It checks git and Python, "
-                 "installs the plugin and stops: an agent picks a newly installed plugin up only "
-                 "after a reload — `/reload-plugins` in Claude Code — or in a new session (Codex), "
-                 "and the prompt then hands you the first request.")
+                 "installs the plugin and ends with one message of two steps for you: type "
+                 "`/reload-plugins` (Claude Code; in Codex, restart it) — an agent cannot reload "
+                 "its own plugins — then paste the request it gives you, the start of the module "
+                 "setup.")
 RELOAD_NOTE = ("Then run `/reload-plugins` in Claude Code, or start a new session: an agent picks a "
                "newly installed plugin up only then (Codex: a new session).")
 
@@ -124,11 +125,16 @@ def install_prompts(cli: str) -> dict[str, str]:
     machine up and stop — the plugin is picked up after `/reload-plugins` (Claude Code) or in a
     new session; `cli` is the `uv tool install` source of the command line (pinned on a stable
     release)."""
-    tail = ("Tell me the setup is done, then ask me to {pick_up} in the repository I want to work "
-            "on, and to paste the request below there.\n\n"
-            f"The request to paste then:\n{FIRST_REQUEST}\n")
+    tail = ("Do not use the skills in this session yet. {why} Do not try to reload or restart "
+            "anything yourself and do not start another {agent} process. End with one separate "
+            "message to me that holds only the text below, word for word:\n\n"
+            "Setup is done. Two steps for you:\n"
+            "1. {step_one}\n"
+            "2. Then paste this request:\n"
+            f"{FIRST_REQUEST}\n")
     claude = (
-        "Set up Segmently Modules for Claude Code on this machine, then stop and tell me to restart.\n\n"
+        "Set up Segmently Modules for Claude Code on this machine, then stop and give me the two "
+        "next steps.\n\n"
         f"Marketplace: {MARKETPLACE}#stable. Plugin: segmently-modules@segmently-modules.\n\n"
         "Run the steps in order and show me the exact output of every command:\n"
         f"1. {CHECK_TOOLS}\n"
@@ -139,11 +145,14 @@ def install_prompts(cli: str) -> dict[str, str]:
         "--scope user.\n"
         "3. claude plugin list — the output must name segmently-modules. If it does not, say so "
         "plainly and do not continue.\n"
-        "4. Do not use the skills yet: Claude Code picks a newly installed plugin up only after "
-        "/reload-plugins or in a new session. "
-        + tail.format(pick_up="run /reload-plugins (or restart Claude Code)"))
+        "4. " + tail.format(
+            why="Claude Code picks a newly installed plugin up only after /reload-plugins, which "
+                "only I can type, or in a new session.", agent="Claude Code",
+            step_one="Type /reload-plugins in this chat (or restart Claude Code in the repository "
+                     "you want to work on)."))
     codex = (
-        "Set up Segmently Modules for Codex on this machine, then stop and tell me to restart.\n\n"
+        "Set up Segmently Modules for Codex on this machine, then stop and give me the two next "
+        "steps.\n\n"
         f"Marketplace: {MARKETPLACE} on ref stable. Plugin: segmently-modules@segmently-modules.\n\n"
         "Run the steps in order and show me the exact output of every command:\n"
         f"1. {CHECK_TOOLS}\n"
@@ -155,8 +164,9 @@ def install_prompts(cli: str) -> dict[str, str]:
         "segmently-modules and then codex plugin add segmently-modules@segmently-modules again.\n"
         "4. List the installed plugins and show me that segmently-modules is among them. If it is "
         "not, say so plainly and do not continue.\n"
-        "5. Do not use the skills yet: Codex picks a newly installed plugin up only in a new "
-        "session. " + tail.format(pick_up="restart Codex"))
+        "5. " + tail.format(
+            why="Codex picks a newly installed plugin up only in a new session.", agent="Codex",
+            step_one="Restart Codex in the repository you want to work on."))
     return {"Claude Code": claude, "Codex": codex}
 AGENTS_DIR = "segmently_modules/defaults/agents/"  # its direct children ship in the core plugin's agents/
 AGENT_TABLE = "segmently_modules/skills.py"  # SKILL_AGENTS and PROCEDURE: the engine's one agent table

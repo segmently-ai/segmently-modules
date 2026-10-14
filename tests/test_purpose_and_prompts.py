@@ -72,11 +72,18 @@ class PromptsTest(unittest.TestCase):
         for agent, text in self.build.install_prompts("git+x").items():
             with self.subTest(agent=agent):
                 self.assertTrue(text.startswith(f"Set up Segmently Modules for {agent} on this "
-                                                f"machine, then stop and tell me to restart."))
+                                                f"machine, then stop and give me the two next "
+                                                f"steps."))
                 self.assertIn("git --version and python3 --version", text)
                 self.assertIn("Python must be 3.9 or newer", text)
-                self.assertIn("in the repository I want to work on, and to paste the request "
-                              "below there", text)
+                # the owner, 2026-10-14: the end is one explicit message — reload, then the request
+                self.assertIn("Do not try to reload or restart anything yourself and do not start "
+                              f"another {agent} process. End with one separate message to me that "
+                              "holds only the text below, word for word:\n\nSetup is done. Two "
+                              "steps for you:\n1. ", text)
+                self.assertIn("\n2. Then paste this request:\n" + self.build.FIRST_REQUEST + "\n",
+                              text)
+                self.assertTrue(text.endswith(self.build.FIRST_REQUEST + "\n"))
                 self.assertIn("Use the module-assistant skill", text)
                 for way_in in ("adopt it with the module-adopt skill",  # the owner: name what runs
                                "run segmently-modules setup, then map the code into modules and "
@@ -92,11 +99,12 @@ class PromptsTest(unittest.TestCase):
         self.assertIn("npm install -g @segmently/modules", codex)
         self.assertIn("uv tool install git+x instead", codex)
         self.assertNotIn("npm install", claude)  # the Claude Code plugin carries the CLI
-        self.assertIn("Claude Code picks a newly installed plugin up only after /reload-plugins "
-                      "or in a new session", claude)  # the owner, 2026-10-14
-        self.assertIn("ask me to run /reload-plugins (or restart Claude Code)", claude)
+        self.assertIn("Claude Code picks a newly installed plugin up only after /reload-plugins, "
+                      "which only I can type, or in a new session", claude)  # the owner, 2026-10-14
+        self.assertIn("1. Type /reload-plugins in this chat (or restart Claude Code in the "
+                      "repository you want to work on).", claude)
         self.assertIn("Codex picks a newly installed plugin up only in a new session", codex)
-        self.assertIn("ask me to restart Codex", codex)
+        self.assertIn("1. Restart Codex in the repository you want to work on.", codex)
 
     def test_the_readme_separates_the_purpose_and_names_the_reload(self):
         flat = " ".join(README.split())
