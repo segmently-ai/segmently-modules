@@ -119,11 +119,17 @@ def _line_count(path: Path) -> int:
         return sum(1 for _ in fh)
 
 
-def component_path(token: str) -> str | None:
+def component_path(token: str, exists=None) -> str | None:
     """The repository path a backticked token names (MS040's rule), else None: it holds a `/`,
     no space, no `*` and no URL; an import alias (`@…`) or a placeholder (`<`, `{`, `[`) is not
-    a path; `path:line` and `path#L3` name `path`."""
-    if token.strip().startswith("@") or any(c in token for c in "<{["):
+    a path; `path:line` and `path#L3` name `path`. With `exists` (path -> bool), a token that
+    names an existing path as a whole is that path first — a space, a `#` or a bracket in it
+    included (`App/Custom cells/Row.swift`, `App/onboarding-v#1-47.json`, `app/[id]/page.tsx`)."""
+    whole = token.strip()
+    if exists is not None and "/" in whole and "*" not in whole and "://" not in whole \
+            and not whole.startswith("@") and exists(whole):
+        return whole
+    if whole.startswith("@") or any(c in token for c in "<{["):
         return None
     candidate = re.split(r"[:#]", token.strip())[0]
     if "/" in candidate and " " not in candidate and "*" not in candidate and "://" not in token:
@@ -256,7 +262,7 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
                     if not in_section or not line.startswith("|"):
                         continue
                     for token in _BACKTICK.findall(line):
-                        candidate = component_path(token)
+                        candidate = component_path(token, ws.exists)
                         if candidate and not ws.exists(candidate):
                             add("MS040", "warning", label,
                                 f"component path missing on disk: {candidate}", universal)

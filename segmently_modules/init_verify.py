@@ -20,7 +20,8 @@ the routing eval when the tasks file exists (`routing: null` — "not measured" 
 also reports the first-place hit rate, the modules a task matches on average and each module's
 unused keywords, which never fail it). The invented-component check: every
 backticked repository path (MS040's rule: holds a `/`, no space, no `*`, no URL, no `<`, `{`,
-`[` or leading `@`; `:line` and `#L…` cut) exists inside the root — the staging docs count at
+`[` or leading `@`; `:line` and `#L…` cut — but a token that names an existing path as a whole
+is that path, a space or a `#` in it included) exists inside the root — the staging docs count at
 their final paths; an absolute path or one that climbs out with `..` never does —, and in a
 table whose header has a `Symbol` or `Name` column AND a `Path` (or `File`) column, a cell of
 the first holding one backticked identifier names a symbol that occurs, as a whole identifier,
@@ -112,6 +113,10 @@ def invented(ws, docs: dict) -> list[dict]:
     is not there; `docs` = {final path: the file to read, or its text when the caller has read
     it already (`init done`)}."""
     out = []
+
+    def found(target: str) -> bool:  # a path with a space or a `#` is taken whole when it exists
+        return inside(target) and ws.exists(target)
+
     for rel, path in sorted(docs.items()):
         text = path if isinstance(path, str) else path.read_text(encoding="utf-8",
                                                                   errors="replace")
@@ -141,7 +146,7 @@ def invented(ws, docs: dict) -> list[dict]:
                     else:
                         text, rest, comment = text + rest[:start], rest[start + 4:], True
             for token in _BACKTICK.findall(text):
-                target = component_path(token)
+                target = component_path(token, found)
                 if target and not (inside(target) and ws.exists(target)):
                     out.append({"doc": rel, "line": n, "kind": "path", "token": target})
             if not text.lstrip().startswith("|"):
@@ -161,7 +166,8 @@ def invented(ws, docs: dict) -> list[dict]:
             if not symbol:
                 continue
             cell = row[header[1]] if header[1] < len(row) else ""
-            target = next((p for t in _BACKTICK.findall(cell) if (p := component_path(t))), None)
+            target = next((p for t in _BACKTICK.findall(cell) if (p := component_path(t, found))),
+                          None)
             if target and not inside(target):
                 target = None  # outside the root: no file of the repository
             # a planned doc not written yet has no text to find the symbol in: the row is skipped

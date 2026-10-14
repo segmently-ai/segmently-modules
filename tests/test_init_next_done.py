@@ -572,6 +572,31 @@ class InventedAtDoneTest(DriverRepo):  # P5C-AC-004…007, 021, 022 (D2, SI-1, S
                 doc = table(name, path, header) if header else table(name, path)
                 self.assertEqual(self.done({"MODULE.md": doc}), (1 if problems else 0, problems))
 
+    def test_a_path_with_a_space_or_a_hash(self):  # 0.3.0 (FoodMate init, 2026-10-14)
+        cells = self.root / "packages/cart/src/Custom cells"
+        cells.mkdir()
+        (cells / "Row.ts").write_text("export const rowTotal = 1;\n")
+        (self.root / "packages/cart/src/onboarding-v#1-47.json").write_text("{}\n")
+        spaced, hashed = ("`packages/cart/src/Custom cells/Row.ts`",
+                          "`packages/cart/src/onboarding-v#1-47.json`")
+        for name, path, problems in (
+                ("`rowTotal`", spaced, []),
+                ("`rowTotals`", spaced,
+                 ["MODULE.md:20: symbol not found in its row's file: rowTotals"]),
+                ("The first screens", hashed, []),
+                ("`rowTotal`", "`packages/cart/src/Custom cells/Nope.ts`",  # no such file: as
+                 ["MODULE.md:20: no file to check: rowTotal"])):  # before, prose
+            with self.subTest(name=name, path=path):
+                self.assertEqual(self.done({"MODULE.md": table(name, path)}),
+                                 (1 if problems else 0, problems))
+        for token, problems in ((spaced, []), (hashed, []),
+                                ("`packages/cart/src/lines.ts#L10`", []),  # still cut at `#`
+                                ("`packages/cart/src/nope#1.json`",
+                                 [missing("MODULE.md", 12, "packages/cart/src/nope")])):
+            with self.subTest(token=token):
+                self.assertEqual(self.done({"MODULE.md": at_line_12(token)}),
+                                 (1 if problems else 0, problems))
+
     def test_all_at_once(self):  # P5C-AC-007 (SI-1): one answer; a doc it cannot read: skipped
         self.assertEqual(self.done({"roles/qa.md": None,
                                     "MODULE.md": at_line_12("`src/lines.ts`")},

@@ -185,6 +185,23 @@ class LintAdditionsTest(unittest.TestCase):  # MS015, MS022, MS040 alias/placeho
                 keywords=["catalog", "book", "catalogs"]))  # no generic word left
             self.assertNotIn(("MS023", "info"), lint_codes(root))
 
+    def test_a_component_path_with_a_space_or_a_hash(self):  # MS040, 0.3.0
+        with tempfile.TemporaryDirectory() as tmp:
+            root = copy_fixture(tmp)
+            (root / "src/catalog/Custom cells").mkdir(parents=True)
+            (root / "src/catalog/Custom cells/Row.py").write_text("x = 1\n")
+            (root / "src/catalog/v#1.json").write_text("{}\n")
+            with (root / "modules" / "catalog" / "MODULE.md").open("a") as fh:
+                fh.write("| Row | `src/catalog/Custom cells/Row.py` | a |\n"
+                         "| V1 | `src/catalog/v#1.json` | b |\n")
+            self.assertNotIn(("MS040", "warning"), lint_codes(root))
+            with (root / "modules" / "catalog" / "MODULE.md").open("a") as fh:
+                fh.write("| Gone | `src/catalog/v#2.json` | c |\n")  # missing: cut at `#`
+            _, env, _ = run_json("lint", "--root", str(root), "--fail-on", "never")
+            found = [f["message"] for f in env["data"]["findings"] if f["code"] == "MS040"]
+            self.assertEqual(len(found), 1, found)
+            self.assertIn("src/catalog/v", found[0])
+
     def test_component_aliases_and_placeholders_are_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(tmp)
