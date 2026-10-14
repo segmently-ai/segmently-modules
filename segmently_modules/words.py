@@ -51,6 +51,34 @@ def _verb_keys(w: str) -> set:
     return {w}
 
 
+_TOKEN = re.compile(r"\w+")
+_PART = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
+ONE_WORD = re.compile(r"\w+")
+
+
+def text_words(text: str) -> set:
+    """The lowercased `\\w+` words of `text` and the parts of its identifiers: `saveMeal`
+    gives `savemeal`, `save` and `meal`; `delete_entry` gives `delete_entry`, `delete` and
+    `entry`; `HTTPServer` gives `httpserver`, `http` and `server`."""
+    out = set()
+    for token in _TOKEN.findall(text):
+        out.add(token.lower())
+        parts = _PART.findall(token)
+        if len(parts) > 1:
+            out.update(p.lower() for p in parts)
+    return out
+
+
+def word_set_keys(words, normalize: bool) -> set:
+    """Every key of `words` (`word_keys` under `normalize`, else the words themselves)."""
+    if not normalize:
+        return set(words)
+    out: set = set()
+    for w in words:
+        out |= word_keys(w)
+    return out
+
+
 def normalizing(cfg: dict) -> bool:
     """Whether `[match] normalize` asks for `word_keys` (the default) — `none` is exact."""
     return cfg.get("normalize", "suffix") != "none"

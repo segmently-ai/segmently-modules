@@ -611,6 +611,8 @@ def _render_reconcile(d) -> None:
     added = sum(e["source"] == "imports" for e in d["edges"])
     print(f"edges         {len(d['edges'])} ({added} added from the imports)")
     for c in d["collisions"]:
+        if not c["owner"] and not any(c["files"].values()):
+            continue  # no holder's code holds it: the `dropped` line (or a floor item)
         owner = c["owner"] or "a tie"
         removed = f"; removed from {', '.join(c['removed'])}" if c["removed"] else ""
         # a tie has no owner: nothing is kept and nothing removed
@@ -618,6 +620,12 @@ def _render_reconcile(d) -> None:
         if kept:  # D14: the holders whose own files hold the keyword keep it
             removed += f"; kept by {', '.join(kept)} (their files hold it)"
         print(f"collision     '{c['keyword']}' — owner {owner}{removed}")
+    if d["dropped"]:
+        words = [x["keyword"] for x in d["dropped"]]
+        shown = ", ".join(words[:12]) + (f" and {len(words) - 12} more" if len(words) > 12 else "")
+        print(f"dropped       {len(words)} word(s) no holder's code holds, from every module "
+              f"that held them: {shown} — put one back in {d['staging_registry']} when a "
+              f"module owns it")
     for d_ in d["duplicates"]:
         where = ", ".join(f"{x['file']}:{x['line']}" for x in d_["definitions"])
         print(f"duplicate     {d_['name']} — {where}")

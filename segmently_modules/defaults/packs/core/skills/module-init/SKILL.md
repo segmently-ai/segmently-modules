@@ -100,7 +100,9 @@ If `segmently-modules` is not found, tell the user how to install it — the `se
 
    It adds the import edges, gives a keyword several new modules share to the one with the most
    files and removes it only from the modules whose code never mentions it (no negative
-   keyword), and lists the `judgement` items it will not decide. Ask the user about each
+   keyword), drops a keyword no holder's code mentions from every holder (`dropped`: show the
+   words in one line, and put one back only on the user's word), and lists the `judgement`
+   items it will not decide. Ask the user about each
    keyword tie (whether one module owns the word) and each keyword that could not be removed
    without dropping a module below the keyword minimum;
    report the duplicate names with their file:line (the user decides later whether code
