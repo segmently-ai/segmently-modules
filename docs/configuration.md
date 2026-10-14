@@ -84,6 +84,7 @@ Module routing used by `match`, `context` and `discover --task`: keyword routing
 | `negative_weight` | `-5` | score per matched `negative_keywords` phrase |
 | `min_score` | `3` | rows below this are dropped |
 | `top` | `8` | at most this many rows (`--top` overrides) |
+| `normalize` | `"suffix"` | `"suffix"`: a keyword and a task word match when one is a form of the other — the endings `-s`, `-es`, `-ies`, `-ed` and `-ing` are ignored on both sides (below); `"none"`: exact words, the matching of 0.2.1; any other value is exit 2 naming the key |
 | `mode` | `"lexical"` | `"lexical"`, `"semantic"` or `"hybrid"` (`--match` overrides); `semantic` and `hybrid` ask the user's own agent command (`SEGMENTLY_MODULES_AGENT_COMMAND`, below): `semantic` without one is refused (exit 2), `hybrid` without one runs lexically with a note; any other value is exit 2 naming the key. A mode from a config file (team, personal or pack) takes effect for `match`, `context` and `discover --task` only when the user opts in with `SEGMENTLY_MODULES_AGENT_ALLOW_REPO_MODE=1` (below); without it the run is lexical, its stdout byte-identical to `--match lexical`, with one stderr note. `--match` is the user's own choice and needs no opt-in. Every keyword call of the shipped skills, of the `agents-md` block and of a skill `packs new` scaffolds passes `--match lexical` (the skills still read the key to pick their own mode) |
 
 `lexical` (the default) is the keyword routing described below and changes nothing in any output.
@@ -93,9 +94,17 @@ agent's picks by reciprocal rank fusion (k = 60) and every fused row carries `so
 notes and the JSON shapes: [cli-contract.md](cli-contract.md#semantic-module-choice---match).
 There is no `[match.semantic]` table and no endpoint key: the engine has no network code.
 
-Matching is exact-token: a keyword or `negative_keywords` phrase must occur as a whole word (or
-whole phrase) in the task text — case-insensitive, with no stemming and no plural/singular
-normalization (`todo` does not match `todos` or `to-do`). Precisely: a boundary is enforced only
+Matching is by whole words: a keyword or `negative_keywords` phrase must occur as a whole word (or
+a run of whole words) in the task text, case-insensitive. Under `normalize = "suffix"` (the
+default) the forms of one word match each other: `save` matches "saves", "saved" and "saving",
+`entry` matches "entries", `stop` matches "stopped", so one form of a word is enough. The rule is
+a light one, by suffix: only an ASCII word of 4 letters or more is cut, a stem keeps 3 letters,
+and a word with no ending is never cut — `theme` never matches "them", `note` never "not", and
+`news`, `setting` and `evening` are words of their own (never `new`, `set`, `even`). A module
+that lists several forms of one word scores that word once. A keyword with a character that is
+not a letter, digit or `_` (`.epub`, `c++`, `modules/xyz`) matches exactly. Under
+`normalize = "none"` every keyword matches exactly (`todo` does not match `todos`). Precisely: a
+boundary is enforced only
 on an edge of the keyword that is itself a word character (letter, digit, `_`); a keyword that
 starts or ends with a non-word character has NO boundary on that side and can still match inside
 a longer token there — `.epub` matches inside `notebook.epub`, `c++` matches inside `c++17`. A
@@ -103,13 +112,13 @@ module with no matched keyword never gets a row, no matter what `negative_weight
 score; a row below `min_score` is dropped even with matched keywords. When nothing reaches
 `min_score`, `match` prints `no keyword matches (try rephrasing with domain terms, or use: list)` and
 `context` prints `no module matched (try domain terms, or: segmently-modules list)`; `discover --task` with
-no match simply omits the module (no message). Register every form a task is likely to use
-(singular AND plural, synonyms) rather than relying on this to generalize.
+no match simply omits the module (no message). Register the words tasks use (synonyms, not
+forms) rather than relying on this to generalize.
 
 Near misses: when nothing reaches `min_score`, `context` (JSON key `near_misses`, and its text)
 and `match` (text only; `match --json` stays the plain row list) list the modules and children
 that almost matched — a keyword that is not an exact hit but has a word sharing its first
-letters with a word of the task (`reminder` ~ `reminders`, `schedule` ~ `scheduling`: the first
+letters with a word of the task (`reminder` ~ `remind`, `auth` ~ `authentication`: the first
 5 letters, or all of the shorter word; both words at least 4 letters, so `api` and `tag` match
 exactly only), or exact hits whose score a negative keyword pulled below `min_score`. The text
 ends with `re-run with the module's own keyword in the task text, or read it directly: segmently-modules

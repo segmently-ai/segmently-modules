@@ -255,19 +255,19 @@ run it again. `create` warns (on stderr; it still creates the module) about keyw
 poorly: 3 characters or fewer, a generic word such as `data` or `list`, or a word whose plain
 plural or singular is missing (`task` without `tasks`).
 
-Matching (`match`, `context`, `discover --task`) is exact-token: a keyword matches a whole word
-in the task text, case-insensitive, with no stemming or plural handling — the keyword `todo`
-does not match a task that says "todos", `complete` does not match "completed". (The word
-boundary only applies on an edge of the keyword that is itself a letter/digit/`_`; a keyword
-starting or ending with punctuation, e.g. `.epub` or `c++`, can still match inside a longer
-token on that side.) Register the forms your team actually types (singular AND plural,
-synonyms). If nothing reaches `[match] min_score`, `context`/`match` say so (`no module matched
+Matching (`match`, `context`, `discover --task`) is by whole words, case-insensitive, and the
+forms of one word match each other: the keyword `save` matches a task that says "saving",
+`entry` matches "entries" (`[match] normalize`, on by default; `"none"` matches exact words
+only). One form per word is enough; register the words your team actually types (synonyms).
+(The word boundary only applies on an edge of the keyword that is itself a letter/digit/`_`; a
+keyword starting or ending with punctuation, e.g. `.epub` or `c++`, matches exactly and can
+still match inside a longer token on that side.) If nothing reaches `[match] min_score`, `context`/`match` say so (`no module matched
 (try domain terms, or: segmently-modules list)` / `no keyword matches (try rephrasing with domain terms, or
 use: list)`) and list the near misses — modules with a keyword that almost matches a task word:
 
 ```text
 no module matched (try domain terms, or: segmently-modules list)
-near  reminders                    reminder ~ reminders
+near  reminders                    reminder ~ remind
 re-run with the module's own keyword in the task text, or read it directly: segmently-modules show reminders
 ```
 

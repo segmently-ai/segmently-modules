@@ -6,7 +6,9 @@ import unittest
 from segmently_modules.match import near_misses
 from tests.helpers import make_repo, run, run_json
 
-WEIGHTS = {"keyword_weight": 3, "combination_weight": 2, "negative_weight": -5}
+WEIGHTS = {"keyword_weight": 3, "combination_weight": 2, "negative_weight": -5,
+           "normalize": "none"}  # the loose rule itself: forms are exact hits by default
+EXACT = "[match]\nnormalize = \"none\"\n"
 # (registry keyword, task text, the near entry expected for module `todo`, or None)
 LOOSE = [
     ("reminder", "send reminders daily", {"keyword": "reminder", "task_word": "reminders"}),
@@ -27,7 +29,7 @@ class LooseMatchTest(unittest.TestCase):  # P32-AC-001
     def test_loose_match_table(self):
         for keyword, text, expected in LOOSE:
             with self.subTest(keyword=keyword, text=text), tempfile.TemporaryDirectory() as tmp:
-                root = make_repo(tmp, {"todo": [keyword]})
+                root = make_repo(tmp, {"todo": [keyword]}, config=EXACT)
                 code, env, err = run_json("context", "--task", text, "--root", str(root))
                 self.assertEqual((code, err, env["data"]["modules"]), (0, "", []))
                 rows = env["data"]["near_misses"]
@@ -40,11 +42,23 @@ class LooseMatchTest(unittest.TestCase):  # P32-AC-001
     def test_an_exact_hit_is_never_also_a_near_miss(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp, {"todo": ["reminder", "reminders"]},
-                             config="[match]\nmin_score = 4\n")
+                             config=EXACT + "min_score = 4\n")
             _, env, _ = run_json("context", "--task", "reminder at noon", "--root", str(root))
         self.assertEqual(env["data"]["near_misses"],
                          [{"module": "todo", "score": 3, "keywords": ["reminder"],
                            "near": [{"keyword": "reminders", "task_word": "reminder"}]}])
+
+
+    def test_under_the_default_a_form_is_a_hit_and_a_prefix_still_a_hint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp, {"todo": ["reminder"], "auth": ["auth"]})
+            _, env, _ = run_json("context", "--task", "send reminders daily", "--root", str(root))
+            self.assertEqual(([m["module"] for m in env["data"]["modules"]],
+                              env["data"]["near_misses"]), (["todo"], []))
+            _, env, _ = run_json("context", "--task", "authentication flow", "--root", str(root))
+            self.assertEqual(env["data"]["near_misses"],
+                             [{"module": "auth", "score": 0, "keywords": [],
+                               "near": [{"keyword": "auth", "task_word": "authentication"}]}])
 
 
 class NearMissRowsTest(unittest.TestCase):  # P32-AC-002
@@ -87,7 +101,7 @@ class NearMissRowsTest(unittest.TestCase):  # P32-AC-002
 class WhereTheHintAppearsTest(unittest.TestCase):  # P32-AC-003
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
-        self.root = make_repo(self._tmp.name, {"todo": ["reminder", "task"]})
+        self.root = make_repo(self._tmp.name, {"todo": ["reminder", "task"]}, config=EXACT)
         self.R = ("--root", str(self.root))
 
     def tearDown(self):
