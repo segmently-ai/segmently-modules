@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-14
+
 ### Added
 
 - `eval routing` and `init verify` say how precise the routing is, not only whether the module is among the first three: `top1_hit_rate`, `mean_matched` (the modules a task matched on average) and, per module, `top1_hits` and `unused_keywords` (no task matched the keyword and no code file of the module holds it). None of them fails a run.
