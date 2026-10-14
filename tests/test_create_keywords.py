@@ -221,7 +221,7 @@ class OneLineHintsTest(unittest.TestCase):  # P5B-AC-045 (D15(c))
             "'review' does not match it — add it if tasks use it"])
 
 
-class NormalizedHintsTest(unittest.TestCase):  # 0.3.0: routing ignores word endings
+class NormalizedHintsTest(unittest.TestCase):  # routing ignores word endings now
     """Under `[match] normalize = "suffix"` (the default) `create` never asks for another form:
     it says when a keyword is a form of an earlier one, warns about a generic word in any of its
     forms (never a word of the module's own name) and about more distinct words than `[create]

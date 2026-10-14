@@ -156,7 +156,7 @@ class CollisionsTest(ReconcileRepo):  # P5B-AC-013 (SI-10), P5C-AC-001, P6-AC-03
         self.setUp()
         self.keywords("catalog", self.CATALOG)
         self.keywords("cart", self.CART)
-        row = self.collision("zeta")  # row 6: no file holds it — dropped from both (0.3.0)
+        row = self.collision("zeta")  # row 6: no file holds it — dropped from both now
         self.assertEqual((row["owner"], row["removed"]), (None, ["cart", "catalog"]))
         self.assertEqual(self.judged(), [])
         self.assertEqual(self.report()["dropped"], [{"keyword": "zeta",
@@ -179,7 +179,7 @@ class CollisionsTest(ReconcileRepo):  # P5B-AC-013 (SI-10), P5C-AC-001, P6-AC-03
                 self.assertIn("zeta", self.registry()["modules"]["cart"]["keywords"])
                 self.assertNotIn("negative_keywords", self.registry()["modules"]["cart"])
 
-    def test_forms_are_one_collision_and_identifiers_no_evidence(self):  # 0.3.0
+    def test_forms_are_one_collision_and_identifiers_no_evidence(self):
         self.keywords("catalog", self.CATALOG)
         self.keywords("cart", ["cart", "basket", "line", "total", "quantity", "zetas"])
         self.plant("packages/catalog/src", 2, "the zetas")  # a listed form, whole
@@ -191,7 +191,7 @@ class CollisionsTest(ReconcileRepo):  # P5B-AC-013 (SI-10), P5C-AC-001, P6-AC-03
                                "files": {"cart": 0, "catalog": 2}, "removed": ["cart"]})
         self.assertNotIn("zetas", self.registry()["modules"]["cart"]["keywords"])
 
-    def test_an_ownerless_word_and_the_floor(self):  # 0.3.0: dropped where the floor allows
+    def test_an_ownerless_word_and_the_floor(self):  # dropped where the floor allows
         self.keywords("catalog", self.CATALOG)
         self.keywords("cart", ["cart", "basket", "line", "total", "zeta"])  # exactly 5
         self.keywords("storefront", self.STOREFRONT[:-1] + ["Zetas"])

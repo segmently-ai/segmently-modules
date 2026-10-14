@@ -185,7 +185,7 @@ class LintAdditionsTest(unittest.TestCase):  # MS015, MS022, MS040 alias/placeho
                 keywords=["catalog", "book", "catalogs"]))  # no generic word left
             self.assertNotIn(("MS023", "info"), lint_codes(root))
 
-    def test_a_component_path_with_a_space_or_a_hash(self):  # MS040, 0.3.0
+    def test_a_component_path_with_a_space_or_a_hash(self):  # MS040
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(tmp)
             (root / "src/catalog/Custom cells").mkdir(parents=True)

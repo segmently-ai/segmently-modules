@@ -162,7 +162,7 @@ class VerifyRepo(unittest.TestCase):
         return code, json.loads(out)["data"], out
 
 
-class KeywordsTest(VerifyRepo):  # 0.3.0: a new module's keywords (FoodMate init, 2026-10-14)
+class KeywordsTest(VerifyRepo):  # a new module's keywords (FoodMate init, 2026-10-14)
     def test_too_many_words_or_a_generic_word_fails(self):
         many = [f"basket{chr(97 + i // 26)}{chr(97 + i % 26)}" for i in range(41)]
         self.edit(lambda m: (m["cart"].update(keywords=many),
@@ -196,7 +196,7 @@ class VerifyTest(VerifyRepo):  # P5B-AC-022 (SI-16, SI-17)
         written = json.loads((self.root / WORK / "verify.json").read_text())
         self.assertEqual(list(written), ["lint", "invented", "routing", "keywords",
                                          "staging_sha256", "passed"])
-        r = data["routing"]  # 0.3.0: how precise, never a gate
+        r = data["routing"]  # how precise, never a gate
         self.assertEqual(set(r) - {"hit_rate", "top", "tasks", "per_module", "hits",
                                    "min_hit_rate", "passed"},
                          {"top1_hit_rate", "mean_matched"})

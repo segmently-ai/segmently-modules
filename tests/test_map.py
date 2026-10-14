@@ -547,7 +547,7 @@ class InitKeysTest(MapRepo):  # P5A-AC-032 (the effect of [init] exclude and co_
         self.assertEqual([len(mapper.co_change(small, n)) for n in (2, 3, 4)], [2, 3, 3])
 
 
-class SizeSplitHintTest(MapRepo):  # 0.3.0: a 65k-line Swift app was one candidate
+class SizeSplitHintTest(MapRepo):  # a 65k-line Swift app was one candidate
     def repo(self, limit: str):
         swift = lambda n: "".join(f"let v{i} = {i}\n" for i in range(n))  # noqa: E731
         root = write_files(self.base / "app", {

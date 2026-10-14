@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The init writer's prompt asks for at most `[create] max_keywords` words that point to this module and no other — one form per word, no generic word, nothing another module owns, no word for the developer's own tools — and lists the other modules of the repository. `init done` refuses more than `max_keywords` distinct words and warns about generic keywords.
 - `create` no longer asks for the missing plural: it says when a keyword is a form of another one, and warns about generic words in any form and about more than `max_keywords` words (the plural hint stays under `normalize = "none"`).
 - `init reconcile` drops a keyword no holder's code holds from every module that holds it (as far as the keyword minimum allows; `dropped` in `reconcile.json`) and treats the forms of one word held by different modules as one collision. On the 76 ties of a real run this drops 68 words and leaves the 8 real disputes. The evidence stays a listed form, whole, in a file's path or text: counting every form and the parts of identifiers made generic verbs look owned by most modules.
+- The refusal of a root that still holds `.modsys/` stays, though 0.2.0 said it would go in this release: teams are still moving from modsys, and without it an un-migrated checkout would be read with the engine defaults. It goes once the old repositories are archived.
 
 ### Fixed
 

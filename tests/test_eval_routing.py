@@ -87,7 +87,7 @@ class HitsTest(RoutingRepo):  # P5B-AC-016
         self.assertEqual(lines[-1], "threshold 0.8: FAILED")
 
 
-class PrecisionTest(RoutingRepo):  # 0.3.0: how precise, not only whether the module is there
+class PrecisionTest(RoutingRepo):  # how precise, not only whether the module is there
     def test_first_place_modules_per_task_and_unused_words(self):
         path = self.tasks([("catalog isbn lookup", "catalog"),  # first
                            ("the cart basket page window and the isbn", "catalog"),  # third

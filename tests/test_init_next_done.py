@@ -572,7 +572,7 @@ class InventedAtDoneTest(DriverRepo):  # P5C-AC-004…007, 021, 022 (D2, SI-1, S
                 doc = table(name, path, header) if header else table(name, path)
                 self.assertEqual(self.done({"MODULE.md": doc}), (1 if problems else 0, problems))
 
-    def test_a_path_with_a_space_or_a_hash(self):  # 0.3.0 (FoodMate init, 2026-10-14)
+    def test_a_path_with_a_space_or_a_hash(self):  # FoodMate init, 2026-10-14
         cells = self.root / "packages/cart/src/Custom cells"
         cells.mkdir()
         (cells / "Row.ts").write_text("export const rowTotal = 1;\n")

@@ -1,7 +1,7 @@
 """A root that still holds the config of modsys 0.1.x (`.modsys/`) and no `.segmently-modules/`:
 every verb, `init`, `setup` and `adopt` exit 2 and write nothing, naming the rename command — the
 engine defaults never replace the team's config silently. An explicit `--config-dir` is the user's
-choice; with both directories present the new one wins. (Until 0.3.0.)"""
+choice; with both directories present the new one wins. (Kept while teams still migrate.)"""
 import shutil
 import tempfile
 import unittest
