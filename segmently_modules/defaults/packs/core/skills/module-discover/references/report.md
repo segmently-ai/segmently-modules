@@ -8,6 +8,8 @@ Shown in the conversation, in this shape. Modules in usage order — `modify`, `
 ```markdown
 ## Discovery: <task, one line>
 
+Search: <lexical | by meaning | hybrid> — <the setting or the user's words> — lexical <sure | unsure: reason | not run>
+
 ### <module>[/<child>] — usage: modify | consume | reference (score <average>)
 Why: <what the task needs from it; "named by the user" when it was>
 Docs:
@@ -15,8 +17,11 @@ Docs:
 - `<path>` (<role>): read, nothing for this task
 Docs to update: `<path>`, …
 Code:
-- `<file>:<line>` — `<symbol>` — <why: what the task touches there>
+- `edit` — `<file>:<line>` — `<symbol>` — <what changes there, one clause>
+- `read` — `<file>:<line>` — `<symbol>` — <why it was read: called as is / alternative / pattern to follow>
+Tests: add new — <what to cover>
 Risks / unknowns: <open questions, a doc the code contradicts, an assumption the plan must check>
+Likely consequence: <what the implementation will probably also need> — <the existing file it would touch, or "a new file: the plan decides where">
 
 ### Rejected
 - <module> — <reason> (score <average>, or "off-topic by its description")
@@ -33,6 +38,19 @@ Risks / unknowns: <open questions, a doc the code contradicts, an assumption the
 - A `reference` module has its main doc's lines and no `Code:` line.
 - `Code:` holds existing code only. A file the work will create is never listed: where new code
   goes is the plan's decision.
+- Every `Code:` line starts with its tag. `edit`: an existing file the change edits; its why
+  says what changes there, in one clause, never "relevant" or "related". `read`: a file called
+  or consulted as it is, a consumer, a pattern to follow, or an alternative — a file offered
+  with "or", "either" or "could also" is never `edit`, and its why says "alternative". Only
+  the `edit` lines are the files to change; the `read` lines are evidence.
+- `Tests:` one line per module with an `edit` line. An existing test file is `edit` only when
+  its assertion names the symbol or value the task changes, and this line then reads
+  `Tests: edit the lines above`; otherwise `Tests: add new — <what to cover>`, with no path.
+- `Likely consequence:` lines, none or more, under `Risks / unknowns`: what the implementation
+  will probably also need (an environment variable to read, an export to add, an import path a
+  test runner resolves) and the existing file it would touch, or "a new file: the plan decides
+  where". A consequence never enters `Code:` and never names a new path.
+- `Search:` is the first line under the title, in the form `references/choose.md` gives.
 - An empty section says "none"; it is never left out.
 
 ## JSON (`discovery-results.json`)
@@ -41,7 +59,7 @@ Only when the user asks, at the path the user names — the shape a planning pip
 
 ```json
 {
-  "version": "1.0",
+  "version": "1.1",
   "task": "<the task, verbatim>",
   "modules": [
     {
@@ -50,7 +68,8 @@ Only when the user asks, at the path the user names — the shape a planning pip
       "confidence": "high | medium | user_specified",
       "usage_type": "MODIFY | EXTEND | READ-ONLY",
       "documentation": {"module_md": "<main doc>", "<role>_md": "<role doc>"},
-      "files": [{"path": "<file>", "offset": 42, "limit": 30, "reason": "<symbol> — <why>"}]
+      "files": [{"path": "<file>", "offset": 42, "limit": 30, "reason": "edit — <symbol> — <what changes there>"},
+                {"path": "<file>", "offset": 7, "limit": 30, "reason": "read — <symbol> — <why it was read>"}]
     }
   ],
   "files_outside_modules": [{"path": "<file>", "offset": 1, "limit": 30, "reason": "<why>"}],
@@ -62,3 +81,4 @@ Only when the user asks, at the path the user names — the shape a planning pip
 `consume` and `reference` → `READ-ONLY`. `confidence`: `user_specified` for a module the user
 named, else `high` (average ≥ 7) or `medium`. `documentation` holds every doc step 5 read for the
 module, one key per role (`developer_md`, `qa_md`, …). `files[].offset` is the touch point's line.
+`files[].reason` starts with the tag of its `Code:` line: `edit — ` or `read — `.

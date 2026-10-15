@@ -122,7 +122,7 @@ class DiscoverContractTest(unittest.TestCase):  # D2: the host's MODE=discover c
         '"read, nothing for this task"',
         "Never a retelling of the doc.",
         # code: existing touch points only, never the files the work will create
-        "Record existing code only, as `file:line — symbol — why`",
+        "Record existing code only, as `<edit | read> — file:line — symbol — why`",  # DCP-AC-011
         "it never guesses the files the work will create",
         "where new code goes is the plan's decision",
         "No code search for a `reference` module.",
@@ -143,7 +143,9 @@ class DiscoverContractTest(unittest.TestCase):  # D2: the host's MODE=discover c
     REPORT = ["## Discovery: <task, one line>",
               "### <module>[/<child>] — usage: modify | consume | reference (score <average>)",
               "Why:", "Docs:", "(<role>): read, nothing for this task", "Docs to update:",
-              "Code:", "- `<file>:<line>` — `<symbol>` — <why: what the task touches there>",
+              "Code:", "- `edit` — `<file>:<line>` — `<symbol>` — <what changes there, one clause>",
+              "- `read` — `<file>:<line>` — `<symbol>` — <why it was read: called as is / "
+              "alternative / pattern to follow>",  # DCP-AC-011: the tagged lines
               "Risks / unknowns:", "### Rejected", "### Files outside every module",
               "### Missing files"]
 

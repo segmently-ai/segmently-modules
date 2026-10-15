@@ -47,8 +47,9 @@ ROUTING = [  # the sentences that make the table one decision
     "Read it top down; the first row that fits decides, so the user's words for this run win "
     "over `search.chooser`.",
     "The user's words count in any language.",
-    "`match.mode` is only the command line's default: a `lexical` one never skips the search by "
-    "meaning.",
+    # task-1 review M3: one reading only
+    "`match.mode` does not decide the mode, except that the `always` row keeps `semantic` for a "
+    "`semantic` one: a `lexical` one never skips the search by meaning.",
     "The keyword commands always pass `--match lexical`.",
 ]
 WHEN_UNSURE = [  # AC-007
@@ -61,15 +62,19 @@ FALLBACK = (  # AC-008
     "**A failing chooser** — no agent to hand the order to, an answer that is not JSON, or "
     "`choose --apply` exits 2 — never ends the run: answer the order yourself, every card read, "
     "by its rules (the **Elsewhere** path), and say so on the search line.")
-SEARCH_LINE = [  # AC-009
+OWN_ANSWER_FAILS = (  # task-1 review M7: the fallback has an exit
+    "If your own answer fails `choose --apply` too, use the keyword list (run the keyword command "
+    "when it has not run) and say so on the search line.")
+SEARCH_LINE = [  # AC-009; task-1 review M4: one three-part shape, `semantic` written `by meaning`
     "**The search line.** The first line under the report's title says how the candidates were "
     "chosen: `Search: <lexical | by meaning | hybrid> — <the setting or the user's words> — "
-    "lexical <sure | unsure: reason>`,",
-    "e.g. `Search: lexical — chooser skipped (when_unsure, lexical sure)`,",
+    "lexical <sure | unsure: reason | not run>`",
+    "(the mode `semantic` is written `by meaning`),",
+    "e.g. `Search: lexical — when_unsure, chooser skipped — lexical sure`,",
     "`Search: hybrid — when_unsure — lexical unsure: tie`,",
     "or, after a failing chooser, `Search: hybrid — always, chooser failed (no agent): answered "
     "in the session — lexical sure`.",
-    'No keyword command ran ("by meaning"): `lexical not run`.',
+    'No keyword command ran: `Search: by meaning — "by meaning" — lexical not run`.',
 ]
 
 
@@ -143,6 +148,11 @@ class FallbackTest(unittest.TestCase):  # DCP-AC-008 (the CLI side: test_search_
         self.assertEqual(body.count(FALLBACK), 1)
         self.assertLess(body.index(flat(HYBRID)), body.index(FALLBACK))
 
+    def test_an_own_answer_that_fails_too(self):  # task-1 review M7
+        body = flat(raw())
+        self.assertEqual(body.count(OWN_ANSWER_FAILS), 1)
+        self.assertEqual(body.index(OWN_ANSWER_FAILS), body.index(FALLBACK) + len(FALLBACK) + 1)
+
 
 class SearchLineTest(unittest.TestCase):  # DCP-AC-009
     def test_the_instruction_and_its_examples(self):
@@ -150,6 +160,17 @@ class SearchLineTest(unittest.TestCase):  # DCP-AC-009
         at = [body.find(s) for s in SEARCH_LINE]
         self.assertNotIn(-1, at)
         self.assertEqual(at, sorted(at))
+
+    def test_the_old_two_part_example_is_gone(self):  # task-1 review M4
+        self.assertNotIn("chooser skipped (when_unsure, lexical sure)", flat(raw()))
+
+
+class CardsTest(unittest.TestCase):  # DCP-AC-010, task-1 review M5: brief only via `[search] cards`
+    def test_the_skill_never_passes_cards(self):
+        root = CORE / "module-discover"
+        for path in [root / "SKILL.md", *sorted((root / "references").iterdir())]:
+            with self.subTest(file=path.name):
+                self.assertNotIn("--cards", path.read_bytes().decode("utf-8"))
 
 
 class SizeTest(unittest.TestCase):  # R-5.7: a signal, never a cap

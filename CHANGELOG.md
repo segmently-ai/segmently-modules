@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `code-map files TARGET --source-only` lists the module's source files only — no docs, no tests — and `--paths` prints them one per line, so an agent reads a short list instead of the full JSON; module-discover's code pass uses `code-map files <module> --source-only --paths`.
 - `[tests] globs`: the globs of test files that `--source-only` leaves out, added to the built-in ones (`**/tests/**`, `**/*.test.*`, `**/test_*.py` and the like, each at the root too).
 
+### Changed
+
+- module-discover's report tags every `Code:` line `edit` (an existing file the change edits, with what changes there in one clause) or `read` (called or consulted as it is, a consumer, a pattern to follow, an alternative); an existing test is an `edit` line only when it asserts the changed behaviour, else the module gets `Tests: add new — <what to cover>`; `Likely consequence:` lines under the risks name what the work will probably also need without putting a new path in `Code:`; the first line under the title, `Search: …`, says how the candidates were chosen; `discovery-results.json` is `version` `1.1`, each `files[].reason` starting with `edit — ` or `read — `.
+
 ## [0.3.0] - 2026-10-14
 
 ### Added

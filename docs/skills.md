@@ -114,7 +114,7 @@ lists the agent (the next `packs sync` copies its skills again).
 | Skill | Use it when | Scope | Main commands |
 |---|---|---|---|
 | `module-scout` | a task is still being discussed: a short context brief for the modules it names (by name or doc path) and the modules they hard-link, or — none named — a proposal of candidates it loads only after the user says so | read-only | `catalog`, `choose`, `show`, `related`, `context` |
-| `module-discover` | a task is agreed and the plan needs its complete context, or a branch needs review: the modules (verified by four questions, one hop of links, usage modify / consume / reference), what their docs say for every role that bears on the task, the existing code touch points (`file:line — symbol — why`, never the files the work will create), docs to update; JSON on request | read-only | `catalog`, `choose`, `show --all-roles`, `related`, `discover`, `code-map files` |
+| `module-discover` | a task is agreed and the plan needs its complete context, or a branch needs review: the modules (verified by four questions, one hop of links, usage modify / consume / reference), what their docs say for every role that bears on the task, the existing code touch points as `<edit | read> — file:line — symbol — why` (never the files the work will create), each tagged `edit` (an existing file the change edits) or `read` (called or consulted as it is, a consumer, a pattern, an alternative), a tests line (an existing test is an `edit` line only when it asserts the changed behaviour, else `Tests: add new — …`), `Likely consequence:` lines under the risks, docs to update; JSON on request (`version` `1.1`, each `files[].reason` starting with the tag) | read-only | `catalog`, `choose`, `show --all-roles`, `related`, `discover`, `code-map files` |
 | `module-research` | one question about a module needs a deep answer with file:line evidence and doc/code gaps | read-only | `catalog`, `choose`, `show --all-roles`, `related`, `code-map files`, `lint` |
 | `module-sync` | a work session is done — it changed module code or only revealed module knowledge: takes the session's plan goal, decisions with the rejected alternatives, discoveries, gotchas and rules first and the change second, prints its findings and a proposal per module (interactive on request: `ok / skip / edit`), places each item in the doc its readers look in (a doc another skill owns is flagged, never hand-edited), brings keywords and links in line, runs the sync hooks, checks `ci`, reports its decisions and the budget action items | writes docs and registry fields | `sync-instructions` (`--module` for a session without a code change), `catalog`, `choose`, `registry`, `propose`, `sync`, `ci` |
 | `module-roles` | a role is new and the existing modules lack its doc: declares the role when it is undeclared, shows a dry run, writes one doc per module, fills each from that module's code and docs, then `lint` and `next` | writes the role's docs (never over an existing one) | `roles list`, `roles add`, `lint`, `next` |
@@ -210,8 +210,9 @@ the run ("by meaning", "only lexical") first, then `[search] chooser` — `alway
 path above), `when_unsure` (the keyword command first; the chooser runs only when the result's
 `lexical_confidence.level` is `unsure`, and the lists merge as in `hybrid`) or `never` (keywords
 only). A chooser that fails (no agent, an answer that is not JSON, `choose --apply` exit 2) never
-ends the run: the skill answers the order itself, every card read. The report's first line says
-how the candidates were chosen, e.g. `Search: lexical — chooser skipped (when_unsure, lexical sure)`.
+ends the run: the skill answers the order itself, every card read, and uses the keyword list
+when that answer fails `choose --apply` too. The report's first line says
+how the candidates were chosen, e.g. `Search: lexical — when_unsure, chooser skipped — lexical sure`.
 `[search] cards = "brief"` makes every work order compact (`segmently-modules choose --cards brief`).
 
 **The choosing agent.** The `segmently-modules` plugin ships one read-only Claude Code subagent,
