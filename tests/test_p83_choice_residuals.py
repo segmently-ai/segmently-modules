@@ -832,7 +832,7 @@ class DocsTest(unittest.TestCase):
         return next(ln for ln in text.splitlines() if ln.startswith(start))
 
     def test_catalog_cell(self):  # P83-AC-030
-        cell = self.row("| `catalog` |")
+        cell = self.row("| `catalog [--settings]` |")  # the header names its flag
         self.assertNotIn("is exit `2` here too", cell)
         self.assertIn("a malformed `SEGMENTLY_MODULES_AGENT_COMMAND` or `SEGMENTLY_MODULES_AGENT_TIMEOUT` keeps "
                       "`catalog` at exit `0` with `match.semantic` false and one stderr note "

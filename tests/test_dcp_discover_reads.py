@@ -1,7 +1,9 @@
 """module-discover reads with fewer turns and less code (DCP-AC-025, DCP-AC-035): one rule under
-`## Steps`, binding every step, runs the independent read commands of one step together — one
-Bash call or parallel tool calls — within each step's own scope, and never batches a command that
-needs an earlier output; step 6 reads the files the search found outline first, in one call — their
+`## Steps`, binding every step, runs the independent read commands of one step together — parallel
+tool calls (a doc: its own Read), or one Bash call only when every output is short, a long output
+cut to a preview being read back from the file it names (final review I-1) — within each step's
+own scope, and never batches a command that needs an earlier output; step 6 reads the files the
+search found outline first, in one call — their
 signatures with line numbers, the example pattern widened for the language — and then only from
 the signature above each line the change lands on to its body's end, not whole files; that
 signature names the code line's symbol. The outline example is a real command: it lists the
@@ -21,25 +23,31 @@ from tests.test_builtin_skills import section
 ENGINE = Path(__file__).resolve().parents[1]
 SKILL = builtin_packs_root() / "core/skills/module-discover/SKILL.md"
 BATCH = [  # DCP-AC-025, in this order
-    "Run the independent read commands of one step together — in one Bash call (`a; b; c`, or a "
-    "loop) or as parallel tool calls — instead of one per turn:",
+    # final review I-1: a Bash batch only of short outputs; a doc is read by its own Read
+    "Run a step's independent read commands together, not one per turn: as parallel tool calls "
+    "(docs: one Read each), or in one Bash call (`a; b; c`) when every output is short —",
     "step 2's `show` of every candidate, step 3's `related` of every kept module, step 5's "
-    "`show --all-roles` of every `modify` or `consume` module and then the docs they list, step "
-    "6's searches of the same modules.",  # review I-2: the steps' own scope
+    "`show --all-roles` of every `modify` or `consume` module, step 6's code lists and "
+    "outlines.",  # review I-2: the steps' own scope
+    # final review I-1: a cut output is read back, never used as it is
+    "A long output may be cut to a preview: read the file it names, or rerun narrower.",
     "Never batch commands whose input depends on an earlier output (a split module's child after "
     "its INDEX, step 3 after step 2's scores, step 6's repository-wide search after an empty "
     "module search).",  # review M-1
 ]
+NOT_BATCHED = (  # final review I-1: outputs that can be long never join a Bash batch
+    "and then the docs they list", "step 6's searches", "in one Bash call (`a; b; c`, or a loop) "
+    "or as parallel tool calls")
 EXAMPLES = {"2": "segmently-modules show <module> --json",  # the step each example names runs it
             "3": "segmently-modules related <module> --json",
             "5": "segmently-modules show <module> --all-roles --json"}
-OUTLINE = [  # DCP-AC-035, in this order (review I-1, M-3)
+OUTLINE = [  # DCP-AC-035, in this order (review I-1, M-3; final review M-2: `<path>`, M-5)
     "Read the files the search found outline first, in one call: their signatures with line "
-    "numbers (e.g. `git grep -n -E '^(export |def |class |func |pub )' -- <file> …`, widened for "
-    "the language — it misses indented methods, `async`, `function`, `fn`, modifiers — or a symbol "
-    "tool).",
+    "numbers (e.g. `git grep -n -E '^(export |def |class |func |pub )' -- <path> …`, widened for "
+    "the language — it misses indented methods, `async`, `function`, `fn`, modifiers, test "
+    "blocks — or a symbol tool).",
     "Then read only from the signature above each line the change lands on to its body's end "
-    "(Read with an offset and a limit, or `sed -n '<from>,<to>p' <file>`), not whole files.",
+    "(Read with an offset and a limit, or `sed -n '<from>,<to>p' <path>`), not whole files.",
     "That signature names the code line's `symbol`; never guess one.",
 ]
 FILES = {  # bookshop sources in four languages: path -> (text, the outline git grep prints)
@@ -88,7 +96,7 @@ class BatchingTest(unittest.TestCase):  # DCP-AC-025
         found = at(body, BATCH)
         self.assertNotIn(-1, found)
         self.assertEqual(found, sorted(found))
-        self.assertEqual([body.count(p) for p in BATCH], [1, 1, 1])
+        self.assertEqual([body.count(p) for p in BATCH], [1, 1, 1, 1])
         self.assertLess(found[-1], body.index("1. **Candidates.**"))  # before the first step
         self.assertEqual(flat(raw()).count(BATCH[0]), 1)  # once in the whole skill
 
@@ -96,7 +104,17 @@ class BatchingTest(unittest.TestCase):  # DCP-AC-025
         body = flat(steps())
         self.assertIn("Never batch commands whose input depends on an earlier output", body)
         self.assertIn("step 6's repository-wide search after an empty module search", body)
-        self.assertIn("the rest of the repository only when that gives nothing", step(6))
+        self.assertIn("the rest of the repository only after an empty module search", step(6))
+
+    def test_only_short_outputs_join_a_bash_batch(self):  # final review I-1
+        body = flat(raw())
+        for gone in NOT_BATCHED:
+            with self.subTest(gone=gone):
+                self.assertNotIn(gone, body)
+        rule = flat(steps()).split("1. **Candidates.**", 1)[0]
+        self.assertNotIn("git grep", rule)  # a search is never named as a Bash batch
+        self.assertIn("parallel tool calls (docs: one Read each)", rule)
+        self.assertIn("when every output is short", rule)
 
     def test_each_example_names_the_step_that_runs_it(self):
         body = flat(steps())
@@ -104,7 +122,7 @@ class BatchingTest(unittest.TestCase):  # DCP-AC-025
             with self.subTest(step=number):
                 self.assertIn(f"step {number}'s `{command.split()[1]}", body)
                 self.assertIn(f"`{command}`", step(int(number)))
-        self.assertIn("step 6's searches of the same modules", body)
+        self.assertIn("step 6's code lists and outlines", body)
         for scoped in (5, 6):  # the rule's scope is the step's own (review I-2)
             self.assertIn("`modify` or `consume` module", step(scoped))
         self.assertIn("git grep -n -e <term>", step(6))
@@ -122,6 +140,7 @@ class OutlineFirstTest(unittest.TestCase):  # DCP-AC-035
                        "body's end", "not whole files", "never guess one"):
             self.assertIn(phrase, body)
         self.assertEqual(flat(raw()).count(OUTLINE[0]), 1)  # step 6 only
+        self.assertNotIn("<file>", body)  # final review M-2: `<file>` is the terms file
 
     def test_language_neutral(self):
         pattern = self.command()[4]  # the pattern names several languages' forms, no single one
@@ -129,7 +148,8 @@ class OutlineFirstTest(unittest.TestCase):  # DCP-AC-035
             self.assertIn(form, pattern)
         self.assertIn("e.g. `git grep", step(6))  # an example, not the only way …
         self.assertIn("widened for the language — it misses indented methods, `async`, "
-                      "`function`, `fn`, modifiers — or a symbol tool", step(6))  # … nor a whole one
+                      "`function`, `fn`, modifiers, test blocks — or a symbol tool",
+                      step(6))  # … nor a whole one (final review M-5: a test's cases too)
 
     def command(self) -> list[str]:
         spans = re.findall(r"`(git grep -n -E [^`]+)`", step(6))
@@ -139,7 +159,7 @@ class OutlineFirstTest(unittest.TestCase):  # DCP-AC-035
     def test_the_outline_command_prints_signatures_not_bodies(self):
         argv = self.command()
         self.assertEqual(argv[:4], ["git", "grep", "-n", "-E"])
-        self.assertEqual(argv[-3:], ["--", "<file>", "…"])  # the found files, in one call
+        self.assertEqual(argv[-3:], ["--", "<path>", "…"])  # the found files, in one call
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "repo"
             for rel, (text, _) in FILES.items():
@@ -165,6 +185,10 @@ class ChangelogTest(unittest.TestCase):  # R-5
                                   "outline-first")]
         self.assertEqual(len(lines), 1)
         self.assertTrue(lines[0].endswith(", not whole files."), lines[0])  # review M-2
+        self.assertIn("as parallel tool calls (each doc its own Read) or, when every output is "
+                      "short, in one Bash call", lines[0])  # final review I-1
+        self.assertIn("an output cut to a preview is read from the file it names", lines[0])
+        self.assertNotIn("in one Bash call or as parallel tool calls", lines[0])
 
 
 if __name__ == "__main__":

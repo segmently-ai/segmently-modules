@@ -68,6 +68,13 @@ class PackKeysAndTemplatesTest(PackLintRepo):  # P4A-AC-012
                   + 'enabled = true\nstandard = false\napplies_when = "ui"\n' + SKILLS)
         self.assertEqual(self.findings(), [])
 
+    def test_a_pack_may_set_search_and_tests(self):  # the config sections a pack may set
+        self.assertIn("search", PACK_SECTIONS)
+        self.assertIn("tests", PACK_SECTIONS)
+        self.pack('[search]\nchooser = "when_unsure"\ncards = "brief"\n'
+                  '[tests]\nglobs = ["fixtures/**"]\n')
+        self.assertEqual(self.findings(), [])
+
     def test_role_templates(self):
         (self.root / ".segmently-modules/outside.md").write_text("# outside\n")
         self.pack('[roles.reviewer]\ntemplate = "roles/missing.md"\n'

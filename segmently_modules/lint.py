@@ -55,7 +55,8 @@ _NOT_A_NAME = re.compile(r"[<*?\[{$…]")  # a placeholder or a glob in prose na
 _QUERY = re.compile(r"(\.[A-Za-z0-9]+)\?.*\Z|\?+\Z")
 # the top-level keys of a pack.toml besides its meta keys: every config section the engine reads
 PACK_SECTIONS = ("paths", "registry", "budgets", "match", "lint", "create", "coverage", "ci",
-                 "packs", "roles", "fields", "code_map", "hooks", "schema_version")
+                 "packs", "roles", "fields", "code_map", "hooks", "search", "tests",
+                 "schema_version")
 
 
 @dataclass

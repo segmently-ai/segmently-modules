@@ -4,13 +4,14 @@ Run `segmently-modules catalog --settings --json`; read `match.mode` and `search
 given. For the keyword half write 1–3 short English queries to a temporary `<file>` (steps 6 and 7
 use it too): the domain terms and code identifiers the task implies (registry keywords are English
 and match whole words). The user may set the model ("use opus") and the depth ("search deep":
-`choose --effort deep`; `<reasoning>` follows it).
+`choose --effort deep`; `<reasoning>` follows it). These words set the chooser's model and depth
+when it runs; they never make it run.
 
 **The mode.** One table decides whether the chooser (the search by meaning) runs. Read it top
 down; the first row that fits decides, so the user's words for this run win over
-`search.chooser`. The user's words count in any language. `match.mode` does not decide the
-mode, except that the `always` row keeps `semantic` for a `semantic` one: a `lexical` one never
-skips the search by meaning. The keyword commands always pass `--match lexical`.
+`search.chooser`. The user's words count in any language. `match.mode` decides nothing here,
+except that the `always` row keeps `semantic` for a `semantic` one. The keyword commands always
+pass `--match lexical`.
 
 | The user's words, this run | `search.chooser` | Keyword result | Mode |
 |---|---|---|---|
@@ -21,9 +22,10 @@ skips the search by meaning. The keyword commands always pass `--match lexical`.
 | none | `when_unsure` | `unsure` | `hybrid`: the chooser runs after the keyword command |
 | none | `never` | any | `lexical`: no chooser |
 
-`when_unsure`: run the keyword command first; its `lexical_confidence.level` is the keyword
-result. On `sure` the keyword list is the candidates: no `choose` command and no chooser agent.
-On `unsure` run the by-meaning half too, then merge the lists as `hybrid` does.
+`when_unsure`: run the keyword command first, on its own; its `lexical_confidence.level` is the
+keyword result. On `sure` the keyword list (`modules`, not only `lexical_confidence.top`) is the
+candidates: no `choose` command and no chooser agent. On `unsure` run the by-meaning half too,
+then merge the lists as `hybrid` does.
 
 - By meaning (`semantic`, `hybrid`): write the text, verbatim, to `<task file>`. **Claude Code:**
   `segmently-modules choose --task-file <task file> > <order file>`; give `<order file>`'s path to the

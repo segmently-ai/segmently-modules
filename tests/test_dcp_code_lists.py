@@ -16,7 +16,7 @@ from pathlib import Path
 
 from segmently_modules import config
 from segmently_modules.config import builtin_packs_root
-from tests.helpers import NO_AUTO_MAINTENANCE, copy_fixture, init_git, run, run_json
+from tests.helpers import NO_AUTO_MAINTENANCE, copy_fixture, git, init_git, run, run_json
 from tests.test_p81_skill_text import between, command, filled, section, text
 
 ENGINE = Path(__file__).resolve().parents[1]
@@ -52,6 +52,7 @@ DOCS = ("modules/catalog/MODULE.md", "modules/catalog/roles/designer.md",
 class Repo(unittest.TestCase):
     """A bookshop copy whose `catalog` has docs, sources and a test file in every default form."""
     extra_config = ""
+    extra_files: tuple = ()
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -59,7 +60,7 @@ class Repo(unittest.TestCase):
         self.root = copy_fixture(self._tmp.name)
         self.team = self.root / ".segmently-modules/config.toml"
         self.team.write_text(RULE + self.extra_config, encoding="utf-8")
-        for rel in [*SOURCES, *TESTS.values()]:
+        for rel in [*SOURCES, *TESTS.values(), *self.extra_files]:
             path = self.root / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             if not path.exists():
@@ -118,6 +119,20 @@ class SourceOnlyTest(Repo):  # DCP-AC-019
     def test_a_docs_only_module_has_no_source(self):
         env = self.files("checkout", "--source-only")
         self.assertEqual(env["data"], {"target": "checkout", "files": [], "total": 0})
+
+
+class DocsAndCodeTest(Repo):  # task-3 review M-5: `via` holds `docs` and a code source
+    extra_config = ('[[code_map]]\nid = "catalog-doc-as-code"\nmodule = "catalog"\n'
+                    'globs = ["modules/catalog/roles/qa.md"]\n')
+
+    def test_a_doc_a_rule_routes_as_code_is_kept(self):
+        every = {f["path"]: f["via"] for f in self.files()["data"]["files"]}
+        self.assertEqual(every["modules/catalog/roles/qa.md"],
+                         ["docs", "code_map:catalog-doc-as-code"])  # `docs` first
+        kept = [f["path"] for f in self.files("catalog", "--source-only")["data"]["files"]]
+        self.assertEqual(kept, sorted([*SOURCES, "modules/catalog/roles/qa.md"]))
+        for path in set(DOCS) - {"modules/catalog/roles/qa.md"}:  # docs only: left out
+            self.assertNotIn(path, kept)
 
 
 class PathsTest(Repo):  # DCP-AC-020
@@ -258,6 +273,25 @@ class TestGlobsAddTest(Repo):  # DCP-AC-021
         self.assertIn("pack.toml: [tests] globs: expected a list of non-empty strings", err)
 
 
+class RootLevelGlobTest(Repo):  # task-3 review M-2: `**/` needs a directory before it
+    extra_files = ("fixtures/shelf.json",)
+    rule = '[[code_map]]\nid = "catalog-fixtures"\nmodule = "catalog"\nglobs = ["fixtures/**"]\n'
+    extra_config = rule + '[tests]\nglobs = ["**/fixtures/**"]\n'
+
+    def kept(self):
+        return [f["path"] for f in self.files("catalog", "--source-only")["data"]["files"]]
+
+    def test_the_root_needs_its_own_glob(self):
+        kept = self.kept()
+        self.assertIn("fixtures/shelf.json", kept)  # `**/fixtures/**` misses the root
+        self.assertNotIn("src/catalog/fixtures/books.json", kept)
+        self.team.write_text(RULE + self.rule + '[tests]\nglobs = ["fixtures/**", "**/fixtures/**"]\n',
+                             encoding="utf-8")  # the documented pair covers both
+        kept = self.kept()
+        self.assertNotIn("fixtures/shelf.json", kept)
+        self.assertNotIn("src/catalog/fixtures/books.json", kept)
+
+
 # Without the new flags, `code-map list`, `add` and `files` print what the base printed (AC-027);
 # the strings were taken from the base engine on this fixture, with the `[tests]` table set.
 LIST_TEXT = "catalog-code             catalog                  src/catalog/**, *catalog*, __tests__/**, tests/**, test/**\n"
@@ -307,6 +341,7 @@ class UnflaggedOutputsTest(Repo):  # the regression pin: byte-identical to the b
 
 class DiscoverSkillTextTest(unittest.TestCase):  # DCP-AC-024
     COMPACT = "segmently-modules code-map files <module> --source-only --paths"
+    LOOKUP = "git grep -l -e <term> -- $(segmently-modules code-map files <module> --paths)"
 
     def skill(self) -> str:
         path = builtin_packs_root() / "core/skills/module-discover/SKILL.md"
@@ -319,10 +354,14 @@ class DiscoverSkillTextTest(unittest.TestCase):  # DCP-AC-024
     def test_step_6_names_the_compact_list(self):
         step = self.step6()
         self.assertIn(f"`show`'s `code` and `code_globs`, or `{self.COMPACT}`", step)
-        self.assertIn("its source files, one per line, docs and tests left out", step)
+        self.assertIn("its source files, one per line, docs and tests left out (empty: nothing "
+                      "to search)", step)  # task-3 review M-6b
         self.assertIn("never `code-map files … --json` without `--source-only`", step)
         self.assertIn("source files first, tests last — searched in the module's test paths "
-                      "only for the behaviour the task changes", step)
+                      "only for the behaviour the task changes, found with "
+                      f"`{self.LOOKUP}`;", step)  # task-3 review M-6a
+        self.assertIn("the rest of the repository only after an empty module search", step)
+        self.assertNotIn("only when that gives nothing", step)  # task-3 review M-6c
         self.assertEqual(command("module-discover", "segmently-modules code-map files"),
                          self.COMPACT)
 
@@ -335,6 +374,31 @@ class DiscoverSkillTextTest(unittest.TestCase):  # DCP-AC-024
                 if "--json" in m.group(1) and "--source-only" not in m.group(1):
                     self.assertTrue(body[m.end():].startswith(" without `--source-only`"))
         self.assertNotIn("segmently-modules code-map files <module> --json", body)
+
+    def test_the_full_list_is_never_printed(self):  # task-3 review M-6a
+        body = " ".join(self.skill().split())
+        spans = re.findall(r"`([^`]*code-map files[^`]*)`", body)
+        full = [s for s in spans if "--paths" in s and "--source-only" not in s]
+        self.assertEqual(full, [self.LOOKUP])  # only inside `$(…)`, as git grep's paths
+
+    def test_the_test_lookup_prints_the_hits_not_the_list(self):  # task-3 review M-6a
+        with tempfile.TemporaryDirectory() as tmp:
+            root = copy_fixture(tmp)
+            (root / ".segmently-modules/config.toml").write_text(RULE, encoding="utf-8")
+            for rel, body in (("src/catalog/search.py", "def shelf_price():\n    return 1\n"),
+                              ("src/catalog/tests/test_search.py",
+                               "assert shelf_price() == 1\n"),
+                              ("src/catalog/tests/test_other.py", "assert True\n")):
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text(body, encoding="utf-8")
+            init_git(root)
+            args, _ = filled(self.LOOKUP.split("$(", 1)[1].rstrip(")"), {"<module>": "catalog"})
+            code, listed, err = run(*args, "--root", str(root))
+            self.assertEqual((code, err), (0, ""))
+            self.assertIn("src/catalog/tests/test_other.py\n", listed)  # the list the shell
+            hits = git(root, "grep", "-l", "-e", "shelf_price", "--", *listed.split())  # passes on
+        self.assertEqual(hits.splitlines(), ["src/catalog/search.py",
+                                             "src/catalog/tests/test_search.py"])
 
     def test_the_command_runs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -361,15 +425,21 @@ class DocsTest(unittest.TestCase):  # R-5: the table, the flags and the changelo
         for glob in config.DEFAULT_TEST_GLOBS:
             self.assertIn(f"`{glob}`", part)
         for phrase in ("| `globs` |", "is ADDED to the built-in list", "never removes a built-in glob",
-                       "naming the file and `[tests] globs`", '[tests]\nglobs = ["**/fixtures/**"'):
+                       "naming the file and `[tests] globs`",
+                       '[tests]\nglobs = ["fixtures/**", "**/fixtures/**"]'):  # review M-2
             self.assertIn(phrase, part)
+        self.assertIn("A glob of yours follows the same rule: `**/fixtures/**` leaves out "
+                      "`src/fixtures/x` but not a root-level `fixtures/x`; add `fixtures/**` as "
+                      "well.", " ".join(part.split()))  # task-3 review M-2
 
     def test_the_flags(self):
         doc = " ".join(self.read("docs/configuration.md").split())
         self.assertIn("`--source-only` keeps the TARGET's source files", doc)
-        self.assertIn("`--paths` prints one repository-relative path per line, sorted", doc)
-        row = [ln for ln in self.read("docs/cli-contract.md").splitlines()
-               if ln.startswith("| `code-map list\\|add\\|files` |")]
+        self.assertIn("`--paths` prints one repository-relative path per line, sorted, without "
+                      "`via`", doc)  # task-3 review M-3
+        self.assertNotIn("without the sources", doc)
+        row = [ln for ln in self.read("docs/cli-contract.md").splitlines()  # final review M-6
+               if ln.startswith("| `code-map list\\|add\\|files [--source-only] [--paths]` |")]
         self.assertEqual(len(row), 1)
         for phrase in ("files `--source-only`: the same shape", "files `--paths`: no JSON",
                        "with `--json` exit 2", "`--source-only` and `--paths` with `list` or `add` exit 2"):
@@ -380,6 +450,22 @@ class DocsTest(unittest.TestCase):  # R-5: the table, the flags and the changelo
         unreleased = log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
         self.assertIn("`code-map files TARGET --source-only`", unreleased)
         self.assertIn("`[tests] globs`", unreleased)
+        # task-3 review M-1 (final review: and `--c`): the abbreviations the new flags made ambiguous
+        line = [ln for ln in unreleased.splitlines() if "abbreviat" in ln]
+        self.assertEqual(len(line), 1)
+        for phrase in ("`code-map add … --pat`", "`--pa`", "`--p`", "`code-map files … --s`",
+                       "`choose --c`", "spell options in full"):
+            self.assertIn(phrase, line[0])
+
+    def test_the_abbreviations_are_ambiguous(self):  # what that changelog line says
+        for argv, flag in ((("code-map", "add", "x", "--pat", "lib/{module}/**", "--dry-run"),
+                            "--pat"),
+                           (("code-map", "files", "catalog", "--s"), "--s"),
+                           (("choose", "--task", "t", "--c", "x"), "--c")):
+            with self.subTest(argv=argv):
+                code, out, err = run(*argv)
+                self.assertEqual((code, out), (2, ""))
+                self.assertIn(f"ambiguous option: {flag} could match", err)
 
 
 if __name__ == "__main__":

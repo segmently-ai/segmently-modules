@@ -158,7 +158,8 @@ one it fixes. MS050 and MS051 are never `known`: they describe the change since 
 ## Choosing modules by meaning
 
 Four skills (`module-scout`, `module-discover`, `module-research`, `module-sync`) share one
-module-choice step. The skill runs `segmently-modules catalog --json`, reads `match.mode` and `search` (the
+module-choice step. The skill runs `segmently-modules catalog --json` (module-discover:
+`segmently-modules catalog --settings --json`, the settings alone), reads `match.mode` and `search` (the
 models and the depth), then:
 
 - **By meaning** (`semantic` or `hybrid`): the skill writes the text, verbatim and in any
@@ -183,10 +184,11 @@ models and the depth), then:
 Every task text reaches Segmently Modules through a file (`--task-file`), never as a quoted argument: an
 apostrophe, a `$name` or a backtick in it arrives as written.
 
-**Hybrid is the default**: the mode is `hybrid` unless you say otherwise ("only lexical", "by
-meaning", in any language) or `match.mode` is `semantic`. A `lexical` config — the engine's own
-default `[match] mode = "lexical"` too — is only the command line's default and never skips the
-search by meaning, which needs no setting (the mode a plain `segmently-modules match` uses and the mode of
+**Hybrid is the default** (module-discover: unless `[search] chooser` says otherwise, below): the
+mode is `hybrid` unless you say otherwise ("only lexical", "by meaning", in any language) or
+`match.mode` is `semantic`. A `lexical` config — the engine's own default `[match] mode = "lexical"`
+too — is only the command line's default and never skips the search by meaning (module-discover:
+unless `[search] chooser` says otherwise, below), which needs no setting (the mode a plain `segmently-modules match` uses and the mode of
 the skills are separate: a skill always has your agent). Say "use opus" for the model (the Agent
 tool's `model:`, `codex exec -m`) and "search deep" for the depth: the skill adds
 `--effort deep` to `segmently-modules choose`, and on the Codex path `<reasoning>` follows it. Set the models
@@ -194,7 +196,8 @@ and the depth once in the team or personal config (`[search] claude_model`, `cod
 `effort`; `claude_model` is a Claude Code subagent model alias — `sonnet`, `opus` or `haiku` — as
 a subagent takes no full model id; see
 [configuration.md](configuration.md#the-agent-command-and-search)).
-`[match] mode = "semantic"` makes meaning-only the skills' default. A plain CLI `match`, `context`
+`[match] mode = "semantic"` makes meaning-only the skills' default (module-discover: only under
+`[search] chooser = "always"`). A plain CLI `match`, `context`
 or `discover --task` call runs it only with `SEGMENTLY_MODULES_AGENT_ALLOW_REPO_MODE=1` in the user's
 environment (without it the run is lexical, with one stderr note; with it and without
 `SEGMENTLY_MODULES_AGENT_COMMAND` the call refuses, exit 2). It never stops a skill: the skills' keyword

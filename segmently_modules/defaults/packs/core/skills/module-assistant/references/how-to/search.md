@@ -15,6 +15,16 @@ work order for an agent to pick modules from the cards (`segmently-modules catal
 `--run` asks the agent command. Effort: `quick`, `standard` or `deep`; default `[search]
 effort`.
 
+## When module-discover runs the chooser
+module-discover reads `segmently-modules catalog --settings --json` and runs the chooser (the search by
+meaning) as `[search] chooser` says: `always` (the default: every run), `when_unsure` (only when
+the keyword result is unsure — no keyword hit, a tie at the top, or a top score below
+`[search] sure_min_score`) or `never`. To stop it from always running the chooser, set
+`chooser = "when_unsure"` (or `"never"`) under `[search]` in `.segmently-modules/config.toml` for
+the team or in `config.user.toml` for yourself. The user's words for one run ("by meaning", "only
+lexical") still win. `[search] cards = "brief"` (or `segmently-modules choose --cards brief`) makes the
+work order smaller: cards without keywords.
+
 ## A task keeps reaching the wrong module
 Tune the target's keywords: `segmently-modules registry append <module> keywords '"<word>"' --dry-run`. A
 generic word that belongs elsewhere: `negative_keywords` on the module that wrongly matches; two

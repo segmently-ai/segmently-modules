@@ -24,4 +24,4 @@ say plainly when Segmently Modules has no way to do it, naming the closest thing
 | registry fields and code mapping: declare a field, set a value, code pointers, `[[code_map]]`, coverage | `references/how-to/fields-code.md` |
 | keeping docs current: after a change, drift, proposals for pipelines, the CI gate | `references/how-to/upkeep.md` |
 | packs, skills and hooks: a team pack, sync or eject a skill, `post_sync` hooks | `references/how-to/packs-hooks.md` |
-| finding modules for a task: match modes, choose, keywords, routing eval | `references/how-to/search.md` |
+| finding modules for a task: match modes, choose, when module-discover runs the chooser, keywords, routing eval | `references/how-to/search.md` |

@@ -33,12 +33,13 @@ If `segmently-modules` is not found, tell the user how to install it — the `se
 
 ## Steps
 
-Run the independent read commands of one step together — in one Bash call (`a; b; c`, or a
-loop) or as parallel tool calls — instead of one per turn: step 2's `show` of every candidate,
-step 3's `related` of every kept module, step 5's `show --all-roles` of every `modify` or `consume`
-module and then the docs they list, step 6's searches of the same modules. Never batch commands
-whose input depends on an earlier output (a split module's child after its INDEX, step 3 after
-step 2's scores, step 6's repository-wide search after an empty module search).
+Run a step's independent read commands together, not one per turn: as parallel tool calls
+(docs: one Read each), or in one Bash call (`a; b; c`) when every output is short — step 2's
+`show` of every candidate, step 3's `related` of every kept module, step 5's `show --all-roles`
+of every `modify` or `consume` module, step 6's code lists and outlines. A long output may be
+cut to a preview: read the file it names, or rerun narrower. Never batch commands whose input
+depends on an earlier output (a split module's child after its INDEX, step 3 after step 2's
+scores, step 6's repository-wide search after an empty module search).
 
 1. **Candidates.** Follow `references/choose.md`; its terms `<file>` serves steps 6 and 7 too.
 
@@ -78,34 +79,34 @@ step 2's scores, step 6's repository-wide search after an empty module search).
 
 6. **Code touch points.** For each `modify` or `consume` module, one targeted pass: its code
    pointers (`show`'s `code` and `code_globs`, or `segmently-modules code-map files <module> --source-only --paths`
-   — its source files, one per line, docs and tests left out; never `code-map files … --json`
-   without `--source-only`) searched for the task's terms in their code forms
-   ("trial days" → `trialDays`): `git grep -n -e <term> -- <path> …` (no shell glob; source files
-   first, tests last — searched in the module's test paths only for the behaviour the task
-   changes, found with `code-map files <module> --paths`; the rest of the repository only when
-   that gives nothing). Record existing
-   code only, as `<edit | read> — file:line — symbol — why`. `edit`: an existing file the change
-   edits; its why says what changes there, in one clause, never "relevant" or "related". `read`:
-   a file called or consulted as it is, a consumer, a pattern to follow, or an alternative — a
-   file offered with "or", "either" or "could also" is never `edit`, and its why says
-   "alternative". A test file is `edit` only when its assertion names the symbol or value the
-   task changes; otherwise the module gets one line `Tests: add new — <what to cover>`, no path.
+   — its source files, one per line, docs and tests left out (empty: nothing to search); never
+   `code-map files … --json` without `--source-only`) searched for the task's terms in their code
+   forms ("trial days" → `trialDays`): `git grep -n -e <term> -- <path> …` (no shell glob; source
+   files first, tests last — searched in the module's test paths only for the behaviour the task
+   changes, found with `git grep -l -e <term> -- $(segmently-modules code-map files <module> --paths)`;
+   the rest of the repository only after an empty module search). Record existing code only, as
+   `<edit | read> — file:line — symbol — why`. `edit`: an existing file the change edits; its why
+   says what changes there, in one clause, never "relevant" or "related". `read`: a file called
+   or consulted as it is, a consumer, a pattern to follow, or an alternative — a file offered
+   with "or", "either" or "could also" is never `edit`, and its why says "alternative". A test
+   file is `edit` only when its assertion names the symbol or value the task changes; otherwise
+   a module with an `edit` line gets one line `Tests: add new — <what to cover>`, no path.
    Discover runs before the work: it never guesses the files the work will create — where new
    code goes is the plan's decision. What the work will probably also need goes on a
-   `Likely consequence:` line under the risks, never on a `Code:` line. No code search for a
-   `reference` module.
+   `Likely consequence:` line under the risks, never in `Code:`, never a new path. No code search
+   for a `reference` module.
 
    Read the files the search found outline first, in one call: their signatures with line numbers
-   (e.g. `git grep -n -E '^(export |def |class |func |pub )' -- <file> …`, widened for the
-   language — it misses indented methods, `async`, `function`, `fn`, modifiers — or a symbol
-   tool). Then read only from the signature above each line the change lands on to its body's end
-   (Read with an offset and a limit, or `sed -n '<from>,<to>p' <file>`), not whole files. That
-   signature names the code line's `symbol`; never guess one.
+   (e.g. `git grep -n -E '^(export |def |class |func |pub )' -- <path> …`, widened for the
+   language — it misses indented methods, `async`, `function`, `fn`, modifiers, test blocks — or
+   a symbol tool). Then read only from the signature above each line the change lands on to its
+   body's end (Read with an offset and a limit, or `sed -n '<from>,<to>p' <path>`), not whole
+   files. That signature names the code line's `symbol`; never guess one.
 
 7. **Owners and docs to update.**
 
    ```bash
-   segmently-modules discover --files <touch-point files> --task-file <file> --match lexical --json
+   segmently-modules discover --files <edit files> --task-file <file> --match lexical --json
    ```
 
    `--files` takes the paths as separate arguments (`--files a.ts b/c.ts`); one quoted string is one path. Per module: its

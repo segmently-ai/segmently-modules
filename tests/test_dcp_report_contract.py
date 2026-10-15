@@ -1,7 +1,7 @@
 """module-discover's report contract (DCP-AC-011…017): every `Code:` line starts with a tag —
 `edit` (an existing file the change edits, with what changes there in one clause) or `read`
 (called or consulted as it is, a consumer, a pattern, an alternative); an existing test is an
-`edit` line only when it asserts the changed behaviour, else the module gets
+`edit` line only when it asserts the changed behaviour, else a module with an `edit` line gets
 `Tests: add new — …`; `Likely consequence:` lines under the risks; the search line first under
 the title, in the form `references/choose.md` gives; the JSON is `1.1` and each `files[].reason`
 starts with the tag. Everything else in `references/report.md` stays byte for byte what it was:
@@ -144,20 +144,26 @@ STEP6 = [
     "`read`: a file called or consulted as it is, a consumer, a pattern to follow, or an "
     "alternative — a file offered with \"or\", \"either\" or \"could also\" is never `edit`, and "
     "its why says \"alternative\".",
+    # task-2 review M-1: the tests line belongs to a module with an `edit` line only
     "A test file is `edit` only when its assertion names the symbol or value the task changes; "
-    "otherwise the module gets one line `Tests: add new — <what to cover>`, no path.",
+    "otherwise a module with an `edit` line gets one line `Tests: add new — <what to cover>`, "
+    "no path.",
     "Discover runs before the work: it never guesses the files the work will create — where new "
     "code goes is the plan's decision.",
+    # task-2 review M-2: the step carries "never a new path" as report.md does
     "What the work will probably also need goes on a `Likely consequence:` line under the risks, "
-    "never on a `Code:` line.",
+    "never in `Code:`, never a new path.",
     "No code search for a `reference` module.",
 ]
 STEP8 = ("8. **Report** in the conversation, in the shape of `references/report.md` (the search "
          "line first, every section there, the rejected candidates included, every `Code:` line "
          "tagged `edit` or `read`).")
 FROM_DIFF_LINE = ("the changed files are its `Code:` lines, each `edit` (`edit — file:line — symbol "
-                  "— why` where a hunk shows it); no search line, no scores, no rejected list "
-                  "(nothing was chosen).")
+                  "— why` where a hunk shows it), a file the branch added too; no search line, no "
+                  "`Tests:` line, no `Likely consequence:` line, no scores, no rejected list "
+                  "(nothing was chosen).")  # task-2 review M-3
+STEP7 = ("segmently-modules discover --files <edit files> --task-file <file> --match lexical "
+         "--json")  # task-2 review M-4: the owners and docs to update of the files the change edits
 TAGGED = re.compile(r"^- `(edit|read)` — `<file>:<line>` — `<symbol>` — <[^<>]+>$")
 MODES = ("lexical", "by meaning", "hybrid", "<lexical | by meaning | hybrid>")
 
@@ -261,6 +267,12 @@ class TaggedCodeLineTest(unittest.TestCase):  # DCP-AC-011 (the template and the
         diff = flat(FROM_DIFF.read_text(encoding="utf-8"))
         self.assertEqual(diff.count(FROM_DIFF_LINE), 1)
         self.assertNotIn("`file:line — symbol — why`", diff)
+
+    def test_step_7_takes_the_edit_files(self):  # task-2 review M-4
+        steps = section(text("module-discover"), "## Steps")
+        step7 = between(steps, "7. **Owners and docs to update.**", "8. **Report**")
+        self.assertEqual(step7.count(STEP7), 1)
+        self.assertNotIn("<touch-point files>", steps)
 
     @staticmethod
     def step6() -> str:

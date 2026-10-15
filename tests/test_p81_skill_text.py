@@ -394,7 +394,7 @@ class CommandsRunTest(unittest.TestCase):  # P82-AC-036, 038, 039, 040
         keywords.write_text("refund\norder service\n", encoding="utf-8")
         found = "src/orders/service.py src/payments/gateway.py"  # separate arguments (F20)
         args, _ = filled(command("module-discover", "segmently-modules discover --files"),
-                         {"<touch-point files>": found, "<file>": str(keywords)})
+                         {"<edit files>": found, "<file>": str(keywords)})
         self.assertEqual(args[:3], ["discover", "--files", "src/orders/service.py"])
         data = json.loads(self.cli(args))["data"]
         self.assertEqual([f["path"] for f in data["files"]],
@@ -502,12 +502,14 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20
         "segmently-modules code-map files <module> --source-only --paths",  # DCP-AC-024
         "its source files, one per line, docs and tests left out",  # review I-2: a doc is not code
         "source files first, tests last — searched in the module's test paths only for the "
-        "behaviour the task changes, found with `code-map files <module> --paths`; the rest of "
-        "the repository only when that gives nothing",
+        "behaviour the task changes, found with `git grep -l -e <term> -- $(segmently-modules "
+        "code-map files <module> --paths)`; the rest of the repository only after an empty module "
+        "search",  # task-3 review M-6: the hits, never the whole list
+
         "`<edit | read> — file:line — symbol — why`",  # DCP-AC-011: the tag first
         "it never guesses the files the work will create",
         "**Owners and docs to update.**",
-        "segmently-modules discover --files <touch-point files> --task-file <file> --match lexical --json",
+        "segmently-modules discover --files <edit files> --task-file <file> --match lexical --json",
         F20,  # P82-AC-040
         "**Report**", "`references/report.md`",
     ]
