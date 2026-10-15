@@ -1,0 +1,9 @@
+reference orders/refunds                 score 6   via keyword
+modify    orders                         score 3   via keyword, diff
+          update modules/orders/MODULE.md
+          update modules/orders/roles/developer.md
+          child  orders/checkout  Cart hand-off and order placement: totals, shipping choice and confirmation.  (modules/orders/submodules/checkout/MODULE.md)
+          child  orders/refunds  Returned books: refund requests, partial refunds and restocking.  (modules/orders/submodules/refunds/MODULE.md)
+          child  orders/invoices  Invoice numbering, PDF rendering and tax lines for placed orders.  (modules/orders/submodules/invoices/MODULE.md)
+file      src/orders/service.py -> orders
+--- exit 0, stderr:

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `[search] chooser` (`always`, the default; `when_unsure`; `never`) sets when module-discover asks the chooser to pick modules by meaning, and `discover --json` says how sure its keyword result is (`lexical_confidence`: `sure` or `unsure` with the reason `no_hits`, `tie` or `low_score` against `[search] sure_min_score`, and the modules at the top score). With `when_unsure` the keyword command runs first and the chooser only on an unsure result; the user's words for a run still win.
+- `choose --cards brief` (or `[search] cards = "brief"`): a smaller work order whose cards hold each module's name, description and children, without keywords; `full` stays the default.
+- `catalog --settings` prints only the `[match]` and `[search]` settings, every key with its default filled in; module-discover reads them there instead of the whole catalog.
+
 ## [0.3.0] - 2026-10-14
 
 ### Added

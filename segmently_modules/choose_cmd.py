@@ -3,12 +3,14 @@ the validation of its answer. `choose --task T` (or `--task-file PATH|-`) prints
 (a prompt; `--json` the document); `choose --apply FILE|-` validates an answer offline and prints
 the picks with each module's read set; `choose --task T --run` asks the user's own agent command
 (`SEGMENTLY_MODULES_AGENT_COMMAND`, see `segmently_modules.agent`) and prints the same. `--apply` and `--run` read an
-answer the same way (`agent.answer_from`). Read-only: no lock, no write, no cache."""
+answer the same way (`agent.answer_from`). `--cards brief` makes the order's cards compact (name,
+description, children); its default is `[search] cards`. Read-only: no lock, no write, no cache."""
+import functools
 from pathlib import Path
 
 from segmently_modules import agent, workorder
 from segmently_modules.catalog_cmd import cards
-from segmently_modules.config import EFFORTS
+from segmently_modules.config import CARDS, EFFORTS, search_all
 from segmently_modules.output import EXIT_OK, UsageError, emit
 from segmently_modules.pipeline import read_input, task_text
 from segmently_modules.query import show_target
@@ -32,6 +34,9 @@ def register(sub, common) -> None:
     p.add_argument("--top", type=int, help="at most N picks (default 5)")
     p.add_argument("--effort", choices=EFFORTS,
                    help="the depth of the search for this run, over [search] effort")
+    p.add_argument("--cards", choices=CARDS,
+                   help="the work order's cards: full (name, description, keywords) or brief "
+                        "(name, description, children); default: [search] cards, else full")
     g = p.add_mutually_exclusive_group()
     g.add_argument("--apply", metavar="FILE", help="validate an answer ('-' = stdin)")
     g.add_argument("--run", action="store_true",
@@ -71,6 +76,7 @@ def run(args) -> int:
         raise UsageError("--top must be >= 1")
     ws = Workspace.from_args(args)
     max_picks = workorder.DEFAULT_MAX_PICKS if top is None else top
+    kind = args.cards or search_all(ws.config)["cards"]
     task = ""
     if args.apply is None:  # the work order and --run need the task; --apply does not
         if args.task is None and args.task_file is None:
@@ -78,12 +84,12 @@ def run(args) -> int:
                              else NO_TASK)
         task = task_text(args)
         if not args.run:
-            order = workorder.build(ws, task, max_picks, args.effort)
-            emit("choose", order, args.json, workorder.render)
+            order = workorder.build(ws, task, max_picks, args.effort, kind)
+            emit("choose", order, args.json, functools.partial(workorder.render, cards=kind))
             return EXIT_OK
         if not agent_configured(ws.config):
             raise UsageError(agent.NESTED if agent.nested() else NO_AGENT)
-    order = workorder.build(ws, task, max_picks, args.effort)
+    order = workorder.build(ws, task, max_picks, args.effort, kind)
     check = lambda answer: workorder.validate_answer(answer, order, max_picks)  # noqa: E731
     if not args.run:
         answer = _read_answer(args.apply)

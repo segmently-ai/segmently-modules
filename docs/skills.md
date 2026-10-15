@@ -204,6 +204,16 @@ command in the environment.
 The engine holds no model, key or network code and ships no model: the agent that chooses is the
 one you already run, under your own credentials.
 
+**module-discover and `[search] chooser`.** module-discover reads its settings with
+`segmently-modules catalog --settings --json` and decides the mode in one table: the user's words for
+the run ("by meaning", "only lexical") first, then `[search] chooser` — `always` (the default: the
+path above), `when_unsure` (the keyword command first; the chooser runs only when the result's
+`lexical_confidence.level` is `unsure`, and the lists merge as in `hybrid`) or `never` (keywords
+only). A chooser that fails (no agent, an answer that is not JSON, `choose --apply` exit 2) never
+ends the run: the skill answers the order itself, every card read. The report's first line says
+how the candidates were chosen, e.g. `Search: lexical — chooser skipped (when_unsure, lexical sure)`.
+`[search] cards = "brief"` makes every work order compact (`segmently-modules choose --cards brief`).
+
 **The choosing agent.** The `segmently-modules` plugin ships one read-only Claude Code subagent,
 `module-chooser` (`segmently-modules:module-chooser`; tools Read, Grep, Glob), and the skills hand it the
 file of a `segmently-modules choose` work order, calling it with `model: <search.claude_model>`. Its own

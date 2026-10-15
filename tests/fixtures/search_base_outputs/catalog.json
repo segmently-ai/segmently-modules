@@ -1,0 +1,85 @@
+{
+  "schema": "segmently-modules.catalog/1",
+  "data": {
+    "match": {
+      "mode": "lexical",
+      "semantic": false
+    },
+    "search": {
+      "claude_model": "sonnet",
+      "codex_model": "gpt-5.6-luna",
+      "effort": "standard"
+    },
+    "modules": [
+      {
+        "name": "catalog",
+        "status": "active",
+        "description": "Book catalog: titles, authors, formats. Use when changing how books are listed or found.",
+        "keywords": [
+          "catalog",
+          "book",
+          "author",
+          "isbn",
+          "BookRepository"
+        ]
+      },
+      {
+        "name": "orders",
+        "status": "active",
+        "description": "Order lifecycle for the bookshop, split into checkout, refunds and invoices. Start here for anything about a placed order.",
+        "keywords": [
+          "order",
+          "orders",
+          "OrderService"
+        ]
+      },
+      {
+        "name": "orders/checkout",
+        "status": "active",
+        "description": "Cart hand-off and order placement: totals, shipping choice and confirmation.",
+        "keywords": [
+          "checkout",
+          "cart",
+          "shipping choice",
+          "order confirmation"
+        ],
+        "parent": "orders"
+      },
+      {
+        "name": "orders/refunds",
+        "status": "active",
+        "description": "Returned books: refund requests, partial refunds and restocking.",
+        "keywords": [
+          "refund",
+          "partial refund",
+          "restocking",
+          "return request"
+        ],
+        "parent": "orders"
+      },
+      {
+        "name": "orders/invoices",
+        "status": "active",
+        "description": "Invoice numbering, PDF rendering and tax lines for placed orders.",
+        "keywords": [
+          "invoice",
+          "invoice number",
+          "tax line",
+          "invoice pdf"
+        ],
+        "parent": "orders"
+      },
+      {
+        "name": "payments",
+        "status": "active",
+        "description": "Payment capture through the gateway. Use for charging customers.",
+        "keywords": [
+          "payment",
+          "charge",
+          "PaymentGateway"
+        ]
+      }
+    ]
+  }
+}
+--- exit 0, stderr:

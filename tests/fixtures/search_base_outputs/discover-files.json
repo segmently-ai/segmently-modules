@@ -1,0 +1,63 @@
+{
+  "schema": "segmently-modules.discover/1",
+  "data": {
+    "task": null,
+    "modules": [
+      {
+        "module": "orders",
+        "score": null,
+        "keywords": [],
+        "sources": [
+          "diff"
+        ],
+        "touched_files": [
+          "src/orders/service.py"
+        ],
+        "usage": "modify",
+        "docs_to_read": [
+          "modules/orders/MODULE.md",
+          "modules/orders/roles/developer.md"
+        ],
+        "docs_to_update": [
+          "modules/orders/MODULE.md",
+          "modules/orders/roles/developer.md"
+        ],
+        "children": [
+          {
+            "module": "orders/checkout",
+            "description": "Cart hand-off and order placement: totals, shipping choice and confirmation.",
+            "doc": "modules/orders/submodules/checkout/MODULE.md"
+          },
+          {
+            "module": "orders/refunds",
+            "description": "Returned books: refund requests, partial refunds and restocking.",
+            "doc": "modules/orders/submodules/refunds/MODULE.md"
+          },
+          {
+            "module": "orders/invoices",
+            "description": "Invoice numbering, PDF rendering and tax lines for placed orders.",
+            "doc": "modules/orders/submodules/invoices/MODULE.md"
+          }
+        ]
+      }
+    ],
+    "files": [
+      {
+        "path": "src/orders/service.py",
+        "modules": [
+          "orders"
+        ]
+      }
+    ],
+    "files_outside_modules": [],
+    "missing_files": [],
+    "summary": {
+      "total_modules": 1,
+      "by_usage": {
+        "modify": 1,
+        "reference": 0
+      }
+    }
+  }
+}
+--- exit 0, stderr:

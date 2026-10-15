@@ -61,6 +61,11 @@ _MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,99}")
 EFFORTS = ("quick", "standard", "deep")  # [search] effort (P8.1 S9)
 CARD_KEYWORDS_DEFAULT = 10  # [search] card_keywords (P8.2 D2)
 SEARCH_DEFAULTS = {"claude_model": "sonnet", "codex_model": "gpt-5.6-luna", "effort": "standard"}
+CHOOSERS = ("always", "when_unsure", "never")  # [search] chooser: when the skills ask the chooser
+CARDS = ("full", "brief")  # [search] cards: the cards of the work order
+# every [search] key with its default, in the order `catalog --settings` shows them
+SEARCH_ALL_DEFAULTS = {**SEARCH_DEFAULTS, "card_keywords": CARD_KEYWORDS_DEFAULT,
+                       "chooser": "always", "sure_min_score": 2, "cards": "full"}
 ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str",
                "applies_when": "str", "template": "str"}
 
@@ -84,8 +89,24 @@ def card_keywords(config: dict) -> int:
     return table.get("card_keywords", CARD_KEYWORDS_DEFAULT)
 
 
+def search_all(config: dict) -> dict:
+    """Every `[search]` key of the merged config, defaults filled in (`catalog --settings`): the
+    three of `search_settings`, then `card_keywords`, `chooser`, `sure_min_score`, `cards`."""
+    table = config.get("search") or {}
+    return {key: table.get(key, default) for key, default in SEARCH_ALL_DEFAULTS.items()}
+
+
 def _validate_search(table, source) -> None:
     table = _require_table(table, "search", source)
+    for key, allowed in (("chooser", CHOOSERS), ("cards", CARDS)):
+        if key in table and not (isinstance(table[key], str) and table[key] in allowed):
+            raise UsageError(f"{source}: [search] {key}: expected one of {', '.join(allowed)}, "
+                             f"got {table[key]!r}")
+    if "sure_min_score" in table:
+        v = table["sure_min_score"]
+        if not _is_int(v) or v < 1:
+            raise UsageError(f"{source}: [search] sure_min_score: expected an integer >= 1, "
+                             f"got {v!r}")
     if "card_keywords" in table:
         v = table["card_keywords"]
         if not _is_int(v) or v < 0:

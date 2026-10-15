@@ -1,0 +1,72 @@
+Task:
+Customers' money back for a returned book, a partial refund on the order
+
+
+Rules:
+- Read every card before you choose: the cards are the whole catalog. Never filter them by the task's words — a module may describe the task in other words or in another language.
+- Choose the modules this task needs by meaning, in any language the task is written in.
+- A card with a parent is one area of a split module: when the task is in that area, pick that child; add the parent only when the task also changes what all its areas share.
+- Use only module ids that appear in the cards; never invent one.
+- Answer {"picks": [], "none": true} when you are not sure.
+- Give at most 5 picks, best first, each with a confidence from 0 to 1 and a short reason.
+- Choose from the cards, and also open the INDEX or the head of MODULE.md of up to 3 candidates before you answer.
+- Answer with one JSON object that matches the answer schema, and nothing else.
+
+Candidates (one per line: module, description, keywords):
+catalog  Book catalog: titles, authors, formats. Use when changing how books are listed or found.  [catalog, book, author, isbn, BookRepository]
+orders  Order lifecycle for the bookshop, split into checkout, refunds and invoices. Start here for anything about a placed order.  [order, orders, OrderService]
+orders/checkout  Cart hand-off and order placement: totals, shipping choice and confirmation.  [checkout, cart, shipping choice, order confirmation]  (child of orders)
+orders/refunds  Returned books: refund requests, partial refunds and restocking.  [refund, partial refund, restocking, return request]  (child of orders)
+orders/invoices  Invoice numbering, PDF rendering and tax lines for placed orders.  [invoice, invoice number, tax line, invoice pdf]  (child of orders)
+payments  Payment capture through the gateway. Use for charging customers.  [payment, charge, PaymentGateway]
+
+Answer schema:
+{
+  "title": "segmently-modules choose answer",
+  "type": "object",
+  "properties": {
+    "picks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "module": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number",
+            "description": "from 0 to 1"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "module",
+          "confidence",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "none": {
+      "type": "boolean"
+    },
+    "catalog_digest": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "the work order's catalog_digest, or null"
+    }
+  },
+  "required": [
+    "picks",
+    "none",
+    "catalog_digest"
+  ],
+  "additionalProperties": false
+}
+
+catalog_digest: fa82049ac973ba1b212a974581b0c6d9c632be1f6a3db6c3fb23904be09ebe31
+--- exit 0, stderr:

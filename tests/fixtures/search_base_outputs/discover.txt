@@ -1,0 +1,3 @@
+reference orders/refunds                 score 6   via keyword
+reference orders                         score 3   via keyword
+--- exit 0, stderr:

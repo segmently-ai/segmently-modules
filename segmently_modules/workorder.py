@@ -1,7 +1,8 @@
 """The work order of `segmently-modules choose` (P8.1 S3, layer 1) and the validation of an answer to it.
 The work order is everything an agent needs to pick modules by meaning: the task verbatim, the
-rules, one card per module and child, the answer's JSON Schema and a digest of the cards. It is
-deterministic (no time, path, host or random value), so two runs on one tree are byte-identical.
+rules, one card per module and child (`brief`: one per top-level module, naming its children),
+the answer's JSON Schema and a digest of the cards. It is deterministic (no time, path, host or
+random value), so two runs on one tree are byte-identical.
 `validate_answer` is the one validator behind `choose --apply`, `choose --run` and
 `--match semantic|hybrid`."""
 from __future__ import annotations
@@ -12,7 +13,7 @@ import string
 from pathlib import Path
 
 from segmently_modules.catalog_cmd import cards as catalog_cards
-from segmently_modules.config import card_keywords, search_settings
+from segmently_modules.config import card_keywords, search_all, search_settings
 from segmently_modules.create import resolve_template_source
 from segmently_modules.output import UsageError
 
@@ -59,6 +60,24 @@ def work_card(card: dict, limit: int | None = None) -> dict:
     return out
 
 
+def brief_cards(cards: list[dict]) -> list[dict]:
+    """The compact cards (`choose --cards brief`): one per top-level module, its name, its
+    description and, for a split module, its children's names — no keyword, no other field."""
+    out, by_name = [], {}
+    for card in cards:
+        if "parent" in card:
+            by_name[card["parent"]].setdefault("children", []).append(card["name"])
+        else:
+            by_name[card["name"]] = {"module": card["name"], "description": card["description"]}
+            out.append(by_name[card["name"]])
+    return out
+
+
+def card_ids(cards: list[dict]) -> list[str]:
+    """Every module id the cards name, in card order: a card's own, then its children's."""
+    return [m for c in cards for m in (c["module"], *c.get("children", ()))]
+
+
 def digest_of(cards: list[dict]) -> str:
     canonical = json.dumps(cards, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -90,17 +109,24 @@ def template_rules(ws, max_picks: int, depth: str) -> list[str]:
     return [string.Template(r).safe_substitute(max_picks=max_picks, depth=depth) for r in rules]
 
 
-def build(ws, task: str, max_picks: int = DEFAULT_MAX_PICKS, effort: str | None = None) -> dict:
+def build(ws, task: str, max_picks: int = DEFAULT_MAX_PICKS, effort: str | None = None,
+          cards: str | None = None) -> dict:
     """The work order. `effort` (`choose --effort`) overrides `[search] effort` for this order;
-    the cards carry the first `[search] card_keywords` keywords, and the digest covers them."""
+    `cards` (`choose --cards`) overrides `[search] cards`: `full` cards carry the first
+    `[search] card_keywords` keywords, `brief` ones none (`brief_cards`); the digest covers the
+    cards the order holds."""
     search = search_settings(ws.config)
     if effort is not None:
         search["effort"] = effort
-    limit = card_keywords(ws.config)
-    cards = [work_card(c, limit) for c in catalog_cards(ws.registry.modules)]
+    found = catalog_cards(ws.registry.modules)
+    if (cards or search_all(ws.config)["cards"]) == "brief":
+        held = brief_cards(found)
+    else:
+        limit = card_keywords(ws.config)
+        held = [work_card(c, limit) for c in found]
     rules = template_rules(ws, max_picks, DEPTH[search["effort"]])
-    return {"task": task, "rules": rules, "cards": cards, "answer_schema": ANSWER_SCHEMA,
-            "catalog_digest": digest_of(cards), "max_picks": max_picks, "search": search}
+    return {"task": task, "rules": rules, "cards": held, "answer_schema": ANSWER_SCHEMA,
+            "catalog_digest": digest_of(held), "max_picks": max_picks, "search": search}
 
 
 def wrap_card(line: str, limit: int = CARD_LINE_MAX) -> list[str]:
@@ -124,9 +150,10 @@ def wrap_card(line: str, limit: int = CARD_LINE_MAX) -> list[str]:
     return out + [indent + line]
 
 
-def render(order: dict) -> None:
+def render(order: dict, cards: str = "full") -> None:
     """The work order as a prompt any agent can take. The task and rule lines print as written;
-    a card line longer than `CARD_LINE_MAX` wraps (`wrap_card`; the JSON form keeps it whole)."""
+    a card line longer than `CARD_LINE_MAX` wraps (`wrap_card`; the JSON form keeps it whole).
+    `cards`: the kind the order holds (`brief`: module, description, children)."""
     print("Task:")
     print(order["task"])
     print()
@@ -134,10 +161,16 @@ def render(order: dict) -> None:
     for r in order["rules"]:
         print(f"- {r}")
     print()
-    print("Candidates (one per line: module, description, keywords):")
+    brief = cards == "brief"
+    last = "children" if brief else "keywords"
+    print(f"Candidates (one per line: module, description, {last}):")
     for c in order["cards"]:
-        parent = f"  (child of {c['parent']})" if "parent" in c else ""
-        line = f"{c['module']}  {c['description']}  [{', '.join(c['keywords'])}]{parent}"
+        if brief:
+            children = f"  (children: {', '.join(c['children'])})" if "children" in c else ""
+            line = f"{c['module']}  {c['description']}{children}"
+        else:
+            parent = f"  (child of {c['parent']})" if "parent" in c else ""
+            line = f"{c['module']}  {c['description']}  [{', '.join(c['keywords'])}]{parent}"
         for part in line.split("\n"):  # a newline in a description already ends a line
             for printed in wrap_card(part):
                 print(printed)
@@ -168,7 +201,7 @@ def validate_answer(answer, order: dict, max_picks: int | None = None):
     digest = answer.get("catalog_digest")
     if digest is not None and not isinstance(digest, str):
         raise UsageError("answer: catalog_digest: expected a string")
-    known = [c["module"] for c in order["cards"]]
+    known = card_ids(order["cards"])
     best: dict[str, dict] = {}
     notes: list[str] = []
     for i, pick in enumerate(raw):

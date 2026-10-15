@@ -1,0 +1,39 @@
+{
+  "schema": "segmently-modules.choose/1",
+  "data": {
+    "picks": [
+      {
+        "module": "orders/refunds",
+        "confidence": 0.9,
+        "reason": "returned books",
+        "read": [
+          {
+            "label": "universal (parent INDEX)",
+            "path": "modules/orders/MODULE.md",
+            "exists": true
+          },
+          {
+            "label": "child universal (refunds)",
+            "path": "modules/orders/submodules/refunds/MODULE.md",
+            "exists": true
+          }
+        ]
+      },
+      {
+        "module": "payments",
+        "confidence": 0.4,
+        "read": [
+          {
+            "label": "universal",
+            "path": "modules/payments/MODULE.md",
+            "exists": true
+          }
+        ]
+      }
+    ],
+    "none": false,
+    "notes": [],
+    "max_picks": 5
+  }
+}
+--- exit 0, stderr:
