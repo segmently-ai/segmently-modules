@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- module-discover batches independent reads and reads code outline-first: the independent read commands of one step run together, in one Bash call or as parallel tool calls (never a command that needs an earlier output), and a file the code search found is read as its signatures with their line numbers first, then only around the lines the change lands on, not whole.
+- module-discover batches independent reads and reads code outline-first: the independent read commands of one step run together, in one Bash call or as parallel tool calls (never a command that needs an earlier output), and the files the code search found are outlined in one call — their signatures with line numbers — then read only from the signature above each line the change lands on to its body's end, not whole files.
 
 ## [0.3.0] - 2026-10-14
 

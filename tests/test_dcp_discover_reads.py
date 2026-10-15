@@ -1,9 +1,11 @@
 """module-discover reads with fewer turns and less code (DCP-AC-025, DCP-AC-035): one rule under
 `## Steps`, binding every step, runs the independent read commands of one step together — one
-Bash call or parallel tool calls — and never batches a command that needs an earlier output; step
-6 reads a file the search found outline first — its signatures with their line numbers — and then
-only the ranges where the change lands, not whole files. The outline example is a real command:
-it lists the signatures of a file in several languages and none of their bodies."""
+Bash call or parallel tool calls — within each step's own scope, and never batches a command that
+needs an earlier output; step 6 reads the files the search found outline first, in one call — their
+signatures with line numbers, the example pattern widened for the language — and then only from
+the signature above each line the change lands on to its body's end, not whole files; that
+signature names the code line's symbol. The outline example is a real command: it lists the
+signatures of files in several languages and none of their bodies."""
 from __future__ import annotations
 
 import re
@@ -22,20 +24,23 @@ BATCH = [  # DCP-AC-025, in this order
     "Run the independent read commands of one step together — in one Bash call (`a; b; c`, or a "
     "loop) or as parallel tool calls — instead of one per turn:",
     "step 2's `show` of every candidate, step 3's `related` of every kept module, step 5's "
-    "`show --all-roles` of every module and then the docs they list, step 6's searches of every "
-    "module.",
+    "`show --all-roles` of every `modify` or `consume` module and then the docs they list, step "
+    "6's searches of the same modules.",  # review I-2: the steps' own scope
     "Never batch commands whose input depends on an earlier output (a split module's child after "
-    "its INDEX, step 3 after step 2's scores).",
+    "its INDEX, step 3 after step 2's scores, step 6's repository-wide search after an empty "
+    "module search).",  # review M-1
 ]
 EXAMPLES = {"2": "segmently-modules show <module> --json",  # the step each example names runs it
             "3": "segmently-modules related <module> --json",
             "5": "segmently-modules show <module> --all-roles --json"}
-OUTLINE = [  # DCP-AC-035, in this order
-    "Read a file the search found outline first: its exported or top-level signatures with their "
-    "line numbers (e.g. `git grep -n -E '^(export |def |class |func |pub )' -- <file>`, or a "
-    "symbol tool when you have one),",
-    "then only the ranges around the lines the change lands on (Read with an offset and a limit, "
-    "or `sed -n '<from>,<to>p' <file>`), not whole files.",
+OUTLINE = [  # DCP-AC-035, in this order (review I-1, M-3)
+    "Read the files the search found outline first, in one call: their signatures with line "
+    "numbers (e.g. `git grep -n -E '^(export |def |class |func |pub )' -- <file> …`, widened for "
+    "the language — it misses indented methods, `async`, `function`, `fn`, modifiers — or a symbol "
+    "tool).",
+    "Then read only from the signature above each line the change lands on to its body's end "
+    "(Read with an offset and a limit, or `sed -n '<from>,<to>p' <file>`), not whole files.",
+    "That signature names the code line's `symbol`; never guess one.",
 ]
 FILES = {  # bookshop sources in four languages: path -> (text, the outline git grep prints)
     "shop/shelf.py": ("import re\n\nclass Shelf:\n    def titles(self):\n        return []\n\n"
@@ -88,7 +93,10 @@ class BatchingTest(unittest.TestCase):  # DCP-AC-025
         self.assertEqual(flat(raw()).count(BATCH[0]), 1)  # once in the whole skill
 
     def test_never_batch_dependent_commands(self):
-        self.assertIn("Never batch commands whose input depends on an earlier output", flat(steps()))
+        body = flat(steps())
+        self.assertIn("Never batch commands whose input depends on an earlier output", body)
+        self.assertIn("step 6's repository-wide search after an empty module search", body)
+        self.assertIn("the rest of the repository only when that gives nothing", step(6))
 
     def test_each_example_names_the_step_that_runs_it(self):
         body = flat(steps())
@@ -96,7 +104,9 @@ class BatchingTest(unittest.TestCase):  # DCP-AC-025
             with self.subTest(step=number):
                 self.assertIn(f"step {number}'s `{command.split()[1]}", body)
                 self.assertIn(f"`{command}`", step(int(number)))
-        self.assertIn("step 6's searches of every module", body)
+        self.assertIn("step 6's searches of the same modules", body)
+        for scoped in (5, 6):  # the rule's scope is the step's own (review I-2)
+            self.assertIn("`modify` or `consume` module", step(scoped))
         self.assertIn("git grep -n -e <term>", step(6))
 
 
@@ -107,8 +117,9 @@ class OutlineFirstTest(unittest.TestCase):  # DCP-AC-035
         self.assertNotIn(-1, found)
         self.assertEqual(found, sorted(found))
         self.assertLess(body.index("git grep -n -e <term>"), found[0])  # after the search
-        for phrase in ("outline first", "signatures with their line numbers",
-                       "only the ranges around the lines the change lands on", "not whole files"):
+        for phrase in ("outline first, in one call", "signatures with line numbers",
+                       "only from the signature above each line the change lands on to its "
+                       "body's end", "not whole files", "never guess one"):
             self.assertIn(phrase, body)
         self.assertEqual(flat(raw()).count(OUTLINE[0]), 1)  # step 6 only
 
@@ -116,7 +127,9 @@ class OutlineFirstTest(unittest.TestCase):  # DCP-AC-035
         pattern = self.command()[4]  # the pattern names several languages' forms, no single one
         for form in ("export ", "def ", "class ", "func ", "pub "):
             self.assertIn(form, pattern)
-        self.assertIn("e.g. `git grep", step(6))  # an example, not the only way
+        self.assertIn("e.g. `git grep", step(6))  # an example, not the only way …
+        self.assertIn("widened for the language — it misses indented methods, `async`, "
+                      "`function`, `fn`, modifiers — or a symbol tool", step(6))  # … nor a whole one
 
     def command(self) -> list[str]:
         spans = re.findall(r"`(git grep -n -E [^`]+)`", step(6))
@@ -126,7 +139,7 @@ class OutlineFirstTest(unittest.TestCase):  # DCP-AC-035
     def test_the_outline_command_prints_signatures_not_bodies(self):
         argv = self.command()
         self.assertEqual(argv[:4], ["git", "grep", "-n", "-E"])
-        self.assertEqual(argv[-2:], ["--", "<file>"])
+        self.assertEqual(argv[-3:], ["--", "<file>", "…"])  # the found files, in one call
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "repo"
             for rel, (text, _) in FILES.items():
@@ -135,9 +148,9 @@ class OutlineFirstTest(unittest.TestCase):  # DCP-AC-035
             init_git(root)
             for rel, (text, outline) in FILES.items():
                 with self.subTest(file=rel):
-                    out = git(root, *argv[1:-1], rel)
+                    out = git(root, *argv[1:-2], rel)
                     self.assertEqual(out.splitlines(), [f"{rel}:{line}" for line in outline])
-            out = git(root, *argv[1:-1], *FILES)  # several files in one call (the batching rule)
+            out = git(root, *argv[1:-2], *FILES)  # every found file in one call (review M-3)
         self.assertEqual(out.splitlines(), sorted(f"{rel}:{line}" for rel, (_, outline)
                                                   in FILES.items() for line in outline))
         self.assertNotIn("return", out)
@@ -151,6 +164,7 @@ class ChangelogTest(unittest.TestCase):  # R-5
                  if ln.startswith("- module-discover batches independent reads and reads code "
                                   "outline-first")]
         self.assertEqual(len(lines), 1)
+        self.assertTrue(lines[0].endswith(", not whole files."), lines[0])  # review M-2
 
 
 if __name__ == "__main__":
