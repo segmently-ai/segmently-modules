@@ -83,7 +83,7 @@ scores, step 6's repository-wide search after an empty module search).
    `code-map files … --json` without `--source-only`) searched for the task's terms in their code
    forms ("trial days" → `trialDays`): `git grep -n -e <term> -- <path> …` (no shell glob; source
    files first, tests last — searched in the module's test paths only for the behaviour the task
-   changes, found with `git grep -l -e <term> -- $(segmently-modules code-map files <module> --paths)`;
+   changes, found with `git grep -l -e <term> -- <the module's code paths>` (its test hits);
    the rest of the repository only after an empty module search). Record existing code only, as
    `<edit | read> — file:line — symbol — why`. `edit`: an existing file the change edits; its why
    says what changes there, in one clause, never "relevant" or "related". `read`: a file called

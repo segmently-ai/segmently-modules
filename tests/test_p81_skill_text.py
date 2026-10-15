@@ -502,9 +502,8 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20
         "segmently-modules code-map files <module> --source-only --paths",  # DCP-AC-024
         "its source files, one per line, docs and tests left out",  # review I-2: a doc is not code
         "source files first, tests last — searched in the module's test paths only for the "
-        "behaviour the task changes, found with `git grep -l -e <term> -- $(segmently-modules "
-        "code-map files <module> --paths)`; the rest of the repository only after an empty module "
-        "search",  # task-3 review M-6: the hits, never the whole list
+        "behaviour the task changes, found with `git grep -l -e <term> -- <the module's code paths>` "
+        "(its test hits); the rest of the repository only after an empty module search",  # task-3 review M-6: the hits, never the whole list
 
         "`<edit | read> — file:line — symbol — why`",  # DCP-AC-011: the tag first
         "it never guesses the files the work will create",

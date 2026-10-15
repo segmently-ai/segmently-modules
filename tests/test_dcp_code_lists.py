@@ -341,7 +341,7 @@ class UnflaggedOutputsTest(Repo):  # the regression pin: byte-identical to the b
 
 class DiscoverSkillTextTest(unittest.TestCase):  # DCP-AC-024
     COMPACT = "segmently-modules code-map files <module> --source-only --paths"
-    LOOKUP = "git grep -l -e <term> -- $(segmently-modules code-map files <module> --paths)"
+    LOOKUP = "git grep -l -e <term> -- <the module's code paths>"
 
     def skill(self) -> str:
         path = builtin_packs_root() / "core/skills/module-discover/SKILL.md"
@@ -359,7 +359,7 @@ class DiscoverSkillTextTest(unittest.TestCase):  # DCP-AC-024
         self.assertIn("never `code-map files … --json` without `--source-only`", step)
         self.assertIn("source files first, tests last — searched in the module's test paths "
                       "only for the behaviour the task changes, found with "
-                      f"`{self.LOOKUP}`;", step)  # task-3 review M-6a
+                      f"`{self.LOOKUP}` (its test hits);", step)  # task-3 review M-6a
         self.assertIn("the rest of the repository only after an empty module search", step)
         self.assertNotIn("only when that gives nothing", step)  # task-3 review M-6c
         self.assertEqual(command("module-discover", "segmently-modules code-map files"),
@@ -368,7 +368,7 @@ class DiscoverSkillTextTest(unittest.TestCase):  # DCP-AC-024
     def test_no_code_map_json_without_source_only(self):
         body = " ".join(self.skill().split())
         spans = list(re.finditer(r"`([^`]*code-map files[^`]*)`", body))
-        self.assertGreaterEqual(len(spans), 3)
+        self.assertGreaterEqual(len(spans), 2)
         for m in spans:  # a `--json` form only in the sentence that forbids it
             with self.subTest(span=m.group(1)):
                 if "--json" in m.group(1) and "--source-only" not in m.group(1):
@@ -379,7 +379,8 @@ class DiscoverSkillTextTest(unittest.TestCase):  # DCP-AC-024
         body = " ".join(self.skill().split())
         spans = re.findall(r"`([^`]*code-map files[^`]*)`", body)
         full = [s for s in spans if "--paths" in s and "--source-only" not in s]
-        self.assertEqual(full, [self.LOOKUP])  # only inside `$(…)`, as git grep's paths
+        self.assertEqual(full, [])  # the test lookup greps the module's code paths instead
+        self.assertNotIn("$(", body)  # no command substitution: a strict permission mode asks for it
 
     def test_the_test_lookup_prints_the_hits_not_the_list(self):  # task-3 review M-6a
         with tempfile.TemporaryDirectory() as tmp:
@@ -392,11 +393,7 @@ class DiscoverSkillTextTest(unittest.TestCase):  # DCP-AC-024
                 (root / rel).parent.mkdir(parents=True, exist_ok=True)
                 (root / rel).write_text(body, encoding="utf-8")
             init_git(root)
-            args, _ = filled(self.LOOKUP.split("$(", 1)[1].rstrip(")"), {"<module>": "catalog"})
-            code, listed, err = run(*args, "--root", str(root))
-            self.assertEqual((code, err), (0, ""))
-            self.assertIn("src/catalog/tests/test_other.py\n", listed)  # the list the shell
-            hits = git(root, "grep", "-l", "-e", "shelf_price", "--", *listed.split())  # passes on
+            hits = git(root, "grep", "-l", "-e", "shelf_price", "--", "src/catalog/")  # the lookup
         self.assertEqual(hits.splitlines(), ["src/catalog/search.py",
                                              "src/catalog/tests/test_search.py"])
 
