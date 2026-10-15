@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - module-discover's report tags every `Code:` line `edit` (an existing file the change edits, with what changes there in one clause) or `read` (called or consulted as it is, a consumer, a pattern to follow, an alternative); an existing test is an `edit` line only when it asserts the changed behaviour, else the module gets `Tests: add new — <what to cover>`; `Likely consequence:` lines under the risks name what the work will probably also need without putting a new path in `Code:`; the first line under the title, `Search: …`, says how the candidates were chosen; `discovery-results.json` is `version` `1.1`, each `files[].reason` starting with `edit — ` or `read — `.
+- module-discover batches independent reads and reads code outline-first: the independent read commands of one step run together, in one Bash call or as parallel tool calls (never a command that needs an earlier output), and the files the code search found are outlined in one call — their signatures with line numbers — then read only from the signature above each line the change lands on to its body's end, not whole files.
 
 ## [0.3.0] - 2026-10-14
 

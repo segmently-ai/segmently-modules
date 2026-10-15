@@ -33,6 +33,13 @@ If `segmently-modules` is not found, tell the user how to install it — the `se
 
 ## Steps
 
+Run the independent read commands of one step together — in one Bash call (`a; b; c`, or a
+loop) or as parallel tool calls — instead of one per turn: step 2's `show` of every candidate,
+step 3's `related` of every kept module, step 5's `show --all-roles` of every `modify` or `consume`
+module and then the docs they list, step 6's searches of the same modules. Never batch commands
+whose input depends on an earlier output (a split module's child after its INDEX, step 3 after
+step 2's scores, step 6's repository-wide search after an empty module search).
+
 1. **Candidates.** Follow `references/choose.md`; its terms `<file>` serves steps 6 and 7 too.
 
    Modules the user named join the list with a boost: they are verified like the rest but never
@@ -87,6 +94,13 @@ If `segmently-modules` is not found, tell the user how to install it — the `se
    code goes is the plan's decision. What the work will probably also need goes on a
    `Likely consequence:` line under the risks, never on a `Code:` line. No code search for a
    `reference` module.
+
+   Read the files the search found outline first, in one call: their signatures with line numbers
+   (e.g. `git grep -n -E '^(export |def |class |func |pub )' -- <file> …`, widened for the
+   language — it misses indented methods, `async`, `function`, `fn`, modifiers — or a symbol
+   tool). Then read only from the signature above each line the change lands on to its body's end
+   (Read with an offset and a limit, or `sed -n '<from>,<to>p' <file>`), not whole files. That
+   signature names the code line's `symbol`; never guess one.
 
 7. **Owners and docs to update.**
 
