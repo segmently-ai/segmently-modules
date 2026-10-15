@@ -519,7 +519,14 @@ then overrides the value the segment would have captured, per the row above). `p
 `segmently-modules code-map list` prints the effective rules (every layer merged; `--module TARGET` keeps
 the ones that route files to TARGET) and `segmently-modules code-map files TARGET` every repository file
 that maps to TARGET with how it maps (`docs`, `code_pointer:<field>`, `code_map:<id>`) — the
-resolved file list that `code_globs` is not.
+resolved file list that `code_globs` is not. `--source-only` keeps the TARGET's source files: those
+that map to it by more than `docs` and match no test glob ([`[tests]`](#tests)); `--paths` prints
+one repository-relative path per line, sorted, without the sources (no file: no output, exit `0`;
+with `--json` it is refused, exit `2`). Without the two flags the output is unchanged.
+
+```bash
+segmently-modules code-map files catalog --source-only --paths
+```
 
 The `id` deep-merge is checked per layer, not after merging: each layer is validated on its own,
 so an override that repeats only `id` (or `id` + `exclusive`) is refused with "needs a pattern or
@@ -544,6 +551,25 @@ A `{module}` capture that names no registry module (`app/repositories/base.py` u
 unmapped unless another rule, a `code_pointer` field or its docs location maps it — it is not
 "claimed" by the rule, even an `exclusive` one. `coverage` lists it as unmapped and
 `discover --files` prints it as `file      <path> -> (no module)`.
+
+## `[tests]`
+
+Which files are tests. Only `code-map files TARGET --source-only` reads it: it leaves these files
+out, as it leaves out the docs, so an agent gets the module's source files alone.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `globs` | the built-in list below | globs of test files (the `[[code_map]]` glob syntax). A layer's list is ADDED to the built-in list and to the lower layers' lists — it never removes a built-in glob. Anything but a list of non-empty strings is refused (exit `2`, naming the file and `[tests] globs`) |
+
+The built-in globs list each form at the root and below a directory, because `**/` needs at least
+one directory before it: `__tests__/**`, `**/__tests__/**`, `tests/**`, `**/tests/**`, `test/**`,
+`**/test/**`, `*.test.*`, `**/*.test.*`, `*.spec.*`, `**/*.spec.*`, `test_*.py`, `**/test_*.py`,
+`*_test.*`, `**/*_test.*`.
+
+```toml
+[tests]
+globs = ["**/fixtures/**", "e2e/**"]   # added to the built-in globs
+```
 
 ## `[[hooks.post_sync]]`
 

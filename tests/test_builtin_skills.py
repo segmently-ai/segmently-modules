@@ -377,7 +377,7 @@ class TextRulesTest(SkillRules):  # P4B-AC-014, P4B-AC-017
                     self.assertIsNone(path_problem(text))
 
     def test_what_a_skill_parses_is_json(self):
-        exempt = []
+        exempt, path_lists = [], []
         for sid, (_, directory) in self.all_skills().items():
             for name, text in skill_files(directory).items():
                 for command in commands(text):
@@ -385,6 +385,9 @@ class TextRulesTest(SkillRules):  # P4B-AC-014, P4B-AC-017
                         # through a quoted heredoc, never parsed (P8.2 D5, SI-P84-8)
                         exempt.append(argv(command))
                         continue
+                    if argv(command)[:2] == ["code-map", "files"] and "--paths" in argv(command):
+                        path_lists.append((sid, argv(command)))  # one path per line, nothing
+                        continue  # to parse (DCP-AC-024: discover's compact code list)
                     with self.subTest(skill=sid, command=command):
                         self.assertTrue({"--json", "--dry-run"} & set(argv(command)))
         # only the work order's text form, once in each skill that chooses modules by meaning,
@@ -394,6 +397,8 @@ class TextRulesTest(SkillRules):  # P4B-AC-014, P4B-AC-017
         self.assertEqual(others.count(["choose", "--task-file", "-"]), 3)  # AC-015: one line in
         self.assertEqual(others.count(["choose", "--task-file", "X"]), len(others) - 3)  # each
         self.assertEqual(exempt.count(saved_gate[0]), 1)
+        self.assertEqual(path_lists, [("module-discover",
+                                       ["code-map", "files", "X", "--source-only", "--paths"])])
 
     def test_sections(self):
         names = set(self.all_skills())

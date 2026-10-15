@@ -9,14 +9,17 @@
                           removed by hand.
   files TARGET            every repository file (git-tracked + new, not ignored; no coverage
                           filters) that maps to TARGET, with its mapping sources per file:
-                          `docs`, `code_pointer:<field>`, `code_map:<id>`"""
+                          `docs`, `code_pointer:<field>`, `code_map:<id>`; --source-only keeps
+                          the files whose sources are more than `docs` and that match no test
+                          glob (`[tests]`); --paths prints one path per line, sorted"""
 from __future__ import annotations
 
 import json
 
 from segmently_modules._toml import tomllib
-from segmently_modules.changes import repo_files, require_work_tree, routes, rule_routes_to, target_names
-from segmently_modules.config import discover_packs, read_toml, validate_layer
+from segmently_modules.changes import (glob_to_regex, repo_files, require_work_tree, routes,
+                                       rule_routes_to, target_names)
+from segmently_modules.config import discover_packs, effective_test_globs, read_toml, validate_layer
 from segmently_modules.output import EXIT_OK, UsageError, emit
 from segmently_modules.registry import as_list
 from segmently_modules.workspace import Workspace
@@ -33,7 +36,9 @@ def register(sub, common) -> None:
                                    "{module} segment) or --glob G (repeatable) with --module M; "
                                    "edit or remove rules by hand. files TARGET: every "
                                    "repository file that maps to TARGET and how (docs, "
-                                   "code_pointer:<field>, code_map:<id>); needs git.")
+                                   "code_pointer:<field>, code_map:<id>); needs git. "
+                                   "--source-only: its source files only (docs and tests "
+                                   "left out); --paths: one path per line.")
     p.add_argument("action", choices=ACTIONS)
     p.add_argument("name", nargs="?", metavar="ID|TARGET",
                    help="add: the new rule's id · files: a module or parent/child")
@@ -49,6 +54,11 @@ def register(sub, common) -> None:
                    help="add: the files this rule routes belong to other modules too, on purpose "
                         "(lint MS053 does not report its overlaps)")
     p.add_argument("--dry-run", action="store_true", help="add: show the block, write nothing")
+    p.add_argument("--source-only", action="store_true",
+                   help="files: only the files whose sources are more than docs and that match "
+                        "no test glob ([tests] globs adds to the defaults)")
+    p.add_argument("--paths", action="store_true",
+                   help="files: one repository-relative path per line, sorted (no JSON)")
     p.set_defaults(func=run)
 
 
@@ -173,8 +183,19 @@ def files_of(ws, target: str) -> dict:
             "total": len(per_file)}
 
 
+def source_only(data: dict, test_globs: list[str]) -> dict:
+    """`files_of`'s result with only the files whose `via` holds more than `docs` and whose path
+    matches no test glob; `total` follows the list."""
+    tests = [glob_to_regex(g) for g in test_globs]
+    files = [f for f in data["files"] if any(v != "docs" for v in f["via"])
+             and not any(rx.match(f["path"]) for rx in tests)]
+    return {**data, "files": files, "total": len(files)}
+
+
 def run(args) -> int:
     ws = Workspace.from_args(args)
+    if args.action != "files" and (args.source_only or args.paths):
+        raise UsageError("--source-only and --paths apply to code-map files")
     if args.action == "add":
         if args.name is None:
             raise UsageError("code-map add needs an ID (the new rule's id)")
@@ -195,7 +216,16 @@ def run(args) -> int:
         raise UsageError("code-map files needs a TARGET (a module or parent/child)")
     if args.module is not None:
         raise UsageError("code-map files takes no --module (the TARGET is the module)")
-    emit("code-map", files_of(ws, check_target(ws, args.name)), args.json, _render_files)
+    if args.paths and args.json:
+        raise UsageError("code-map files: --paths prints one path per line — it cannot be "
+                         "combined with --json")
+    data = files_of(ws, check_target(ws, args.name))
+    if args.source_only:
+        data = source_only(data, effective_test_globs(ws.config))
+    if args.paths:
+        _render_paths(data)
+    else:
+        emit("code-map", data, args.json, _render_files)
     return EXIT_OK
 
 
@@ -217,3 +247,10 @@ def _render_files(d) -> None:
     for f in d["files"]:
         print(f"{f['path']}  ({', '.join(f['via'])})")
     print(f"{d['total']} file(s) map to {d['target']}")
+
+
+def _render_paths(d) -> None:
+    """One path per line, sorted; nothing at all for no file."""
+    paths = sorted(f["path"] for f in d["files"])
+    if paths:
+        print("\n".join(paths))

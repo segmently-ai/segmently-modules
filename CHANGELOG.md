@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `code-map files TARGET --source-only` lists the module's source files only — no docs, no tests — and `--paths` prints them one per line, so an agent reads a short list instead of the full JSON; module-discover's code pass uses `code-map files <module> --source-only --paths`.
+- `[tests] globs`: the globs of test files that `--source-only` leaves out, added to the built-in ones (`**/tests/**`, `**/*.test.*`, `**/test_*.py` and the like, each at the root too).
+
 ## [0.3.0] - 2026-10-14
 
 ### Added

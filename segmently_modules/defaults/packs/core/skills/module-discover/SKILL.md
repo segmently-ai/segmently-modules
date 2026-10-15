@@ -70,10 +70,13 @@ If `segmently-modules` is not found, tell the user how to install it — the `se
    gets one line: "read, nothing for this task". Never a retelling of the doc.
 
 6. **Code touch points.** For each `modify` or `consume` module, one targeted pass: its code
-   pointers (`show`'s `code` and `code_globs`, or `segmently-modules code-map files <module> --json` — the
-   files whose `via` holds more than `docs`) searched for the task's terms in their code forms
+   pointers (`show`'s `code` and `code_globs`, or `segmently-modules code-map files <module> --source-only --paths`
+   — its source files, one per line, docs and tests left out; never `code-map files … --json`
+   without `--source-only`) searched for the task's terms in their code forms
    ("trial days" → `trialDays`): `git grep -n -e <term> -- <path> …` (no shell glob; source files
-   first, tests last; the rest of the repository only when that gives nothing). Record existing
+   first, tests last — searched in the module's test paths only for the behaviour the task
+   changes, found with `code-map files <module> --paths`; the rest of the repository only when
+   that gives nothing). Record existing
    code only, as `file:line — symbol — why` (what the task does there: changes, calls, extends).
    Discover runs before the work: it never guesses the files the work will create — where new
    code goes is the plan's decision. No code search for a `reference` module.
