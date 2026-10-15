@@ -33,6 +33,12 @@ If `segmently-modules` is not found, tell the user how to install it — the `se
 
 ## Steps
 
+Run the independent read commands of one step together — in one Bash call (`a; b; c`, or a
+loop) or as parallel tool calls — instead of one per turn: step 2's `show` of every candidate,
+step 3's `related` of every kept module, step 5's `show --all-roles` of every module and then the
+docs they list, step 6's searches of every module. Never batch commands whose input depends on an
+earlier output (a split module's child after its INDEX, step 3 after step 2's scores).
+
 1. **Candidates.** Follow `references/choose.md`; its terms `<file>` serves steps 6 and 7 too.
 
    Modules the user named join the list with a boost: they are verified like the rest but never
@@ -80,6 +86,11 @@ If `segmently-modules` is not found, tell the user how to install it — the `se
    code only, as `file:line — symbol — why` (what the task does there: changes, calls, extends).
    Discover runs before the work: it never guesses the files the work will create — where new
    code goes is the plan's decision. No code search for a `reference` module.
+
+   Read a file the search found outline first: its exported or top-level signatures with their
+   line numbers (e.g. `git grep -n -E '^(export |def |class |func |pub )' -- <file>`, or a symbol
+   tool when you have one), then only the ranges around the lines the change lands on (Read with
+   an offset and a limit, or `sed -n '<from>,<to>p' <file>`), not whole files.
 
 7. **Owners and docs to update.**
 

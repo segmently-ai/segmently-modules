@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `code-map files TARGET --source-only` lists the module's source files only — no docs, no tests — and `--paths` prints them one per line, so an agent reads a short list instead of the full JSON; module-discover's code pass uses `code-map files <module> --source-only --paths`.
 - `[tests] globs`: the globs of test files that `--source-only` leaves out, added to the built-in ones (`**/tests/**`, `**/*.test.*`, `**/test_*.py` and the like, each at the root too).
 
+### Changed
+
+- module-discover batches independent reads and reads code outline-first: the independent read commands of one step run together, in one Bash call or as parallel tool calls (never a command that needs an earlier output), and a file the code search found is read as its signatures with their line numbers first, then only around the lines the change lands on, not whole.
+
 ## [0.3.0] - 2026-10-14
 
 ### Added
