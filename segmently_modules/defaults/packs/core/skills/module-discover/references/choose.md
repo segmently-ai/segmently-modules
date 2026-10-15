@@ -8,9 +8,9 @@ and match whole words). The user may set the model ("use opus") and the depth ("
 
 **The mode.** One table decides whether the chooser (the search by meaning) runs. Read it top
 down; the first row that fits decides, so the user's words for this run win over
-`search.chooser`. The user's words count in any language. `match.mode` is only the command
-line's default: a `lexical` one never skips the search by meaning. The keyword commands always
-pass `--match lexical`.
+`search.chooser`. The user's words count in any language. `match.mode` does not decide the
+mode, except that the `always` row keeps `semantic` for a `semantic` one: a `lexical` one never
+skips the search by meaning. The keyword commands always pass `--match lexical`.
 
 | The user's words, this run | `search.chooser` | Keyword result | Mode |
 |---|---|---|---|
@@ -40,14 +40,16 @@ On `unsure` run the by-meaning half too, then merge the lists as `hybrid` does.
 
 **A failing chooser** — no agent to hand the order to, an answer that is not JSON, or
 `choose --apply` exits 2 — never ends the run: answer the order yourself, every card read, by its
-rules (the **Elsewhere** path), and say so on the search line.
+rules (the **Elsewhere** path), and say so on the search line. If your own answer fails
+`choose --apply` too, use the keyword list (run the keyword command when it has not run) and say
+so on the search line.
 
 **The search line.** The first line under the report's title says how the candidates were
-chosen: `Search: <lexical | by meaning | hybrid> — <the setting or the user's words> — lexical <sure | unsure: reason>`,
-e.g. `Search: lexical — chooser skipped (when_unsure, lexical sure)`,
+chosen: `Search: <lexical | by meaning | hybrid> — <the setting or the user's words> — lexical <sure | unsure: reason | not run>`
+(the mode `semantic` is written `by meaning`), e.g. `Search: lexical — when_unsure, chooser skipped — lexical sure`,
 `Search: hybrid — when_unsure — lexical unsure: tie`,
 or, after a failing chooser, `Search: hybrid — always, chooser failed (no agent): answered in the session — lexical sure`.
-No keyword command ran ("by meaning"): `lexical not run`.
+No keyword command ran: `Search: by meaning — "by meaning" — lexical not run`.
 
 If a temporary file cannot be written (a read-only sandbox), pass the task through a quoted
 heredoc and read the order from stdout instead of a file:

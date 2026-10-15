@@ -504,7 +504,8 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20
         "source files first, tests last — searched in the module's test paths only for the "
         "behaviour the task changes, found with `code-map files <module> --paths`; the rest of "
         "the repository only when that gives nothing",
-        "`file:line — symbol — why`", "it never guesses the files the work will create",
+        "`<edit | read> — file:line — symbol — why`",  # DCP-AC-011: the tag first
+        "it never guesses the files the work will create",
         "**Owners and docs to update.**",
         "segmently-modules discover --files <touch-point files> --task-file <file> --match lexical --json",
         F20,  # P82-AC-040

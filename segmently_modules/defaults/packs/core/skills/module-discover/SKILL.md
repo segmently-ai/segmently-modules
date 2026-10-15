@@ -77,9 +77,16 @@ If `segmently-modules` is not found, tell the user how to install it — the `se
    first, tests last — searched in the module's test paths only for the behaviour the task
    changes, found with `code-map files <module> --paths`; the rest of the repository only when
    that gives nothing). Record existing
-   code only, as `file:line — symbol — why` (what the task does there: changes, calls, extends).
+   code only, as `<edit | read> — file:line — symbol — why`. `edit`: an existing file the change
+   edits; its why says what changes there, in one clause, never "relevant" or "related". `read`:
+   a file called or consulted as it is, a consumer, a pattern to follow, or an alternative — a
+   file offered with "or", "either" or "could also" is never `edit`, and its why says
+   "alternative". A test file is `edit` only when its assertion names the symbol or value the
+   task changes; otherwise the module gets one line `Tests: add new — <what to cover>`, no path.
    Discover runs before the work: it never guesses the files the work will create — where new
-   code goes is the plan's decision. No code search for a `reference` module.
+   code goes is the plan's decision. What the work will probably also need goes on a
+   `Likely consequence:` line under the risks, never on a `Code:` line. No code search for a
+   `reference` module.
 
 7. **Owners and docs to update.**
 
@@ -95,8 +102,9 @@ If `segmently-modules` is not found, tell the user how to install it — the `se
    none — its why says "code in `<owner>`" or "outside every module"; drop a kept module only
    with a stated reason, on the rejected list.
 
-8. **Report** in the conversation, in the shape of `references/report.md` (every section there,
-   the rejected candidates included). The extracts are in the report itself, so the context
+8. **Report** in the conversation, in the shape of `references/report.md` (the search line
+   first, every section there, the rejected candidates included, every `Code:` line tagged
+   `edit` or `read`). The extracts are in the report itself, so the context
    reaches the conversation even when the agent ran the skill.
 
 9. **JSON on request**, at the path the user names: the `discovery-results.json` shape in
