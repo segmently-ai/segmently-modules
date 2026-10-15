@@ -389,9 +389,7 @@ class CommandsRunTest(unittest.TestCase):  # P82-AC-036, 038, 039, 040
                          "orders")
         args, _ = filled(command("module-discover", "segmently-modules code-map files"),
                          {"<module>": "orders"})
-        mapped = json.loads(self.cli(args))["data"]["files"]
-        self.assertIn("src/orders/service.py",
-                      [f["path"] for f in mapped if f["via"] != ["docs"]])
+        self.assertIn("src/orders/service.py", self.cli(args).splitlines())  # DCP-AC-024
         keywords = self.files / "queries.txt"  # the keyword half's `<file>`
         keywords.write_text("refund\norder service\n", encoding="utf-8")
         found = "src/orders/service.py src/payments/gateway.py"  # separate arguments (F20)
@@ -500,9 +498,12 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20
         "`consume` — the task calls its API as it is", "`reference` — the task only follows",
         "**Docs for every role.**", "segmently-modules show <module> --all-roles --json",
         "read, nothing for this task",
-        "**Code touch points.**", "segmently-modules code-map files <module> --json",
-        "the files whose `via` holds more than `docs`",  # review I-2: a doc is not code
-        "source files first, tests last; the rest of the repository only when that gives nothing",
+        "**Code touch points.**",
+        "segmently-modules code-map files <module> --source-only --paths",  # DCP-AC-024
+        "its source files, one per line, docs and tests left out",  # review I-2: a doc is not code
+        "source files first, tests last — searched in the module's test paths only for the "
+        "behaviour the task changes, found with `code-map files <module> --paths`; the rest of "
+        "the repository only when that gives nothing",
         "`file:line — symbol — why`", "it never guesses the files the work will create",
         "**Owners and docs to update.**",
         "segmently-modules discover --files <touch-point files> --task-file <file> --match lexical --json",

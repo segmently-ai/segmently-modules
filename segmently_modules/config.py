@@ -224,6 +224,8 @@ def validate_layer(layer: dict, source) -> None:
     from segmently_modules.hooks import validate_hooks  # hooks imports proposals -> store; keep lazy
     validate_hooks(layer, source, _check_table)
     validate_code_map(layer, source, _check_table)
+    if "tests" in layer:
+        _validate_tests(layer["tests"], source)
     for section in ("roles", "fields"):
         for name, spec in _require_table(layer.get(section, {}), section, source).items():
             _require_table(spec, f"{section}.{name}", source)
@@ -431,3 +433,26 @@ def enabled_roles(config: dict) -> list[str]:
     active = [(spec.get("order", 1000), name) for name, spec in roles.items()
               if spec.get("enabled", True)]
     return [name for _, name in sorted(active)]
+
+
+# `[tests] globs`: which files are tests (`code-map files --source-only` leaves them out). A
+# layer's list adds to these, never replaces them. `**/` needs a directory before it, so each
+# form is listed at the root too.
+DEFAULT_TEST_GLOBS = ("**/__tests__/**", "__tests__/**", "**/tests/**", "tests/**",
+                      "**/test/**", "test/**", "**/*.test.*", "*.test.*", "**/*.spec.*",
+                      "*.spec.*", "**/test_*.py", "test_*.py", "**/*_test.*", "*_test.*")
+
+
+def effective_test_globs(config: dict) -> list[str]:
+    """The engine's test globs, then every layer's `[tests] globs` (merged config), each once."""
+    table = config.get("tests") or {}
+    return list(dict.fromkeys([*DEFAULT_TEST_GLOBS, *table.get("globs", [])]))
+
+
+def _validate_tests(table, source) -> None:
+    table = _require_table(table, "tests", source)
+    if "globs" in table:
+        v = table["globs"]
+        if not isinstance(v, list) or not all(isinstance(g, str) and g for g in v):
+            raise UsageError(f"{source}: [tests] globs: expected a list of non-empty strings, "
+                             f"got {v!r}")
