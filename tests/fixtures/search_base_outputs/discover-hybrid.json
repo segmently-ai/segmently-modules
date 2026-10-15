@@ -1,0 +1,58 @@
+{
+  "schema": "segmently-modules.discover/1",
+  "data": {
+    "task": "refund\norder service\npartial refund\n",
+    "modules": [
+      {
+        "module": "orders/refunds",
+        "score": 6,
+        "keywords": [
+          "refund",
+          "partial refund"
+        ],
+        "sources": [
+          "keyword"
+        ],
+        "touched_files": [],
+        "usage": "reference",
+        "docs_to_read": [
+          "modules/orders/MODULE.md",
+          "modules/orders/submodules/refunds/MODULE.md"
+        ],
+        "docs_to_update": []
+      },
+      {
+        "module": "orders",
+        "score": 3,
+        "keywords": [
+          "order",
+          "orders"
+        ],
+        "sources": [
+          "keyword"
+        ],
+        "touched_files": [],
+        "usage": "reference",
+        "docs_to_read": [
+          "modules/orders/MODULE.md"
+        ],
+        "docs_to_update": []
+      }
+    ],
+    "files": [],
+    "files_outside_modules": [],
+    "missing_files": [],
+    "summary": {
+      "total_modules": 2,
+      "by_usage": {
+        "modify": 0,
+        "reference": 2
+      }
+    },
+    "mode": "hybrid",
+    "notes": [
+      "semantic part skipped: no agent command configured"
+    ]
+  }
+}
+--- exit 0, stderr:

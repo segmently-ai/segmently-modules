@@ -1,0 +1,71 @@
+{
+  "schema": "segmently-modules.context/1",
+  "data": {
+    "task": "refund\norder service\npartial refund\n",
+    "role": null,
+    "all_roles": false,
+    "modules": [
+      {
+        "module": "orders/refunds",
+        "score": 6,
+        "keywords": [
+          "refund",
+          "partial refund"
+        ],
+        "negative": [],
+        "read": [
+          {
+            "label": "universal (parent INDEX)",
+            "path": "modules/orders/MODULE.md",
+            "exists": true
+          },
+          {
+            "label": "child universal (refunds)",
+            "path": "modules/orders/submodules/refunds/MODULE.md",
+            "exists": true
+          }
+        ],
+        "code": [
+          "src/orders/service.py"
+        ],
+        "code_globs": []
+      },
+      {
+        "module": "orders",
+        "score": 3,
+        "keywords": [
+          "order",
+          "orders"
+        ],
+        "negative": [],
+        "read": [
+          {
+            "label": "universal (parent INDEX)",
+            "path": "modules/orders/MODULE.md",
+            "exists": true
+          }
+        ],
+        "code": [
+          "src/orders/service.py"
+        ],
+        "code_globs": []
+      }
+    ],
+    "read": [
+      {
+        "module": "orders/refunds",
+        "label": "universal (parent INDEX)",
+        "path": "modules/orders/MODULE.md",
+        "exists": true
+      },
+      {
+        "module": "orders/refunds",
+        "label": "child universal (refunds)",
+        "path": "modules/orders/submodules/refunds/MODULE.md",
+        "exists": true
+      }
+    ],
+    "near_misses": []
+  }
+}
+--- exit 0, stderr:

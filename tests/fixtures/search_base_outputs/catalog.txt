@@ -1,0 +1,7 @@
+catalog  active  Book catalog: titles, authors, formats. Use when changing how books are listed or found.  [catalog, book, author, isbn, BookRepository]
+orders  active  Order lifecycle for the bookshop, split into checkout, refunds and invoices. Start here for anything about a placed order.  [order, orders, OrderService]
+orders/checkout  active  Cart hand-off and order placement: totals, shipping choice and confirmation.  (child of orders)  [checkout, cart, shipping choice, order confirmation]
+orders/refunds  active  Returned books: refund requests, partial refunds and restocking.  (child of orders)  [refund, partial refund, restocking, return request]
+orders/invoices  active  Invoice numbering, PDF rendering and tax lines for placed orders.  (child of orders)  [invoice, invoice number, tax line, invoice pdf]
+payments  active  Payment capture through the gateway. Use for charging customers.  [payment, charge, PaymentGateway]
+--- exit 0, stderr:

@@ -11,7 +11,9 @@ descriptions are pinned by `test_budgets` and `test_builtin_skills` (P82-AC-041)
 goes to segmently-modules through a file (final review M-6), and every `match` / `context` / `discover`
 given a task in a shipped skill, reference or template runs `--match lexical` (final review I-1,
 P8.2 ruling M-6): a repository's `[match] mode` never turns a skill's keyword check into an agent
-run."""
+run. The chooser setting changed module-discover's half of the step: it reads `segmently-modules
+catalog --settings --json` and decides the mode in one table (`test_discover_choose_text`); its
+by-meaning bullet, the keyword half and the merge stay word for word the shared ones."""
 from __future__ import annotations
 
 import io
@@ -42,6 +44,7 @@ CODEX = ("codex exec -m <search.codex_model> -c model_reasoning_effort=<reasonin
 APPLY = "segmently-modules choose --apply - --json"
 F20 = ("`--files` takes the paths as separate arguments (`--files a.ts b/c.ts`); one quoted string "
        "is one path.")
+SHARED = ("module-sync", "module-scout", "module-research")  # the mode sentence as P8.2 wrote it
 
 
 def text(skill: str) -> str:
@@ -170,13 +173,33 @@ class SharedStepTest(unittest.TestCase):  # P82-AC-034…039
         "model_reasoning_effort=<reasoning> --output-schema",  # final review M-2: read-only
     ]
 
+    # module-discover under the chooser setting: the settings from `catalog --settings`, the mode
+    # sentence replaced by the routing table (pinned by test_discover_choose_text)
+    DISCOVER_SAYS = {
+        "segmently-modules catalog --json": "segmently-modules catalog --settings --json"}
+    NOT_IN_DISCOVER = (
+        "The mode: `hybrid` unless the user says otherwise",
+        '("only lexical", "by meaning", in any language)', "or `match.mode` is `semantic`;",
+        "a `lexical` config is only the command line's default and never skips the search by "
+        "meaning, which needs no setting;", "the keyword commands always pass `--match lexical`.")
+
+    def phrases(self, skill: str) -> list[str]:
+        if skill in SHARED:
+            return self.PHRASES
+        return [self.DISCOVER_SAYS.get(p, p) for p in self.PHRASES if p not in self.NOT_IN_DISCOVER]
+
     def test_every_skill_says_it_once_and_in_order(self):
         for skill in SKILLS:
             with self.subTest(skill=skill):
-                body = flat(text(skill))
-                self.assertEqual([p for p in self.PHRASES if body.count(p) != 1], [])
-                found = in_order(body, self.PHRASES)
-                self.assertEqual([p for p, i in zip(self.PHRASES, found) if i < 0], [])
+                body, phrases = flat(text(skill)), self.phrases(skill)
+                self.assertEqual([p for p in phrases if body.count(p) != 1], [])
+                found = in_order(body, phrases)
+                self.assertEqual([p for p, i in zip(phrases, found) if i < 0], [])
+
+    def test_module_discover_drops_only_the_mode_sentence(self):
+        body = flat(text("module-discover"))
+        self.assertEqual([p for p in self.NOT_IN_DISCOVER if p in body], [])
+        self.assertNotIn("segmently-modules catalog --json", body)
 
     def test_the_p81_wording_is_gone(self):
         for skill in SKILLS:
@@ -200,9 +223,12 @@ class SharedStepTest(unittest.TestCase):  # P82-AC-034…039
                     self.assertNotIn("--effort", a)
 
     def test_word_for_word_the_same(self):
-        parts = {s: between(text(s), MODE, KEYWORD) for s in SKILLS}
+        parts = {s: between(text(s), MODE, KEYWORD) for s in SHARED}
         self.assertTrue(all(parts.values()), parts)
         self.assertEqual(len(set(parts.values())), 1, parts)
+        meaning = {s: between(text(s), MEANING, KEYWORD) for s in SKILLS}  # module-discover too
+        self.assertTrue(all(meaning.values()), meaning)
+        self.assertEqual(len(set(meaning.values())), 1, meaning)
         for skill in SKILLS:
             with self.subTest(skill=skill):  # the merge is one line, the same in all four
                 self.assertEqual(text(skill).count(f"\n   {HYBRID}\n"), 1)
@@ -249,18 +275,25 @@ class SharedStepTest(unittest.TestCase):  # P82-AC-034…039
         self.assertEqual(found, [])
 
     def test_the_keys_it_names_are_printed(self):  # P82-AC-039: the text and the engine agree
-        named = set()
-        for skill in SKILLS:
-            named |= set(re.findall(r"\b(?:match|search)\.[a-z_]+\b", text(skill)))
-        self.assertLessEqual({"match.mode", "search.claude_model", "search.codex_model"}, named)
+        named = {s: set(re.findall(r"\b(?:match|search)\.[a-z_]+\b", text(s))) for s in SKILLS}
+        self.assertLessEqual({"match.mode", "search.claude_model", "search.codex_model"},
+                             set().union(*named.values()))
+        self.assertIn("search.chooser", named["module-discover"])
         with tempfile.TemporaryDirectory() as tmp:
             R = ("--root", str(copy_fixture(tmp, SPLIT_FIXTURE)))
-            code, out, err = run("catalog", "--json", *R)
-            self.assertEqual((code, err), (0, ""))
-            catalog = json.loads(out)["data"]
-            printed = {f"{group}.{key}" for group in ("match", "search") for key in catalog[group]}
-            self.assertEqual(sorted(named - printed), [])
-            self.assertIn(catalog["search"]["effort"], ("quick", "standard", "deep"))
+            printed = {}
+            for argv in (("catalog", "--json"), ("catalog", "--settings", "--json")):
+                code, out, err = run(*argv, *R)
+                self.assertEqual((code, err), (0, ""))
+                catalog = json.loads(out)["data"]
+                printed[argv] = {f"{group}.{key}" for group in ("match", "search")
+                                 for key in catalog[group]}
+                self.assertIn(catalog["search"]["effort"], ("quick", "standard", "deep"))
+            for skill in SKILLS:  # module-discover reads `catalog --settings`, the others `catalog`
+                with self.subTest(skill=skill):
+                    argv = ("catalog", "--settings", "--json") if skill == "module-discover" \
+                        else ("catalog", "--json")
+                    self.assertEqual(sorted(named[skill] - printed[argv]), [])
 
 
 class CommandsRunTest(unittest.TestCase):  # P82-AC-036, 038, 039, 040
@@ -449,11 +482,11 @@ class OtherKeysTest(unittest.TestCase):  # review M-9: the keys the steps read, 
 
 class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20)
     ORDER = [  # P8.6 D2: the complete context pull of the host original
-        "segmently-modules catalog --json",
+        "segmently-modules catalog --settings --json",  # the chooser setting (DCP-AC-023)
         "1–3 short English queries",  # F6a: the registry's language, domain terms, identifiers
         "(steps 6 and 7 use it too)",  # review M-4
         "the domain terms and code identifiers",
-        "The mode: `hybrid` unless",
+        "**The mode.** One table decides",  # the chooser setting (DCP-AC-006)
         '"only lexical"',
         MEANING,
         f"`{APPLY}`",

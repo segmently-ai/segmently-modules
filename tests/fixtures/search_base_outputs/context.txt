@@ -1,0 +1,7 @@
+orders/refunds               matched                        refund, partial refund (score 6)
+orders                       matched                        order, orders (score 3)
+orders/refunds               universal (parent INDEX)       modules/orders/MODULE.md
+orders/refunds               child universal (refunds)      modules/orders/submodules/refunds/MODULE.md
+orders/refunds               code                           src/orders/service.py
+orders                       code                           src/orders/service.py
+--- exit 0, stderr:

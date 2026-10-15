@@ -1,10 +1,14 @@
-"""`segmently-modules catalog [--json]`: one card per module and per child — name, status, description,
-keywords (a child also names its parent) — the input an agent reads to choose modules by
-meaning (P8.1 S2). Read-only: no lock, no write, never runs the agent. JSON carries `match: {mode,
-semantic}` (`semantic` = a valid `SEGMENTLY_MODULES_AGENT_COMMAND` is set) and the `search` settings."""
+"""`segmently-modules catalog [--settings] [--json]`: one card per module and per child — name,
+status, description, keywords (a child also names its parent) — the input an agent reads to
+choose modules by meaning (P8.1 S2). Read-only: no lock, no write, never runs the agent. JSON
+carries `match: {mode, semantic}` (`semantic` = a valid `SEGMENTLY_MODULES_AGENT_COMMAND` is set)
+and the `search` settings. `catalog --settings` prints only the settings: every `[match]` and
+`[search]` key, defaults filled in, and no card (the registry is not read)."""
+import json
+
 from segmently_modules.output import EXIT_OK, UsageError, defer_note, emit
 from segmently_modules.registry import as_dict
-from segmently_modules.config import search_settings
+from segmently_modules.config import LAYER_SCHEMA, core_defaults, search_all, search_settings
 from segmently_modules.semantic import agent_configured, configured_mode
 from segmently_modules.workspace import Workspace
 
@@ -41,6 +45,9 @@ def cards(modules: dict) -> list[dict]:
 def register(sub, common) -> None:
     p = sub.add_parser("catalog", parents=[common],
                        help="one card per module and child, for choosing modules by meaning")
+    p.add_argument("--settings", action="store_true",
+                   help="print only the settings: every [match] and [search] key, defaults "
+                        "filled in")
     p.set_defaults(func=run)
 
 
@@ -55,13 +62,39 @@ def _semantic(config: dict) -> bool:
         return False
 
 
+def match_settings(config: dict) -> dict:
+    """`catalog --settings`' `match`: what `catalog` shows (`mode`, `semantic`), then every other
+    key `[match]` knows, the merged value or the engine default."""
+    merged, defaults = config.get("match") or {}, core_defaults().get("match") or {}
+    out = {"mode": configured_mode(config), "semantic": _semantic(config)}
+    for key in LAYER_SCHEMA["match"]:
+        if key not in out:
+            out[key] = merged.get(key, defaults.get(key))
+    return out
+
+
 def run(args) -> int:
     ws = Workspace.from_args(args)
+    if args.settings:
+        data = {"match": match_settings(ws.config), "search": search_all(ws.config)}
+        emit("catalog", data, args.json, _render_settings)
+        return EXIT_OK
     data = {"match": {"mode": configured_mode(ws.config), "semantic": _semantic(ws.config)},
             "search": search_settings(ws.config),
             "modules": cards(ws.registry.modules)}
     emit("catalog", data, args.json, _render)
     return EXIT_OK
+
+
+def _render_settings(data) -> None:
+    """One `key = value` line per key under a `[match]` and a `[search]` heading; each value as
+    TOML writes it."""
+    for i, group in enumerate(("match", "search")):
+        if i:
+            print()
+        print(f"[{group}]")
+        for key, value in data[group].items():
+            print(f"{key} = {json.dumps(value, ensure_ascii=False)}")
 
 
 def _render(data) -> None:

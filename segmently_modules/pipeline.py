@@ -11,8 +11,8 @@ import sys
 from pathlib import Path
 
 from segmently_modules.changes import changed_files, map_files, missing_files
-from segmently_modules.config import enabled_roles
-from segmently_modules.match import match_modules, near_lines, near_misses
+from segmently_modules.config import enabled_roles, search_all
+from segmently_modules.match import lexical_confidence, match_modules, near_lines, near_misses
 from segmently_modules.output import EXIT_OK, UsageError, emit
 from segmently_modules.registry import as_dict
 from segmently_modules.query import show_target
@@ -259,10 +259,20 @@ def run_discover(args) -> int:
                           missing_files(ws.root, files) if args.files else [], rows)
     if mode != "lexical":
         data = {**data, "mode": mode, "notes": notes}
+    if has_task and mode in ("lexical", "hybrid"):  # keyword routing ran: how sure it is, last
+        data = {**data, "lexical_confidence": _confidence(ws, text)}
     # --from-diff REF (no range) compares the working tree with REF: the text says so
     ref = args.from_diff if args.from_diff and ".." not in args.from_diff else None
     emit("discover", data, args.json, functools.partial(_render_discover, ref=ref))
     return EXIT_OK
+
+
+def _confidence(ws, text: str) -> dict:
+    """`lexical_confidence` of a task: over every module keyword routing scores (all that reach
+    `[match] min_score`; `--top` does not cut them), against `[search] sure_min_score`."""
+    cfg = ws.config["match"]
+    rows = match_modules(ws.registry.modules, text, cfg, 10 ** 9, cfg["min_score"])
+    return lexical_confidence(rows, search_all(ws.config)["sure_min_score"])
 
 
 def _render_context(d, top: int | None = None) -> None:

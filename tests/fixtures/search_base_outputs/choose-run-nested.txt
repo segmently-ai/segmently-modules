@@ -1,0 +1,2 @@
+--- exit 2, stderr:
+segmently-modules: error: already inside an agent run (SEGMENTLY_MODULES_WORK_ORDER is set): a nested agent call is refused; use lexical matching or segmently-modules choose --task

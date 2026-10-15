@@ -1,0 +1,6 @@
+0.90  orders/refunds  returned books
+      read  universal (parent INDEX)     modules/orders/MODULE.md
+      read  child universal (refunds)    modules/orders/submodules/refunds/MODULE.md
+0.40  payments
+      read  universal                    modules/payments/MODULE.md
+--- exit 0, stderr:

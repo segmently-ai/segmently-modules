@@ -41,7 +41,7 @@ GOLDEN = [
     (("context", "--task", "isbn"), {"task", "role", "all_roles", "modules", "read",
                                      "near_misses"}),
     (("discover", "--task", "isbn"), {"task", "modules", "files", "files_outside_modules",
-                                      "missing_files", "summary"}),
+                                      "missing_files", "summary", "lexical_confidence"}),
     (("coverage",), {"total", "mapped", "share", "modules", "unmapped"}),
     (("code-map", "list"), None),
     (("code-map", "files", "catalog"), {"target", "files", "total"}),

@@ -106,6 +106,27 @@ def match_modules(modules: dict, text: str, weights: dict, top: int,
     return rows[:top]
 
 
+def lexical_confidence(rows: list[dict], sure_min_score: int) -> dict:
+    """How sure the keyword result is (`discover --json`'s `lexical_confidence`), over the
+    keyword-scored rows (`score` > 0): `{level, reason, top}`. `top` = the modules at the top
+    score, sorted by name; a family is a top-level module with its children (the part before
+    the first `/`) and counts once. `unsure` with the first reason that applies — `no_hits` (no
+    keyword row), `tie` (two or more families at the top score), `low_score` (top score below
+    `sure_min_score`); else `sure`, reason null."""
+    scored = [r for r in rows if isinstance(r.get("score"), int) and r["score"] > 0]
+    if not scored:
+        return {"level": "unsure", "reason": "no_hits", "top": []}
+    best = max(r["score"] for r in scored)
+    top = sorted(r["module"] for r in scored if r["score"] == best)
+    if len({m.split("/", 1)[0] for m in top}) > 1:
+        reason = "tie"
+    elif best < sure_min_score:
+        reason = "low_score"
+    else:
+        reason = None
+    return {"level": "unsure" if reason else "sure", "reason": reason, "top": top}
+
+
 LOOSE_MIN = 4  # words shorter than this never match loosely (too many false hints)
 
 
