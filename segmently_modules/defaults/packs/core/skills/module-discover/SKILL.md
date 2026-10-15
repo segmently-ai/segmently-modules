@@ -33,75 +33,40 @@ If `segmently-modules` is not found, tell the user how to install it — the `se
 
 ## Steps
 
-Run a step's independent read commands together, not one per turn: as parallel tool calls
-(docs: one Read each), or in one Bash call (`a; b; c`) when every output is short — step 2's
-`show` of every candidate, step 3's `related` of every kept module, step 5's `show --all-roles`
-of every `modify` or `consume` module, step 6's code lists and outlines. A long output may be
-cut to a preview: read the file it names, or rerun narrower. Never batch commands whose input
-depends on an earlier output (a split module's child after its INDEX, step 3 after step 2's
-scores, step 6's repository-wide search after an empty module search).
+The steps say what to find and what the report must hold; how to search and how much to read
+is your call. Run independent reads together (parallel tool calls, or one Bash call when every
+output is short). A host may cut a long output to a preview: then read the file it names, or
+rerun narrower.
 
 1. **Candidates.** Follow `references/choose.md`; its terms `<file>` serves steps 6 and 7 too.
 
-   Modules the user named join the list with a boost: they are verified like the rest but never
-   dropped, and the list is never limited to them.
+   Modules the user named are verified like the rest but never dropped, and the list is never
+   limited to them.
 
-2. **Verify.** For each candidate read its description and main doc: `segmently-modules show <module> --json`
-   (`read[0]`; a split module: its INDEX, then only the child the task is in,
-   `segmently-modules show <module>/<child> --json`; a pointer stub, exit 1: read its successor, never the
-   stub). A candidate whose description is clearly off-topic may be rejected from the description
-   alone. Score the rest on four questions, 0–10 each, and keep a module whose average is ≥ 5:
-   1. Does its stated purpose align with the task?
-   2. Does it provide components or services the task needs?
-   3. Does its doc hold patterns the task will use?
-   4. Would doing the task without it duplicate what it does?
+2. **Verify.** Read each candidate's description and main doc (`segmently-modules show <module> --json`;
+   a split module: its INDEX, then the child the task is in; exit 1 is a pointer stub: read its
+   successor). Score how much the task needs the module, 0–10, and keep it at 5 or more; a
+   dropped candidate goes on the rejected list with its score or "off-topic by its description".
 
-   The average goes in the report; a dropped candidate goes on the rejected list with its reason.
+3. **One hop out.** `segmently-modules related <module> --json` of a kept module may show another
+   module the task needs (follow forward edges only); verify it as in step 2.
 
-3. **One hop out.** For each kept module, `segmently-modules related <module> --json`: the targets of its
-   forward `depends-on`, `implemented-in` and `shares-contract` edges become candidates under the
-   same four questions; a forward `complements` target is a `reference` at most; reverse edges are
-   not followed.
+4. **Usage.** Each kept module (and child) is `modify` (the task changes its code or contracts),
+   `consume` (calls its API as it is) or `reference` (follows its patterns or rules).
 
-4. **Usage.** Each kept module (and child) is one of:
-   - `modify` — the task changes its code or its contracts;
-   - `consume` — the task calls its API as it is (its developer doc and API entry points matter);
-   - `reference` — the task only follows its patterns or rules.
+5. **Docs for every role.** A `modify` or `consume` module: every doc
+   `segmently-modules show <module> --all-roles --json` lists; a `reference` module: its main doc
+   only. Never `MODULE.legacy.md` or `roles/*.legacy.md`. Take from each doc what bears on the
+   task — rules, constraints, contracts, pitfalls — as short extracts with the doc's path and
+   role; a doc with nothing for the task gets "read, nothing for this task". Never a retelling.
 
-5. **Docs for every role.** For each `modify` or `consume` module: `segmently-modules show <module> --all-roles --json`
-   lists its main doc and every role doc (a child's role doc together with its parent's baseline);
-   read them all. A `reference` module: its main doc only, never its role docs, even when that doc
-   is long or links them; a rule it points to in a role doc is extracted as that pointer, unread.
-   Never read `MODULE.legacy.md` or `roles/*.legacy.md`. From each doc take what bears on the task — the rules, constraints,
-   contracts and pitfalls that will affect carrying out the plan or are presumably connected with
-   it — as short extracts, each with the doc's path and role. A doc with nothing for this task
-   gets one line: "read, nothing for this task". Never a retelling of the doc.
-
-6. **Code touch points.** For each `modify` or `consume` module, one targeted pass: its code
-   pointers (`show`'s `code` and `code_globs`, or `segmently-modules code-map files <module> --source-only --paths`
-   — its source files, one per line, docs and tests left out (empty: nothing to search); never
-   `code-map files … --json` without `--source-only`) searched for the task's terms in their code
-   forms ("trial days" → `trialDays`): `git grep -n -e <term> -- <path> …` (no shell glob; source
-   files first, tests last — searched in the module's test paths only for the behaviour the task
-   changes, found with `git grep -l -e <term> -- <the module's code paths>` (its test hits);
-   the rest of the repository only after an empty module search). Record existing code only, as
-   `<edit | read> — file:line — symbol — why`. `edit`: an existing file the change edits; its why
-   says what changes there, in one clause, never "relevant" or "related". `read`: a file called
-   or consulted as it is, a consumer, a pattern to follow, or an alternative — a file offered
-   with "or", "either" or "could also" is never `edit`, and its why says "alternative". A test
-   file is `edit` only when its assertion names the symbol or value the task changes; otherwise
-   a module with an `edit` line gets one line `Tests: add new — <what to cover>`, no path.
-   Discover runs before the work: it never guesses the files the work will create — where new
-   code goes is the plan's decision. What the work will probably also need goes on a
-   `Likely consequence:` line under the risks, never in `Code:`, never a new path. No code search
-   for a `reference` module.
-
-   Read the files the search found outline first, in one call: their signatures with line numbers
-   (e.g. `git grep -n -E '^(export |def |class |func |pub )' -- <path> …`, widened for the
-   language — it misses indented methods, `async`, `function`, `fn`, modifiers, test blocks — or
-   a symbol tool). Then read only from the signature above each line the change lands on to its
-   body's end (Read with an offset and a limit, or `sed -n '<from>,<to>p' <path>`), not whole
-   files. That signature names the code line's `symbol`; never guess one.
+6. **Code touch points.** For each `modify` or `consume` module, find the existing code the task
+   touches. Its code: `show`'s `code` and `code_globs`, or
+   `segmently-modules code-map files <module> --source-only --paths`; look outside it only when it
+   has nothing. Read just enough to name the symbol and what changes, not whole files. Record
+   existing code only, as `<edit | read> — file:line — symbol — why` under the rules of
+   `references/report.md`; the files the work will create are the plan's decision and are never
+   listed. No code search for a `reference` module.
 
 7. **Owners and docs to update.**
 

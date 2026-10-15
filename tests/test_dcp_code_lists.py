@@ -2,7 +2,11 @@
 files whose `via` holds more than `docs` and that match no test glob; `--paths` prints one
 repository-relative path per line; the `[tests] globs` of every layer add to the engine's default
 test globs; module-discover's code pass reads the compact list. Without the new flags every
-`code-map` output stays as it was (pinned below)."""
+`code-map` output stays as it was (pinned below). Formalization eval 2026-10-15: the owner adopted
+the lite text — the procedure is the model's, the contract is pinned: step 6 names the compact list
+and looks outside it only when it has nothing; the test lookup (`git grep -l …` over the module's
+code paths, source files first, tests last) and "never `code-map files … --json` without
+`--source-only`" left the skill on purpose, and the test that ran the lookup went with them."""
 from __future__ import annotations
 
 import json
@@ -16,7 +20,7 @@ from pathlib import Path
 
 from segmently_modules import config
 from segmently_modules.config import builtin_packs_root
-from tests.helpers import NO_AUTO_MAINTENANCE, copy_fixture, git, init_git, run, run_json
+from tests.helpers import NO_AUTO_MAINTENANCE, copy_fixture, init_git, run, run_json
 from tests.test_p81_skill_text import between, command, filled, section, text
 
 ENGINE = Path(__file__).resolve().parents[1]
@@ -341,7 +345,6 @@ class UnflaggedOutputsTest(Repo):  # the regression pin: byte-identical to the b
 
 class DiscoverSkillTextTest(unittest.TestCase):  # DCP-AC-024
     COMPACT = "segmently-modules code-map files <module> --source-only --paths"
-    LOOKUP = "git grep -l -e <term> -- <the module's code paths>"
 
     def skill(self) -> str:
         path = builtin_packs_root() / "core/skills/module-discover/SKILL.md"
@@ -353,49 +356,18 @@ class DiscoverSkillTextTest(unittest.TestCase):  # DCP-AC-024
 
     def test_step_6_names_the_compact_list(self):
         step = self.step6()
-        self.assertIn(f"`show`'s `code` and `code_globs`, or `{self.COMPACT}`", step)
-        self.assertIn("its source files, one per line, docs and tests left out (empty: nothing "
-                      "to search)", step)  # task-3 review M-6b
-        self.assertIn("never `code-map files … --json` without `--source-only`", step)
-        self.assertIn("source files first, tests last — searched in the module's test paths "
-                      "only for the behaviour the task changes, found with "
-                      f"`{self.LOOKUP}` (its test hits);", step)  # task-3 review M-6a
-        self.assertIn("the rest of the repository only after an empty module search", step)
+        self.assertIn(f"`show`'s `code` and `code_globs`, or `{self.COMPACT}`; look outside it "
+                      "only when it has nothing.", step)  # the lite text
         self.assertNotIn("only when that gives nothing", step)  # task-3 review M-6c
         self.assertEqual(command("module-discover", "segmently-modules code-map files"),
                          self.COMPACT)
 
-    def test_no_code_map_json_without_source_only(self):
-        body = " ".join(self.skill().split())
-        spans = list(re.finditer(r"`([^`]*code-map files[^`]*)`", body))
-        self.assertGreaterEqual(len(spans), 2)
-        for m in spans:  # a `--json` form only in the sentence that forbids it
-            with self.subTest(span=m.group(1)):
-                if "--json" in m.group(1) and "--source-only" not in m.group(1):
-                    self.assertTrue(body[m.end():].startswith(" without `--source-only`"))
-        self.assertNotIn("segmently-modules code-map files <module> --json", body)
-
     def test_the_full_list_is_never_printed(self):  # task-3 review M-6a
         body = " ".join(self.skill().split())
         spans = re.findall(r"`([^`]*code-map files[^`]*)`", body)
-        full = [s for s in spans if "--paths" in s and "--source-only" not in s]
-        self.assertEqual(full, [])  # the test lookup greps the module's code paths instead
+        self.assertEqual(spans, [self.COMPACT])  # the compact list is the one code-map command
+        self.assertNotIn("segmently-modules code-map files <module> --json", body)
         self.assertNotIn("$(", body)  # no command substitution: a strict permission mode asks for it
-
-    def test_the_test_lookup_prints_the_hits_not_the_list(self):  # task-3 review M-6a
-        with tempfile.TemporaryDirectory() as tmp:
-            root = copy_fixture(tmp)
-            (root / ".segmently-modules/config.toml").write_text(RULE, encoding="utf-8")
-            for rel, body in (("src/catalog/search.py", "def shelf_price():\n    return 1\n"),
-                              ("src/catalog/tests/test_search.py",
-                               "assert shelf_price() == 1\n"),
-                              ("src/catalog/tests/test_other.py", "assert True\n")):
-                (root / rel).parent.mkdir(parents=True, exist_ok=True)
-                (root / rel).write_text(body, encoding="utf-8")
-            init_git(root)
-            hits = git(root, "grep", "-l", "-e", "shelf_price", "--", "src/catalog/")  # the lookup
-        self.assertEqual(hits.splitlines(), ["src/catalog/search.py",
-                                             "src/catalog/tests/test_search.py"])
 
     def test_the_command_runs(self):
         with tempfile.TemporaryDirectory() as tmp:

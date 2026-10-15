@@ -5,7 +5,12 @@
 `Tests: add new — …`; `Likely consequence:` lines under the risks; the search line first under
 the title, in the form `references/choose.md` gives; the JSON is `1.1` and each `files[].reason`
 starts with the tag. Everything else in `references/report.md` stays byte for byte what it was:
-the base file is frozen below and the new one must be the base with exactly these edits."""
+the base file is frozen below and the new one must be the base with exactly these edits.
+Formalization eval 2026-10-15: the owner adopted the lite text — the procedure is the model's, the
+contract is pinned: step 6 records existing code in the tagged form under the rules of
+`references/report.md` (the tags, the tests line and the consequences are defined there, pinned
+below), never lists the files the work will create and searches no code for a `reference`
+module."""
 from __future__ import annotations
 
 import difflib
@@ -136,23 +141,12 @@ NEW_FILES = [
 ]
 JSON_REASON = "`files[].reason` starts with the tag of its `Code:` line: `edit — ` or `read — `."
 
-# step 6 (R-3), in order; task 3's compact-list sentence stays (test_dcp_code_lists)
+# step 6 (R-3), in order, as the lite text says it: the form, under report.md's rules (RULES above);
+# task 3's compact-list sentence stays (test_dcp_code_lists)
 STEP6 = [
-    "Record existing code only, as `<edit | read> — file:line — symbol — why`.",
-    "`edit`: an existing file the change edits; its why says what changes there, in one clause, "
-    "never \"relevant\" or \"related\".",
-    "`read`: a file called or consulted as it is, a consumer, a pattern to follow, or an "
-    "alternative — a file offered with \"or\", \"either\" or \"could also\" is never `edit`, and "
-    "its why says \"alternative\".",
-    # task-2 review M-1: the tests line belongs to a module with an `edit` line only
-    "A test file is `edit` only when its assertion names the symbol or value the task changes; "
-    "otherwise a module with an `edit` line gets one line `Tests: add new — <what to cover>`, "
-    "no path.",
-    "Discover runs before the work: it never guesses the files the work will create — where new "
-    "code goes is the plan's decision.",
-    # task-2 review M-2: the step carries "never a new path" as report.md does
-    "What the work will probably also need goes on a `Likely consequence:` line under the risks, "
-    "never in `Code:`, never a new path.",
+    "Record existing code only, as `<edit | read> — file:line — symbol — why` under the rules of "
+    "`references/report.md`;",
+    "the files the work will create are the plan's decision and are never listed.",
     "No code search for a `reference` module.",
 ]
 STEP8 = ("8. **Report** in the conversation, in the shape of `references/report.md` (the search "
@@ -381,13 +375,17 @@ class DocsTest(unittest.TestCase):  # R-6: the docs show the tagged shape, the c
         doc = flat((ENGINE / "docs/skills.md").read_text(encoding="utf-8"))
         row = next(line for line in (ENGINE / "docs/skills.md").read_text(encoding="utf-8")
                    .split("\n") if line.startswith("| `module-discover` |"))
-        for phrase in ("each tagged `edit` (an existing file the change edits) or `read`",
+        for phrase in ("the modules (each scored 0–10 by how much the task needs it and kept at "
+                       "5 or more; one hop of forward links; usage modify / consume / reference)",
+                       # the lite text (formalization eval 2026-10-15)
+                       "each tagged `edit` (an existing file the change edits) or `read`",
                        "`<edit | read> — file:line — symbol — why`",
                        "`Tests: add new — …`", "`Likely consequence:`",
                        "`version` `1.1`"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, row)
         self.assertNotIn("(`file:line — symbol — why`, never", row)
+        self.assertNotIn("four questions", row)
         self.assertIn("e.g. `Search: lexical — when_unsure, chooser skipped — lexical sure`", doc)
         self.assertNotIn("chooser skipped (when_unsure, lexical sure)", doc)
 

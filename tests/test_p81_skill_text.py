@@ -13,7 +13,12 @@ given a task in a shipped skill, reference or template runs `--match lexical` (f
 P8.2 ruling M-6): a repository's `[match] mode` never turns a skill's keyword check into an agent
 run. The chooser setting changed module-discover's half of the step: it reads `segmently-modules
 catalog --settings --json` and decides the mode in one table (`test_discover_choose_text`); its
-by-meaning bullet, the keyword half and the merge stay word for word the shared ones."""
+by-meaning bullet, the keyword half and the merge stay word for word the shared ones.
+Formalization eval 2026-10-15: the owner adopted the lite text — the procedure is the model's, the
+contract is pinned: module-discover's steps keep their order and their commands, step 2 one score
+(0–10, kept at 5 or more), step 3 forward edges only, step 6 the compact list and the tagged form;
+the four-question rubric, the edge kinds of step 3, the test lookup and "it never guesses the
+files the work will create" (now: the plan's decision, never listed) left on purpose."""
 from __future__ import annotations
 
 import io
@@ -490,23 +495,19 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20
         f"`{APPLY}`",
         f"{KEYWORD} `segmently-modules discover --task-file <file> --match lexical --json`",
         HYBRID,
-        "Modules the user named join the list with a boost",
+        "Modules the user named are verified like the rest but never dropped",  # the lite text
         "**Verify.**", "the child the task is in",
-        "Score the rest on four questions, 0–10 each, and keep a module whose average is ≥ 5",
-        "**One hop out.**", "forward `depends-on`, `implemented-in` and `shares-contract` edges",
-        "**Usage.**", "`modify` — the task changes its code or its contracts",
-        "`consume` — the task calls its API as it is", "`reference` — the task only follows",
+        "Score how much the task needs the module, 0–10, and keep it at 5 or more",
+        "**One hop out.**", "(follow forward edges only)",
+        "**Usage.**", "`modify` (the task changes its code or contracts)",
+        "`consume` (calls its API as it is)", "`reference` (follows its patterns or rules)",
         "**Docs for every role.**", "segmently-modules show <module> --all-roles --json",
         "read, nothing for this task",
         "**Code touch points.**",
         "segmently-modules code-map files <module> --source-only --paths",  # DCP-AC-024
-        "its source files, one per line, docs and tests left out",  # review I-2: a doc is not code
-        "source files first, tests last — searched in the module's test paths only for the "
-        "behaviour the task changes, found with `git grep -l -e <term> -- <the module's code paths>` "
-        "(its test hits); the rest of the repository only after an empty module search",  # task-3 review M-6: the hits, never the whole list
-
+        "look outside it only when it has nothing",
         "`<edit | read> — file:line — symbol — why`",  # DCP-AC-011: the tag first
-        "it never guesses the files the work will create",
+        "the files the work will create are the plan's decision and are never listed",
         "**Owners and docs to update.**",
         "segmently-modules discover --files <edit files> --task-file <file> --match lexical --json",
         F20,  # P82-AC-040

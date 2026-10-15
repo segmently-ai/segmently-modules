@@ -7,7 +7,11 @@ audit. Their agents only run them (`test_p84_agent_build`, `test_p84_codex_agent
 the contract's phrases, the removed P8.3 / P8.5 rules, the files each skill names, that the
 commands run, and that the references travel. The shared candidate search, routed to
 `references/choose.md` (X4: the core pack's size signal), is pinned word for word by
-`test_p81_skill_text`; the unchanged descriptions by `test_builtin_skills`."""
+`test_p81_skill_text`; the unchanged descriptions by `test_builtin_skills`. Formalization eval
+2026-10-15: the owner adopted the lite text — the procedure is the model's, the contract is pinned:
+module-discover's step 2 is one score (0–10, kept at 5 or more), step 3 follows forward edges only,
+and the four questions, the edge kinds, "the average goes in the report", the reference module's
+role docs never read and its pointer extracted unread left the skill on purpose."""
 import hashlib
 import io
 import json
@@ -94,36 +98,32 @@ class DiscoverContractTest(unittest.TestCase):  # D2: the host's MODE=discover c
         "the complete context a task needs before it is planned",
         "nothing important is missed in the discussion or the plan",
         "It does not look for a bug's cause",
-        # user-named modules: boosted, never dropped, never exclusive
-        "Modules the user named join the list with a boost",
+        # user-named modules: verified, never dropped, never exclusive
+        "Modules the user named are verified like the rest but never dropped",
         "never dropped, and the list is never limited to them",
-        # the four questions, the average, the score in the report
-        "Score the rest on four questions, 0–10 each, and keep a module whose average is ≥ 5",
-        "Does its stated purpose align with the task?",
-        "Does it provide components or services the task needs?",
-        "Does its doc hold patterns the task will use?",
-        "Would doing the task without it duplicate what it does?",
-        "The average goes in the report",
+        # one score (the lite text: the formalization eval), the rejected list
+        "Score how much the task needs the module, 0–10, and keep it at 5 or more",
+        'a dropped candidate goes on the rejected list with its score or "off-topic by its '
+        'description"',
         # one hop of related
-        "forward `depends-on`, `implemented-in` and `shares-contract` edges become candidates",
-        "a forward `complements` target is a `reference` at most",
+        "may show another module the task needs (follow forward edges only); verify it as in "
+        "step 2",
         # the usage
-        "`modify` — the task changes its code or its contracts",
-        "`consume` — the task calls its API as it is",
-        "`reference` — the task only follows its patterns or rules",
+        "`modify` (the task changes its code or contracts)",
+        "`consume` (calls its API as it is)",
+        "`reference` (follows its patterns or rules)",
         # docs for every role, the extracts that bear on the task, the "nothing" line
-        "segmently-modules show <module> --all-roles --json",
-        "A `reference` module: its main doc only, never its role docs, even when that doc is long "
-        "or links them",  # C5 read a reference module's role docs (P8.6 F1)
-        "a rule it points to in a role doc is extracted as that pointer, unread",
-        "the rules, constraints, contracts and pitfalls that will affect carrying out the plan or "
-        "are presumably connected with it",
-        "each with the doc's path and role",
+        "A `modify` or `consume` module: every doc `segmently-modules show <module> --all-roles "
+        "--json` lists",
+        "a `reference` module: its main doc only.",  # C5 read a reference module's role docs
+        "Never `MODULE.legacy.md` or `roles/*.legacy.md`.",
+        "Take from each doc what bears on the task — rules, constraints, contracts, pitfalls — as "
+        "short extracts with the doc's path and role",
         '"read, nothing for this task"',
-        "Never a retelling of the doc.",
+        "Never a retelling.",
         # code: existing touch points only, never the files the work will create
         "Record existing code only, as `<edit | read> — file:line — symbol — why`",  # DCP-AC-011
-        "it never guesses the files the work will create",
+        "the files the work will create are the plan's decision and are never listed",
         "where new code goes is the plan's decision",
         "No code search for a `reference` module.",
         # owners, docs to update, files outside, missing; the kept pick (P8.5) stays
