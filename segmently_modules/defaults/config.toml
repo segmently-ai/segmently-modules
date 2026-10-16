@@ -24,6 +24,7 @@ keywords_soft = 40
 keyword_shared_warn = 4
 skill_split_signal = 9000
 pack_split_signal = 64000
+rules_text_max = 8000         # characters of critical-rule text `show` returns (titles always)
 
 [match]
 keyword_weight = 3

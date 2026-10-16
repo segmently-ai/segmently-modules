@@ -109,6 +109,13 @@ def show_target(ws, target: str, role: str | None, all_roles: bool) -> tuple[int
     rule_docs = [cf.get("universal")] + ([as_dict(sub.get("context_files")).get("universal")] if child else [])
     result["rules"] = [{"doc": d, **r} for d in rule_docs if isinstance(d, str) and d
                        for r in critical_rules(ws.root / d, heading)]
+    budget = as_dict(ws.config.get("budgets")).get("rules_text_max", 8000)
+    used = 0
+    for r in result["rules"]:  # a text that would pass the budget is dropped; the title stays
+        if used + len(r["text"]) > budget:
+            r["text"] = None
+        else:
+            used += len(r["text"])
     if child:
         ccf = as_dict(sub.get("context_files"))
         add(f"child universal ({child})", ccf.get("universal"))

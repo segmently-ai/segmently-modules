@@ -18,7 +18,7 @@ GOLDEN = [
     (("init", "--dry-run"), {"root", "layout", "files", "dry_run"}),
     (("schema",), {"$schema", "title", "type", "required", "properties"}),
     (("match", "book"), None),
-    (("show", "catalog"), {"module", "status", "description", "keywords", "read", "code",
+    (("show", "catalog"), {"module", "status", "description", "keywords", "read", "rules", "code",
                            "code_globs", "fields"}),
     (("related", "catalog"), {"module", "edges", "reverse"}),
     (("list",), None),

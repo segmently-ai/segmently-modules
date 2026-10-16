@@ -100,6 +100,17 @@ def without_confidence(printed: str) -> tuple[str, str]:
     return last, json.dumps(envelope, indent=2, ensure_ascii=False) + "\n" + sep + tail
 
 
+def without_rules(test, printed: str) -> str:
+    """A `discover --json` output with every row's `rules` taken out (added after the golden
+    capture; the split fixture's docs have no critical-rules section, so each is `[]` — and
+    `tests/test_critical_rules.py` covers the key), printed again as the verb prints it."""
+    body, sep, tail = printed.partition("--- exit ")
+    envelope = json.loads(body)
+    for row in envelope["data"]["modules"]:
+        test.assertEqual(row.pop("rules"), [])
+    return json.dumps(envelope, indent=2, ensure_ascii=False) + "\n" + sep + tail
+
+
 class BaseOutputsTest(unittest.TestCase):
     def test_every_case_prints_what_the_base_printed(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -112,6 +123,8 @@ class BaseOutputsTest(unittest.TestCase):
                 if name in WITH_CONFIDENCE:  # the one addition: the last key of `data`
                     last, got = without_confidence(got)
                     self.assertEqual(last, "lexical_confidence")
+                if name.startswith("discover") and name.endswith(".json"):
+                    got = without_rules(self, got)
                 self.assertEqual(got, golden)
 
     def test_generic_empty_or_unknown_ids_change_no_output(self):

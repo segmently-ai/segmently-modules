@@ -41,7 +41,7 @@ LAYER_SCHEMA = {
                  "stub_pattern": "str", "updated_at_path": "str"},
     "budgets": {**{k: "int" for k in ("module_doc_split_signal", "module_doc_hard_stop",
                                       "role_doc_max", "keywords_soft", "keyword_shared_warn")},
-                "skill_split_signal": "int>=1", "pack_split_signal": "int>=1"},
+                "skill_split_signal": "int>=1", "pack_split_signal": "int>=1", "rules_text_max": "int"},
     "match": {**{k: "int" for k in ("keyword_weight", "combination_weight", "negative_weight",
                                     "min_score", "top")}, "mode": "str", "normalize": "str"},
     "lint": {"fail_on": "str", "component_table_heading": "str", "critical_rules_heading": "str", "drift_severity": "str",

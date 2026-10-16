@@ -21,9 +21,11 @@ def _clean(text: str) -> str:
 
 
 def critical_rules(path: Path, heading: str) -> list[dict]:
-    """[{line (1-based), title}] of the rules under the first heading that contains `heading`
-    (case-insensitive), up to the next heading of the same or a higher level; [] when the file
-    is missing, unreadable or has no such section. Fenced code is skipped."""
+    """[{line (1-based), title, text}] of the rules under the first heading that contains
+    `heading` (case-insensitive), up to the next heading of the same or a higher level; [] when
+    the file is missing, unreadable or has no such section. Fenced code is skipped when looking
+    for headings and items. `text` = the rule's body: a heading rule's lines up to the next
+    heading of the section, a list rule's indented continuation lines (stripped, '' when none)."""
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").split("\n")
     except OSError:
@@ -31,7 +33,7 @@ def critical_rules(path: Path, heading: str) -> list[dict]:
     want = heading.strip().lower()
     if not want:
         return []
-    level, heads, items, fence = None, [], [], False
+    level, heads, items, fence, end = None, [], [], False, len(lines) + 1
     for n, line in enumerate(lines, 1):
         if line.lstrip().startswith(("```", "~~~")):
             fence = not fence
@@ -45,6 +47,7 @@ def critical_rules(path: Path, heading: str) -> list[dict]:
             continue
         if m:
             if len(m.group(1)) <= level:
+                end = n
                 break
             heads.append({"line": n, "title": _clean(m.group(2))})
             continue
@@ -52,4 +55,16 @@ def critical_rules(path: Path, heading: str) -> list[dict]:
             mi = _ITEM.match(line)
             if mi:
                 items.append({"line": n, "title": _clean(mi.group(1))})
-    return heads or items
+    rules = heads or items
+    for k, r in enumerate(rules):
+        stop = rules[k + 1]["line"] if k + 1 < len(rules) else end
+        body = lines[r["line"]:stop - 1]
+        if not heads:  # a list rule: its indented continuation only
+            cont = []
+            for ln in body:
+                if ln.strip() and not ln.startswith((" ", "\t")):
+                    break
+                cont.append(ln)
+            body = cont
+        r["text"] = "\n".join(body).strip()
+    return rules

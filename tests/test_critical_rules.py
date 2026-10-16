@@ -59,15 +59,18 @@ class Parser(unittest.TestCase):
 
     def test_headings_inside_the_section_any_case_any_decoration(self):
         rules = critical_rules(self.doc(PARENT_DOC), "Critical Rules")
-        self.assertEqual(rules, [
-            {"line": 9, "title": "1. Writes to nested fields use dot-notation"},
-            {"line": 17, "title": "2. Prices are integers in cents"}])
+        self.assertEqual([(r["line"], r["title"]) for r in rules], [
+            (9, "1. Writes to nested fields use dot-notation"), (17, "2. Prices are integers in cents")])
+        self.assertTrue(rules[0]["text"].startswith("Why: merge keeps stale keys.".replace("Why", "**Why**")))
+        self.assertIn("### not a heading (code)", rules[0]["text"])  # code inside a rule is its text
+        self.assertEqual(rules[1]["text"], "")
 
     def test_top_level_items_when_the_section_has_no_heading(self):
         rules = critical_rules(self.doc(CHILD_DOC), "critical rules")
         self.assertEqual([r["title"] for r in rules],
                          ["Never open the drawer without a receipt.", "Close the shift before midnight."])
         self.assertEqual([r["line"] for r in rules], [5, 7])
+        self.assertEqual([r["text"] for r in rules], ["- an indented detail, not a rule", ""])
 
     def test_no_section_missing_file_blank_heading(self):
         self.assertEqual(critical_rules(self.doc("# x\n\n## Usage\n- a\n"), "Critical Rules"), [])
@@ -109,6 +112,13 @@ class ShowAndDiscover(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("  rule  modules/shop/MODULE.md:9  1. Writes to nested fields use dot-notation", out)
 
+    def test_text_budget_keeps_titles(self):
+        (self.root / ".segmently-modules/config.toml").write_text("[budgets]\nrules_text_max = 40\n",
+                                                                   encoding="utf-8")
+        _, env, _ = run_json("show", "shop", *self.R)
+        texts = [r["text"] for r in env["data"]["rules"]]
+        self.assertEqual(texts, [None, ""])  # the first is past 40 characters, the empty one fits
+
     def test_configured_heading(self):
         (self.root / ".segmently-modules/config.toml").write_text(
             '[lint]\ncritical_rules_heading = "Other"\n', encoding="utf-8")
@@ -122,6 +132,7 @@ class ShowAndDiscover(unittest.TestCase):
         rows = {m["module"]: m for m in env["data"]["modules"]}
         self.assertEqual(rows["shop"]["usage"], "modify")
         self.assertEqual(rows["shop"]["rules"][0]["line"], 9)
+        self.assertNotIn("text", rows["shop"]["rules"][0])  # discover: titles only
         self.assertEqual(rows["stock"]["rules"], [])  # a reference row has the key too
         code, out, _ = run("discover", "--files", "src/shop/till.py", *self.R)
         self.assertIn("rule   modules/shop/MODULE.md:17  2. Prices are integers in cents", out)
@@ -136,7 +147,7 @@ class TextsSayIt(unittest.TestCase):
         place = (SKILLS / "module-sync/references/placement.md").read_text(encoding="utf-8")
         self.assertIn("each its own `###` under the critical-rules heading", place)
         disc = " ".join((SKILLS / "module-discover/SKILL.md").read_text(encoding="utf-8").split())
-        self.assertIn("Every `rules` title `discover` or `show` returns", disc)
+        self.assertIn("`show` returns each kept module's critical rules (`rules`: title, text", disc)
         cfg = (ENGINE / "segmently_modules/defaults/config.toml").read_text(encoding="utf-8")
         self.assertIn('critical_rules_heading = "Critical Rules"', cfg)
 

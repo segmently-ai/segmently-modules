@@ -177,7 +177,8 @@ def build_discover(ws, text: str | None, files: list[str], top: int | None,
             docs += [r["path"] for r in shown["read"] if r["path"] not in docs]
         s["docs_to_read"] = docs
         s["docs_to_update"] = docs if s["usage"] == "modify" else []
-        s["rules"] = show_target(ws, module, None, False)[1]["rules"]
+        s["rules"] = [{k: v for k, v in r.items() if k != "text"}  # titles; `show` has the texts
+                      for r in show_target(ws, module, None, False)[1]["rules"]]
         children = split_children(ws, module) if s["usage"] == "modify" else []
         if children:  # the skill picks the child the change is in
             s["children"] = children
