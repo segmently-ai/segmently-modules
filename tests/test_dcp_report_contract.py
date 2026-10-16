@@ -153,6 +153,9 @@ OLD_CONFIDENCE = ("named, else `high` (average ≥ 7) or `medium`. `documentatio
                   "step 5 read for the")
 NEW_CONFIDENCE = ("named, else `high` when the score is ≥ 7, otherwise `medium`. `documentation` "
                   "holds every doc step 5 read for the")
+OLD_DOCS_RULE = "- Every doc step 5 read is on a `Docs:` line: an extract, or \"read, nothing for this task\". An"
+NEW_DOCS_RULE = ["- Every doc step 5 read or searched is on a `Docs:` line: an extract, \"read, nothing for this task\"",
+                 "  or \"searched (<terms>), nothing for this task\". An"]  # review M-1: the first rule names both forms
 NOTHING = "- `<path>` (<role>): read, nothing for this task"
 SEARCHED = "- `<path>` (<role>): searched (<terms>), nothing for this task"
 DOCS_RULE_END = ("  extract is short — a quote or a close paraphrase — and says what it means for "
@@ -165,7 +168,7 @@ SEARCHED_RULE = [
 ]
 REPLACED = {OLD_CODE: [EDIT, READ, TESTS], OLD_VERSION: [NEW_VERSION], OLD_FILES: NEW_FILES,
             OLD_HEADING: [NEW_HEADING], OLD_REJECTED: [NEW_REJECTED],
-            OLD_CONFIDENCE: [NEW_CONFIDENCE]}
+            OLD_CONFIDENCE: [NEW_CONFIDENCE], OLD_DOCS_RULE: NEW_DOCS_RULE}
 
 # step 6 (R-3), in order, as the lite text says it: the form, under report.md's rules (RULES above);
 # task 3's compact-list sentence stays (test_dcp_code_lists)
@@ -248,11 +251,11 @@ class RestUnchangedTest(unittest.TestCase):  # DCP-AC-016
             if op != "equal":
                 removed += base[i1:i2]
                 added += new[j1:j2]
-        self.assertEqual(removed, [OLD_HEADING, OLD_CODE, OLD_REJECTED, OLD_VERSION, OLD_FILES,
-                                   OLD_CONFIDENCE])  # every other base line kept
+        self.assertEqual(removed, [OLD_HEADING, OLD_CODE, OLD_REJECTED, OLD_DOCS_RULE, OLD_VERSION,
+                                   OLD_FILES, OLD_CONFIDENCE])  # every other base line kept
         allowed = {"", SEARCH, EDIT, READ, TESTS, CONSEQUENCE, NEW_VERSION, JSON_REASON,
                    *RULES, *NEW_FILES, NEW_HEADING, NEW_REJECTED, NEW_CONFIDENCE, SEARCHED,
-                   *SEARCHED_RULE}
+                   *SEARCHED_RULE, *NEW_DOCS_RULE}
         self.assertEqual([line for line in added if line not in allowed], [])
 
     def test_the_sections_are_the_base_sections(self):
@@ -411,8 +414,8 @@ class SearchedDocTest(unittest.TestCase):  # owner ruling 2026-10-16: a doc only
                 "searched (<terms>), nothing for this task ``; an extract taken from a searched "
                 "doc ends with `(searched)`.")
         self.assertEqual(body.count(rule), 1)
-        first = ("- Every doc step 5 read is on a `Docs:` line: an extract, or \"read, nothing "
-                 "for this task\".")
+        first = ("- Every doc step 5 read or searched is on a `Docs:` line: an extract, \"read, "
+                 "nothing for this task\" or \"searched (<terms>), nothing for this task\".")
         self.assertLess(body.index(first), body.index(rule))
         self.assertEqual(body.index(rule), body.index(flat(DOCS_RULE_END)) +
                          len(flat(DOCS_RULE_END)) + 1)

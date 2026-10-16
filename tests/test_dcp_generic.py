@@ -82,7 +82,8 @@ class RuleOrderTest(Shop):
         self.check("a shelf in the aisle", ["shelf"], "generic", ["shelf"])
 
     def test_generic_comes_before_low_score_and_tie(self):
-        self.check("a shelf", ["shelf"], "generic", ["shelf"])  # low_score without the key
+        self.check("a shelf", None, "low_score", ["shelf"])  # review M-2: asserted, not only said
+        self.check("a shelf", ["shelf"], "generic", ["shelf"])
         task = "a shelf in the aisle by the till with a receipt"  # shelf 2, till 2
         self.check(task, None, "tie", ["shelf", "till"])
         self.check(task, ["shelf", "till"], "generic", ["shelf", "till"])

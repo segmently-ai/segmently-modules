@@ -34,7 +34,8 @@ Likely consequence: <what the implementation will probably also need> — <the e
 - `<file>`
 ```
 
-- Every doc step 5 read is on a `Docs:` line: an extract, or "read, nothing for this task". An
+- Every doc step 5 read or searched is on a `Docs:` line: an extract, "read, nothing for this task"
+  or "searched (<terms>), nothing for this task". An
   extract is short — a quote or a close paraphrase — and says what it means for this task.
 - A doc read only through a search (its matching lines, not the whole doc) says so:
   `searched (<terms>)` in place of `read`, as in
