@@ -20,10 +20,11 @@ wire code to the module: [[code_map]] rules or code_pointer fields in .segmently
 
 ## Critical Rules
 
-<!-- What a change here must never break. One `###` heading per rule, the heading stating the rule
+<!-- The must-know index: every rule a change here must never break, whichever doc holds its detail.
+One entry per rule, stating it so the forbidden approach is named: a `###` heading per rule
 ("### Writes to nested fields use dot-notation, never set(..., {merge: true})"), then why, what to
-do and what not to do. show and discover list these headings, so an agent sees them without
-reading the whole doc. -->
+do and what not to do — or one list item per rule with the doc:line of its detail; one form per
+section. show, rules and module-check read them, so an agent sees them without reading every doc. -->
 
 ## Usage
 

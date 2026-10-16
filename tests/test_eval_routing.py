@@ -301,12 +301,12 @@ class OverlayTest(unittest.TestCase):  # P5B-AC-016 (the staging overlay while i
                           "display.\n\nFiles (3):\n- `packages/catalog/package.json`", prompt)
 
 
-class ContractTest(unittest.TestCase):  # P5B-AC-037 (the verb count; P6.1 W3-W5: + roles…setup)
+class ContractTest(unittest.TestCase):  # P5B-AC-037 (the verb count; P6.1 W3-W5: + roles…setup; + rules)
     def test_thirty_two_verbs_everywhere(self):
         parser = set(build_parser()._subparsers._group_actions[0].choices)
         contract = set(re.findall(r"^\| `([a-z-]+)", CONTRACT.read_text(encoding="utf-8"), re.M))
         self.assertEqual((len(parser), parser, {argv[0] for argv, _ in GOLDEN}),
-                         (32, contract, contract))
+                         (33, contract, contract))
         self.assertIn("eval", parser)
 
 

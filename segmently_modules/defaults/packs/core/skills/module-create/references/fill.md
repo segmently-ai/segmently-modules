@@ -8,9 +8,11 @@ never invent components or rules.
 - the description expanded to a short paragraph: what, why, when;
 - the components table — name · path · purpose, every row a real path (lint MS040 checks them);
 - usage: at least one example done right and one done wrong, each with why;
-- critical rules, under `## Critical Rules` (`[lint] critical_rules_heading`): one `###` per rule whose
-  heading states the rule, then why, what to do and what not to do — show and discover list these
-  headings;
+- critical rules, under `## Critical Rules` (`[lint] critical_rules_heading`) — the module's must-know
+  index, every rule a change must not break whichever doc holds its detail: one entry per rule stating
+  it so the forbidden approach is named — a `###` per rule (then why, what to do and what not to do) or
+  one list item per rule with the `doc:line` of its detail, one form per section — show, rules and
+  module-check read them;
 - where its files live.
 
 Keep it short — about 200–300 lines. Route detail to the role docs before it lands here: full

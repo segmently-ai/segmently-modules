@@ -6,7 +6,7 @@ list holds the parent's docs too). Then put each item where its readers look:
 
 | Doc | Gets | Rule |
 |---|---|---|
-| module doc | what the module is, its components (name · path · purpose), usage done right and wrong, critical rules (each its own `###` under the critical-rules heading, the heading stating the rule) | stays short: full signatures, flows and test code go to the role docs; past about 300 lines after the edit, route the excess to them |
+| module doc | what the module is, its components (name · path · purpose), usage done right and wrong, critical rules — the module's must-know index (`references/rules-index.md`): every rule a change must not break, a role doc's too, one entry each stating the rule, in the section's form — each its own `###` under the critical-rules heading, the heading stating the rule, or one list item — with the `doc:line` of its detail | stays short: full signatures, flows and test code go to the role docs; past about 300 lines after the edit, route the excess to them |
 | developer | imports, API changes, patterns, gotchas | the session's real code paths; append to the matching section |
 | qa | test scenarios, selectors, test patterns | the team's test conventions as its docs state them |
 | po | user stories, business rules | only when business behaviour changed |

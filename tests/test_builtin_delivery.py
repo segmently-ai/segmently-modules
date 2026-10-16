@@ -13,7 +13,7 @@ from pathlib import Path
 import segmently_modules
 from tests.helpers import copy_fixture, init_git, run, run_json
 
-CORE = ["module-adopt", "module-assistant", "module-create", "module-discover", "module-init",
+CORE = ["module-adopt", "module-assistant", "module-check", "module-create", "module-discover", "module-init",
         "module-lint", "module-research", "module-roles", "module-scout", "module-split",
         "module-sync"]
 BUILTIN = sorted(CORE + ["designer", "qa-acceptance", "qa-acceptance-baseline"])
@@ -131,7 +131,7 @@ class OneDeliveryTest(DeliveryRepo):  # P6-AC-002
         for sid in BUILTIN + ["api-review"]:
             self.assertIn(f"- `{sid}` — ", (self.root / "CLAUDE.md").read_text())
         before = self.files(".claude")
-        self.assertEqual(self.sync(*AGENTS)["summary"]["unchanged"], 30)  # row 9: repo keeps
+        self.assertEqual(self.sync(*AGENTS)["summary"]["unchanged"], 32)  # row 9: repo keeps
         self.config('"plugin"')
         self.assertEqual(self.lint_codes(), sorted(  # row 3, before the sync: 26 infos
             (f"{top}/{s}", "info") for top in (".agents/skills", ".claude/skills")
@@ -156,7 +156,7 @@ class OneDeliveryTest(DeliveryRepo):  # P6-AC-002
         self.assertEqual({r["status"] for r in data["skills"]}, {"unchanged"})
         self.assertEqual([r["skill"] for r in data["skills"]], ["api-review", "api-review"])
         self.config()  # row 9 the other way: back to repo recreates them
-        self.assertEqual(self.sync(*AGENTS)["summary"]["created"], 28)
+        self.assertEqual(self.sync(*AGENTS)["summary"]["created"], 30)
 
     def test_plugin_from_the_start(self):  # row 2
         self.config('"plugin"')
@@ -195,7 +195,7 @@ class OneDeliveryTest(DeliveryRepo):  # P6-AC-002
                           rows[("claude", "module-sync")]["reason"]),
                          ("conflict", "SKILL.md (locally edited; not removed)"))
         self.assertNotIn(("codex", "module-scout"), rows)  # no marker: no row, untouched
-        self.assertEqual(sum(r["status"] == "removed" for r in rows.values()), 26)
+        self.assertEqual(sum(r["status"] == "removed" for r in rows.values()), 28)
         self.assertEqual(edited.read_text(), "# edited by hand\n")
         self.assertEqual(mine.read_text(), "---\nname: module-scout\ndescription: Mine.\n---\n")
         self.assertEqual(self.lint_codes(), [(".claude/skills/module-sync", "info")])
@@ -261,7 +261,7 @@ class OneDeliveryTest(DeliveryRepo):  # P6-AC-002
         self.config('"plugin"')
         code, env, err = run_json("ci", "--fail-on", "warning", *self.R)
         lint = next(s for s in env["data"]["steps"] if s["name"] == "lint")
-        self.assertEqual(len([f for f in lint["findings"] if f["code"] == "MS067"]), 28)
+        self.assertEqual(len([f for f in lint["findings"] if f["code"] == "MS067"]), 30)
         self.assertEqual(lint["status"], "passed")  # info never fails a gate
         code, env, err = run_json("lint", "--changed", "--fail-on", "never", *self.R)
         self.assertNotIn("MS067", {f["code"] for f in env["data"]["findings"]})
@@ -283,7 +283,7 @@ class PluginTextsTest(DeliveryRepo):  # final review M-14, M-15 (T-9)
         tail = ("removes it when it is unedited (an edited copy, or the copy of an ejected "
                 "skill, stays: a packs sync conflict)")
         messages = found()
-        self.assertEqual(len(messages), 28)
+        self.assertEqual(len(messages), 30)
         for path, message in messages.items():
             command = ("segmently-modules packs sync" if path.startswith(".claude/")
                        else "segmently-modules packs sync --agent codex")  # [packs] agents leaves it out
@@ -321,7 +321,7 @@ class TransitionsTest(DeliveryRepo):  # P6-AC-026
     def test_repo_plugin_repo(self):
         self.config(builtin=("core",))
         first = self.sync("--agent", "claude")
-        self.assertEqual([r["status"] for r in first["skills"]], ["created"] * 12)
+        self.assertEqual([r["status"] for r in first["skills"]], ["created"] * 13)
         synced = self.files(".claude")
         self.config('"plugin"', builtin=("core",))
         data = self.sync("--agent", "claude")

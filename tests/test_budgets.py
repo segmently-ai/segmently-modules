@@ -19,9 +19,9 @@ from segmently_modules.skills import read_front_matter
 from tests.helpers import copy_fixture, run
 
 # P8.2 (2026-10-03): the decision taken again for the shipped choice agent and the Codex path
-DESCRIPTIONS_MAX = 7_000  # the shipped skills' `description` values together (2026-10-07, owner:
-# raised from 6_600 for module-assistant's trigger)
-SKILL_COUNT = 14        # core 11 + qa 2 + ui 1
+DESCRIPTIONS_MAX = 7_150  # the shipped skills' `description` values together (2026-10-07, owner:
+# raised from 6_600 for module-assistant's trigger; 2026-10-16: 7_000 -> 7_150 for module-check, owner to confirm)
+SKILL_COUNT = 15        # core 12 + qa 2 + ui 1
 
 # A shipped crossing of `skill_split_signal` / `pack_split_signal` (lint MS068 / MS069) that the
 # owner discussed and kept. Keys: "<pack>/<skill>", "<pack>/<skill>/<file stem>", "pack <pack>".

@@ -87,7 +87,8 @@ rerun narrower.
 8. **Report** in the conversation, in the shape of `references/report.md` (the search line
    first, every section there, the rejected candidates included, every `Code:` line tagged
    `edit` or `read`). The extracts are in the report itself, so the context
-   reaches the conversation even when the agent ran the skill.
+   reaches the conversation even when the agent ran the skill. Once a plan is written from it,
+   `module-check` reads the plan against every rule of these modules.
 
 9. **JSON on request**, at the path the user names: the `discovery-results.json` shape in
    `references/report.md`.

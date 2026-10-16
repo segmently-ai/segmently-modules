@@ -73,6 +73,8 @@ GOLDEN = [
     (("choose", "--task", "refund a book"),
      {"task", "rules", "cards", "answer_schema", "catalog_digest", "max_picks", "search"}),
     (("setup", "--dry-run"), {"dry_run", "agents", "targets", "steps"}),  # P6.1 W5
+    (("rules", "catalog", "--files", "src/catalog/service.py"),
+     {"heading", "modules", "files_outside_modules", "missing_files"}),
 ]
 
 

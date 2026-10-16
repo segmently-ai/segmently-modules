@@ -177,8 +177,7 @@ def build_discover(ws, text: str | None, files: list[str], top: int | None,
             docs += [r["path"] for r in shown["read"] if r["path"] not in docs]
         s["docs_to_read"] = docs
         s["docs_to_update"] = docs if s["usage"] == "modify" else []
-        s["rules"] = [{k: v for k, v in r.items() if k != "text"}  # titles; `show` has the texts
-                      for r in show_target(ws, module, None, False)[1]["rules"]]
+        s["rule_count"] = len(show_target(ws, module, None, False)[1]["rules"])  # `rules` has them
         children = split_children(ws, module) if s["usage"] == "modify" else []
         if children:  # the skill picks the child the change is in
             s["children"] = children
@@ -314,8 +313,8 @@ def _render_discover(d, ref: str | None = None) -> None:
         print(f"{m['usage']:<9} {m['module']:<30} {score}via {', '.join(sources)}")
         for doc in m["docs_to_update"]:
             print(f"          update {doc}")
-        for r in m.get("rules", []):
-            print(f"          rule   {r['doc']}:{r['line']}  {r['title']}")
+        if m.get("rule_count"):
+            print(f"          rules  {m['rule_count']} critical rule(s): segmently-modules rules {m['module']}")
         for c in m.get("children", []):
             print(f"          child  {c['module']}  {c['description']}  ({c['doc']})")
     for f in d["files"]:

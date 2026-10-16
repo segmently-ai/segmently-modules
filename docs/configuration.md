@@ -656,6 +656,7 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS013 | error | a value does not match its field type (or an entry is not an object, or a `context_files.roles` value is neither a doc path, a list of doc paths nor a not-needed mark: `false` or `{"skip": "<note>"}`) |
 | MS014 | error | a directory under `modules_dir` is neither registered nor a pointer stub (dot-directories are never modules and are skipped) |
 | MS015 | warning | `context_files.roles` names a role that is not configured |
+| MS018 | warning | a module's (or child's) `context_files` has no `universal` doc — another doc key in its place (`module_md`) is read as an extra doc, so `show` lists no module doc and the size checks (MS030/MS031), the components table (MS040) and the critical rules never see it; the message names the other doc keys |
 | MS016 | warning | a `*.md` in a module's (or child's) `roles/` directory that no registry entry names — agents never load it; the message names the role its file name reads as (the same name, or one starting with it: `ARCHITECTURE.md` → `architect`) and how to register it; `*.legacy.md` never counts |
 | MS017 | info | the `*.md` files directly in a module's (or child's) directory that no registry entry names, one finding per module (path = the directory; nested directories such as `plans/` are not looked at; `*.legacy.md` never counts) |
 | MS020 | info | more keywords than `[budgets] keywords_soft` |

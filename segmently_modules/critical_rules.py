@@ -1,9 +1,9 @@
-"""The titles of a module doc's critical-rules section (`[lint] critical_rules_heading`).
+"""The rules of a module doc's critical-rules section (`[lint] critical_rules_heading`).
 
-`show` and `discover` return them so an agent sees every rule of a module it is about to change
-without reading the whole doc: the section is found by its heading (any level, any case, any
-decoration around the words), and each rule is a deeper heading inside it, or, in a section that
-has none, a top-level list item.
+`show`, `discover` and `rules` return them so an agent sees every rule of a module it is about to
+change without reading the whole doc: the section is found by its heading (any level, any case,
+any decoration around the words), and each rule is a deeper heading inside it, or, in a section
+that has none, a top-level list item.
 """
 from __future__ import annotations
 
@@ -24,8 +24,10 @@ def critical_rules(path: Path, heading: str) -> list[dict]:
     """[{line (1-based), title, text}] of the rules under the first heading that contains
     `heading` (case-insensitive), up to the next heading of the same or a higher level; [] when
     the file is missing, unreadable or has no such section. Fenced code is skipped when looking
-    for headings and items. `text` = the rule's body: a heading rule's lines up to the next
-    heading of the section, a list rule's indented continuation lines (stripped, '' when none)."""
+    for headings and items. `title` = the heading's or the item's words, cut to TITLE_MAX;
+    `text` = the whole rule as written, so it reads on its own: the words in full, then a heading
+    rule's lines up to the next heading of the section, or a list rule's indented continuation
+    lines (stripped)."""
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").split("\n")
     except OSError:
@@ -49,12 +51,12 @@ def critical_rules(path: Path, heading: str) -> list[dict]:
             if len(m.group(1)) <= level:
                 end = n
                 break
-            heads.append({"line": n, "title": _clean(m.group(2))})
+            heads.append({"line": n, "title": _clean(m.group(2)), "first": m.group(2)})
             continue
         if not line.startswith((" ", "\t")):
             mi = _ITEM.match(line)
             if mi:
-                items.append({"line": n, "title": _clean(mi.group(1))})
+                items.append({"line": n, "title": _clean(mi.group(1)), "first": mi.group(1)})
     rules = heads or items
     for k, r in enumerate(rules):
         stop = rules[k + 1]["line"] if k + 1 < len(rules) else end
@@ -66,5 +68,5 @@ def critical_rules(path: Path, heading: str) -> list[dict]:
                     break
                 cont.append(ln)
             body = cont
-        r["text"] = "\n".join(body).strip()
+        r["text"] = "\n".join([r.pop("first").strip()] + body).strip()
     return rules

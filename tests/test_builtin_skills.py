@@ -34,6 +34,8 @@ CORE: dict[str, tuple[str, list[tuple[str, ...]], list[str]]] = {
                                       ("code-map", "files"), ("lint",)],
                         ["No gates — read-only", "file:line", "the docs say X",
                          "gaps are reported, not fixed"]),
+    "module-check": ("read-only", [("rules", "--files")],
+                     ["No gates — read-only", "`Conflicts:`", "at most five", "no quote, no conflict"]),
     "module-sync": ("writer", [("sync-instructions",), ("registry",), ("propose",), ("sync",),
                                ("ci",)],
                     ["Autonomous by default", "two children of a split module equally well",
@@ -305,11 +307,12 @@ class InstallLineTest(SkillRules):  # P6-AC-019 (D6, SI-4)
         "module-scout": "79df2d2b49d5ccb6", "module-split": "134b4160f4344630",
         "module-sync": "373a648c232de290", "module-roles": "686cf561ceb829bf",
         "module-assistant": "840b945cfa4eff76", "qa-acceptance-baseline": "a14b60b636d19605",
-        "qa-acceptance": "9285192a1351f89f", "designer": "6bd3019e180a415a"}
+        "qa-acceptance": "9285192a1351f89f", "designer": "6bd3019e180a415a",
+        "module-check": "c75f9a2311f21c42"}
 
     def test_every_body_holds_the_one_line(self):
         skills = self.all_skills()
-        self.assertEqual(len(skills), 14)
+        self.assertEqual(len(skills), 15)
         for sid, (_, directory) in skills.items():
             with self.subTest(skill=sid):
                 text = (directory / "SKILL.md").read_text("utf-8")
@@ -393,10 +396,12 @@ class TextRulesTest(SkillRules):  # P4B-AC-014, P4B-AC-017
         # only the work order's text form, once in each skill that chooses modules by meaning,
         # and module-sync's saved gate (P83-AC-012: `ci --base <base> --json > <ci file>`)
         saved_gate = [["ci", "--base", "X", "--json"]]
-        others = [e for e in exempt if e != saved_gate[0]]
+        others = [e for e in exempt if e != saved_gate[0] and e[:1] != ["rules"]]
         self.assertEqual(others.count(["choose", "--task-file", "-"]), 3)  # AC-015: one line in
         self.assertEqual(others.count(["choose", "--task-file", "X"]), len(others) - 3)  # each
         self.assertEqual(exempt.count(saved_gate[0]), 1)
+        handoff = [e for e in exempt if e[:1] == ["rules"]]  # module-check: the rules as text, read whole
+        self.assertEqual(handoff, [["rules", "XX", "--files", "XX"]])
         self.assertEqual(path_lists, [("module-discover",
                                        ["code-map", "files", "X", "--source-only", "--paths"])])
 

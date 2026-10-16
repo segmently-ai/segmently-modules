@@ -1,4 +1,5 @@
-"""Registry lint. Codes: MS001-MS004, MS006-MS015 registry/field checks · MS005, MS016, MS017,
+"""Registry lint. Codes: MS001-MS004, MS006-MS015 registry/field checks · MS018 a context_files
+with no universal doc · MS005, MS016, MS017,
 MS041-MS043 the docs as files (segmently_modules.doc_checks) · MS020-MS023 keyword budgets and hygiene ·
 MS030-MS032 doc budgets · MS040 component paths ·
 MS052 a [[code_map]] rule whose `module` is not in the registry · MS053 two [[code_map]] rules
@@ -174,6 +175,14 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
 
     declared_roles = set(cfg.get("roles") or {})
 
+    def check_universal(label, cf):  # MS018: a doc key in place of universal hides the module doc
+        if isinstance(cf, dict) and not isinstance(cf.get("universal"), str):
+            others = ", ".join(k for k in cf if k not in ("universal", "roles")) or "none"
+            add("MS018", "warning", label,
+                f"context_files has no 'universal' (other doc keys: {others}) — the module doc is "
+                f"context_files.universal: show, the size checks (MS030/MS031), the components "
+                f"table (MS040) and the critical rules read only that key")
+
     def check_roles(label, cf):
         roles = cf.get("roles") if isinstance(cf, dict) else None
         if roles is not None and not isinstance(roles, dict):
@@ -199,6 +208,7 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
             add(problem[0], "error", name, problem[1])
         check_paths(name, entry.get("context_files"), "context_files")
         check_roles(name, entry.get("context_files"))
+        check_universal(name, entry.get("context_files"))
         for child, sub in as_dict(entry.get("submodules")).items():
             if not isinstance(sub, dict):
                 add("MS013", "error", f"{name}/{child}", "submodule entry is not an object")
@@ -207,6 +217,7 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
             check_paths(f"{name}/{child}", sub.get("context_files"),
                         f"submodules.{child}.context_files")
             check_roles(f"{name}/{child}", sub.get("context_files"))
+            check_universal(f"{name}/{child}", sub.get("context_files"))
         for i, edge in enumerate(as_list(entry.get("related_modules"))):
             if not isinstance(edge, dict):  # the field type check reports MS013
                 continue

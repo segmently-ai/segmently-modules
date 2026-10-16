@@ -101,13 +101,13 @@ def without_confidence(printed: str) -> tuple[str, str]:
 
 
 def without_rules(test, printed: str) -> str:
-    """A `discover --json` output with every row's `rules` taken out (added after the golden
-    capture; the split fixture's docs have no critical-rules section, so each is `[]` — and
+    """A `discover --json` output with every row's `rule_count` taken out (added after the golden
+    capture; the split fixture's docs have no critical-rules section, so each is 0 — and
     `tests/test_critical_rules.py` covers the key), printed again as the verb prints it."""
     body, sep, tail = printed.partition("--- exit ")
     envelope = json.loads(body)
     for row in envelope["data"]["modules"]:
-        test.assertEqual(row.pop("rules"), [])
+        test.assertEqual(row.pop("rule_count"), 0)
     return json.dumps(envelope, indent=2, ensure_ascii=False) + "\n" + sep + tail
 
 

@@ -9,6 +9,8 @@ description: Brings module docs and registry fields in line with a work session 
 
 - A session changed module code or revealed module knowledge (a decision, a gotcha, a rule found
   while debugging); the gate reports drift (MS050); the user asks to sync the session or the docs.
+- A module's rules index is missing or incomplete (`module-check` found no rules): build it as
+  `references/rules-index.md` says, without steps 1–10.
 
 ## When not to use
 
@@ -34,6 +36,7 @@ The session is the primary source; the change in git confirms it and finds misse
 - **session** — what to take from the conversation (step 1) → `references/session.md`
 - **placement** — which doc gets what; checks; queued writes (steps 6–7) → `references/placement.md`
 - **report** — findings, proposals, final report (steps 5, 10) → `references/report.md`
+- **rules index** — the must-know rules of a module, built or kept current → `references/rules-index.md`
 
 1. Extract the session's knowledge (`references/session.md`): the plan goal, decisions with the
    rejected alternatives, discoveries, patterns, gotchas, new cross-module dependencies and
