@@ -106,18 +106,31 @@ def match_modules(modules: dict, text: str, weights: dict, top: int,
     return rows[:top]
 
 
-def lexical_confidence(rows: list[dict], sure_min_score: int) -> dict:
+def _is_generic(module: str, generic) -> bool:
+    """Whether `module` is in the family of a `[search] generic` id: the id itself or `<id>/…`."""
+    return any(module == g or module.startswith(g + "/") for g in generic)
+
+
+def lexical_confidence(rows: list[dict], sure_min_score: int, generic=()) -> dict:
     """How sure the keyword result is (`discover --json`'s `lexical_confidence`), over the
     keyword-scored rows (`score` > 0): `{level, reason, top}`. `top` = the modules at the top
-    score, sorted by name; a family is a top-level module with its children (the part before
-    the first `/`) and counts once. `unsure` with the first reason that applies — `no_hits` (no
-    keyword row), `tie` (two or more families at the top score), `low_score` (top score below
-    `sure_min_score`); else `sure`, reason null."""
+    score of the rows the verdict is decided over, sorted by name; a family is a top-level
+    module with its children (the part before the first `/`) and counts once. `generic` = the
+    `[search] generic` ids: a row in an id's family (`<id>` or `<id>/…`) is generic. `unsure`
+    with the first reason that applies — `no_hits` (no keyword row), `generic` (every keyword
+    row is generic; `top` over them), then over the other rows only: `tie` (two or more families
+    at the top score), `low_score` (top score below `sure_min_score`); else `sure`, reason
+    null."""
     scored = [r for r in rows if isinstance(r.get("score"), int) and r["score"] > 0]
     if not scored:
         return {"level": "unsure", "reason": "no_hits", "top": []}
-    best = max(r["score"] for r in scored)
-    top = sorted(r["module"] for r in scored if r["score"] == best)
+    own = [r for r in scored if not _is_generic(r["module"], generic)]
+    if not own:
+        best = max(r["score"] for r in scored)
+        return {"level": "unsure", "reason": "generic",
+                "top": sorted(r["module"] for r in scored if r["score"] == best)}
+    best = max(r["score"] for r in own)
+    top = sorted(r["module"] for r in own if r["score"] == best)
     if len({m.split("/", 1)[0] for m in top}) > 1:
         reason = "tie"
     elif best < sure_min_score:

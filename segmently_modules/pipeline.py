@@ -269,10 +269,12 @@ def run_discover(args) -> int:
 
 def _confidence(ws, text: str) -> dict:
     """`lexical_confidence` of a task: over every module keyword routing scores (all that reach
-    `[match] min_score`; `--top` does not cut them), against `[search] sure_min_score`."""
+    `[match] min_score`; `--top` does not cut them), against `[search] sure_min_score`, the
+    rows of the `[search] generic` modules left out of the verdict."""
     cfg = ws.config["match"]
     rows = match_modules(ws.registry.modules, text, cfg, 10 ** 9, cfg["min_score"])
-    return lexical_confidence(rows, search_all(ws.config)["sure_min_score"])
+    search = search_all(ws.config)
+    return lexical_confidence(rows, search["sure_min_score"], search["generic"])
 
 
 def _render_context(d, top: int | None = None) -> None:

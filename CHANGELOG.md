@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `catalog --settings` prints only the `[match]` and `[search]` settings, every key with its default filled in; module-discover reads them there instead of the whole catalog.
 - `code-map files TARGET --source-only` lists the module's source files only — no docs, no tests — and `--paths` prints them one per line, so an agent reads a short list instead of the full JSON; module-discover's code pass uses `code-map files <module> --source-only --paths`.
 - `[tests] globs`: the globs of test files that `--source-only` leaves out, added to the built-in ones (`**/tests/**`, `**/*.test.*`, `**/test_*.py` and the like, each at the root too).
+- `[search] generic` lists the modules that match almost any task (a shared UI kit, a shared data layer): `discover --json`'s `lexical_confidence` leaves their keyword rows out of its verdict — hits on them alone are `unsure` with the reason `generic`, so `chooser = "when_unsure"` still runs the chooser; a listed module covers its children, and the modules stay in the results.
 
 ### Changed
 

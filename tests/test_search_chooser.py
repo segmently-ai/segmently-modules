@@ -22,7 +22,7 @@ from tests.helpers import make_repo, run, run_json
 
 ENGINE = Path(__file__).resolve().parents[1]
 SEARCH_KEYS = ["claude_model", "codex_model", "effort", "card_keywords", "chooser",
-               "sure_min_score", "cards"]
+               "sure_min_score", "cards", "generic"]  # + generic (tests/test_dcp_generic.py)
 MATCH_KEYS = ["mode", "semantic", "keyword_weight", "combination_weight", "negative_weight",
               "min_score", "top", "normalize"]
 
@@ -144,7 +144,8 @@ class SettingsTest(Split):  # DCP-AC-022
         self.assertEqual(list(data["match"]), MATCH_KEYS)
         self.assertEqual(data["search"], {
             "claude_model": "sonnet", "codex_model": "gpt-5.6-luna", "effort": "standard",
-            "card_keywords": 10, "chooser": "always", "sure_min_score": 2, "cards": "full"})
+            "card_keywords": 10, "chooser": "always", "sure_min_score": 2, "cards": "full",
+            "generic": []})
         self.assertEqual(data["match"], {
             "mode": "lexical", "semantic": False, "keyword_weight": 3, "combination_weight": 2,
             "negative_weight": -5, "min_score": 3, "top": 8, "normalize": "suffix"})
@@ -171,7 +172,7 @@ class SettingsTest(Split):  # DCP-AC-022
                               "[search]\nclaude_model = \"sonnet\"\n"
                               "codex_model = \"gpt-5.6-luna\"\neffort = \"standard\"\n"
                               "card_keywords = 10\nchooser = \"always\"\nsure_min_score = 2\n"
-                              "cards = \"full\"\n")
+                              "cards = \"full\"\ngeneric = []\n")
 
     def test_no_module_card_and_no_registry_read(self):
         out = run("catalog", "--settings", *self.R)[1]

@@ -4,7 +4,9 @@
 JSON, `discover --json` but for its last key `lexical_confidence`, and `context`. The golden
 outputs in
 `tests/fixtures/search_base_outputs/` were captured from the engine before the setting existed,
-on a copy of the split fixture, by `outputs()` below."""
+on a copy of the split fixture, by `outputs()` below. `[search] generic` set to `[]` or to ids
+that name no module changes none of these outputs, `lexical_confidence` included (its values
+below were captured before that key existed); `tests/test_dcp_generic.py` covers every reason."""
 from __future__ import annotations
 
 import io
@@ -54,12 +56,20 @@ CASES = {
                      None),
 }
 WITH_CONFIDENCE = ("discover.json", "discover-hybrid.json", "discover-top.json")
+# `data.lexical_confidence` of each case above, captured before `[search] generic` existed
+BASE_CONFIDENCE = {name: {"level": "sure", "reason": None, "top": ["orders/refunds"]}
+                   for name in WITH_CONFIDENCE}
+# `[search] generic` values that change no output: none listed, or no id that names a module
+NO_GENERIC = ('[search]\ngeneric = []\n', '[search]\ngeneric = ["bookmarks", "orders/gifts"]\n')
 
 
-def outputs(tmp: Path) -> dict[str, str]:
-    """{case name: what the case printed} on a fresh copy of the split fixture under `tmp`:
-    stdout and, after a `--- exit N, stderr:` line, the exit code and stderr."""
+def outputs(tmp: Path, config: str | None = None) -> dict[str, str]:
+    """{case name: what the case printed} on a fresh copy of the split fixture under `tmp`
+    (with `config` as its `.segmently-modules/config.toml` when given): stdout and, after a
+    `--- exit N, stderr:` line, the exit code and stderr."""
     root = copy_fixture(tmp, SPLIT_FIXTURE)
+    if config is not None:
+        (root / ".segmently-modules" / "config.toml").write_text(config, encoding="utf-8")
     init_git(root)
     files = Path(tmp) / "inputs"
     files.mkdir()
@@ -103,6 +113,19 @@ class BaseOutputsTest(unittest.TestCase):
                     last, got = without_confidence(got)
                     self.assertEqual(last, "lexical_confidence")
                 self.assertEqual(got, golden)
+
+    def test_generic_empty_or_unknown_ids_change_no_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = outputs(Path(tmp) / "base")
+            for name in WITH_CONFIDENCE:  # the confidence the engine gave before the key
+                with self.subTest(case=name):
+                    data = json.loads(base[name].partition("--- exit ")[0])["data"]
+                    self.assertEqual(data["lexical_confidence"], BASE_CONFIDENCE[name])
+            for n, config in enumerate(NO_GENERIC):
+                now = outputs(Path(tmp) / f"generic-{n}", config)
+                for name in CASES:
+                    with self.subTest(config=config, case=name):
+                        self.assertEqual(now[name], base[name])  # byte for byte
 
     def test_the_golden_outputs_hold_no_temporary_path(self):
         for path in sorted(GOLDEN.iterdir()):
