@@ -19,7 +19,8 @@ module with no rules:
    module doc, the whole module: the parent's) — never to a role doc: a role doc's rule gets its
    entry there, citing the role doc. Use the section's form — a `###` per rule, or one list item
    per rule; a new section: list items. Each
-   entry states the rule so the forbidden approach is named, at most about 200 characters, then the
+   entry states the rule so the forbidden approach is named, keeps the numbers it depends on (a
+   size, a limit, a count), at most about 200 characters, then the
    `doc:line` of its detail; a rule in several docs is one entry with each source. The rules that
    cause damage when broken first.
 4. Never remove a rule, reword an existing one or move its detail: the section only gains entries.
