@@ -5,6 +5,7 @@ from pathlib import Path
 
 from segmently_modules.changes import code_globs
 from segmently_modules.config import enabled_roles
+from segmently_modules.critical_rules import critical_rules
 from segmently_modules.fields import CORE_FIELDS
 from segmently_modules.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
 from segmently_modules.registry import as_dict, as_list, context_paths, resolve_module_arg, stub_head
@@ -104,6 +105,10 @@ def show_target(ws, target: str, role: str | None, all_roles: bool) -> tuple[int
         if r in held and skip_mark(held[r]):
             result.setdefault("not_needed", []).append({"role": r, "note": skip_note(held[r])})
     add("universal (parent INDEX)" if subs else "universal", cf.get("universal"))
+    heading = as_dict(ws.config.get("lint")).get("critical_rules_heading") or ""
+    rule_docs = [cf.get("universal")] + ([as_dict(sub.get("context_files")).get("universal")] if child else [])
+    result["rules"] = [{"doc": d, **r} for d in rule_docs if isinstance(d, str) and d
+                       for r in critical_rules(ws.root / d, heading)]
     if child:
         ccf = as_dict(sub.get("context_files"))
         add(f"child universal ({child})", ccf.get("universal"))
@@ -234,6 +239,8 @@ def _render_show(d) -> None:
     for r in d["read"]:
         mark = "" if r["exists"] else "  (MISSING ON DISK)"
         print(f"  read  {r['label']:<32} {r['path']}{mark}")
+    for r in d.get("rules") or []:
+        print(f"  rule  {r['doc']}:{r['line']}  {r['title']}")
     for n in d.get("not_needed") or []:
         why = f" — {n['note']}" if n["note"] else ""
         print(f"  skip  role:{n['role']} not needed{why}")

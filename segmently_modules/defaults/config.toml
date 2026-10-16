@@ -36,6 +36,7 @@ normalize = "suffix"          # word endings -s/-es/-ies/-ed/-ing ignored on bot
 [lint]
 fail_on = "error"
 component_table_heading = "EXISTING Components"
+critical_rules_heading = "Critical Rules"   # the module-doc section whose rule titles show/discover return
 drift_severity = "warning"     # MS050 (lint --changed): code changed, no doc of its module
 overlap_severity = "warning"   # MS053: two [[code_map]] rules route one file to two modules
 link_severity = "warning"      # MS041: a link in a registered doc whose target is missing

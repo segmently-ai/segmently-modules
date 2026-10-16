@@ -59,6 +59,8 @@ rerun narrower.
    only. Never `MODULE.legacy.md` or `roles/*.legacy.md`. Take from each doc what bears on the
    task — rules, constraints, contracts, pitfalls — as short extracts with the doc's path and
    role; a doc with nothing for the task gets "read, nothing for this task". Never a retelling.
+   Every `rules` title `discover` or `show` returns (a module's critical rules, a child's with its
+   parent's) is read at its `doc:line` when it could bear on the task, and an applying rule is an extract.
 
 6. **Code touch points.** For each `modify` or `consume` module, find the existing code the task
    touches. Its code: `show`'s `code` and `code_globs`, or

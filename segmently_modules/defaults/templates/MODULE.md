@@ -18,6 +18,13 @@ wire code to the module: [[code_map]] rules or code_pointer fields in .segmently
 | Name | Path | Purpose |
 |------|------|---------|
 
+## Critical Rules
+
+<!-- What a change here must never break. One `###` heading per rule, the heading stating the rule
+("### Writes to nested fields use dot-notation, never set(..., {merge: true})"), then why, what to
+do and what not to do. show and discover list these headings, so an agent sees them without
+reading the whole doc. -->
+
 ## Usage
 
 <!-- The two or three things a reader must know to use this module correctly. -->

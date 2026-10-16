@@ -8,7 +8,9 @@ never invent components or rules.
 - the description expanded to a short paragraph: what, why, when;
 - the components table — name · path · purpose, every row a real path (lint MS040 checks them);
 - usage: at least one example done right and one done wrong, each with why;
-- critical rules: the rule, why, what to do and what not to do;
+- critical rules, under `## Critical Rules` (`[lint] critical_rules_heading`): one `###` per rule whose
+  heading states the rule, then why, what to do and what not to do — show and discover list these
+  headings;
 - where its files live.
 
 Keep it short — about 200–300 lines. Route detail to the role docs before it lands here: full

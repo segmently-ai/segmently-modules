@@ -44,7 +44,7 @@ LAYER_SCHEMA = {
                 "skill_split_signal": "int>=1", "pack_split_signal": "int>=1"},
     "match": {**{k: "int" for k in ("keyword_weight", "combination_weight", "negative_weight",
                                     "min_score", "top")}, "mode": "str", "normalize": "str"},
-    "lint": {"fail_on": "str", "component_table_heading": "str", "drift_severity": "str",
+    "lint": {"fail_on": "str", "component_table_heading": "str", "critical_rules_heading": "str", "drift_severity": "str",
              "overlap_severity": "str", "link_severity": "str"},
     "create": {"min_keywords": "int", "max_keywords": "int", "description_min": "int",
                "description_max": "int", "default_status": "str", "generic_keywords": "list[str]"},

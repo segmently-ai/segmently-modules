@@ -173,6 +173,7 @@ filled in (`--json`: `{match, search}`); `catalog` without it keeps its three `s
 |---|---|---|
 | `fail_on` | `"error"` | `error` · `warning` · `never`: the lowest severity that makes `lint` exit 1 (`--fail-on` overrides) |
 | `component_table_heading` | `"EXISTING Components"` | the `MODULE.md` section whose table rows lint checks for backticked paths (MS040) |
+| `critical_rules_heading` | `"Critical Rules"` | the module-doc section whose rule headings (or top-level list items) `show` and `discover` return as `rules`; matched in any case, at any heading level |
 | `drift_severity` | `"warning"` | severity of MS050 (`info`, `warning` or `error`) |
 | `overlap_severity` | `"warning"` | severity of MS053 (`info`, `warning` or `error`) |
 | `link_severity` | `"warning"` | severity of MS041, a link in a registered doc whose target is missing (`info`, `warning` or `error`) — `info` keeps a gate green while the links are fixed |
