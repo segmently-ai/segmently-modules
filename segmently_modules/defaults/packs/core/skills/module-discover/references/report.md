@@ -10,11 +10,12 @@ Shown in the conversation, in this shape. Modules in usage order — `modify`, `
 
 Search: <lexical | by meaning | hybrid> — <the setting or the user's words> — lexical <sure | unsure: reason | not run>
 
-### <module>[/<child>] — usage: modify | consume | reference (score <average>)
+### <module>[/<child>] — usage: modify | consume | reference (score <0–10>)
 Why: <what the task needs from it; "named by the user" when it was>
 Docs:
 - `<path>` (<role>): <a rule, constraint, contract or pitfall that bears on the task>
 - `<path>` (<role>): read, nothing for this task
+- `<path>` (<role>): searched (<terms>), nothing for this task
 Docs to update: `<path>`, …
 Code:
 - `edit` — `<file>:<line>` — `<symbol>` — <what changes there, one clause>
@@ -24,7 +25,7 @@ Risks / unknowns: <open questions, a doc the code contradicts, an assumption the
 Likely consequence: <what the implementation will probably also need> — <the existing file it would touch, or "a new file: the plan decides where">
 
 ### Rejected
-- <module> — <reason> (score <average>, or "off-topic by its description")
+- <module> — <reason> (score <0–10>, or "off-topic by its description")
 
 ### Files outside every module
 - `<file>` — needs `module-create` or a `[[code_map]]` rule
@@ -35,6 +36,10 @@ Likely consequence: <what the implementation will probably also need> — <the e
 
 - Every doc step 5 read is on a `Docs:` line: an extract, or "read, nothing for this task". An
   extract is short — a quote or a close paraphrase — and says what it means for this task.
+- A doc read only through a search (its matching lines, not the whole doc) says so:
+  `searched (<terms>)` in place of `read`, as in
+  `` - `<path>` (<role>): searched (<terms>), nothing for this task ``; an extract taken from a
+  searched doc ends with `(searched)`.
 - A `reference` module has its main doc's lines and no `Code:` line.
 - `Code:` holds existing code only. A file the work will create is never listed: where new code
   goes is the plan's decision.
@@ -79,6 +84,6 @@ Only when the user asks, at the path the user names — the shape a planning pip
 
 `usage_type`: `modify` → `MODIFY` (`EXTEND` when the task adds new code on the module's patterns),
 `consume` and `reference` → `READ-ONLY`. `confidence`: `user_specified` for a module the user
-named, else `high` (average ≥ 7) or `medium`. `documentation` holds every doc step 5 read for the
+named, else `high` when the score is ≥ 7, otherwise `medium`. `documentation` holds every doc step 5 read for the
 module, one key per role (`developer_md`, `qa_md`, …). `files[].offset` is the touch point's line.
 `files[].reason` starts with the tag of its `Code:` line: `edit — ` or `read — `.

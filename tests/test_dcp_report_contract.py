@@ -10,7 +10,10 @@ Formalization eval 2026-10-15: the owner adopted the lite text — the procedure
 contract is pinned: step 6 records existing code in the tagged form under the rules of
 `references/report.md` (the tags, the tests line and the consequences are defined there, pinned
 below), never lists the files the work will create and searches no code for a `reference`
-module."""
+module. Owner rulings 2026-10-16: step 2 gives one score, so the template writes `(score <0–10>)`
+(the module heading and the rejected line) and the JSON's `confidence` is `high` when the score
+is ≥ 7; a doc read only through a search says so — `searched (<terms>)` in place of `read`, and
+an extract from it ends with `(searched)`."""
 from __future__ import annotations
 
 import difflib
@@ -141,6 +144,29 @@ NEW_FILES = [
 ]
 JSON_REASON = "`files[].reason` starts with the tag of its `Code:` line: `edit — ` or `read — `."
 
+# owner rulings 2026-10-16: one score (step 2), and a doc only searched says so
+OLD_HEADING = "### <module>[/<child>] — usage: modify | consume | reference (score <average>)"
+NEW_HEADING = "### <module>[/<child>] — usage: modify | consume | reference (score <0–10>)"
+OLD_REJECTED = "- <module> — <reason> (score <average>, or \"off-topic by its description\")"
+NEW_REJECTED = "- <module> — <reason> (score <0–10>, or \"off-topic by its description\")"
+OLD_CONFIDENCE = ("named, else `high` (average ≥ 7) or `medium`. `documentation` holds every doc "
+                  "step 5 read for the")
+NEW_CONFIDENCE = ("named, else `high` when the score is ≥ 7, otherwise `medium`. `documentation` "
+                  "holds every doc step 5 read for the")
+NOTHING = "- `<path>` (<role>): read, nothing for this task"
+SEARCHED = "- `<path>` (<role>): searched (<terms>), nothing for this task"
+DOCS_RULE_END = ("  extract is short — a quote or a close paraphrase — and says what it means for "
+                 "this task.")
+SEARCHED_RULE = [
+    "- A doc read only through a search (its matching lines, not the whole doc) says so:",
+    "  `searched (<terms>)` in place of `read`, as in",
+    "  `` - `<path>` (<role>): searched (<terms>), nothing for this task ``; an extract taken from a",
+    "  searched doc ends with `(searched)`.",
+]
+REPLACED = {OLD_CODE: [EDIT, READ, TESTS], OLD_VERSION: [NEW_VERSION], OLD_FILES: NEW_FILES,
+            OLD_HEADING: [NEW_HEADING], OLD_REJECTED: [NEW_REJECTED],
+            OLD_CONFIDENCE: [NEW_CONFIDENCE]}
+
 # step 6 (R-3), in order, as the lite text says it: the form, under report.md's rules (RULES above);
 # task 3's compact-list sentence stays (test_dcp_code_lists)
 STEP6 = [
@@ -184,17 +210,15 @@ def expected_report() -> str:
     """The base with exactly this task's edits: nothing else may differ."""
     out = []
     for line in BASE_REPORT.split("\n"):
-        if line == OLD_CODE:
-            out += [EDIT, READ, TESTS]
-            continue
-        if line == OLD_VERSION:
-            out.append(NEW_VERSION)
-            continue
-        if line == OLD_FILES:
-            out += NEW_FILES
+        if line in REPLACED:
+            out += REPLACED[line]
             continue
         out.append(line)
-        if line == TITLE:
+        if line == NOTHING:
+            out.append(SEARCHED)
+        elif line == DOCS_RULE_END:
+            out += SEARCHED_RULE
+        elif line == TITLE:
             out += ["", SEARCH]
         elif line == RISKS:
             out.append(CONSEQUENCE)
@@ -208,14 +232,15 @@ def expected_report() -> str:
 class RestUnchangedTest(unittest.TestCase):  # DCP-AC-016
     def test_the_anchors_are_base_lines_once(self):
         lines = BASE_REPORT.split("\n")
-        for anchor in (TITLE, OLD_CODE, RISKS, CODE_RULE_END, OLD_VERSION, OLD_FILES, JSON_END):
+        for anchor in (TITLE, OLD_CODE, RISKS, CODE_RULE_END, OLD_VERSION, OLD_FILES, JSON_END,
+                       *REPLACED, NOTHING, DOCS_RULE_END):
             with self.subTest(anchor=anchor):
                 self.assertEqual(lines.count(anchor), 1)
 
     def test_the_report_is_the_base_with_these_edits_only(self):
         self.assertEqual(report(), expected_report())
 
-    def test_only_the_four_kinds_of_line_change(self):
+    def test_only_the_listed_lines_change(self):
         base, new = BASE_REPORT.split("\n"), report().split("\n")
         removed, added = [], []
         for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, base, new,
@@ -223,14 +248,17 @@ class RestUnchangedTest(unittest.TestCase):  # DCP-AC-016
             if op != "equal":
                 removed += base[i1:i2]
                 added += new[j1:j2]
-        self.assertEqual(removed, [OLD_CODE, OLD_VERSION, OLD_FILES])  # every other base line kept
+        self.assertEqual(removed, [OLD_HEADING, OLD_CODE, OLD_REJECTED, OLD_VERSION, OLD_FILES,
+                                   OLD_CONFIDENCE])  # every other base line kept
         allowed = {"", SEARCH, EDIT, READ, TESTS, CONSEQUENCE, NEW_VERSION, JSON_REASON,
-                   *RULES, *NEW_FILES}
+                   *RULES, *NEW_FILES, NEW_HEADING, NEW_REJECTED, NEW_CONFIDENCE, SEARCHED,
+                   *SEARCHED_RULE}
         self.assertEqual([line for line in added if line not in allowed], [])
 
     def test_the_sections_are_the_base_sections(self):
         heads = [line for line in report().split("\n") if line.startswith("#")]
-        self.assertEqual(heads, [line for line in BASE_REPORT.split("\n") if line.startswith("#")])
+        base = [line for line in BASE_REPORT.split("\n") if line.startswith("#")]
+        self.assertEqual(heads, [NEW_HEADING if line == OLD_HEADING else line for line in base])
 
 
 class TaggedCodeLineTest(unittest.TestCase):  # DCP-AC-011 (the template and the step-6 wording)
@@ -368,6 +396,38 @@ class JsonTest(unittest.TestCase):  # DCP-AC-017
         self.assertEqual({k: v for k, v in module.items() if k != "files"},
                          {k: v for k, v in old.items() if k != "files"})
         self.assertEqual(new["modules"][0]["files"][0]["path"], old["files"][0]["path"])
+
+
+class SearchedDocTest(unittest.TestCase):  # owner ruling 2026-10-16: a doc only searched says so
+    def test_the_template_has_the_searched_form_after_the_read_form(self):
+        lines = template()
+        self.assertEqual(lines[lines.index(NOTHING) + 1], SEARCHED)
+        self.assertEqual(lines[lines.index(SEARCHED) + 1], "Docs to update: `<path>`, …")
+
+    def test_the_rule_follows_the_docs_rule(self):
+        body = flat(report())
+        rule = ("- A doc read only through a search (its matching lines, not the whole doc) says "
+                "so: `searched (<terms>)` in place of `read`, as in `` - `<path>` (<role>): "
+                "searched (<terms>), nothing for this task ``; an extract taken from a searched "
+                "doc ends with `(searched)`.")
+        self.assertEqual(body.count(rule), 1)
+        first = ("- Every doc step 5 read is on a `Docs:` line: an extract, or \"read, nothing "
+                 "for this task\".")
+        self.assertLess(body.index(first), body.index(rule))
+        self.assertEqual(body.index(rule), body.index(flat(DOCS_RULE_END)) +
+                         len(flat(DOCS_RULE_END)) + 1)
+
+
+class OneScoreTest(unittest.TestCase):  # owner ruling 2026-10-16: step 2 gives one score
+    def test_the_heading_and_the_rejected_line(self):
+        lines = template()
+        self.assertIn(NEW_HEADING, lines)
+        self.assertIn(NEW_REJECTED, lines)
+        self.assertNotIn("average", report())
+
+    def test_the_json_confidence(self):
+        self.assertIn("`confidence`: `user_specified` for a module the user named, else `high` "
+                      "when the score is ≥ 7, otherwise `medium`.", flat(report()))
 
 
 class DocsTest(unittest.TestCase):  # R-6: the docs show the tagged shape, the changelog says so
