@@ -287,7 +287,8 @@ class DocsAndVerbsTest(unittest.TestCase):  # P32-AC-021
 
     def test_the_docs_describe_the_p32_surface(self):
         contract, config = self.doc("docs/cli-contract.md"), self.doc("docs/configuration.md")
-        for needle in ("`code-map list\\|add\\|files`", "| `ci` |", "near_misses: [{module, score",
+        for needle in ("`code-map list\\|add\\|files [--source-only] [--paths]`", "| `ci` |",
+                       "near_misses: [{module, score",
                        "keywords, read:", "missing_files", "files: [{path, modules: [target]}]",
                        "every `score` are `null`", "defaults to `$SEGMENTLY_MODULES_AGENT`, else `cli`"):
             self.assertIn(needle, contract)

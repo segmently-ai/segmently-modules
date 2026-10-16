@@ -604,9 +604,12 @@ segmently-modules choose --apply answer.json --json    # check the agent's answe
 
 The skills (`module-scout`, `module-discover`, `module-research`, `module-sync`) do this for you:
 they run `segmently-modules choose`, your Claude Code or Codex answers it, and hybrid is the default (keyword
-and meaning together; say "only lexical" to switch it off). The models and the depth are
-`[search]` settings (`claude_model`, a Claude Code subagent model alias such as `sonnet`, `opus`
-or `haiku`; `codex_model`; `effort` = `quick` | `standard` | `deep`).
+and meaning together; say "only lexical" to switch it off; module-discover follows `[search] chooser` —
+`when_unsure` asks for meaning only when the keyword result is unsure, `never` not at all). The
+models, the depth and when module-discover asks are `[search]` settings (`claude_model`, a Claude
+Code subagent model alias such as `sonnet`, `opus` or `haiku`; `codex_model`; `effort` = `quick` |
+`standard` | `deep`; `chooser` = `always` | `when_unsure` | `never`; `generic` = the modules that
+match almost any task, which alone never make the keyword result sure).
 
 For a script or CI, point Segmently Modules at your own agent command and use `--match semantic|hybrid`
 (or `[match] mode`) or `segmently-modules choose --task … --run` (`--task-file FILE|-` reads the task from a

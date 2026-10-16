@@ -47,17 +47,25 @@ ROUTING = [  # the sentences that make the table one decision
     "Read it top down; the first row that fits decides, so the user's words for this run win "
     "over `search.chooser`.",
     "The user's words count in any language.",
-    # task-1 review M3: one reading only
-    "`match.mode` does not decide the mode, except that the `always` row keeps `semantic` for a "
-    "`semantic` one: a `lexical` one never skips the search by meaning.",
+    # task-1 review M3: one reading only; final review I-2: no clause says the search by
+    # meaning is never skipped (rows 4 and 6 skip it)
+    "`match.mode` decides nothing here, except that the `always` row keeps `semantic` for a "
+    "`semantic` one.",
     "The keyword commands always pass `--match lexical`.",
 ]
 WHEN_UNSURE = [  # AC-007
-    "`when_unsure`: run the keyword command first; its `lexical_confidence.level` is the keyword "
-    "result.",
-    "On `sure` the keyword list is the candidates: no `choose` command and no chooser agent.",
+    # final review M-1: the keyword command alone, never batched with a `choose`
+    "`when_unsure`: run the keyword command first, on its own; its `lexical_confidence.level` is "
+    "the keyword result.",
+    # final review M-3: the candidates are every keyword row, not the top family only
+    "On `sure` the keyword list (`modules`, not only `lexical_confidence.top`) is the candidates: "
+    "no `choose` command and no chooser agent.",
     "On `unsure` run the by-meaning half too, then merge the lists as `hybrid` does.",
 ]
+# final review M-4: the user's model and depth words never make the chooser run
+MODEL_DEPTH = ("The user may set the model (\"use opus\") and the depth (\"search deep\": "
+               "`choose --effort deep`; `<reasoning>` follows it). These words set the chooser's "
+               "model and depth when it runs; they never make it run.")
 FALLBACK = (  # AC-008
     "**A failing chooser** — no agent to hand the order to, an answer that is not JSON, or "
     "`choose --apply` exits 2 — never ends the run: answer the order yourself, every card read, "
@@ -128,8 +136,15 @@ class RoutingTableTest(unittest.TestCase):  # DCP-AC-006
     def test_the_old_mode_sentence_is_gone(self):
         body = flat(raw())
         for gone in ("The mode: `hybrid` unless the user says otherwise",
-                     "which needs no setting"):
+                     "which needs no setting",
+                     "never skips the search by meaning",  # final review I-2
+                     "`match.mode` does not decide the mode"):
             self.assertNotIn(gone, body)
+
+    def test_model_and_depth_words_never_make_the_chooser_run(self):  # final review M-4
+        body = flat(raw())
+        self.assertEqual(body.count(MODEL_DEPTH), 1)
+        self.assertLess(body.index(MODEL_DEPTH), body.index(ROUTING[0]))
 
 
 class WhenUnsureTest(unittest.TestCase):  # DCP-AC-007

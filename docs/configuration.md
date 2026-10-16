@@ -159,9 +159,10 @@ engine reads none), and the engine ships, installs and suggests no model.
 | `[search] codex_model` | `"gpt-5.6-luna"` | the model `codex exec -m` uses; same rule |
 | `[search] effort` | `"standard"` | `quick` (choose from the cards only), `standard` (also open the INDEX of up to 3 candidates), `deep` (also read the candidates' docs and the code). Team or user config; the user's wins per key; any other value is exit 2; `segmently-modules choose --effort quick\|standard\|deep` overrides it for one run |
 | `[search] card_keywords` | `10` | an integer >= 0: a work-order card carries the first N keywords of its module, in registry order (`0` = none, a card with fewer keeps them all). Team, personal or pack config; the personal value wins per key; `true`, `false`, a string, a fraction or a negative number is exit 2 naming the file. It caps the work order only (`choose`, `choose --apply` / `--run`, `--match semantic` / `hybrid`); `catalog` keeps every keyword; the `search` object of `catalog` and of the work order keeps its three keys. `catalog_digest` is computed over the capped cards, so a change of the cap changes the digest (`choose --apply` then notes `catalog changed since the work order`); `--effort` and the task do not change it |
-| `[search] chooser` | `"always"` | when module-discover runs the chooser, the search by meaning: `always` (every run, as before this key), `when_unsure` (the keyword command first; the chooser only when its `lexical_confidence` is `unsure`, the lists then merged as in `hybrid`), `never` (keywords only). The user's words for one run ("by meaning", "only lexical") win over it; `[match] mode` stays the command line's default only. Team, personal or pack config; the personal value wins per key; any other value is exit 2 naming the file, the key, the allowed values and the value given |
-| `[search] sure_min_score` | `2` | an integer >= 1: `discover --json`'s `lexical_confidence` is `unsure` (`low_score`) when the top keyword score is below it (a keyword hit scores `[match] keyword_weight`, 3 by default). `true`, a string, a fraction, `0` or a negative number is exit 2 |
-| `[search] cards` | `"full"` | the cards of every work order (`choose`, `choose --apply` / `--run`, `--match semantic` / `hybrid`): `full` (name, description, the first `card_keywords` keywords; a child card names its parent) or `brief` (one card per top-level module: name, description and its children's names, no keyword — a smaller order). `choose --cards full\|brief` overrides it for one run; any other value is exit 2 |
+| `[search] chooser` | `"always"` | when module-discover runs the chooser, the search by meaning: `always` (every run, as before this key), `when_unsure` (the keyword command first; the chooser only when its `lexical_confidence` is `unsure`, the lists then merged as in `hybrid`), `never` (keywords only). The user's words for one run ("by meaning", "only lexical") win over it; `[match] mode` stays the command line's default only, except that under `always` a `semantic` one keeps module-discover meaning-only. Team, personal or pack config; the personal value wins per key; any other value is exit 2 naming the file, the key, the allowed values and the value given |
+| `[search] sure_min_score` | `2` | an integer >= 1: `discover --json`'s `lexical_confidence` is `unsure` (`low_score`) when the top keyword score is below it (a keyword hit scores `[match] keyword_weight`, 3 by default). With the default weights every keyword row scores at least 3, so the default 2 never yields `low_score`; raise it above one hit's score (4 or more) to make a single hit unsure. `true`, a string, a fraction, `0` or a negative number is exit 2 |
+| `[search] cards` | `"full"` | the cards of every work order (`choose`, `choose --apply` / `--run`, `--match semantic` / `hybrid`): `full` (name, description, the first `card_keywords` keywords; a child card names its parent) or `brief` (one card per module and per child: name and description, a parent's card naming its children, a child's its parent, no keyword — a smaller order). `choose --cards full\|brief` overrides it for one run; any other value is exit 2 |
+| `[search] generic` | `[]` | the modules that match almost any task (a shared UI kit, a shared data layer), by id, e.g. `["ui-kit", "data-core"]`; a listed module covers its family — the module and its children (`<id>/…`). `discover --json`'s `lexical_confidence` leaves their keyword rows out of its verdict: when every keyword row is theirs it is `unsure` with the reason `generic` (`top`: those at the top score); otherwise `tie`, `low_score` and `sure` are decided over the other modules' rows. So under `chooser = "when_unsure"` hits on these modules alone no longer skip the chooser. They stay in `discover`'s `modules` and in every other output. An id that names no module is ignored. Team, personal or pack config; the ids of every layer add up (arrays add); anything but a list of module ids (non-empty strings) is exit 2 naming the file |
 
 `segmently-modules catalog --settings` prints every `[match]` and `[search]` key with its merged value, defaults
 filled in (`--json`: `{match, search}`); `catalog` without it keeps its three `search` keys.
@@ -527,7 +528,7 @@ the ones that route files to TARGET) and `segmently-modules code-map files TARGE
 that maps to TARGET with how it maps (`docs`, `code_pointer:<field>`, `code_map:<id>`) — the
 resolved file list that `code_globs` is not. `--source-only` keeps the TARGET's source files: those
 that map to it by more than `docs` and match no test glob ([`[tests]`](#tests)); `--paths` prints
-one repository-relative path per line, sorted, without the sources (no file: no output, exit `0`;
+one repository-relative path per line, sorted, without `via` (no file: no output, exit `0`;
 with `--json` it is refused, exit `2`). Without the two flags the output is unchanged.
 
 ```bash
@@ -570,11 +571,12 @@ out, as it leaves out the docs, so an agent gets the module's source files alone
 The built-in globs list each form at the root and below a directory, because `**/` needs at least
 one directory before it: `__tests__/**`, `**/__tests__/**`, `tests/**`, `**/tests/**`, `test/**`,
 `**/test/**`, `*.test.*`, `**/*.test.*`, `*.spec.*`, `**/*.spec.*`, `test_*.py`, `**/test_*.py`,
-`*_test.*`, `**/*_test.*`.
+`*_test.*`, `**/*_test.*`. A glob of yours follows the same rule: `**/fixtures/**` leaves out
+`src/fixtures/x` but not a root-level `fixtures/x`; add `fixtures/**` as well.
 
 ```toml
 [tests]
-globs = ["**/fixtures/**", "e2e/**"]   # added to the built-in globs
+globs = ["fixtures/**", "**/fixtures/**"]   # added to the built-in globs: at the root and below
 ```
 
 ## `[[hooks.post_sync]]`

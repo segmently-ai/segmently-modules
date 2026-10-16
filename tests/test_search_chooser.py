@@ -22,7 +22,7 @@ from tests.helpers import make_repo, run, run_json
 
 ENGINE = Path(__file__).resolve().parents[1]
 SEARCH_KEYS = ["claude_model", "codex_model", "effort", "card_keywords", "chooser",
-               "sure_min_score", "cards"]
+               "sure_min_score", "cards", "generic"]  # + generic (tests/test_dcp_generic.py)
 MATCH_KEYS = ["mode", "semantic", "keyword_weight", "combination_weight", "negative_weight",
               "min_score", "top", "normalize"]
 
@@ -144,7 +144,8 @@ class SettingsTest(Split):  # DCP-AC-022
         self.assertEqual(list(data["match"]), MATCH_KEYS)
         self.assertEqual(data["search"], {
             "claude_model": "sonnet", "codex_model": "gpt-5.6-luna", "effort": "standard",
-            "card_keywords": 10, "chooser": "always", "sure_min_score": 2, "cards": "full"})
+            "card_keywords": 10, "chooser": "always", "sure_min_score": 2, "cards": "full",
+            "generic": []})
         self.assertEqual(data["match"], {
             "mode": "lexical", "semantic": False, "keyword_weight": 3, "combination_weight": 2,
             "negative_weight": -5, "min_score": 3, "top": 8, "normalize": "suffix"})
@@ -171,7 +172,7 @@ class SettingsTest(Split):  # DCP-AC-022
                               "[search]\nclaude_model = \"sonnet\"\n"
                               "codex_model = \"gpt-5.6-luna\"\neffort = \"standard\"\n"
                               "card_keywords = 10\nchooser = \"always\"\nsure_min_score = 2\n"
-                              "cards = \"full\"\n")
+                              "cards = \"full\"\ngeneric = []\n")
 
     def test_no_module_card_and_no_registry_read(self):
         out = run("catalog", "--settings", *self.R)[1]
@@ -329,12 +330,24 @@ class CardsTest(Split):
         return env["data"]
 
     def test_brief_cards_hold_name_description_and_children_only(self):
+        # task-1 review M6 (controller ruling): one card per module AND per child — a child card
+        # {module, description, parent}, a parent card {module, description, children}
         full, brief = self.order(), self.order("--cards", "brief")
+        said = {c["module"]: c["description"] for c in full["cards"]}
         self.assertEqual(brief["cards"], [
-            {"module": "catalog", "description": full["cards"][0]["description"]},
-            {"module": "orders", "description": full["cards"][1]["description"],
+            {"module": "catalog", "description": said["catalog"]},
+            {"module": "orders", "description": said["orders"],
              "children": ["orders/checkout", "orders/refunds", "orders/invoices"]},
-            {"module": "payments", "description": full["cards"][5]["description"]}])
+            {"module": "orders/checkout", "description": said["orders/checkout"],
+             "parent": "orders"},
+            {"module": "orders/refunds", "description": said["orders/refunds"],
+             "parent": "orders"},
+            {"module": "orders/invoices", "description": said["orders/invoices"],
+             "parent": "orders"},
+            {"module": "payments", "description": said["payments"]}])
+        self.assertEqual([c["module"] for c in brief["cards"]],
+                         [c["module"] for c in full["cards"]])  # the same cards, in one order
+        self.assertNotEqual(said["orders/refunds"], said["orders"])  # a child's own words
         for key in ("task", "rules", "answer_schema", "max_picks", "search"):
             self.assertEqual(brief[key], full[key], key)
         self.assertNotEqual(brief["catalog_digest"], full["catalog_digest"])
@@ -359,12 +372,27 @@ class CardsTest(Split):
         self.assertEqual((code, err), (0, ""))
         cands = out.split("\n\nAnswer schema:")[0].split("Candidates")[1].splitlines()
         self.assertEqual(cands[0], " (one per line: module, description, children):")
-        self.assertEqual(len(cands), 4)
+        self.assertEqual(len(cands), 7)  # a line per module and per child (task-1 review M6)
         self.assertTrue(cands[2].startswith("orders  Order lifecycle"))
         self.assertTrue(cands[2].endswith(
             "  (children: orders/checkout, orders/refunds, orders/invoices)"))
+        self.assertEqual(cands[4], "orders/refunds  Returned books: refund requests, partial "
+                                   "refunds and restocking.  (child of orders)")
+        for line in cands[3:6]:
+            self.assertTrue(line.endswith("  (child of orders)"), line)
         self.assertNotIn("refund, partial refund", out)  # no keyword
         self.assertNotIn("[", "\n".join(cands[1:]))
+
+    def test_ties_keep_the_card_order_of_a_full_order(self):  # one id per card, no repeat
+        tie = [{"module": m, "confidence": 0.5} for m in ("payments", "orders/refunds", "catalog")]
+        for kind in ("full", "brief"):
+            with self.subTest(cards=kind):
+                self.config(f'[search]\ncards = "{kind}"\n')
+                with mock.patch("sys.stdin", io.StringIO(json.dumps({"picks": tie}))):
+                    code, out, err = run("choose", "--apply", "-", "--json", *self.R)
+                self.assertEqual((code, err), (0, ""))
+                self.assertEqual([p["module"] for p in json.loads(out)["data"]["picks"]],
+                                 ["catalog", "orders/refunds", "payments"])
 
     def test_the_setting_is_the_flags_default(self):
         self.config('[search]\ncards = "brief"\n')
@@ -399,6 +427,25 @@ class CardsTest(Split):
                 sent = json.loads(json.loads(self.calls_log.read_text("utf-8"))[-1]["stdin"])
                 self.assertEqual("children" in sent["cards"][1], brief)
                 self.assertEqual("keywords" in sent["cards"][1], not brief)
+                self.assertEqual(sent["cards"][3]["parent"], "orders")  # a child keeps its card
+                self.assertEqual(len(sent["cards"]), 6)
+
+    def test_the_docs_say_so(self):  # task-1 review M6: the follow-ups the final review lists
+        config = " ".join((ENGINE / "docs/configuration.md").read_text("utf-8").split())
+        self.assertIn("`brief` (one card per module and per child: name and description, a "
+                      "parent's card naming its children, a child's its parent, no keyword — a "
+                      "smaller order)", config)
+        contract = " ".join((ENGINE / "docs/cli-contract.md").read_text("utf-8").split())
+        self.assertIn("`brief` = `cards: [{module, description, children?, parent?}]`, one per "
+                      "module and per child (a parent's `children`: its children's ids; a "
+                      "child's `parent`), no keywords", contract)
+        self.assertNotIn("one per top-level module", contract)
+        self.assertIn("a child's ` (child of a)`", contract)  # flat: the two spaces are one
+        log = (ENGINE / "CHANGELOG.md").read_text("utf-8")
+        unreleased = " ".join(log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0].split())
+        self.assertIn("a smaller work order with a card per module and per child — its name and "
+                      "description, a parent's card naming its children, a child's its parent — "
+                      "without keywords", unreleased)
 
     def test_a_wrong_flag_value(self):
         code, out, err = run("choose", "--task", "t", "--cards", "tiny", *self.R)

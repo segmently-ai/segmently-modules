@@ -63,9 +63,10 @@ CARD_KEYWORDS_DEFAULT = 10  # [search] card_keywords (P8.2 D2)
 SEARCH_DEFAULTS = {"claude_model": "sonnet", "codex_model": "gpt-5.6-luna", "effort": "standard"}
 CHOOSERS = ("always", "when_unsure", "never")  # [search] chooser: when the skills ask the chooser
 CARDS = ("full", "brief")  # [search] cards: the cards of the work order
-# every [search] key with its default, in the order `catalog --settings` shows them
+# every [search] key with its default, in the order `catalog --settings` shows them; `generic`:
+# the modules (and their children) whose keyword hits alone never make the keyword result sure
 SEARCH_ALL_DEFAULTS = {**SEARCH_DEFAULTS, "card_keywords": CARD_KEYWORDS_DEFAULT,
-                       "chooser": "always", "sure_min_score": 2, "cards": "full"}
+                       "chooser": "always", "sure_min_score": 2, "cards": "full", "generic": []}
 ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str",
                "applies_when": "str", "template": "str"}
 
@@ -91,9 +92,12 @@ def card_keywords(config: dict) -> int:
 
 def search_all(config: dict) -> dict:
     """Every `[search]` key of the merged config, defaults filled in (`catalog --settings`): the
-    three of `search_settings`, then `card_keywords`, `chooser`, `sure_min_score`, `cards`."""
+    three of `search_settings`, then `card_keywords`, `chooser`, `sure_min_score`, `cards`,
+    `generic` (a fresh list: the layers' ids added up)."""
     table = config.get("search") or {}
-    return {key: table.get(key, default) for key, default in SEARCH_ALL_DEFAULTS.items()}
+    out = {key: table.get(key, default) for key, default in SEARCH_ALL_DEFAULTS.items()}
+    out["generic"] = list(out["generic"])
+    return out
 
 
 def _validate_search(table, source) -> None:
@@ -107,6 +111,11 @@ def _validate_search(table, source) -> None:
         if not _is_int(v) or v < 1:
             raise UsageError(f"{source}: [search] sure_min_score: expected an integer >= 1, "
                              f"got {v!r}")
+    if "generic" in table:
+        v = table["generic"]
+        if not (isinstance(v, list) and all(isinstance(i, str) and i for i in v)):
+            raise UsageError(f"{source}: [search] generic: expected a list of module ids "
+                             f"(non-empty strings), got {v!r}")
     if "card_keywords" in table:
         v = table["card_keywords"]
         if not _is_int(v) or v < 0:

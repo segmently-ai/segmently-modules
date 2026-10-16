@@ -1,11 +1,19 @@
 """module-discover's report contract (DCP-AC-011…017): every `Code:` line starts with a tag —
 `edit` (an existing file the change edits, with what changes there in one clause) or `read`
 (called or consulted as it is, a consumer, a pattern, an alternative); an existing test is an
-`edit` line only when it asserts the changed behaviour, else the module gets
+`edit` line only when it asserts the changed behaviour, else a module with an `edit` line gets
 `Tests: add new — …`; `Likely consequence:` lines under the risks; the search line first under
 the title, in the form `references/choose.md` gives; the JSON is `1.1` and each `files[].reason`
 starts with the tag. Everything else in `references/report.md` stays byte for byte what it was:
-the base file is frozen below and the new one must be the base with exactly these edits."""
+the base file is frozen below and the new one must be the base with exactly these edits.
+Formalization eval 2026-10-15: the owner adopted the lite text — the procedure is the model's, the
+contract is pinned: step 6 records existing code in the tagged form under the rules of
+`references/report.md` (the tags, the tests line and the consequences are defined there, pinned
+below), never lists the files the work will create and searches no code for a `reference`
+module. Owner rulings 2026-10-16: step 2 gives one score, so the template writes `(score <0–10>)`
+(the module heading and the rejected line) and the JSON's `confidence` is `high` when the score
+is ≥ 7; a doc read only through a search says so — `searched (<terms>)` in place of `read`, and
+an extract from it ends with `(searched)`."""
 from __future__ import annotations
 
 import difflib
@@ -136,28 +144,49 @@ NEW_FILES = [
 ]
 JSON_REASON = "`files[].reason` starts with the tag of its `Code:` line: `edit — ` or `read — `."
 
-# step 6 (R-3), in order; task 3's compact-list sentence stays (test_dcp_code_lists)
+# owner rulings 2026-10-16: one score (step 2), and a doc only searched says so
+OLD_HEADING = "### <module>[/<child>] — usage: modify | consume | reference (score <average>)"
+NEW_HEADING = "### <module>[/<child>] — usage: modify | consume | reference (score <0–10>)"
+OLD_REJECTED = "- <module> — <reason> (score <average>, or \"off-topic by its description\")"
+NEW_REJECTED = "- <module> — <reason> (score <0–10>, or \"off-topic by its description\")"
+OLD_CONFIDENCE = ("named, else `high` (average ≥ 7) or `medium`. `documentation` holds every doc "
+                  "step 5 read for the")
+NEW_CONFIDENCE = ("named, else `high` when the score is ≥ 7, otherwise `medium`. `documentation` "
+                  "holds every doc step 5 read for the")
+OLD_DOCS_RULE = "- Every doc step 5 read is on a `Docs:` line: an extract, or \"read, nothing for this task\". An"
+NEW_DOCS_RULE = ["- Every doc step 5 read or searched is on a `Docs:` line: an extract, \"read, nothing for this task\"",
+                 "  or \"searched (<terms>), nothing for this task\". An"]  # review M-1: the first rule names both forms
+NOTHING = "- `<path>` (<role>): read, nothing for this task"
+SEARCHED = "- `<path>` (<role>): searched (<terms>), nothing for this task"
+DOCS_RULE_END = ("  extract is short — a quote or a close paraphrase — and says what it means for "
+                 "this task.")
+SEARCHED_RULE = [
+    "- A doc read only through a search (its matching lines, not the whole doc) says so:",
+    "  `searched (<terms>)` in place of `read`, as in",
+    "  `` - `<path>` (<role>): searched (<terms>), nothing for this task ``; an extract taken from a",
+    "  searched doc ends with `(searched)`.",
+]
+REPLACED = {OLD_CODE: [EDIT, READ, TESTS], OLD_VERSION: [NEW_VERSION], OLD_FILES: NEW_FILES,
+            OLD_HEADING: [NEW_HEADING], OLD_REJECTED: [NEW_REJECTED],
+            OLD_CONFIDENCE: [NEW_CONFIDENCE], OLD_DOCS_RULE: NEW_DOCS_RULE}
+
+# step 6 (R-3), in order, as the lite text says it: the form, under report.md's rules (RULES above);
+# task 3's compact-list sentence stays (test_dcp_code_lists)
 STEP6 = [
-    "Record existing code only, as `<edit | read> — file:line — symbol — why`.",
-    "`edit`: an existing file the change edits; its why says what changes there, in one clause, "
-    "never \"relevant\" or \"related\".",
-    "`read`: a file called or consulted as it is, a consumer, a pattern to follow, or an "
-    "alternative — a file offered with \"or\", \"either\" or \"could also\" is never `edit`, and "
-    "its why says \"alternative\".",
-    "A test file is `edit` only when its assertion names the symbol or value the task changes; "
-    "otherwise the module gets one line `Tests: add new — <what to cover>`, no path.",
-    "Discover runs before the work: it never guesses the files the work will create — where new "
-    "code goes is the plan's decision.",
-    "What the work will probably also need goes on a `Likely consequence:` line under the risks, "
-    "never on a `Code:` line.",
+    "Record existing code only, as `<edit | read> — file:line — symbol — why` under the rules of "
+    "`references/report.md`;",
+    "the files the work will create are the plan's decision and are never listed.",
     "No code search for a `reference` module.",
 ]
 STEP8 = ("8. **Report** in the conversation, in the shape of `references/report.md` (the search "
          "line first, every section there, the rejected candidates included, every `Code:` line "
          "tagged `edit` or `read`).")
 FROM_DIFF_LINE = ("the changed files are its `Code:` lines, each `edit` (`edit — file:line — symbol "
-                  "— why` where a hunk shows it); no search line, no scores, no rejected list "
-                  "(nothing was chosen).")
+                  "— why` where a hunk shows it), a file the branch added too; no search line, no "
+                  "`Tests:` line, no `Likely consequence:` line, no scores, no rejected list "
+                  "(nothing was chosen).")  # task-2 review M-3
+STEP7 = ("segmently-modules discover --files <edit files> --task-file <file> --match lexical "
+         "--json")  # task-2 review M-4: the owners and docs to update of the files the change edits
 TAGGED = re.compile(r"^- `(edit|read)` — `<file>:<line>` — `<symbol>` — <[^<>]+>$")
 MODES = ("lexical", "by meaning", "hybrid", "<lexical | by meaning | hybrid>")
 
@@ -184,17 +213,15 @@ def expected_report() -> str:
     """The base with exactly this task's edits: nothing else may differ."""
     out = []
     for line in BASE_REPORT.split("\n"):
-        if line == OLD_CODE:
-            out += [EDIT, READ, TESTS]
-            continue
-        if line == OLD_VERSION:
-            out.append(NEW_VERSION)
-            continue
-        if line == OLD_FILES:
-            out += NEW_FILES
+        if line in REPLACED:
+            out += REPLACED[line]
             continue
         out.append(line)
-        if line == TITLE:
+        if line == NOTHING:
+            out.append(SEARCHED)
+        elif line == DOCS_RULE_END:
+            out += SEARCHED_RULE
+        elif line == TITLE:
             out += ["", SEARCH]
         elif line == RISKS:
             out.append(CONSEQUENCE)
@@ -208,14 +235,15 @@ def expected_report() -> str:
 class RestUnchangedTest(unittest.TestCase):  # DCP-AC-016
     def test_the_anchors_are_base_lines_once(self):
         lines = BASE_REPORT.split("\n")
-        for anchor in (TITLE, OLD_CODE, RISKS, CODE_RULE_END, OLD_VERSION, OLD_FILES, JSON_END):
+        for anchor in (TITLE, OLD_CODE, RISKS, CODE_RULE_END, OLD_VERSION, OLD_FILES, JSON_END,
+                       *REPLACED, NOTHING, DOCS_RULE_END):
             with self.subTest(anchor=anchor):
                 self.assertEqual(lines.count(anchor), 1)
 
     def test_the_report_is_the_base_with_these_edits_only(self):
         self.assertEqual(report(), expected_report())
 
-    def test_only_the_four_kinds_of_line_change(self):
+    def test_only_the_listed_lines_change(self):
         base, new = BASE_REPORT.split("\n"), report().split("\n")
         removed, added = [], []
         for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, base, new,
@@ -223,14 +251,17 @@ class RestUnchangedTest(unittest.TestCase):  # DCP-AC-016
             if op != "equal":
                 removed += base[i1:i2]
                 added += new[j1:j2]
-        self.assertEqual(removed, [OLD_CODE, OLD_VERSION, OLD_FILES])  # every other base line kept
+        self.assertEqual(removed, [OLD_HEADING, OLD_CODE, OLD_REJECTED, OLD_DOCS_RULE, OLD_VERSION,
+                                   OLD_FILES, OLD_CONFIDENCE])  # every other base line kept
         allowed = {"", SEARCH, EDIT, READ, TESTS, CONSEQUENCE, NEW_VERSION, JSON_REASON,
-                   *RULES, *NEW_FILES}
+                   *RULES, *NEW_FILES, NEW_HEADING, NEW_REJECTED, NEW_CONFIDENCE, SEARCHED,
+                   *SEARCHED_RULE, *NEW_DOCS_RULE}
         self.assertEqual([line for line in added if line not in allowed], [])
 
     def test_the_sections_are_the_base_sections(self):
         heads = [line for line in report().split("\n") if line.startswith("#")]
-        self.assertEqual(heads, [line for line in BASE_REPORT.split("\n") if line.startswith("#")])
+        base = [line for line in BASE_REPORT.split("\n") if line.startswith("#")]
+        self.assertEqual(heads, [NEW_HEADING if line == OLD_HEADING else line for line in base])
 
 
 class TaggedCodeLineTest(unittest.TestCase):  # DCP-AC-011 (the template and the step-6 wording)
@@ -261,6 +292,12 @@ class TaggedCodeLineTest(unittest.TestCase):  # DCP-AC-011 (the template and the
         diff = flat(FROM_DIFF.read_text(encoding="utf-8"))
         self.assertEqual(diff.count(FROM_DIFF_LINE), 1)
         self.assertNotIn("`file:line — symbol — why`", diff)
+
+    def test_step_7_takes_the_edit_files(self):  # task-2 review M-4
+        steps = section(text("module-discover"), "## Steps")
+        step7 = between(steps, "7. **Owners and docs to update.**", "8. **Report**")
+        self.assertEqual(step7.count(STEP7), 1)
+        self.assertNotIn("<touch-point files>", steps)
 
     @staticmethod
     def step6() -> str:
@@ -364,18 +401,54 @@ class JsonTest(unittest.TestCase):  # DCP-AC-017
         self.assertEqual(new["modules"][0]["files"][0]["path"], old["files"][0]["path"])
 
 
+class SearchedDocTest(unittest.TestCase):  # owner ruling 2026-10-16: a doc only searched says so
+    def test_the_template_has_the_searched_form_after_the_read_form(self):
+        lines = template()
+        self.assertEqual(lines[lines.index(NOTHING) + 1], SEARCHED)
+        self.assertEqual(lines[lines.index(SEARCHED) + 1], "Docs to update: `<path>`, …")
+
+    def test_the_rule_follows_the_docs_rule(self):
+        body = flat(report())
+        rule = ("- A doc read only through a search (its matching lines, not the whole doc) says "
+                "so: `searched (<terms>)` in place of `read`, as in `` - `<path>` (<role>): "
+                "searched (<terms>), nothing for this task ``; an extract taken from a searched "
+                "doc ends with `(searched)`.")
+        self.assertEqual(body.count(rule), 1)
+        first = ("- Every doc step 5 read or searched is on a `Docs:` line: an extract, \"read, "
+                 "nothing for this task\" or \"searched (<terms>), nothing for this task\".")
+        self.assertLess(body.index(first), body.index(rule))
+        self.assertEqual(body.index(rule), body.index(flat(DOCS_RULE_END)) +
+                         len(flat(DOCS_RULE_END)) + 1)
+
+
+class OneScoreTest(unittest.TestCase):  # owner ruling 2026-10-16: step 2 gives one score
+    def test_the_heading_and_the_rejected_line(self):
+        lines = template()
+        self.assertIn(NEW_HEADING, lines)
+        self.assertIn(NEW_REJECTED, lines)
+        self.assertNotIn("average", report())
+
+    def test_the_json_confidence(self):
+        self.assertIn("`confidence`: `user_specified` for a module the user named, else `high` "
+                      "when the score is ≥ 7, otherwise `medium`.", flat(report()))
+
+
 class DocsTest(unittest.TestCase):  # R-6: the docs show the tagged shape, the changelog says so
     def test_skills_doc(self):
         doc = flat((ENGINE / "docs/skills.md").read_text(encoding="utf-8"))
         row = next(line for line in (ENGINE / "docs/skills.md").read_text(encoding="utf-8")
                    .split("\n") if line.startswith("| `module-discover` |"))
-        for phrase in ("each tagged `edit` (an existing file the change edits) or `read`",
+        for phrase in ("the modules (each scored 0–10 by how much the task needs it and kept at "
+                       "5 or more; one hop of forward links; usage modify / consume / reference)",
+                       # the lite text (formalization eval 2026-10-15)
+                       "each tagged `edit` (an existing file the change edits) or `read`",
                        "`<edit | read> — file:line — symbol — why`",
                        "`Tests: add new — …`", "`Likely consequence:`",
                        "`version` `1.1`"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, row)
         self.assertNotIn("(`file:line — symbol — why`, never", row)
+        self.assertNotIn("four questions", row)
         self.assertIn("e.g. `Search: lexical — when_unsure, chooser skipped — lexical sure`", doc)
         self.assertNotIn("chooser skipped (when_unsure, lexical sure)", doc)
 

@@ -9,16 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `[search] chooser` (`always`, the default; `when_unsure`; `never`) sets when module-discover asks the chooser to pick modules by meaning, and `discover --json` says how sure its keyword result is (`lexical_confidence`: `sure` or `unsure` with the reason `no_hits`, `tie` or `low_score` against `[search] sure_min_score`, and the modules at the top score). With `when_unsure` the keyword command runs first and the chooser only on an unsure result; the user's words for a run still win.
-- `choose --cards brief` (or `[search] cards = "brief"`): a smaller work order whose cards hold each module's name, description and children, without keywords; `full` stays the default.
+- `[search] chooser` (`always`, the default; `when_unsure`; `never`) sets when module-discover asks the chooser to pick modules by meaning, and `discover --json` says how sure its keyword result is (`lexical_confidence`: `sure` or `unsure` with the reason `no_hits`, `tie` or `low_score` against `[search] sure_min_score`, and the modules at the top score; at the default weights a keyword hit scores 3, so the default `sure_min_score` 2 never yields `low_score` — set 4 or more to make a single hit unsure). With `when_unsure` the keyword command runs first and the chooser only on an unsure result; the user's words for a run still win.
+- `choose --cards brief` (or `[search] cards = "brief"`): a smaller work order with a card per module and per child — its name and description, a parent's card naming its children, a child's its parent — without keywords; `full` stays the default.
 - `catalog --settings` prints only the `[match]` and `[search]` settings, every key with its default filled in; module-discover reads them there instead of the whole catalog.
 - `code-map files TARGET --source-only` lists the module's source files only — no docs, no tests — and `--paths` prints them one per line, so an agent reads a short list instead of the full JSON; module-discover's code pass uses `code-map files <module> --source-only --paths`.
 - `[tests] globs`: the globs of test files that `--source-only` leaves out, added to the built-in ones (`**/tests/**`, `**/*.test.*`, `**/test_*.py` and the like, each at the root too).
+- `[search] generic` lists the modules that match almost any task (a shared UI kit, a shared data layer): `discover --json`'s `lexical_confidence` leaves their keyword rows out of its verdict — hits on them alone are `unsure` with the reason `generic`, so `chooser = "when_unsure"` still runs the chooser; a listed module covers its children, and the modules stay in the results.
 
 ### Changed
 
-- module-discover's report tags every `Code:` line `edit` (an existing file the change edits, with what changes there in one clause) or `read` (called or consulted as it is, a consumer, a pattern to follow, an alternative); an existing test is an `edit` line only when it asserts the changed behaviour, else the module gets `Tests: add new — <what to cover>`; `Likely consequence:` lines under the risks name what the work will probably also need without putting a new path in `Code:`; the first line under the title, `Search: …`, says how the candidates were chosen; `discovery-results.json` is `version` `1.1`, each `files[].reason` starting with `edit — ` or `read — `.
-- module-discover batches independent reads and reads code outline-first: the independent read commands of one step run together, in one Bash call or as parallel tool calls (never a command that needs an earlier output), and the files the code search found are outlined in one call — their signatures with line numbers — then read only from the signature above each line the change lands on to its body's end, not whole files.
+- module-discover's report tags every `Code:` line `edit` (an existing file the change edits, with what changes there in one clause) or `read` (called or consulted as it is, a consumer, a pattern to follow, an alternative); an existing test is an `edit` line only when it asserts the changed behaviour, else a module with an `edit` line gets `Tests: add new — <what to cover>`; `Likely consequence:` lines under the risks name what the work will probably also need without putting a new path in `Code:`; the first line under the title, `Search: …`, says how the candidates were chosen; `discovery-results.json` is `version` `1.1`, each `files[].reason` starting with `edit — ` or `read — `.
+- module-discover's steps say what to find and what the report must hold, and leave how to search and how much to read to the agent (independent reads still run together; an output cut to a preview is read back from the file it names); in a 7-task comparison with the step-by-step text it found as much (more `edit` files) at about 80% of the cost.
+- module-discover's report writes a doc it only searched as `searched (<terms>)` instead of `read` (an extract from it ends with `(searched)`), and gives each module its one score, `(score <0–10>)`; the JSON's `confidence` is `high` when the score is 7 or more.
+- `code-map files --paths` / `--source-only` and `choose --cards` make some abbreviated options ambiguous: `code-map add … --pat` (also `--pa`, `--p`), `code-map files … --s` and `choose --c` now exit 2 (`ambiguous option`); spell options in full.
+
+### Fixed
+
+- Plain `lint` no longer warns MS060 about a pack's `[search]` or `[tests]` table: a pack may set every config section.
 
 ## [0.3.0] - 2026-10-14
 

@@ -114,7 +114,7 @@ lists the agent (the next `packs sync` copies its skills again).
 | Skill | Use it when | Scope | Main commands |
 |---|---|---|---|
 | `module-scout` | a task is still being discussed: a short context brief for the modules it names (by name or doc path) and the modules they hard-link, or — none named — a proposal of candidates it loads only after the user says so | read-only | `catalog`, `choose`, `show`, `related`, `context` |
-| `module-discover` | a task is agreed and the plan needs its complete context, or a branch needs review: the modules (verified by four questions, one hop of links, usage modify / consume / reference), what their docs say for every role that bears on the task, the existing code touch points as `<edit | read> — file:line — symbol — why` (never the files the work will create), each tagged `edit` (an existing file the change edits) or `read` (called or consulted as it is, a consumer, a pattern, an alternative), a tests line (an existing test is an `edit` line only when it asserts the changed behaviour, else `Tests: add new — …`), `Likely consequence:` lines under the risks, docs to update; JSON on request (`version` `1.1`, each `files[].reason` starting with the tag) | read-only | `catalog`, `choose`, `show --all-roles`, `related`, `discover`, `code-map files` |
+| `module-discover` | a task is agreed and the plan needs its complete context, or a branch needs review: the modules (each scored 0–10 by how much the task needs it and kept at 5 or more; one hop of forward links; usage modify / consume / reference), what their docs say for every role that bears on the task, the existing code touch points as `<edit | read> — file:line — symbol — why` (never the files the work will create), each tagged `edit` (an existing file the change edits) or `read` (called or consulted as it is, a consumer, a pattern, an alternative), a tests line (an existing test is an `edit` line only when it asserts the changed behaviour, else `Tests: add new — …`), `Likely consequence:` lines under the risks, docs to update; JSON on request (`version` `1.1`, each `files[].reason` starting with the tag) | read-only | `catalog`, `choose`, `show --all-roles`, `related`, `discover`, `code-map files` |
 | `module-research` | one question about a module needs a deep answer with file:line evidence and doc/code gaps | read-only | `catalog`, `choose`, `show --all-roles`, `related`, `code-map files`, `lint` |
 | `module-sync` | a work session is done — it changed module code or only revealed module knowledge: takes the session's plan goal, decisions with the rejected alternatives, discoveries, gotchas and rules first and the change second, prints its findings and a proposal per module (interactive on request: `ok / skip / edit`), places each item in the doc its readers look in (a doc another skill owns is flagged, never hand-edited), brings keywords and links in line, runs the sync hooks, checks `ci`, reports its decisions and the budget action items | writes docs and registry fields | `sync-instructions` (`--module` for a session without a code change), `catalog`, `choose`, `registry`, `propose`, `sync`, `ci` |
 | `module-roles` | a role is new and the existing modules lack its doc: declares the role when it is undeclared, shows a dry run, writes one doc per module, fills each from that module's code and docs, then `lint` and `next` | writes the role's docs (never over an existing one) | `roles list`, `roles add`, `lint`, `next` |
@@ -158,7 +158,8 @@ one it fixes. MS050 and MS051 are never `known`: they describe the change since 
 ## Choosing modules by meaning
 
 Four skills (`module-scout`, `module-discover`, `module-research`, `module-sync`) share one
-module-choice step. The skill runs `segmently-modules catalog --json`, reads `match.mode` and `search` (the
+module-choice step. The skill runs `segmently-modules catalog --json` (module-discover:
+`segmently-modules catalog --settings --json`, the settings alone), reads `match.mode` and `search` (the
 models and the depth), then:
 
 - **By meaning** (`semantic` or `hybrid`): the skill writes the text, verbatim and in any
@@ -183,10 +184,11 @@ models and the depth), then:
 Every task text reaches Segmently Modules through a file (`--task-file`), never as a quoted argument: an
 apostrophe, a `$name` or a backtick in it arrives as written.
 
-**Hybrid is the default**: the mode is `hybrid` unless you say otherwise ("only lexical", "by
-meaning", in any language) or `match.mode` is `semantic`. A `lexical` config — the engine's own
-default `[match] mode = "lexical"` too — is only the command line's default and never skips the
-search by meaning, which needs no setting (the mode a plain `segmently-modules match` uses and the mode of
+**Hybrid is the default** (module-discover: unless `[search] chooser` says otherwise, below): the
+mode is `hybrid` unless you say otherwise ("only lexical", "by meaning", in any language) or
+`match.mode` is `semantic`. A `lexical` config — the engine's own default `[match] mode = "lexical"`
+too — is only the command line's default and never skips the search by meaning (module-discover:
+unless `[search] chooser` says otherwise, below), which needs no setting (the mode a plain `segmently-modules match` uses and the mode of
 the skills are separate: a skill always has your agent). Say "use opus" for the model (the Agent
 tool's `model:`, `codex exec -m`) and "search deep" for the depth: the skill adds
 `--effort deep` to `segmently-modules choose`, and on the Codex path `<reasoning>` follows it. Set the models
@@ -194,7 +196,8 @@ and the depth once in the team or personal config (`[search] claude_model`, `cod
 `effort`; `claude_model` is a Claude Code subagent model alias — `sonnet`, `opus` or `haiku` — as
 a subagent takes no full model id; see
 [configuration.md](configuration.md#the-agent-command-and-search)).
-`[match] mode = "semantic"` makes meaning-only the skills' default. A plain CLI `match`, `context`
+`[match] mode = "semantic"` makes meaning-only the skills' default (module-discover: only under
+`[search] chooser = "always"`). A plain CLI `match`, `context`
 or `discover --task` call runs it only with `SEGMENTLY_MODULES_AGENT_ALLOW_REPO_MODE=1` in the user's
 environment (without it the run is lexical, with one stderr note; with it and without
 `SEGMENTLY_MODULES_AGENT_COMMAND` the call refuses, exit 2). It never stops a skill: the skills' keyword

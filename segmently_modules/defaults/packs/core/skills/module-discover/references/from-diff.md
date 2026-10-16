@@ -18,5 +18,6 @@ one the change is in and add its doc to the docs to update); then `files_outside
 
 Then steps 5 and 8 of the skill: the docs of every `modify` module for every role, with what bears
 on the change; the changed files are its `Code:` lines, each `edit`
-(`edit — file:line — symbol — why` where a hunk shows it); no search line, no scores, no rejected
-list (nothing was chosen).
+(`edit — file:line — symbol — why` where a hunk shows it), a file the branch added too; no search
+line, no `Tests:` line, no `Likely consequence:` line, no scores, no rejected list (nothing was
+chosen).

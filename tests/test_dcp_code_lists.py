@@ -2,7 +2,11 @@
 files whose `via` holds more than `docs` and that match no test glob; `--paths` prints one
 repository-relative path per line; the `[tests] globs` of every layer add to the engine's default
 test globs; module-discover's code pass reads the compact list. Without the new flags every
-`code-map` output stays as it was (pinned below)."""
+`code-map` output stays as it was (pinned below). Formalization eval 2026-10-15: the owner adopted
+the lite text — the procedure is the model's, the contract is pinned: step 6 names the compact list
+and looks outside it only when it has nothing; the test lookup (`git grep -l …` over the module's
+code paths, source files first, tests last) and "never `code-map files … --json` without
+`--source-only`" left the skill on purpose, and the test that ran the lookup went with them."""
 from __future__ import annotations
 
 import json
@@ -52,6 +56,7 @@ DOCS = ("modules/catalog/MODULE.md", "modules/catalog/roles/designer.md",
 class Repo(unittest.TestCase):
     """A bookshop copy whose `catalog` has docs, sources and a test file in every default form."""
     extra_config = ""
+    extra_files: tuple = ()
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -59,7 +64,7 @@ class Repo(unittest.TestCase):
         self.root = copy_fixture(self._tmp.name)
         self.team = self.root / ".segmently-modules/config.toml"
         self.team.write_text(RULE + self.extra_config, encoding="utf-8")
-        for rel in [*SOURCES, *TESTS.values()]:
+        for rel in [*SOURCES, *TESTS.values(), *self.extra_files]:
             path = self.root / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             if not path.exists():
@@ -118,6 +123,20 @@ class SourceOnlyTest(Repo):  # DCP-AC-019
     def test_a_docs_only_module_has_no_source(self):
         env = self.files("checkout", "--source-only")
         self.assertEqual(env["data"], {"target": "checkout", "files": [], "total": 0})
+
+
+class DocsAndCodeTest(Repo):  # task-3 review M-5: `via` holds `docs` and a code source
+    extra_config = ('[[code_map]]\nid = "catalog-doc-as-code"\nmodule = "catalog"\n'
+                    'globs = ["modules/catalog/roles/qa.md"]\n')
+
+    def test_a_doc_a_rule_routes_as_code_is_kept(self):
+        every = {f["path"]: f["via"] for f in self.files()["data"]["files"]}
+        self.assertEqual(every["modules/catalog/roles/qa.md"],
+                         ["docs", "code_map:catalog-doc-as-code"])  # `docs` first
+        kept = [f["path"] for f in self.files("catalog", "--source-only")["data"]["files"]]
+        self.assertEqual(kept, sorted([*SOURCES, "modules/catalog/roles/qa.md"]))
+        for path in set(DOCS) - {"modules/catalog/roles/qa.md"}:  # docs only: left out
+            self.assertNotIn(path, kept)
 
 
 class PathsTest(Repo):  # DCP-AC-020
@@ -258,6 +277,25 @@ class TestGlobsAddTest(Repo):  # DCP-AC-021
         self.assertIn("pack.toml: [tests] globs: expected a list of non-empty strings", err)
 
 
+class RootLevelGlobTest(Repo):  # task-3 review M-2: `**/` needs a directory before it
+    extra_files = ("fixtures/shelf.json",)
+    rule = '[[code_map]]\nid = "catalog-fixtures"\nmodule = "catalog"\nglobs = ["fixtures/**"]\n'
+    extra_config = rule + '[tests]\nglobs = ["**/fixtures/**"]\n'
+
+    def kept(self):
+        return [f["path"] for f in self.files("catalog", "--source-only")["data"]["files"]]
+
+    def test_the_root_needs_its_own_glob(self):
+        kept = self.kept()
+        self.assertIn("fixtures/shelf.json", kept)  # `**/fixtures/**` misses the root
+        self.assertNotIn("src/catalog/fixtures/books.json", kept)
+        self.team.write_text(RULE + self.rule + '[tests]\nglobs = ["fixtures/**", "**/fixtures/**"]\n',
+                             encoding="utf-8")  # the documented pair covers both
+        kept = self.kept()
+        self.assertNotIn("fixtures/shelf.json", kept)
+        self.assertNotIn("src/catalog/fixtures/books.json", kept)
+
+
 # Without the new flags, `code-map list`, `add` and `files` print what the base printed (AC-027);
 # the strings were taken from the base engine on this fixture, with the `[tests]` table set.
 LIST_TEXT = "catalog-code             catalog                  src/catalog/**, *catalog*, __tests__/**, tests/**, test/**\n"
@@ -318,23 +356,18 @@ class DiscoverSkillTextTest(unittest.TestCase):  # DCP-AC-024
 
     def test_step_6_names_the_compact_list(self):
         step = self.step6()
-        self.assertIn(f"`show`'s `code` and `code_globs`, or `{self.COMPACT}`", step)
-        self.assertIn("its source files, one per line, docs and tests left out", step)
-        self.assertIn("never `code-map files … --json` without `--source-only`", step)
-        self.assertIn("source files first, tests last — searched in the module's test paths "
-                      "only for the behaviour the task changes", step)
+        self.assertIn(f"`show`'s `code` and `code_globs`, or `{self.COMPACT}`; look outside it "
+                      "only when it has nothing.", step)  # the lite text
+        self.assertNotIn("only when that gives nothing", step)  # task-3 review M-6c
         self.assertEqual(command("module-discover", "segmently-modules code-map files"),
                          self.COMPACT)
 
-    def test_no_code_map_json_without_source_only(self):
+    def test_the_full_list_is_never_printed(self):  # task-3 review M-6a
         body = " ".join(self.skill().split())
-        spans = list(re.finditer(r"`([^`]*code-map files[^`]*)`", body))
-        self.assertGreaterEqual(len(spans), 3)
-        for m in spans:  # a `--json` form only in the sentence that forbids it
-            with self.subTest(span=m.group(1)):
-                if "--json" in m.group(1) and "--source-only" not in m.group(1):
-                    self.assertTrue(body[m.end():].startswith(" without `--source-only`"))
+        spans = re.findall(r"`([^`]*code-map files[^`]*)`", body)
+        self.assertEqual(spans, [self.COMPACT])  # the compact list is the one code-map command
         self.assertNotIn("segmently-modules code-map files <module> --json", body)
+        self.assertNotIn("$(", body)  # no command substitution: a strict permission mode asks for it
 
     def test_the_command_runs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -361,15 +394,21 @@ class DocsTest(unittest.TestCase):  # R-5: the table, the flags and the changelo
         for glob in config.DEFAULT_TEST_GLOBS:
             self.assertIn(f"`{glob}`", part)
         for phrase in ("| `globs` |", "is ADDED to the built-in list", "never removes a built-in glob",
-                       "naming the file and `[tests] globs`", '[tests]\nglobs = ["**/fixtures/**"'):
+                       "naming the file and `[tests] globs`",
+                       '[tests]\nglobs = ["fixtures/**", "**/fixtures/**"]'):  # review M-2
             self.assertIn(phrase, part)
+        self.assertIn("A glob of yours follows the same rule: `**/fixtures/**` leaves out "
+                      "`src/fixtures/x` but not a root-level `fixtures/x`; add `fixtures/**` as "
+                      "well.", " ".join(part.split()))  # task-3 review M-2
 
     def test_the_flags(self):
         doc = " ".join(self.read("docs/configuration.md").split())
         self.assertIn("`--source-only` keeps the TARGET's source files", doc)
-        self.assertIn("`--paths` prints one repository-relative path per line, sorted", doc)
-        row = [ln for ln in self.read("docs/cli-contract.md").splitlines()
-               if ln.startswith("| `code-map list\\|add\\|files` |")]
+        self.assertIn("`--paths` prints one repository-relative path per line, sorted, without "
+                      "`via`", doc)  # task-3 review M-3
+        self.assertNotIn("without the sources", doc)
+        row = [ln for ln in self.read("docs/cli-contract.md").splitlines()  # final review M-6
+               if ln.startswith("| `code-map list\\|add\\|files [--source-only] [--paths]` |")]
         self.assertEqual(len(row), 1)
         for phrase in ("files `--source-only`: the same shape", "files `--paths`: no JSON",
                        "with `--json` exit 2", "`--source-only` and `--paths` with `list` or `add` exit 2"):
@@ -380,6 +419,22 @@ class DocsTest(unittest.TestCase):  # R-5: the table, the flags and the changelo
         unreleased = log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
         self.assertIn("`code-map files TARGET --source-only`", unreleased)
         self.assertIn("`[tests] globs`", unreleased)
+        # task-3 review M-1 (final review: and `--c`): the abbreviations the new flags made ambiguous
+        line = [ln for ln in unreleased.splitlines() if "abbreviat" in ln]
+        self.assertEqual(len(line), 1)
+        for phrase in ("`code-map add … --pat`", "`--pa`", "`--p`", "`code-map files … --s`",
+                       "`choose --c`", "spell options in full"):
+            self.assertIn(phrase, line[0])
+
+    def test_the_abbreviations_are_ambiguous(self):  # what that changelog line says
+        for argv, flag in ((("code-map", "add", "x", "--pat", "lib/{module}/**", "--dry-run"),
+                            "--pat"),
+                           (("code-map", "files", "catalog", "--s"), "--s"),
+                           (("choose", "--task", "t", "--c", "x"), "--c")):
+            with self.subTest(argv=argv):
+                code, out, err = run(*argv)
+                self.assertEqual((code, out), (2, ""))
+                self.assertIn(f"ambiguous option: {flag} could match", err)
 
 
 if __name__ == "__main__":
