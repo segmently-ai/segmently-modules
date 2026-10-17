@@ -215,7 +215,7 @@ class Shop(unittest.TestCase):
 
     def confidence(self, task: str, *extra) -> dict:
         data = self.discover(task, *extra)
-        self.assertEqual(list(data)[-1], "lexical_confidence")  # the last key (R-3)
+        self.assertEqual(list(data)[0], "lexical_confidence")  # the first key, so a cut read keeps it
         return data["lexical_confidence"]
 
 
@@ -307,14 +307,15 @@ class WhenTheKeyIsAddedTest(Split):  # R-3: a task and keyword routing, JSON onl
         self.assertEqual(lexical["lexical_confidence"],
                          {"level": "sure", "reason": None, "top": ["orders/refunds"]})
         hybrid = self.data("--task", "refund", "--match", "hybrid")  # no agent: lexical rows
-        self.assertEqual(list(hybrid)[-3:], ["mode", "notes", "lexical_confidence"])
+        self.assertEqual(list(hybrid)[0], "lexical_confidence")
+        self.assertEqual(list(hybrid)[-2:], ["mode", "notes"])
         self.assertNotIn("lexical_confidence", self.data("--files", "src/orders/service.py"))
         self.agent(answer=picks(("orders/refunds", 0.9, "r")))
         semantic = self.data("--task", "refund", "--match", "semantic")
         self.assertNotIn("lexical_confidence", semantic)
         hybrid = self.data("--task", "refund", "--match", "hybrid")  # the agent answered
         self.assertEqual(hybrid["lexical_confidence"]["top"], ["orders/refunds"])
-        self.assertEqual(list(hybrid)[-1], "lexical_confidence")
+        self.assertEqual(list(hybrid)[0], "lexical_confidence")
 
     def test_context_and_match_do_not_have_it(self):
         _, env, _ = run_json("context", "--task", "refund", "--match", "lexical", *self.R)

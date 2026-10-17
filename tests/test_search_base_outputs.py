@@ -1,7 +1,7 @@
 """The verbs the chooser setting touches print what they printed before it, byte for byte:
 `catalog` and `catalog --json`, `choose` without `--cards` (the text and the JSON order,
 `--effort`, `--top`, `--apply`), the nested-agent refusal, `discover` text, `discover --files`
-JSON, `discover --json` but for its last key `lexical_confidence`, and `context`. The golden
+JSON, `discover --json` but for its first key `lexical_confidence`, and `context`. The golden
 outputs in
 `tests/fixtures/search_base_outputs/` were captured from the engine before the setting existed,
 on a copy of the split fixture, by `outputs()` below. `[search] generic` set to `[]` or to ids
@@ -91,13 +91,13 @@ def outputs(tmp: Path, config: str | None = None) -> dict[str, str]:
 
 
 def without_confidence(printed: str) -> tuple[str, str]:
-    """(the last key of `data`, the output with `data.lexical_confidence` taken out and printed
+    """(the first key of `data`, the output with `data.lexical_confidence` taken out and printed
     again as the verb prints it) of a `discover --json` output."""
     body, sep, tail = printed.partition("--- exit ")
     envelope = json.loads(body)
-    last = list(envelope["data"])[-1]
+    first = list(envelope["data"])[0]
     envelope["data"].pop("lexical_confidence", None)
-    return last, json.dumps(envelope, indent=2, ensure_ascii=False) + "\n" + sep + tail
+    return first, json.dumps(envelope, indent=2, ensure_ascii=False) + "\n" + sep + tail
 
 
 def without_rules(test, printed: str) -> str:
@@ -120,9 +120,9 @@ class BaseOutputsTest(unittest.TestCase):
             with self.subTest(case=name):
                 golden = (GOLDEN / name).read_bytes().decode("utf-8")
                 got = now[name]
-                if name in WITH_CONFIDENCE:  # the one addition: the last key of `data`
-                    last, got = without_confidence(got)
-                    self.assertEqual(last, "lexical_confidence")
+                if name in WITH_CONFIDENCE:  # the one addition: the first key of `data`
+                    first, got = without_confidence(got)
+                    self.assertEqual(first, "lexical_confidence")
                 if name.startswith("discover") and name.endswith(".json"):
                     got = without_rules(self, got)
                 self.assertEqual(got, golden)

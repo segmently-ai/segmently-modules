@@ -166,9 +166,14 @@ SEARCHED_RULE = [
     "  `` - `<path>` (<role>): searched (<terms>), nothing for this task ``; an extract taken from a",
     "  searched doc ends with `(searched)`.",
 ]
+# reference benchmark 2026-10-17 (owner: both levers): a rule is quoted in the doc's own words, never softened
+NEW_EXTRACT = ["  extract is short and says what it means for this task. A rule — a never / must / do not / always",
+               "  statement, a ❌ line — is quoted in the doc's own words with its `doc:line`, never softened into an",
+               "  option or a question."]
 REPLACED = {OLD_CODE: [EDIT, READ, TESTS], OLD_VERSION: [NEW_VERSION], OLD_FILES: NEW_FILES,
             OLD_HEADING: [NEW_HEADING], OLD_REJECTED: [NEW_REJECTED],
-            OLD_CONFIDENCE: [NEW_CONFIDENCE], OLD_DOCS_RULE: NEW_DOCS_RULE}
+            OLD_CONFIDENCE: [NEW_CONFIDENCE], OLD_DOCS_RULE: NEW_DOCS_RULE,
+            DOCS_RULE_END: NEW_EXTRACT + SEARCHED_RULE}
 
 # step 6 (R-3), in order, as the lite text says it: the form, under report.md's rules (RULES above);
 # task 3's compact-list sentence stays (test_dcp_code_lists)
@@ -219,8 +224,6 @@ def expected_report() -> str:
         out.append(line)
         if line == NOTHING:
             out.append(SEARCHED)
-        elif line == DOCS_RULE_END:
-            out += SEARCHED_RULE
         elif line == TITLE:
             out += ["", SEARCH]
         elif line == RISKS:
@@ -251,11 +254,11 @@ class RestUnchangedTest(unittest.TestCase):  # DCP-AC-016
             if op != "equal":
                 removed += base[i1:i2]
                 added += new[j1:j2]
-        self.assertEqual(removed, [OLD_HEADING, OLD_CODE, OLD_REJECTED, OLD_DOCS_RULE, OLD_VERSION,
-                                   OLD_FILES, OLD_CONFIDENCE])  # every other base line kept
+        self.assertEqual(removed, [OLD_HEADING, OLD_CODE, OLD_REJECTED, OLD_DOCS_RULE, DOCS_RULE_END,
+                                   OLD_VERSION, OLD_FILES, OLD_CONFIDENCE])  # every other base line kept
         allowed = {"", SEARCH, EDIT, READ, TESTS, CONSEQUENCE, NEW_VERSION, JSON_REASON,
                    *RULES, *NEW_FILES, NEW_HEADING, NEW_REJECTED, NEW_CONFIDENCE, SEARCHED,
-                   *SEARCHED_RULE, *NEW_DOCS_RULE}
+                   *SEARCHED_RULE, *NEW_DOCS_RULE, *NEW_EXTRACT}
         self.assertEqual([line for line in added if line not in allowed], [])
 
     def test_the_sections_are_the_base_sections(self):
@@ -417,8 +420,8 @@ class SearchedDocTest(unittest.TestCase):  # owner ruling 2026-10-16: a doc only
         first = ("- Every doc step 5 read or searched is on a `Docs:` line: an extract, \"read, "
                  "nothing for this task\" or \"searched (<terms>), nothing for this task\".")
         self.assertLess(body.index(first), body.index(rule))
-        self.assertEqual(body.index(rule), body.index(flat(DOCS_RULE_END)) +
-                         len(flat(DOCS_RULE_END)) + 1)
+        end = flat("\n".join(NEW_EXTRACT))
+        self.assertEqual(body.index(rule), body.index(end) + len(end) + 1)
 
 
 class OneScoreTest(unittest.TestCase):  # owner ruling 2026-10-16: step 2 gives one score

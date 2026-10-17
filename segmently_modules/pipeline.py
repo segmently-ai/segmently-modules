@@ -260,8 +260,8 @@ def run_discover(args) -> int:
                           missing_files(ws.root, files) if args.files else [], rows)
     if mode != "lexical":
         data = {**data, "mode": mode, "notes": notes}
-    if has_task and mode in ("lexical", "hybrid"):  # keyword routing ran: how sure it is, last
-        data = {**data, "lexical_confidence": _confidence(ws, text)}
+    if has_task and mode in ("lexical", "hybrid"):  # keyword routing ran: how sure it is, first, so a cut read still shows it
+        data = {"lexical_confidence": _confidence(ws, text), **data}
     # --from-diff REF (no range) compares the working tree with REF: the text says so
     ref = args.from_diff if args.from_diff and ".." not in args.from_diff else None
     emit("discover", data, args.json, functools.partial(_render_discover, ref=ref))

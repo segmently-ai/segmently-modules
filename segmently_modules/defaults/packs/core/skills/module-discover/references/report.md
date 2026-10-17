@@ -36,7 +36,9 @@ Likely consequence: <what the implementation will probably also need> — <the e
 
 - Every doc step 5 read or searched is on a `Docs:` line: an extract, "read, nothing for this task"
   or "searched (<terms>), nothing for this task". An
-  extract is short — a quote or a close paraphrase — and says what it means for this task.
+  extract is short and says what it means for this task. A rule — a never / must / do not / always
+  statement, a ❌ line — is quoted in the doc's own words with its `doc:line`, never softened into an
+  option or a question.
 - A doc read only through a search (its matching lines, not the whole doc) says so:
   `searched (<terms>)` in place of `read`, as in
   `` - `<path>` (<role>): searched (<terms>), nothing for this task ``; an extract taken from a

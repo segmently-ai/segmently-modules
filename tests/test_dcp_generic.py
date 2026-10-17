@@ -61,7 +61,7 @@ class Shop(unittest.TestCase):
                              *self.R)
         self.assertEqual((code, err), (0, ""))
         data = json.loads(out)["data"]
-        self.assertEqual(list(data)[-1], "lexical_confidence")
+        self.assertEqual(list(data)[0], "lexical_confidence")
         return out, data
 
     def confidence(self, task: str, generic: list[str] | None) -> dict:
