@@ -7,9 +7,9 @@ argument-hint: "[task]"
 # module-discover
 
 Pulls into the conversation the complete context a task needs before it is planned, so that
-nothing important is missed in the discussion or the plan: the modules it touches, what their docs
-say for every role that bears on the task, and the existing code it touches. It does not look for
-a bug's cause — the conversation does that; discover gives it the map.
+nothing important is missed in the discussion or the plan: its modules, their docs for every role
+that bears on it, and the existing code it touches. It does not look for a bug's cause — the
+conversation does that; discover gives it the map.
 
 ## When to use
 
@@ -25,9 +25,9 @@ a bug's cause — the conversation does that; discover gives it the map.
 ## Scope
 
 Read-only by default: Segmently Modules read verbs, docs, code search. It writes only temporary files outside the
-repository, at a path the user names the JSON result, and under `[rules] index = "discover"` a
-missing rules index (step 5). Never a commit. It runs in the user's conversation; a caller that wants a clean context runs it through
-the `module-discover-agent` agent, which returns this skill's report unchanged.
+repository, the JSON result where the user asks, and under `[rules] index = "discover"` a missing
+rules index (step 4). Never a commit. A caller wanting a clean context runs it through the
+`module-discover-agent` agent (the same report).
 
 If `segmently-modules` is not found, tell the user how to install it — the `segmently-modules` plugin for Claude Code, `uv tool install git+https://github.com/segmently-ai/segmently-modules.git`, or `pipx install git+https://github.com/segmently-ai/segmently-modules.git` — and stop until it runs.
 
@@ -38,7 +38,7 @@ is your call. Run independent reads together (parallel tool calls, or one Bash c
 output is short). A host may cut a long output to a preview: then read the file it names, or
 rerun narrower.
 
-1. **Candidates.** Follow `references/choose.md`; its terms `<file>` serves steps 6 and 7 too.
+1. **Candidates.** Follow `references/choose.md`.
 
    Modules the user named are verified like the rest but never dropped, and the list is never
    limited to them.
@@ -54,6 +54,9 @@ rerun narrower.
 4. **Usage.** Each kept module (and child) is `modify` (the task changes its code or contracts),
    `consume` (calls its API as it is) or `reference` (follows its patterns or rules).
 
+   **Under `rules_setting: discover`, index now:** each `modify` module's `rules_index.missing`
+   docs (`references/rules.md`); step 5 waits. The setting asks it, whatever the task says.
+
 5. **Docs for every role.** A `modify` or `consume` module: every doc
    `segmently-modules show <module> --all-roles --json` lists; a `reference` module: its main doc
    only. Never `MODULE.legacy.md` or `roles/*.legacy.md`. Take from each doc what bears on the
@@ -61,8 +64,7 @@ rerun narrower.
    role; a doc with nothing for the task gets "read, nothing for this task". Never a retelling.
    `show` returns each kept module's critical rules (`rules`: title, text, `doc:line`; a child's with
    its parent's): every rule that applies to the task, or may once the change is designed, is an extract.
-   A `modify` module's rules: `references/rules.md`; under `rules_setting: discover` this run
-   indexes its `missing` docs first.
+   A `modify` module's rules: `references/rules.md`.
 
 6. **Code touch points.** For each `modify` or `consume` module, find the existing code the task
    touches. Its code: `show`'s `code` and `code_globs`, or
@@ -102,5 +104,5 @@ stderr, fix the input or report it; never retry the same command.
 
 ## Gates
 
-No gates — read-only: it reports and stops. It asks only for a missing input or a JSON file's path;
+No gates — read-only but for step 4's index: it reports and stops. It asks only for a missing input or a JSON file's path;
 run by the agent, that question is the agent's output.

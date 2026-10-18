@@ -39,7 +39,9 @@ docs as `missing`, unless the setting is `off`:
 5. Make the section's first line, before any rule, `Indexed: every rule of this doc, YYYY-MM-DD.`
    with today's date (an existing line gets today's date): only a reader of the whole doc writes or
    re-dates it.
-6. Never remove a rule, reword an existing one or move its detail while building: the section only
+6. Write with your file-edit tool only, never through a shell (`sed -i`, a script, a redirect into
+   a doc): a shell write reaches any file and BSD `sed -i -e` leaves a `<doc>-e` backup next to it.
+   Never remove a rule, reword an existing one or move its detail while building: the section only
    gains entries. An entry for a rule the module doc indexed for a role doc moves to that role
    doc's section when the role doc is built. A rule another doc contradicts: report both places,
    never pick one silently. A subsection inside the section that describes a feature instead of

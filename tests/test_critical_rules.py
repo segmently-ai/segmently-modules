@@ -391,6 +391,8 @@ class RoleDocs(unittest.TestCase):
         data = run_json("show", "shop", *self.R)[1]["data"]
         self.assertEqual(data["rules_setting"], "discover")
         self.assertIn("before its report", data["rules_index"]["build"])  # a doc is missing: this run builds it
+        _, env, _ = run_json("discover", "--task", "shop checkout", *self.R)
+        self.assertEqual(list(env["data"])[1:3], ["rules_setting", "rules_build"])  # read first, before the rows
         _, env, _ = run_json("catalog", "--settings", *self.R)
         self.assertEqual(env["data"]["rules"], {"index": "discover"})
         self.assertIn("[rules]\nindex = \"discover\"", run("catalog", "--settings", *self.R)[1])

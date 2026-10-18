@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from segmently_modules.changes import changed_files, map_files, missing_files
-from segmently_modules.config import enabled_roles, search_all
+from segmently_modules.config import enabled_roles, rules_index_setting, search_all
 from segmently_modules.match import lexical_confidence, match_modules, near_lines, near_misses
 from segmently_modules.output import EXIT_OK, UsageError, emit
 from segmently_modules.registry import as_dict
@@ -241,6 +241,11 @@ def run_context(args) -> int:
     return EXIT_OK
 
 
+# `discover --json`'s `rules_build` under `[rules] index = "discover"` (a branch review, `--from-diff`, never builds)
+RULES_BUILD = ("module-discover indexes, in this run, the docs without a rules index (`show`'s rules_index.missing) "
+               "of every module it marks modify, before it reads them (its step 4)")
+
+
 def run_discover(args) -> int:
     if args.top is not None and args.top < 0:
         raise UsageError("--top must be >= 0")
@@ -260,6 +265,9 @@ def run_discover(args) -> int:
                           missing_files(ws.root, files) if args.files else [], rows)
     if mode != "lexical":
         data = {**data, "mode": mode, "notes": notes}
+    if rules_index_setting(ws.config) == "discover" and not args.from_diff:
+        # the setting, before the rows: two trial runs that only met it in `show` read the docs and built nothing
+        data = {"rules_setting": "discover", "rules_build": RULES_BUILD, **data}
     if has_task and mode in ("lexical", "hybrid"):  # keyword routing ran: how sure it is, first, so a cut read still shows it
         data = {"lexical_confidence": _confidence(ws, text), **data}
     # --from-diff REF (no range) compares the working tree with REF: the text says so
