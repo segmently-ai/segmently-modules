@@ -400,8 +400,9 @@ class TextRulesTest(SkillRules):  # P4B-AC-014, P4B-AC-017
         self.assertEqual(others.count(["choose", "--task-file", "-"]), 3)  # AC-015: one line in
         self.assertEqual(others.count(["choose", "--task-file", "X"]), len(others) - 3)  # each
         self.assertEqual(exempt.count(saved_gate[0]), 1)
-        handoff = [e for e in exempt if e[:1] == ["rules"]]  # module-check: the rules as text, read whole
-        self.assertEqual(handoff, [["rules", "XX", "--files", "XX"]])
+        handoff = [e for e in exempt if e[:1] == ["rules"]]  # the rules as text, read whole: module-check's,
+        # and module-discover's since c05 pilot 6 (a reader filtered `rules --json` by keyword)
+        self.assertEqual(sorted(handoff), [["rules", "XX"], ["rules", "XX", "--files", "XX"]])
         self.assertEqual(path_lists, [("module-discover",
                                        ["code-map", "files", "X", "--source-only", "--paths"])])
 

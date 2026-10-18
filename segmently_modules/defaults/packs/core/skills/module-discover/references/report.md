@@ -38,7 +38,7 @@ Likely consequence: <what the implementation will probably also need> — <the e
 ```
 
 - `Rules:` only for a `modify` module (`references/rules.md`): each rule
-  `segmently-modules rules <module> --json` gives, verbatim, in its order, then the `index:` line.
+  `rules <module>` gives (`references/rules.md`), verbatim, in its order, then the `index:` line.
   A `consume` or `reference` module: no `Rules:` lines.
 - Every doc step 5 read or searched is on a `Docs:` line: an extract, "read, nothing for this task"
   or "searched (<terms>), nothing for this task". An

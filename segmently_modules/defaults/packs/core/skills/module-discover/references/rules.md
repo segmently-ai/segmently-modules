@@ -6,15 +6,22 @@ YYYY-MM-DD.` says the section lists them all (the doc's rules index). The index 
 hand-written section counts the same, and a module may have none.
 `segmently-modules show <module> --json` gives `rules_setting` (`[rules] index`) and `rules_index`
 (`complete`; `missing`: the docs without the line; a doc another skill owns is never missing);
-`segmently-modules rules <module> --json` gives every rule of every doc, whole, each with its doc
-and role.
+`rules <module>` gives every rule of every doc, whole, each with its doc and role (as text, the
+form read below); `show`'s `rules` are a preview (a title cut at 160 characters, a text past the
+budget `null`).
+
+**Read them whole, choose by meaning.** Which rules apply to the task is a judgement of meaning,
+made over every rule: `segmently-modules rules <module>… > <temp file>`, then read the file to the
+end (in parts when it is long). Never filter the rules with grep, a regex or a script, and never
+cut them (`head`, a slice, a title in place of the text): a rule whose title names nothing of the
+task can hold the constraint in its text. This holds for every kept `modify` and `consume` module.
 
 **What to do.** This skill never writes a doc. Whatever `rules_setting` says, a `modify` module
-whose index is complete: its `Rules:` block quotes `rules <module> --json`, and its docs are not
-read again for those rules. One whose index is not complete: read each of its `missing` docs to
-the end in step 5 and give every rule they state as an extract; its `Rules:` block quotes what
-`rules` gives and its last line names the docs left without an index. Under `sync` (the default),
-module-sync indexes them after the change.
+whose index is complete: its `Rules:` block quotes `rules <module>`, and its docs are not read
+again for those rules. One whose index is not complete: read each of its `missing` docs to the end
+in step 5 (the whole file with your file-read tool, not a search in it) and give every rule they
+state as an extract; its `Rules:` block quotes what `rules` gives and its last line names the docs
+left without an index. Under `sync` (the default), module-sync indexes them after the change.
 
 Under `discover`, the engine writes the index itself: step 7's `discover --files … --modify …
 --consume …` gives `rules_build` — the docs without an index of the modules you marked (a child's
@@ -33,7 +40,7 @@ A `consume` or `reference` module has no `Rules:` block: its rules reach the rep
 extracts.
 
 **The block.** Under the module's `Why:` line, `Rules:`, then one line per rule of
-`rules <module> --json` in its order, verbatim: `` - `<doc>:<line>` (<role>) — <rule> `` (`(all)` for
+`rules <module>` in its order, verbatim: `` - `<doc>:<line>` (<role>) — <rule> `` (`(all)` for
 the module doc; a rule that is a group heading — "DO", "DON'T", "Common Mistakes" — quotes its
 items instead). The parent's rules appear under the first of its children in the report, not again.
 The last line says where the rules came from: `index: complete (<the oldest Indexed date>)`,

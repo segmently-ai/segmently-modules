@@ -125,6 +125,10 @@ class ShowAndDiscover(unittest.TestCase):
         _, env, _ = run_json("show", "shop", *self.R)
         texts = [r["text"] for r in env["data"]["rules"]]
         self.assertEqual(texts, [None, "2. Prices are integers in cents"])  # the first is past 40
+        self.assertEqual(env["data"]["rules_whole"], "1 of 2 rule texts are past this preview's budget: "
+                                                     "`segmently-modules rules shop` gives every rule whole")
+        (self.root / ".segmently-modules/config.toml").write_text("", encoding="utf-8")
+        self.assertNotIn("rules_whole", run_json("show", "shop", *self.R)[1]["data"])  # nothing cut, no note
 
     def test_configured_heading(self):
         (self.root / ".segmently-modules/config.toml").write_text(

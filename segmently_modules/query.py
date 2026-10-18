@@ -204,6 +204,10 @@ def show_target(ws, target: str, role: str | None, all_roles: bool) -> tuple[int
             r["text"] = None
         else:
             used += len(r["text"])
+    cut = sum(r["text"] is None for r in result["rules"])
+    if cut:  # c05 pilot 6: a reader took the cut titles for the rules and filtered them by keyword
+        result["rules_whole"] = (f"{cut} of {len(result['rules'])} rule texts are past this preview's "
+                                 f"budget: `segmently-modules rules {result['module']}` gives every rule whole")
     if child:
         ccf = as_dict(sub.get("context_files"))
         add(f"child universal ({child})", ccf.get("universal"))

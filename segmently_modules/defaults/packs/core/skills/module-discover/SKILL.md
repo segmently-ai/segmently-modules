@@ -61,7 +61,7 @@ rerun narrower.
    role; a doc with nothing for the task gets "read, nothing for this task". Never a retelling.
    `show` returns each kept module's critical rules (`rules`: title, text, `doc:line`; a child's with
    its parent's): every rule that applies to the task, or may once the change is designed, is an extract.
-   A `modify` module's rules: `references/rules.md`.
+   Rules are read whole, by meaning: `references/rules.md`.
 
 6. **Code touch points.** For each `modify` or `consume` module, find the existing code the task
    touches. Its code: `show`'s `code` and `code_globs`, or
