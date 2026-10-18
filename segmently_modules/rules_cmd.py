@@ -222,8 +222,8 @@ def _render_rules(d) -> None:
     total = sum(len(m["rules"]) for m in d["modules"])
     print(f"{total} rule(s) in {len(d['modules'])} module(s)")
     b = d.get("rules_build")
-    if b and b["status"] in ("started", "running"):
+    if b and b["status"] in ("started", "running"):  # c05 pilot 9: "the rules above" read as enough
         print(f"rules index: {len(b['docs'])} doc(s) being indexed in the background (rules --build); "
-              f"this run has the rules above, the next one the index")
+              f"until then their rules are only in their text: read each to the end — {', '.join(b['docs'])}")
     elif b and b.get("note"):
-        print(f"rules index: not built — {b['note']}")
+        print(f"rules index: not built ({b['note']}); read each doc not indexed to the end for its rules")

@@ -181,7 +181,8 @@ class DiscoverTest(Base):
         with mock.patch.dict(os.environ, {**self.env, "FAKE_MODE": "good"}):
             code, out, _ = run("rules", "shop", *self.R)
         self.assertEqual(code, 0)
-        self.assertIn("being indexed in the background", out)
+        self.assertIn("being indexed in the background (rules --build); until then their rules are only in "
+                      "their text: read each to the end — modules/shop/MODULE.md", out)
         deadline = time.time() + 30
         while time.time() < deadline and (index_build.running(self.root) or "Indexed:" not in self.doc.read_text()):
             time.sleep(0.2)
