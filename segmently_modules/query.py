@@ -104,8 +104,8 @@ def rules_of(ws, target: str) -> list[dict]:
 
 
 # `show`'s `rules_index.build` under `[rules] index = "discover"` when a doc has no index yet
-BUILD_NOW = ("module-discover indexes these docs in this run, before its report, when the task modifies "
-             "this module (its references/rules.md)")
+BUILD_NOW = ("`discover --files` with this module's files has the engine index these docs in the background "
+             "(`rules --build`); until then read them in full")
 
 
 def index_state(docs: list[dict]) -> dict:

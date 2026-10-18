@@ -173,7 +173,7 @@ NEW_EXTRACT = ["  extract is short and says what it means for this task. A rule 
 # the rules index in discover (2026-10-18): a modify module's `Rules:` block after `Why:`, and its rule
 WHY = "Why: <what the task needs from it; \"named by the user\" when it was>"
 RULES_BLOCK = ["Rules:", "- `<doc>:<line>` (<role>) — <the rule's first line, verbatim>",
-               "- index: <complete (<date>) | built this run — <doc> (+<n> entries), … | incomplete — <doc>, …>"]
+               "- index: <complete (<date>) | building in the background — <doc>, … | incomplete — <doc>, …>"]
 RULES_BULLET = ["- `Rules:` only for a `modify` module (`references/rules.md`): each rule",
                 "  `segmently-modules rules <module> --json` gives, verbatim, in its order, then the `index:` line.",
                 "  A `consume` or `reference` module: no `Rules:` lines."]

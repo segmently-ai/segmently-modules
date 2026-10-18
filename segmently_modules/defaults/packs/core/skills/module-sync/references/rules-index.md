@@ -7,14 +7,14 @@ YYYY-MM-DD.` is that doc's complete rules index; a section without it is hand-wr
 all the same. `rules` hands every doc's rules to `module-check` and to `module-discover`'s `Rules:`
 block, `show` to every agent that reads the module, each rule tagged with its doc's role. The
 index is optional: `[rules] index` (`show --json`'s `rules_setting`) says who writes it — `sync`
-(the default): this skill, create, init, roles and split; `discover`: module-discover too; `off`:
-nobody.
+(the default): this skill, create, init, roles and split; `discover`: also the engine's writers
+(`rules --build`, started by `discover --files`), each handed the procedure below; `off`: nobody.
 
 A doc another skill owns (its role has `rules_index = false`, such as `qa_acceptance`) is never
 indexed by hand: never write into it, never list it as missing.
 
 **Build or refresh** — a doc's index is written here and nowhere else. It runs when the user asks
-("index module X", "index the modules missing one"), when module-discover indexes under
+("index module X", "index the modules missing one"), in each of the engine's writers under
 `discover`, and in a sync (step 6) for each module the session changed whose `rules_index` lists
 docs as `missing`, unless the setting is `off`:
 

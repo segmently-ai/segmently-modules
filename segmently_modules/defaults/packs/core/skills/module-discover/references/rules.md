@@ -9,49 +9,34 @@ hand-written section counts the same, and a module may have none.
 `segmently-modules rules <module> --json` gives every rule of every doc, whole, each with its doc
 and role.
 
-**What to do, by `rules_setting`** (the user's words for this run win: "build the index", "do not
-write docs"):
+**What to do.** This skill never writes a doc. Whatever `rules_setting` says, a `modify` module
+whose index is complete: its `Rules:` block quotes `rules <module> --json`, and its docs are not
+read again for those rules. One whose index is not complete: read each of its `missing` docs to
+the end in step 5 and give every rule they state as an extract; its `Rules:` block quotes what
+`rules` gives and its last line names the docs left without an index. Under `sync` (the default),
+module-sync indexes them after the change.
 
-- `sync` (the default) and `off` — read-only. A `modify` module whose index is complete: its
-  `Rules:` block quotes `rules <module> --json`, and its docs are not read again for those rules.
-  One whose index is not complete: read each of its `missing` docs to the end in step 5 and give
-  every rule they state as an extract; its `Rules:` block quotes what `rules` gives and its last
-  line names the docs left without an index. Under `sync`, module-sync indexes them after the
-  change.
-- `discover` — the same, except that the missing docs are indexed as soon as the modules are
-  marked (step 4), before they are read (below): this run builds them, however many there are, and
-  then quotes the rules from the index (`discover --json`'s `rules_build` and `show`'s
-  `rules_index.build` say so). A caller who asks not to edit code, or not to plan, has not
-  forbidden it. A branch review (`references/from-diff.md`), a run inside a pipeline
-  (`SEGMENTLY_MODULES_RUN_ID` set, or the caller says the docs must not be edited), or a host where
-  no subagent can write files: act as `sync` and say why on the block's last line.
+Under `discover`, the engine writes the index itself: step 7's `discover --files` gives
+`rules_build` — the docs without an index of the modules the files belong to (a parent's too) and
+what happened to them:
+- `started` or `running`: writers it started index them in the background (one per doc; every
+  change checked to stay inside the critical-rules section); this run reads them in full, the
+  next one reads the index;
+- `complete`: nothing was missing;
+- `not_allowed`, `no_writer`, `skipped`: nothing is written; its `note` says why (the user's own
+  permission `SEGMENTLY_MODULES_ALLOW_INDEX_WRITER=1` is not set, there is no writer, a pipeline
+  run). Give the note in the block's last line.
+A branch review (`references/from-diff.md`) never builds. `segmently-modules rules --build <module> --json`
+builds on request, the same way, and waits (`--json`: per doc its `status`).
 
 A `consume` or `reference` module has no `Rules:` block: its rules reach the report as step 5's
 extracts.
-
-**Indexing, under `discover`.** Take the union of the `missing` docs of every `modify` module — a
-parent's docs once, however many of its children are modified — and give each doc to exactly one
-subagent that can edit files (Claude Code: a general-purpose subagent; Codex: `codex exec
---sandbox workspace-write`), several at once. Each subagent is handed:
-- its docs and their module (`<module>` or `<module>/<child>`);
-- the procedure: the rules index of the `module-sync` skill, "Build or refresh", for those docs
-  only (load the `module-sync` skill and read its `rules-index.md` reference; on Codex, the copy
-  under `.agents/skills/module-sync/`);
-- its limits: it writes only the critical-rules section of those docs — the entries and the
-  `Indexed:` line — never another part of a doc, a doc another skill owns, a registry field or
-  code, and never commits; it writes with its file-edit tool only, never through a shell
-  (`sed -i`, a script, a redirect), which can touch any file and leaves backup files; it returns,
-  per doc, the entries added, the contradictions found and any budget finding of
-  `segmently-modules lint --json` for that doc.
-
-Wait for every subagent, then run `segmently-modules show <module> --json` again; a doc still
-missing is named on the block's last line and its rules come from step 5's reading.
 
 **The block.** Under the module's `Why:` line, `Rules:`, then one line per rule of
 `rules <module> --json` in its order, verbatim: `` - `<doc>:<line>` (<role>) — <rule> `` (`(all)` for
 the module doc; a rule that is a group heading — "DO", "DON'T", "Common Mistakes" — quotes its
 items instead). The parent's rules appear under the first of its children in the report, not again.
 The last line says where the rules came from: `index: complete (<the oldest Indexed date>)`,
-`index: built this run — <doc> (+<n> entries), …`, or `index: incomplete — <doc>, …` with the
-reason. The contradictions and budget findings the subagents returned go under the module's
-`Risks / unknowns`. A rule already in the block is not repeated on its `Docs:` lines.
+`index: building in the background — <doc>, …` (`rules_build` `started` or `running`), or
+`index: incomplete — <doc>, …` with the reason (a `rules_build` note). A rule already in the block
+is not repeated on its `Docs:` lines.

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from segmently_modules.changes import changed_files, map_files, missing_files
 from segmently_modules.output import EXIT_OK, UsageError, emit
-from segmently_modules.query import _stub_or_unknown, index_state, rules_of
+from segmently_modules.query import _stub_or_unknown, index_state, rule_docs, rules_of
 from segmently_modules.registry import as_dict, resolve_module_arg
 from segmently_modules.workspace import Workspace
 
@@ -82,6 +82,9 @@ def register(sub, common) -> None:
     r.add_argument("--missing", action="store_true",
                    help="list the docs without a rules index (every module and child when none "
                         "is named); read-only")
+    r.add_argument("--build", action="store_true",
+                   help="index the named docs or modules' docs without an index now, one writer "
+                        "per doc (needs SEGMENTLY_MODULES_ALLOW_INDEX_WRITER=1 and a writer)")
     r.set_defaults(func=run_rules)
 
 
@@ -117,7 +120,50 @@ def _render_missing(d) -> None:
           f"([rules] index = {d['setting']})")
 
 
+def build_targets(ws, names: list[str]) -> list[dict]:
+    """`rules --build`'s docs: a doc path (`….md`) as itself, a module as its docs without an index
+    (and its parent's, for a child); [{doc, target, role}], each doc once."""
+    from segmently_modules.changes import target_names
+    from segmently_modules.index_build import pending
+    owner = {}
+    for target in sorted(target_names(ws.registry.modules)):
+        for doc, role in rule_docs(ws, target):
+            owner.setdefault(doc, (target, role))
+    items, seen = [], set()
+    for n in names:
+        if n.endswith(".md"):
+            if n not in owner:
+                raise UsageError(f"{n}: not a module doc or role doc of any module")
+            got = [{"doc": n, "target": owner[n][0], "role": owner[n][1]}]
+        else:
+            got = pending(ws, [_target(ws, n)])
+        for i in got:
+            if i["doc"] not in seen:
+                seen.add(i["doc"]); items.append(i)
+    return items
+
+
+def _render_build(d) -> None:
+    for r in d["docs"]:
+        print(f"{r['doc']}  {r['status']}" + (f"  ({r.get('added', 0):+d} rules)" if r["status"] == "built" else ""))
+    for f in d["other_changes"]:
+        print(f"changed outside the docs indexed: {f}")
+    t = d["summary"]
+    print(f"{t['built']} built, {t['failed']} failed, {t['refused']} refused, {t['timeout']} timed out")
+
+
 def run_rules(args) -> int:
+    if args.build:
+        if args.files or args.from_diff or args.role or args.missing:
+            raise UsageError("--build takes module names or doc paths only")
+        if not args.module:
+            raise UsageError("--build: name the modules or docs (rules --missing lists them)")
+        ws = Workspace.from_args(args)
+        from segmently_modules.index_build import build
+        items = build_targets(ws, args.module)
+        emit("rules", build(ws, items) if items else {"docs": [], "other_changes": [],
+             "summary": {"built": 0, "failed": 0, "refused": 0, "timeout": 0}}, args.json, _render_build)
+        return EXIT_OK
     if args.missing:
         if args.files or args.from_diff or args.role:
             raise UsageError("--missing takes module names only (or none: every module)")

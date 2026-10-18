@@ -14,7 +14,7 @@ Search: <lexical | by meaning | hybrid> — <the setting or the user's words> �
 Why: <what the task needs from it; "named by the user" when it was>
 Rules:
 - `<doc>:<line>` (<role>) — <the rule's first line, verbatim>
-- index: <complete (<date>) | built this run — <doc> (+<n> entries), … | incomplete — <doc>, …>
+- index: <complete (<date>) | building in the background — <doc>, … | incomplete — <doc>, …>
 Docs:
 - `<path>` (<role>): <a rule, constraint, contract or pitfall that bears on the task>
 - `<path>` (<role>): read, nothing for this task

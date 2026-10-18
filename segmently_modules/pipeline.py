@@ -241,11 +241,6 @@ def run_context(args) -> int:
     return EXIT_OK
 
 
-# `discover --json`'s `rules_build` under `[rules] index = "discover"` (a branch review, `--from-diff`, never builds)
-RULES_BUILD = ("module-discover indexes, in this run, the docs without a rules index (`show`'s rules_index.missing) "
-               "of every module it marks modify, before it reads them (its step 4)")
-
-
 def run_discover(args) -> int:
     if args.top is not None and args.top < 0:
         raise UsageError("--top must be >= 0")
@@ -266,8 +261,11 @@ def run_discover(args) -> int:
     if mode != "lexical":
         data = {**data, "mode": mode, "notes": notes}
     if rules_index_setting(ws.config) == "discover" and not args.from_diff:
-        # the setting, before the rows: two trial runs that only met it in `show` read the docs and built nothing
-        data = {"rules_setting": "discover", "rules_build": RULES_BUILD, **data}
+        # the setting, before the rows; with --files the engine starts the writers itself
+        # (four trial runs: the agent never wrote a doc nobody asked it to)
+        from segmently_modules.index_build import discover_hook
+        hook = discover_hook(ws, sorted(map_files(ws, files)["modules"]), False) if files else None
+        data = {"rules_setting": "discover", **({"rules_build": hook} if hook else {}), **data}
     if has_task and mode in ("lexical", "hybrid"):  # keyword routing ran: how sure it is, first, so a cut read still shows it
         data = {"lexical_confidence": _confidence(ws, text), **data}
     # --from-diff REF (no range) compares the working tree with REF: the text says so
