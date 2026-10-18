@@ -12,8 +12,9 @@ contract is pinned: step 6 records existing code in the tagged form under the ru
 below), never lists the files the work will create and searches no code for a `reference`
 module. Owner rulings 2026-10-16: step 2 gives one score, so the template writes `(score <0–10>)`
 (the module heading and the rejected line) and the JSON's `confidence` is `high` when the score
-is ≥ 7; a doc read only through a search says so — `searched (<terms>)` in place of `read`, and
-an extract from it ends with `(searched)`."""
+is ≥ 7. Owner ruling 2026-10-18 (c05 pilots: the reader grepped docs and rules by keyword): the
+`searched (<terms>)` form of 2026-10-16 is gone — every doc step 5 lists is read to the end with
+the file-read tool, never a search in it, a line range or a cut."""
 from __future__ import annotations
 
 import difflib
@@ -154,18 +155,12 @@ OLD_CONFIDENCE = ("named, else `high` (average ≥ 7) or `medium`. `documentatio
 NEW_CONFIDENCE = ("named, else `high` when the score is ≥ 7, otherwise `medium`. `documentation` "
                   "holds every doc step 5 read for the")
 OLD_DOCS_RULE = "- Every doc step 5 read is on a `Docs:` line: an extract, or \"read, nothing for this task\". An"
-NEW_DOCS_RULE = ["- Every doc step 5 read or searched is on a `Docs:` line: an extract, \"read, nothing for this task\"",
-                 "  or \"searched (<terms>), nothing for this task\". An"]  # review M-1: the first rule names both forms
+NEW_DOCS_RULE = ["- Every doc step 5 lists is read to the end — the whole file with your file-read tool, never a",
+                 "  search in it, a line range or a cut — and is on a `Docs:` line: an extract, or \"read, nothing",
+                 "  for this task\". An"]  # owner ruling 2026-10-18: no `searched` form
 NOTHING = "- `<path>` (<role>): read, nothing for this task"
-SEARCHED = "- `<path>` (<role>): searched (<terms>), nothing for this task"
 DOCS_RULE_END = ("  extract is short — a quote or a close paraphrase — and says what it means for "
                  "this task.")
-SEARCHED_RULE = [
-    "- A doc read only through a search (its matching lines, not the whole doc) says so:",
-    "  `searched (<terms>)` in place of `read`, as in",
-    "  `` - `<path>` (<role>): searched (<terms>), nothing for this task ``; an extract taken from a",
-    "  searched doc ends with `(searched)`.",
-]
 # reference benchmark 2026-10-17 (owner: both levers): a rule is quoted in the doc's own words, never softened
 NEW_EXTRACT = ["  extract is short and says what it means for this task. A rule — a never / must / do not / always",
                "  statement, a ❌ line — is quoted in the doc's own words with its `doc:line`, never softened into an",
@@ -180,7 +175,7 @@ RULES_BULLET = ["- `Rules:` only for a `modify` module (`references/rules.md`): 
 REPLACED = {OLD_CODE: [EDIT, READ, TESTS], OLD_VERSION: [NEW_VERSION], OLD_FILES: NEW_FILES,
             OLD_HEADING: [NEW_HEADING], OLD_REJECTED: [NEW_REJECTED],
             OLD_CONFIDENCE: [NEW_CONFIDENCE], OLD_DOCS_RULE: RULES_BULLET + NEW_DOCS_RULE,
-            DOCS_RULE_END: NEW_EXTRACT + SEARCHED_RULE}
+            DOCS_RULE_END: NEW_EXTRACT}
 
 # step 6 (R-3), in order, as the lite text says it: the form, under report.md's rules (RULES above);
 # task 3's compact-list sentence stays (test_dcp_code_lists)
@@ -230,9 +225,7 @@ def expected_report() -> str:
             out += REPLACED[line]
             continue
         out.append(line)
-        if line == NOTHING:
-            out.append(SEARCHED)
-        elif line == TITLE:
+        if line == TITLE:
             out += ["", SEARCH]
         elif line == WHY:
             out += RULES_BLOCK
@@ -267,8 +260,8 @@ class RestUnchangedTest(unittest.TestCase):  # DCP-AC-016
         self.assertEqual(removed, [OLD_HEADING, OLD_CODE, OLD_REJECTED, OLD_DOCS_RULE, DOCS_RULE_END,
                                    OLD_VERSION, OLD_FILES, OLD_CONFIDENCE])  # every other base line kept
         allowed = {"", SEARCH, EDIT, READ, TESTS, CONSEQUENCE, NEW_VERSION, JSON_REASON,
-                   *RULES, *NEW_FILES, NEW_HEADING, NEW_REJECTED, NEW_CONFIDENCE, SEARCHED,
-                   *SEARCHED_RULE, *NEW_DOCS_RULE, *NEW_EXTRACT, *RULES_BLOCK, *RULES_BULLET}
+                   *RULES, *NEW_FILES, NEW_HEADING, NEW_REJECTED, NEW_CONFIDENCE,
+                   *NEW_DOCS_RULE, *NEW_EXTRACT, *RULES_BLOCK, *RULES_BULLET}
         self.assertEqual([line for line in added if line not in allowed], [])
 
     def test_the_sections_are_the_base_sections(self):
@@ -414,24 +407,17 @@ class JsonTest(unittest.TestCase):  # DCP-AC-017
         self.assertEqual(new["modules"][0]["files"][0]["path"], old["files"][0]["path"])
 
 
-class SearchedDocTest(unittest.TestCase):  # owner ruling 2026-10-16: a doc only searched says so
-    def test_the_template_has_the_searched_form_after_the_read_form(self):
+class ReadWholeTest(unittest.TestCase):  # owner ruling 2026-10-18: no `searched` form, docs read whole
+    def test_the_template_has_no_searched_form(self):
         lines = template()
-        self.assertEqual(lines[lines.index(NOTHING) + 1], SEARCHED)
-        self.assertEqual(lines[lines.index(SEARCHED) + 1], "Docs to update: `<path>`, …")
+        self.assertEqual(lines[lines.index(NOTHING) + 1], "Docs to update: `<path>`, …")
+        self.assertNotIn("searched", report())
 
-    def test_the_rule_follows_the_docs_rule(self):
+    def test_every_doc_is_read_to_the_end(self):
         body = flat(report())
-        rule = ("- A doc read only through a search (its matching lines, not the whole doc) says "
-                "so: `searched (<terms>)` in place of `read`, as in `` - `<path>` (<role>): "
-                "searched (<terms>), nothing for this task ``; an extract taken from a searched "
-                "doc ends with `(searched)`.")
-        self.assertEqual(body.count(rule), 1)
-        first = ("- Every doc step 5 read or searched is on a `Docs:` line: an extract, \"read, "
-                 "nothing for this task\" or \"searched (<terms>), nothing for this task\".")
-        self.assertLess(body.index(first), body.index(rule))
-        end = flat("\n".join(NEW_EXTRACT))
-        self.assertEqual(body.index(rule), body.index(end) + len(end) + 1)
+        self.assertEqual(body.count(flat("\n".join(NEW_DOCS_RULE))), 1)
+        rules = flat((DISCOVER / "references/rules.md").read_text("utf-8"))  # the rules too, of any module
+        self.assertIn("This holds for every rule you read, of any module and at any step", rules)
 
 
 class OneScoreTest(unittest.TestCase):  # owner ruling 2026-10-16: step 2 gives one score

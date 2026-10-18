@@ -141,10 +141,10 @@ class DiscoverContractTest(unittest.TestCase):  # D2: the host's MODE=discover c
         "Get the touch-set", "hand the user's task verbatim",
     ]
     REPORT = ["## Discovery: <task, one line>",
-              # one score (owner ruling 2026-10-16), a doc only searched says so
+              # one score (owner ruling 2026-10-16); no `searched` form (owner ruling 2026-10-18)
               "### <module>[/<child>] — usage: modify | consume | reference (score <0–10>)",
               "Why:", "Docs:", "(<role>): read, nothing for this task",
-              "(<role>): searched (<terms>), nothing for this task", "Docs to update:",
+              "Docs to update:",
               "Code:", "- `edit` — `<file>:<line>` — `<symbol>` — <what changes there, one clause>",
               "- `read` — `<file>:<line>` — `<symbol>` — <why it was read: called as is / "
               "alternative / pattern to follow>",  # DCP-AC-011: the tagged lines

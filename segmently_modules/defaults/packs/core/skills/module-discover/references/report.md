@@ -18,7 +18,6 @@ Rules:
 Docs:
 - `<path>` (<role>): <a rule, constraint, contract or pitfall that bears on the task>
 - `<path>` (<role>): read, nothing for this task
-- `<path>` (<role>): searched (<terms>), nothing for this task
 Docs to update: `<path>`, …
 Code:
 - `edit` — `<file>:<line>` — `<symbol>` — <what changes there, one clause>
@@ -40,15 +39,12 @@ Likely consequence: <what the implementation will probably also need> — <the e
 - `Rules:` only for a `modify` module (`references/rules.md`): each rule
   `rules <module>` gives (`references/rules.md`), verbatim, in its order, then the `index:` line.
   A `consume` or `reference` module: no `Rules:` lines.
-- Every doc step 5 read or searched is on a `Docs:` line: an extract, "read, nothing for this task"
-  or "searched (<terms>), nothing for this task". An
+- Every doc step 5 lists is read to the end — the whole file with your file-read tool, never a
+  search in it, a line range or a cut — and is on a `Docs:` line: an extract, or "read, nothing
+  for this task". An
   extract is short and says what it means for this task. A rule — a never / must / do not / always
   statement, a ❌ line — is quoted in the doc's own words with its `doc:line`, never softened into an
   option or a question.
-- A doc read only through a search (its matching lines, not the whole doc) says so:
-  `searched (<terms>)` in place of `read`, as in
-  `` - `<path>` (<role>): searched (<terms>), nothing for this task ``; an extract taken from a
-  searched doc ends with `(searched)`.
 - A `reference` module has its main doc's lines and no `Code:` line.
 - `Code:` holds existing code only. A file the work will create is never listed: where new code
   goes is the plan's decision.

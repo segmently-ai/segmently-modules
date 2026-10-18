@@ -14,7 +14,9 @@ budget `null`).
 made over every rule: `segmently-modules rules <module>… > <temp file>`, then read the file to the
 end (in parts when it is long). Never filter the rules with grep, a regex or a script, and never
 cut them (`head`, a slice, a title in place of the text): a rule whose title names nothing of the
-task can hold the constraint in its text. This holds for every kept `modify` and `consume` module.
+task can hold the constraint in its text. This holds for every rule you read, of any module and at
+any step (a later look at a module you consume or only check too): a search for words finds the
+words you thought of, not the rule that applies.
 
 **What to do.** This skill never writes a doc. Whatever `rules_setting` says, a `modify` module
 whose index is complete: its `Rules:` block quotes `rules <module>`, and its docs are not read
