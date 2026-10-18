@@ -25,7 +25,7 @@ from dataclasses import asdict, dataclass
 from itertools import combinations
 from pathlib import Path
 
-from segmently_modules.changes import (changed_files, code_map_routes, diff_names, map_files, repo_files,
+from segmently_modules.changes import (changed_files, git, code_map_routes, diff_names, map_files, repo_files,
                             target_names, work_tree_error)
 from segmently_modules.config import (BUILTIN_PACKS, PACK_META_KEYS, ROLE_SCHEMA, builtin_delivery,
                            delivery_for, discover_packs, enabled_roles)
@@ -614,13 +614,67 @@ def overlap_findings(ws, repo: RepoFiles | None = None) -> list[Finding]:
             for (a, b), (n, path, ta, tb) in sorted(pairs.items())]
 
 
-def drift_findings(ws, files: list[str], frozen_touched: list[str]) -> tuple[list, set]:
-    """MS050/MS051 for a change set; returns (findings, changed top-level modules)."""
+_HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", re.M)
+
+
+def index_only_change(ws, doc: str, rev: str, env: dict | None = None) -> bool:
+    """Does the change of `doc` since `rev` (`A..B`, or a base compared with the work tree) sit
+    entirely inside its critical-rules section, on both sides? Such a change — a rules index
+    written or kept — documents no code change, so it never covers MS050. Any doubt (a new doc, no
+    section, git failing) answers False: the change then counts as a doc update, as before."""
+    from segmently_modules.critical_rules import section_span
+    heading = as_dict(ws.config.get("lint")).get("critical_rules_heading") or ""
+    old_rev, _, new_rev = rev.partition("..")
+    try:
+        diff = git(ws.root, "diff", "-U0", "--no-color", "--no-ext-diff", rev, "--", doc, env=env)
+        old = git(ws.root, "show", f"{old_rev}:{doc}", env=env)
+        new = (git(ws.root, "show", f"{new_rev}:{doc}", env=env) if new_rev
+               else (ws.root / doc).read_text(encoding="utf-8", errors="replace"))
+    except (UsageError, OSError):
+        return False
+    hunks = _HUNK.findall(diff)
+    old_lines, new_lines = old.split("\n"), new.split("\n")
+    old_span, new_span = section_span(old, heading), section_span(new, heading)
+    if not hunks or not new_span:
+        return False
+
+    def widen(span, lines):  # the section plus the blank lines just above its heading
+        first = span[0]
+        while first > 1 and not lines[first - 2].strip():
+            first -= 1
+        return first, span[1]
+
+    new_lo, new_hi = widen(new_span, new_lines)
+    old_lo, old_hi = widen(old_span, old_lines) if old_span else (0, -1)
+    for a, b, c, d in hunks:
+        a, c = int(a), int(c)
+        b, d = (1 if b == "" else int(b)), (1 if d == "" else int(d))
+        if b:  # old lines removed or changed: inside the old section, never its heading
+            if not old_span or not (old_lo <= a and a + b - 1 <= old_hi) or a <= old_span[0] <= a + b - 1:
+                return False
+        elif old_span and not old_lo - 1 <= a <= old_hi:  # an insertion after old line `a`
+            return False
+        if d:  # new lines: inside the new section; its heading only when the section is new
+            if not (new_lo <= c and c + d - 1 <= new_hi):
+                return False
+            if old_span and c <= new_span[0] <= c + d - 1:
+                return False
+        elif not new_lo - 1 <= c <= new_hi:  # a deletion after new line `c`
+            return False
+    return True
+
+
+def drift_findings(ws, files: list[str], frozen_touched: list[str], rev: str | None = None,
+                   env: dict | None = None) -> tuple[list, set]:
+    """MS050/MS051 for a change set; returns (findings, changed top-level modules). With `rev`
+    (the base, or `A..B`), a doc whose change sits inside its critical-rules section counts as no
+    doc update (`index_only_change`)."""
     mapping = map_files(ws, files)["modules"]
     mdir = ws.config["paths"]["modules_dir"].rstrip("/") + "/"
 
-    def is_doc(f):  # a frozen snapshot never counts as a doc update
-        return f.startswith(mdir) and not f.endswith(".legacy.md")
+    def is_doc(f):  # a frozen snapshot never counts as a doc update; nor does a rules index alone
+        return (f.startswith(mdir) and not f.endswith(".legacy.md")
+                and not (rev and f.endswith(".md") and index_only_change(ws, f, rev, env)))
 
     docs_changed = {t for t, m in mapping.items() if any(is_doc(f) for f in m["files"])}
     out = []
@@ -648,7 +702,7 @@ def drift_report(ws, base: str, findings: list[Finding],
     files = changed_files(ws.root, base=base, env=env)
     frozen = [f for f in diff_names(ws.root, base, "--diff-filter=MD", env=env)
               if f.endswith(".legacy.md")]  # a renamed snapshot shows as D (--no-renames)
-    drift, touched = drift_findings(ws, files, frozen)
+    drift, touched = drift_findings(ws, files, frozen, base, env)
     narrowed = [f for f in findings if f.module.partition("/")[0] in touched] + drift
     return narrowed, {"base": base, "files": files, "modules": sorted(touched)}
 

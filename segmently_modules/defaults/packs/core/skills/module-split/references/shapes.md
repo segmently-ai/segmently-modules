@@ -57,3 +57,14 @@ put it):
 
 Children sit deeper than the parent: rewrite every relative link of a moved section for the new
 depth and check that its target resolves.
+
+## The rules index across a split
+
+- Every doc of the parent and of each child keeps one critical-rules section, at its end. A moved
+  critical-rules section, or a moved rule, merges into the section of the doc it lands in — never
+  a second section under the same heading (only the first one is read).
+- An entry moves with its rule; the entries of every doc the split touched get the `doc:line` of
+  their detail in that doc.
+- Remove the `Indexed:` line from every doc that sections moved into or out of — the parent's and
+  the children's: their index is no longer known to be complete, and the next module-sync,
+  module-discover (`[rules] index = "discover"`) or an explicit indexing builds it again.

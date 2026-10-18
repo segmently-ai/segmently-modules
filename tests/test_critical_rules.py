@@ -275,6 +275,29 @@ class IndexMark(unittest.TestCase):
         self.assertEqual(none, {"present": False, "indexed": None, "rules": []})
 
 
+class HeadingAndSpan(unittest.TestCase):
+    doc = Parser.doc
+
+    def test_the_heading_starts_with_the_words_after_any_decoration(self):
+        for heading, found in (("## 🔴 Critical Rules (Read First)", True), ("## CRITICAL RULES (Sprint 4)", True),
+                               ("## Test cases from the Critical Rules", False), ("### Critical rules when modifying", True)):
+            with self.subTest(heading=heading):
+                sec = critical_section(self.doc(f"# x\n\n{heading}\n\n- a rule\n"), "Critical Rules")
+                self.assertEqual(sec["present"], found)
+
+    def test_a_bold_mark_counts(self):
+        sec = critical_section(self.doc("## Critical Rules\n\n**Indexed:** every rule of this doc, 2026-10-18.\n\n- a\n"),
+                               "Critical Rules")
+        self.assertEqual(sec["indexed"], "2026-10-18")
+
+    def test_section_span(self):
+        from segmently_modules.critical_rules import section_span
+        text = "# x\n\n## Critical Rules\n\n- a\n### b\nbody\n## Next\nz\n"
+        self.assertEqual(section_span(text, "Critical Rules"), (3, 7))  # up to the line before "## Next"
+        self.assertEqual(section_span("# x\n## Critical Rules\n- a", "critical rules"), (2, 3))
+        self.assertIsNone(section_span("# x\n", "Critical Rules"))
+
+
 class RoleDocs(unittest.TestCase):
     """Every doc of a module holds its own rules: `show` and `rules` return the module doc's
     (role `all`), then each role doc's, with the index state and the `[rules] mode`."""
@@ -294,7 +317,7 @@ class RoleDocs(unittest.TestCase):
                          [("modules/shop/MODULE.md", "all")] * 2 + [("modules/shop/roles/qa.md", "qa")])
         self.assertEqual(d["rules_index"]["complete"], False)  # MODULE.md has no `Indexed:` line
         self.assertEqual(d["rules_index"]["missing"], ["modules/shop/MODULE.md"])
-        self.assertEqual(d["rules_mode"], "build")
+        self.assertEqual(d["rules_setting"], "sync")
         (self.root / "modules/shop/MODULE.md").write_text(INDEXED_PARENT, encoding="utf-8")
         _, env, _ = run_json("show", "shop", *self.R)
         self.assertEqual((env["data"]["rules_index"]["complete"], env["data"]["rules_index"]["missing"]),
@@ -330,24 +353,52 @@ class RoleDocs(unittest.TestCase):
         _, env, _ = run_json("show", "shop", *self.R)
         self.assertNotIn("modules/shop/roles/qa.legacy.md", {r["doc"] for r in env["data"]["rules"]})
 
-    def test_rules_mode_setting_catalog_and_refusal(self):
+    def test_rules_index_setting_catalog_and_refusal(self):
         cfg = self.root / ".segmently-modules/config.toml"
-        cfg.write_text('[rules]\nmode = "index"\n', encoding="utf-8")
-        self.assertEqual(run_json("show", "shop", *self.R)[1]["data"]["rules_mode"], "index")
+        cfg.write_text('[rules]\nindex = "discover"\n', encoding="utf-8")
+        self.assertEqual(run_json("show", "shop", *self.R)[1]["data"]["rules_setting"], "discover")
         _, env, _ = run_json("catalog", "--settings", *self.R)
-        self.assertEqual(env["data"]["rules"], {"mode": "index"})
-        self.assertIn("[rules]\nmode = \"index\"", run("catalog", "--settings", *self.R)[1])
-        cfg.write_text('[rules]\nmode = "always"\n', encoding="utf-8")
+        self.assertEqual(env["data"]["rules"], {"index": "discover"})
+        self.assertIn("[rules]\nindex = \"discover\"", run("catalog", "--settings", *self.R)[1])
+        cfg.write_text('[rules]\nindex = "build"\n', encoding="utf-8")
         code, _, err = run("show", "shop", *self.R)
         self.assertEqual(code, 2)
-        self.assertIn("[rules] mode: expected one of build, index, read, got 'always'", err)
+        self.assertIn("[rules] index: expected one of sync, discover, off, got 'build'", err)
+
+    def test_a_doc_another_skill_owns_is_read_but_never_missing(self):
+        self.add_qa()
+        (self.root / ".segmently-modules/config.toml").write_text(
+            '[roles.qa]\nrules_index = false\n', encoding="utf-8")
+        (self.root / "modules/shop/roles/qa.md").write_text(QA_DOC.replace(
+            "Indexed: every rule of this doc, 2026-10-18.\n\n", ""), encoding="utf-8")
+        _, env, _ = run_json("show", "shop", *self.R)
+        self.assertIn("qa", {r["role"] for r in env["data"]["rules"]})  # its rules still count
+        self.assertEqual(env["data"]["rules_index"]["missing"], ["modules/shop/MODULE.md"])
+        _, env, _ = run_json("rules", "shop", *self.R)
+        self.assertEqual({d["doc"]: d["indexable"] for d in env["data"]["modules"][0]["docs"]},
+                         {"modules/shop/MODULE.md": True, "modules/shop/roles/qa.md": False})
+
+    def test_rules_missing_lists_every_target(self):
+        self.add_qa()
+        _, env, _ = run_json("rules", "--missing", *self.R)
+        d = env["data"]
+        self.assertEqual({m["module"] for m in d["modules"]}, {"shop", "shop/till", "stock"})
+        self.assertEqual(d["summary"], {"targets": 3, "docs": 4, "indexed": 1, "missing": 3, "owned": 0})
+        _, env, _ = run_json("rules", "--missing", "shop", *self.R)
+        self.assertEqual(env["data"]["modules"][0]["indexed"],
+                         [{"doc": "modules/shop/roles/qa.md", "date": "2026-10-18"}])
+        out = run("rules", "--missing", *self.R)[1]
+        self.assertIn("3 doc(s) without a rules index in 3 of 3 module(s); 1 indexed", out)
+        code, _, err = run("rules", "--missing", "--files", "src/shop/till.py", *self.R)
+        self.assertEqual(code, 2)
 
 
 class CreateIndexes(unittest.TestCase):
-    """`create` writes every new doc with its critical-rules section and the `Indexed:` line: a new
-    module's rules index is complete (and empty) from the start."""
+    """`create` writes every new doc with an empty critical-rules section at its end and no
+    `Indexed:` line: the skill that fills the doc indexes it (a scaffold stamped complete would be
+    filled unindexed — the 2026-10-18 audit)."""
 
-    def test_a_new_module_is_indexed(self):
+    def test_a_new_module_has_sections_and_no_index_yet(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         root = make_repo(tmp.name, {"shop": ["shelf"]})
@@ -357,14 +408,15 @@ class CreateIndexes(unittest.TestCase):
                            "--keywords", "review, rating, moderation, stars, feedback", *R)
         self.assertEqual(code, 0, err)
         _, env, _ = run_json("show", "reviews", *R)
-        idx = env["data"]["rules_index"]
-        self.assertTrue(idx["complete"], idx)
         self.assertEqual(env["data"]["rules"], [])
+        self.assertFalse(env["data"]["rules_index"]["complete"])
         _, env, _ = run_json("rules", "reviews", *R)
         docs = env["data"]["modules"][0]["docs"]
-        self.assertGreaterEqual(len(docs), 2)  # the module doc and its role docs, each indexed
-        self.assertTrue(all(d["indexed"] for d in docs), docs)
-
+        self.assertGreaterEqual(len(docs), 2)  # the module doc and its role docs
+        self.assertTrue(all(d["present"] and not d["indexed"] for d in docs), docs)
+        text = (root / "modules/reviews/MODULE.md").read_text(encoding="utf-8")
+        self.assertTrue(text.rstrip().endswith("-->"))  # the section is the doc's last
+        self.assertGreater(text.index("## Critical Rules"), text.index("## Usage"))
 
 if __name__ == "__main__":
     unittest.main()

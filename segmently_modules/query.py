@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from segmently_modules.changes import code_globs
-from segmently_modules.config import enabled_roles, rules_mode
+from segmently_modules.config import enabled_roles, rules_index_setting
 from segmently_modules.critical_rules import critical_section
 from segmently_modules.fields import CORE_FIELDS
 from segmently_modules.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
@@ -43,7 +43,7 @@ def _extras(cf: dict):
 
 
 def rule_docs(ws, target: str) -> list[tuple[str, str]]:
-    """[(doc, role)] of the docs of a `module[/child]` target that index its rules: the module doc
+    """[(doc, role)] of the docs of a `module[/child]` target that hold its rules: the module doc
     (role `all`), then each enabled role's docs, the target's OWN (a child's parent is its own
     target). Extras are left out: their rules are indexed in the module doc. Never a
     `*.legacy.md` (a frozen split snapshot)."""
@@ -62,23 +62,32 @@ def rule_docs(ws, target: str) -> list[tuple[str, str]]:
     return out
 
 
+def indexable_role(ws, role: str) -> bool:
+    """False for a role whose docs another skill owns and regenerates (`[roles.<r>] rules_index =
+    false`, e.g. `qa_acceptance`): such a doc is never indexed by hand, so it never counts as missing
+    an index; a section it has is still read."""
+    return role == "all" or as_dict(as_dict(ws.config.get("roles")).get(role)).get("rules_index", True) is not False
+
+
 def rules_of(ws, target: str) -> list[dict]:
-    """Every doc of the target with its critical-rules section: [{doc, role, exists, present,
-    indexed, rules: [{doc, role, line, title, text}]}]."""
+    """Every doc of the target with its critical-rules section: [{doc, role, exists, indexable,
+    present, indexed, rules: [{doc, role, line, title, text}]}]."""
     heading = as_dict(ws.config.get("lint")).get("critical_rules_heading") or ""
     out = []
     for doc, role in rule_docs(ws, target):
         sec = critical_section(ws.root / doc, heading)
         out.append({"doc": doc, "role": role, "exists": (ws.root / doc).is_file(),
+                    "indexable": indexable_role(ws, role),
                     "present": sec["present"], "indexed": sec["indexed"],
                     "rules": [{"doc": doc, "role": role, **r} for r in sec["rules"]]})
     return out
 
 
 def index_state(docs: list[dict]) -> dict:
-    """A target's rules index: complete when every doc it has on disk carries the `Indexed:`
-    line; `missing` names the docs that do not (a missing file is lint's job, MS004)."""
-    held = [d for d in docs if d["exists"]]
+    """A target's rules index: complete when every indexable doc it has on disk carries the
+    `Indexed:` line; `missing` names the indexable docs that do not (a missing file is lint's job,
+    MS004; a doc another skill owns is never missing)."""
+    held = [d for d in docs if d["exists"] and d["indexable"]]
     missing = [d["doc"] for d in held if not d["indexed"]]
     return {"complete": bool(held) and not missing, "missing": missing}
 
@@ -149,7 +158,7 @@ def show_target(ws, target: str, role: str | None, all_roles: bool) -> tuple[int
     docs = rules_of(ws, parent) + (rules_of(ws, f"{parent}/{child}") if child else [])
     result["rules"] = [r for d in docs for r in d["rules"]]  # the parent's, then the child's
     result["rules_index"] = index_state(docs)  # each doc's date: `rules`' `docs`
-    result["rules_mode"] = rules_mode(ws.config)
+    result["rules_setting"] = rules_index_setting(ws.config)
     budget = as_dict(ws.config.get("budgets")).get("rules_text_max", 8000)
     used = 0
     for r in result["rules"]:  # a text that would pass the budget is dropped; the title stays

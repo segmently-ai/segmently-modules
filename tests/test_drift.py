@@ -155,3 +155,47 @@ class DriftInSubdirectoryRootTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IndexOnlyChangeTest(unittest.TestCase):
+    """A doc change that sits inside its critical-rules section — a rules index written or kept —
+    documents no code change: MS050 still fires for the code (2026-10-18; the drift gate went
+    blind when discover wrote indexes)."""
+    DOC = "modules/catalog/MODULE.md"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = copy_fixture(self._tmp.name)
+        self.R = ("--root", str(self.root))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def write(self, rel, text):
+        (self.root / rel).write_text(text, encoding="utf-8")
+
+    def ms050(self):
+        _, env, _ = run_json("lint", "--changed", "--fail-on", "never", *self.R)
+        return ("MS050", "warning", "catalog") in codes(env)
+
+    def test_an_entry_added_to_an_existing_section(self):
+        base = (self.root / self.DOC).read_text(encoding="utf-8").rstrip("\n")
+        self.write(self.DOC, base + "\n\n## Critical Rules\n\n- Prices are cents. — `MODULE.md:3`\n\n## After\n\nText.\n")
+        init_git(self.root)
+        DriftLintTest.touch(self, "src/catalog/service.py")
+        text = (self.root / self.DOC).read_text(encoding="utf-8")
+        self.write(self.DOC, text.replace("- Prices are cents.", "Indexed: every rule of this doc, 2026-10-18.\n\n"
+                                          "- Prices are cents.\n- Never delete a SKU. — `MODULE.md:4`"))
+        self.assertTrue(self.ms050())  # the index alone covers no code
+        self.write(self.DOC, (self.root / self.DOC).read_text(encoding="utf-8").replace("Text.", "Text, updated."))
+        self.assertFalse(self.ms050())  # an edit outside the section is a doc update
+
+    def test_a_new_section_appended_and_a_heading_edit(self):
+        init_git(self.root)
+        DriftLintTest.touch(self, "src/catalog/service.py")
+        base = (self.root / self.DOC).read_text(encoding="utf-8")
+        self.write(self.DOC, base.rstrip("\n") + "\n\n## Critical Rules\n\nIndexed: every rule of this doc, "
+                   "2026-10-18.\n\n- Prices are cents. — `MODULE.md:3`\n")
+        self.assertTrue(self.ms050())
+        self.write(self.DOC, "# Renamed\n" + base.split("\n", 1)[1])  # a change outside: covers
+        self.assertFalse(self.ms050())

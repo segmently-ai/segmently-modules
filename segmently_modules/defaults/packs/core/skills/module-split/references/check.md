@@ -11,6 +11,8 @@ started from); fix what fails before the report:
 - every role doc registered for a child exists and holds area content — no template comment
   (`<!-- … -->`) left; a role with no area content has no child doc at all;
 - every relative link in the new and rewritten docs resolves from its own directory;
+- every doc the split touched has one critical-rules section and no `Indexed:` line, and each of
+  its entries cites a line of that doc (`references/shapes.md`, "The rules index across a split");
 - line accounting, per split doc: the children's sections plus what the parent kept is close to
   the legacy copy's total (headers and the routing table aside) — explain any loss over 5 %.
 

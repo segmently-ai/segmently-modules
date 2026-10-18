@@ -17,7 +17,8 @@ from pathlib import Path
 
 _HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 _ITEM = re.compile(r"^(?:[-*+]|\d+[.)])\s+(.*)$")
-_INDEXED = re.compile(r"^indexed:.*?(\d{4}-\d{2}-\d{2})", re.I)
+_INDEXED = re.compile(r"^[*_]*indexed[*_]*:.*?(\d{4}-\d{2}-\d{2})", re.I)  # `**Indexed:**` too
+_LEAD = re.compile(r"^[^\w]+")  # emoji, symbols and punctuation before a heading's words
 TITLE_MAX = 160
 INDEXED_LINE = "Indexed: every rule of this doc, {date}."
 
@@ -27,17 +28,43 @@ def _clean(text: str) -> str:
     return text if len(text) <= TITLE_MAX else text[:TITLE_MAX - 1].rstrip() + "…"
 
 
+def section_span(text: str, heading: str) -> tuple[int, int] | None:
+    """(first, last) 1-based lines of the doc's critical-rules section, its heading included, up
+    to the line before the next heading of the same or a higher level; None when the doc has no
+    such section. Matched as `critical_section` matches it; fenced code is skipped."""
+    want = heading.strip().lower()
+    if not want:
+        return None
+    lines = text.split("\n")
+    start, level, fence = None, None, False
+    for n, line in enumerate(lines, 1):
+        if line.lstrip().startswith(("```", "~~~")):
+            fence = not fence
+            continue
+        m = None if fence else _HEADING.match(line)
+        if not m:
+            continue
+        if start is None:
+            if _LEAD.sub("", m.group(2)).lower().startswith(want):
+                start, level = n, len(m.group(1))
+        elif len(m.group(1)) <= level:
+            return start, n - 1
+    return (start, len(lines)) if start is not None else None
+
+
 def critical_rules(path: Path, heading: str) -> list[dict]:
     """The rules of the doc's critical-rules section: `critical_section(...)["rules"]`."""
     return critical_section(path, heading)["rules"]
 
 
 def critical_section(path: Path, heading: str) -> dict:
-    """{present, indexed, rules} of a doc's critical-rules section. `present`: the doc has the
+    """{present, indexed, rules} of a doc's critical-rules section — the first heading whose words,
+    after any leading emoji or symbols, start with `heading` (any case, any level): "🔴 Critical Rules
+    (Read First)" is one, "Test cases from the Critical Rules" is not. `present`: the doc has the
     section; `indexed`: the date of its `Indexed:` line (a line before the first rule, outside
-    HTML comments), None when it has none; `rules`: [{line (1-based), title, text}] of the rules under the first heading that contains
-    `heading` (case-insensitive), up to the next heading of the same or a higher level; [] when
-    the file is missing, unreadable or has no such section. Fenced code is skipped when looking
+    HTML comments), None when it has none; `rules`: [{line (1-based), title, text}] of the rules
+    under that heading, up to the next heading of the same or a higher level; [] when the file is
+    missing, unreadable or has no such section. Fenced code is skipped when looking
     for headings and items. `title` = the heading's or the item's words, cut to TITLE_MAX;
     `text` = the whole rule as written, so it reads on its own: the words in full, then a heading
     rule's lines up to the next heading of the section, or a list rule's indented continuation
@@ -69,7 +96,7 @@ def critical_section(path: Path, heading: str) -> dict:
                 continue
         m = _HEADING.match(line)
         if level is None:
-            if m and want in m.group(2).lower():
+            if m and _LEAD.sub("", m.group(2)).lower().startswith(want):
                 level = len(m.group(1))
             continue
         if m:

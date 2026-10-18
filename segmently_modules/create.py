@@ -12,13 +12,11 @@ Template resolution (first hit wins), for `MODULE.md`, `roles/<role>.md` and `ag
 `choose/rules.md` (the rules of the `choose` work order) resolves the same way but has no
 "engine-fallback": a missing engine file stays "engine" and reading it fails (`workorder`).
 Templates use `${name}` placeholders: name, title, description, status, keywords, parent,
-indexed (the `Indexed:` line of a new doc's critical-rules section, with the day's date: a new
-doc's rules index is complete and empty), role, role_description, article (`a` or `an` before the
-role)."""
+role, role_description, article (`a` or `an` before the role). A new doc's critical-rules section
+carries no `Indexed:` line: the skill that fills the doc indexes it and writes the line."""
 from __future__ import annotations
 
 import contextlib
-import datetime
 import errno
 import json
 import os
@@ -30,7 +28,6 @@ from importlib import resources
 from pathlib import Path
 
 from segmently_modules.config import enabled_roles
-from segmently_modules.critical_rules import INDEXED_LINE
 from segmently_modules.fields import value_matches
 from segmently_modules.output import UsageError
 from segmently_modules.store import atomic_write, open_store
@@ -298,11 +295,9 @@ def resolve_template(ws, relpath: str, role: str | None = None) -> str:
 def doc_values(name: str, parent: str | None, description: str, status: str,
                keywords: list[str]) -> dict:
     """The placeholders every generated doc of a module shares: name, title (from the name),
-    description, status, keywords (joined with ', '), parent ('' for a top-level module) and
-    indexed (the `Indexed:` line, today's date)."""
+    description, status, keywords (joined with ', ') and parent ('' for a top-level module)."""
     return {"name": name, "title": name.replace("-", " ").title(), "description": description,
-            "status": status, "keywords": ", ".join(keywords), "parent": parent or "",
-            "indexed": INDEXED_LINE.format(date=datetime.date.today().isoformat())}
+            "status": status, "keywords": ", ".join(keywords), "parent": parent or ""}
 
 
 def render_role_doc(ws, role: str, values: dict) -> str:

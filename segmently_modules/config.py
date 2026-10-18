@@ -63,16 +63,19 @@ CARD_KEYWORDS_DEFAULT = 10  # [search] card_keywords (P8.2 D2)
 SEARCH_DEFAULTS = {"claude_model": "sonnet", "codex_model": "gpt-5.6-luna", "effort": "standard"}
 CHOOSERS = ("always", "when_unsure", "never")  # [search] chooser: when the skills ask the chooser
 CARDS = ("full", "brief")  # [search] cards: the cards of the work order
-# [rules] mode: how discover gets the rules of a module it will change — "build": the rules index of
-# every doc of the module, built during the run where a doc has none; "index": the index as it is,
-# no doc read again for its rules; "read": no index, the docs read for the task as before
-RULES_MODES = ("build", "index", "read")
-RULES_MODE_DEFAULT = "build"
+# [rules] index: who writes the rules index of a module's docs. "sync" (the default): the flows that
+# write docs anyway — create, init, `roles add` with its fill, split, module-sync — write and keep it;
+# module-discover only reads it. "discover": module-discover also builds the missing index of a
+# module it will change, during the run. "off": nothing writes an index (a section that exists is
+# still read).
+RULES_INDEX = ("sync", "discover", "off")
+RULES_INDEX_DEFAULT = "sync"
 # every [search] key with its default, in the order `catalog --settings` shows them; `generic`:
 # the modules (and their children) whose keyword hits alone never make the keyword result sure
 SEARCH_ALL_DEFAULTS = {**SEARCH_DEFAULTS, "card_keywords": CARD_KEYWORDS_DEFAULT,
                        "chooser": "always", "sure_min_score": 2, "cards": "full", "generic": []}
 ROLE_SCHEMA = {"order": "int", "enabled": "bool", "standard": "bool", "description": "str",
+               "rules_index": "bool",  # false: a doc another skill owns — never indexed by hand
                "applies_when": "str", "template": "str"}
 
 
@@ -105,16 +108,16 @@ def search_all(config: dict) -> dict:
     return out
 
 
-def rules_mode(config: dict) -> str:
-    """`[rules] mode` of the merged config, the default filled in."""
-    return (config.get("rules") or {}).get("mode", RULES_MODE_DEFAULT)
+def rules_index_setting(config: dict) -> str:
+    """`[rules] index` of the merged config, the default filled in."""
+    return (config.get("rules") or {}).get("index", RULES_INDEX_DEFAULT)
 
 
 def _validate_rules(table, source) -> None:
     table = _require_table(table, "rules", source)
-    if "mode" in table and not (isinstance(table["mode"], str) and table["mode"] in RULES_MODES):
-        raise UsageError(f"{source}: [rules] mode: expected one of {', '.join(RULES_MODES)}, "
-                         f"got {table['mode']!r}")
+    if "index" in table and not (isinstance(table["index"], str) and table["index"] in RULES_INDEX):
+        raise UsageError(f"{source}: [rules] index: expected one of {', '.join(RULES_INDEX)}, "
+                         f"got {table['index']!r}")
 
 
 def _validate_search(table, source) -> None:

@@ -2,14 +2,6 @@
 
 > ${role_description}
 
-## Critical Rules
-
-${indexed}
-
-<!-- This doc's rules index: every rule in this doc that a change must never break, one list item per
-rule stating it so the forbidden approach is named, then the doc:line of its detail. show, rules,
-module-discover and module-check read it. Keep the `Indexed:` line first. -->
-
 <!-- For someone who plans a change or weighs an alternative: the product meaning of this module,
 not its code and not a test plan. Be specific about the user and the situation where they shape the
 need; no generic benefits. Link the doc that owns a subject instead of copying it. Keep proposed
@@ -54,3 +46,10 @@ when there are none. -->
 
 <!-- Decision documents, how-to pages and neighbouring modules a reader needs; one maintained
 source per subject. Delete the section when there are none. -->
+
+## Critical Rules
+
+<!-- This doc's rules index: one list item per rule in this doc that a change must never break,
+stating it so the forbidden approach is named, then the doc:line of its detail. Once every rule is
+listed, the section's first line reads `Indexed: every rule of this doc, YYYY-MM-DD.` — written only
+by whoever read the doc to the end. show, rules, module-discover and module-check read it. -->

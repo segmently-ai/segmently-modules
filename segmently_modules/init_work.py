@@ -23,6 +23,7 @@ prompt; the work item file never changes). Every state change is a read-modify-w
 `state.json.lock`."""
 from __future__ import annotations
 
+import datetime
 import json
 import re
 import shutil
@@ -40,11 +41,7 @@ from segmently_modules.workspace import Workspace
 
 FILES_CAP = 200
 DOC_PLACEHOLDERS = {"description": "<one sentence: what the module does, why, when to use it>",
-                    "keywords": "<the keywords>", "status": "active", "parent": "",
-                    # no `Indexed:` line: the writer does not index a doc's rules, so a doc init
-                    # writes has an incomplete rules index (module-discover's `build` mode or
-                    # module-sync's rules index fills it)
-                    "indexed": ""}
+                    "keywords": "<the keywords>", "status": "active", "parent": ""}
 _LEFT = re.compile(r"\$\{(\w*)\}?")
 _PLACEHOLDER = re.compile(r"\$\{([^}\s]*)\}?")  # `${name}`, or `${name` without its brace
 INVENTED = {"path": "path does not exist", "symbol": "symbol not found in its row's file",
@@ -217,7 +214,8 @@ class Work:
                   "others": self.others(name),
                   "relations": ", ".join(cfg["registry"]["relations"]), "ask_fields": asked,
                   "modules_dir": cfg["paths"]["modules_dir"],  # the layout init done checks
-                  "module_doc": cfg["paths"]["module_doc"]}
+                  "module_doc": cfg["paths"]["module_doc"],
+                  "today": datetime.date.today().isoformat()}  # the docs' `Indexed:` line
         text = fill(resolve_template(self.ws, "init/module_prompt.md"), values)
         return text if text.endswith("\n") else text + "\n"
 

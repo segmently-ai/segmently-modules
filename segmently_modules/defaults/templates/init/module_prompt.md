@@ -69,5 +69,11 @@ A JSON object with exactly these keys:
   the docs and the others these templates use). A dollar sign with a brace that belongs to the
   code you describe — a shell variable, a JavaScript template string — is fine; a code sample
   that uses one of these templates' names that way is refused: reword it.
+- End every doc you write with its `## Critical Rules` section, which indexes that doc's rules: one
+  list item per rule the doc states (a constraint, a "never / always / must", a required pattern,
+  a trap), stating it so the forbidden approach is named, then the `<doc>:<line>` of its detail in
+  that doc (`roles/qa.md:12` for a role doc; `${module_doc}:40` for the main doc). Count the lines
+  of the doc as written. A doc with no rule keeps the section empty. Then make the section's first
+  line `Indexed: every rule of this doc, ${today}.`
 - Never write outside `${staging_dir}/`; never edit code, the registry or another module's docs;
   never commit.

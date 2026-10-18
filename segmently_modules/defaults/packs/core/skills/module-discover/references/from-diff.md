@@ -21,3 +21,6 @@ on the change; the changed files are its `Code:` lines, each `edit`
 (`edit — file:line — symbol — why` where a hunk shows it), a file the branch added too; no search
 line, no `Tests:` line, no `Likely consequence:` line, no scores, no rejected list (nothing was
 chosen).
+
+A branch review never writes a rules index, whatever `[rules] index` says: the docs of a branch
+under review are not edited (`references/rules.md` as for `sync`).

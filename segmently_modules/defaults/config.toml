@@ -35,8 +35,9 @@ top = 8
 normalize = "suffix"          # word endings -s/-es/-ies/-ed/-ing ignored on both sides; "none": exact words
 
 [rules]
-mode = "build"                # discover and the modules it will change: "build" (the rules index of every doc,
-                              # built where a doc has none), "index" (the index as it is), "read" (no index)
+index = "sync"                # who writes the rules index of a module's docs: "sync" (create, init, roles add,
+                              # split and module-sync write and keep it; module-discover only reads),
+                              # "discover" (module-discover also builds a missing one), "off" (nothing writes it)
 
 [lint]
 fail_on = "error"

@@ -170,9 +170,15 @@ defaults filled in (`--json`: `{match, search, rules}`); `catalog` without it ke
 
 ## `[rules]`
 
+The rules index is optional. Every doc of a module — its module doc and each role doc, a child's
+and its parent's — may hold a critical-rules section (`[lint] critical_rules_heading`) with the
+rules that doc states; a section whose first line reads `Indexed: every rule of this doc,
+YYYY-MM-DD.` is that doc's complete index (only a reader of the whole doc writes the line). Every
+flow reads whatever sections exist; this key says who writes them.
+
 | Key | Default | Meaning |
 |---|---|---|
-| `mode` | `"build"` | how module-discover gets the rules of a module it will change. `build`: every doc of the module (its module doc and each role doc, a child's and its parent's) must hold its rules index — the critical-rules section whose first line reads `Indexed: every rule of this doc, YYYY-MM-DD.`; a doc without one gets it during the run (module-sync's rules-index procedure, one subagent per module), and the brief quotes every rule of the module. `index`: the brief quotes the rules as the docs hold them, no doc is read again for its rules and nothing is built. `read`: no index; the docs are read for the task as before. `show --json` returns it as `rules_mode` and the state of each doc's index as `rules_index`. The user's words for one run win over it. Team, personal or pack config; any other value is exit 2 |
+| `index` | `"sync"` | `sync`: the flows that write docs anyway write and keep the index — module-create and module-init index the docs they write, module-roles and module-split the docs they fill or split, module-sync keeps the entries of the rules a session changes and indexes the docs of a module the session changed that have none; module-discover only reads it (a module without a complete index: its docs read to the end). `discover`: the same, and module-discover also indexes the docs of a module it will change before its report (never in a branch review or a pipeline). `off`: nothing writes an index or a new section. `show --json` returns it as `rules_setting` and each target's state as `rules_index`; `rules --missing` lists the docs without one. Team, personal or pack config; any other value is exit 2 |
 
 ## `[lint]`
 
@@ -180,7 +186,7 @@ defaults filled in (`--json`: `{match, search, rules}`); `catalog` without it ke
 |---|---|---|
 | `fail_on` | `"error"` | `error` · `warning` · `never`: the lowest severity that makes `lint` exit 1 (`--fail-on` overrides) |
 | `component_table_heading` | `"EXISTING Components"` | the `MODULE.md` section whose table rows lint checks for backticked paths (MS040) |
-| `critical_rules_heading` | `"Critical Rules"` | the section of every module doc — the module doc and each role doc — whose rule headings (or top-level list items) `show`, `rules` and `discover` return as `rules`, each with its doc's role; matched in any case, at any heading level |
+| `critical_rules_heading` | `"Critical Rules"` | the section of every module doc — the module doc and each role doc — whose rule headings (or top-level list items) `show`, `rules` and `discover` return as `rules`, each with its doc's role; a heading whose words, after any leading emoji or symbols, start with it, in any case, at any level ("🔴 Critical Rules (Read First)" is one, "Test cases from the Critical Rules" is not) |
 | `drift_severity` | `"warning"` | severity of MS050 (`info`, `warning` or `error`) |
 | `overlap_severity` | `"warning"` | severity of MS053 (`info`, `warning` or `error`) |
 | `link_severity` | `"warning"` | severity of MS041, a link in a registered doc whose target is missing (`info`, `warning` or `error`) — `info` keeps a gate green while the links are fixed |
@@ -370,6 +376,7 @@ Roles are the audiences of per-module docs (`roles/<role>.md`). Defaults: `devel
 | `applies_when` | — | a tag: `create --tag <tag>` scaffolds the doc (e.g. `"ui"` for a designer role) |
 | `description` | — | one line, shown in the scaffolded doc |
 | `template` | — | pack roles: the template path inside the pack |
+| `rules_index` | `true` | `false`: another skill writes this role's docs (the qa pack's `qa_acceptance`), so they are never indexed by hand — a rules section they have is still read, and they never count as missing an index |
 
 A role the team declares — here, a security review that every module gets:
 
@@ -676,7 +683,7 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS041 | `link_severity` | a Markdown link (inline, image or reference definition — never a footnote `[^1]:`, never inside code or an HTML comment) in a registered doc whose target is missing on disk — relative to the doc, a leading `/` from the root, and a path that does not start with `./` or `../` also counts when it exists from the root (agents read `src/x.ts` so); a URL, a placeholder (`{`, `<`, `*`, `…`) and a path outside the repository are not checked — unless the path without its leading `../` exists from the root, which the message names ("fix the ../ depth", for one `../` too few or too many); path = the doc |
 | MS042 | info | a link's `#anchor` names no heading of its target `.md` (GitHub's heading anchors — headings in block quotes and list items too, entities decoded, emphasis underscores dropped —, `-1`, `-2` for repeats, `{#id}` and HTML `id` / `name`; case-insensitive; a `#L12` line anchor is not checked) |
 | MS043 | info | backticked repository paths outside fenced code and outside the components table that are missing on disk, one finding per module: a path whose first segment is a top-level directory holding files git does not ignore, found neither from the root, nor next to the doc, nor under the module's code directories (its `[[code_map]]` globs and code pointers); build output (`dist/`, `build/`, `node_modules/`, `coverage/`, …) is never checked; plain `lint` only (it needs the repository's file list) |
-| MS050 | `drift_severity` | `--changed`: a module's code changed but none of its docs; a changed doc of the target, of its parent or of one of its children counts (so an update of a child's doc clears its parent), never a sibling's |
+| MS050 | `drift_severity` | `--changed`: a module's code changed but none of its docs; a changed doc of the target, of its parent or of one of its children counts (so an update of a child's doc clears its parent), never a sibling's; a doc whose change sits inside its critical-rules section (a rules index written or kept) does not count |
 | MS051 | error | `--changed`: a frozen `*.legacy.md` snapshot was modified or deleted |
 | MS052 | warning | a `[[code_map]]` rule's `module` is not a registry module or child (plain `lint` only) |
 | MS053 | `overlap_severity` | two `[[code_map]]` rules route the same file to two different modules, neither rule `shared = true` (plain `lint` only; see below) |

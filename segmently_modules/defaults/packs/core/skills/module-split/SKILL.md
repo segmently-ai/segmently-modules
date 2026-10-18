@@ -84,7 +84,8 @@ If `segmently-modules` is not found, tell the user how to install it — the `se
    ```
 
 5. Move the sections verbatim — no rewording — into the child docs `create` wrote, replacing
-   their template prompts; fix relative links for the new directory depth.
+   their template prompts (rules sections: `references/shapes.md`); fix relative links for the new
+   directory depth.
 
 6. Rewrite the parent (`references/shapes.md`): its module doc becomes the index, each split
    role doc the baseline for that role. The parent's keywords stay unchanged: never remove one (tasks that match them

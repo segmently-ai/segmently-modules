@@ -10,6 +10,7 @@ standard = false
 applies_when = "qa"               # segmently-modules create --tag qa (or --role qa_acceptance) adds the doc
 description = "What must not break: acceptance criteria with stable ids, by priority"
 template = "roles/qa_acceptance.md"
+rules_index = false               # the qa-acceptance-baseline skill writes this doc: never indexed by hand
 
 [skills.qa-acceptance]
 path = "skills/qa-acceptance"

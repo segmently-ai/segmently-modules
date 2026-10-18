@@ -1,39 +1,52 @@
 # The rules of a module to modify (step 5)
 
-Every doc of a module — its module doc and each role doc, a child's and its parent's — holds its own
-critical-rules section, the doc's rules index; its first line `Indexed: every rule of this doc,
-YYYY-MM-DD.` says the index is complete. `segmently-modules show <module> --json` gives
-`rules_mode` and `rules_index` (`complete`, `missing`: the docs without the line);
-`segmently-modules rules <module> --json` gives every rule of every doc, whole, each with its doc and role.
+Every doc of a module — its module doc and each role doc, a child's and its parent's — may hold a
+critical-rules section with the rules of that doc; a first line `Indexed: every rule of this doc,
+YYYY-MM-DD.` says the section lists them all (the doc's rules index). The index is optional: a
+hand-written section counts the same, and a module may have none.
+`segmently-modules show <module> --json` gives `rules_setting` (`[rules] index`) and `rules_index`
+(`complete`; `missing`: the docs without the line; a doc another skill owns is never missing);
+`segmently-modules rules <module> --json` gives every rule of every doc, whole, each with its doc
+and role.
 
-**The mode.** The user's words for this run win ("only the index", "build the index", "just read
-the docs"); otherwise `rules_mode`:
+**What to do, by `rules_setting`** (the user's words for this run win: "build the index", "do not
+write docs"):
 
-| Mode | A `modify` module whose `rules_index.complete` is true | One whose index is not complete |
-|---|---|---|
-| `build` (the default) | its `Rules:` block quotes `rules <module> --json` | its missing docs are indexed first (below), then the block quotes `rules <module> --json` |
-| `index` | its `Rules:` block quotes `rules <module> --json`; no doc is read again for its rules | the block quotes `rules <module> --json` as it is and names the docs with no index |
-| `read` | no `Rules:` block: the docs are read and extracted as step 5 says | the same |
+- `sync` (the default) and `off` — read-only. A `modify` module whose index is complete: its
+  `Rules:` block quotes `rules <module> --json`, and its docs are not read again for those rules.
+  One whose index is not complete: read each of its `missing` docs to the end in step 5 and give
+  every rule they state as an extract; its `Rules:` block quotes what `rules` gives and its last
+  line names the docs left without an index. Under `sync`, module-sync indexes them after the
+  change.
+- `discover` — the same, except that the missing docs are indexed before the report (below). A
+  branch review (`references/from-diff.md`), a run inside a pipeline (`SEGMENTLY_MODULES_RUN_ID`
+  set, or the caller says the docs must not be edited), or a host where no subagent can write
+  files: act as `sync` and say why on the block's last line.
 
-A `consume` or `reference` module gets no `Rules:` block in any mode: its rules reach the report as
-step 5's extracts.
+A `consume` or `reference` module has no `Rules:` block: its rules reach the report as step 5's
+extracts.
 
-**Building, in `build` mode.** For each `modify` module whose `rules_index.missing` is not empty,
-start one subagent, all of them together, each handed:
-- the module (`<module>` or `<module>/<child>`) and the docs to index (`missing`);
-- the procedure: the rules index of the `module-sync` skill (its `rules-index.md` reference),
-  "Build or refresh", steps 1–6, for those docs only;
-- its limits: it writes only the critical-rules sections of those docs (entries and the `Indexed:`
-  line), never another part of a doc, a registry field or code, and never commits; it returns the
-  entries it added per doc and the contradictions it found.
+**Indexing, under `discover`.** Take the union of the `missing` docs of every `modify` module — a
+parent's docs once, however many of its children are modified — and give each doc to exactly one
+subagent that can edit files (Claude Code: a general-purpose subagent; Codex: `codex exec
+--sandbox workspace-write`), several at once. Each subagent is handed:
+- its docs and their module (`<module>` or `<module>/<child>`);
+- the procedure: the rules index of the `module-sync` skill, "Build or refresh", for those docs
+  only (load the `module-sync` skill and read its `rules-index.md` reference; on Codex, the copy
+  under `.agents/skills/module-sync/`);
+- its limits: it writes only the critical-rules section of those docs — the entries and the
+  `Indexed:` line — never another part of a doc, a doc another skill owns, a registry field or
+  code, and never commits; it returns, per doc, the entries added, the contradictions found and
+  any budget finding of `segmently-modules lint --json` for that doc.
 
-Wait for every subagent, then run `segmently-modules show <module> --json` again. A doc still in
-`missing` (the subagent failed or found the doc unreadable) is named in the block's last line, and
-its rules come from step 5's reading. The index each subagent wrote stays: the next run reads it
-without building.
+Wait for every subagent, then run `segmently-modules show <module> --json` again; a doc still
+missing is named on the block's last line and its rules come from step 5's reading.
 
-**The block.** Under the module's `Why:` line, `Rules:` and then one line per rule of
-`rules <module> --json`, in its order, the rule's first line verbatim: `` - `<doc>:<line>` (<role>) — <rule> ``;
-`(all)` for the module doc. Its last line says where the index came from: `index: built this run`,
-`index: from <the oldest Indexed date>`, or `index: incomplete — <doc>, …`. Step 5's extracts for
-this module still follow on its `Docs:` lines; a rule already in the block is not repeated there.
+**The block.** Under the module's `Why:` line, `Rules:`, then one line per rule of
+`rules <module> --json` in its order, verbatim: `` - `<doc>:<line>` (<role>) — <rule> `` (`(all)` for
+the module doc; a rule that is a group heading — "DO", "DON'T", "Common Mistakes" — quotes its
+items instead). The parent's rules appear under the first of its children in the report, not again.
+The last line says where the rules came from: `index: complete (<the oldest Indexed date>)`,
+`index: built this run — <doc> (+<n> entries), …`, or `index: incomplete — <doc>, …` with the
+reason. The contradictions and budget findings the subagents returned go under the module's
+`Risks / unknowns`. A rule already in the block is not repeated on its `Docs:` lines.

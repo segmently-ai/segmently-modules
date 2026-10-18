@@ -1,7 +1,6 @@
 """Templates as files (D1): per-role engine templates, the provenance of every template, and
 `segmently-modules templates list|override` (D2)."""
 import string
-from datetime import date
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,7 +8,6 @@ from unittest import mock
 
 from segmently_modules.config import core_defaults
 from segmently_modules.create import engine_templates
-from segmently_modules.critical_rules import INDEXED_LINE
 from tests.helpers import copy_fixture, make_repo, run, run_json
 
 DESC = ["--description", "Customer reviews of books: ratings, comments and moderation."]
@@ -82,14 +80,14 @@ class PerRoleTemplatesTest(Fixture):  # P4A-AC-004
     def test_a_role_without_its_own_file_gets_the_generic_template(self):
         self.create("--role", "designer")
         self.assertEqual(self.doc("designer"),
-                         "# Reviews — designer\n\n> UX invariants for UI modules\n\n"
-                         "## Critical Rules\n\n" + INDEXED_LINE.format(date=date.today().isoformat())
-                         + "\n\n<!-- This doc's rules index: every rule in this doc that a change must "
-                         "never break, one list item per\nrule stating it so the forbidden approach is "
-                         "named, then the doc:line of its detail. show, rules,\nmodule-discover and "
-                         "module-check read it. Keep the `Indexed:` line first. -->\n\n<!-- What a "
+                         "# Reviews — designer\n\n> UX invariants for UI modules\n\n<!-- What a "
                          "designer needs to know about this module. Keep it short; link to "
-                         "code, don't copy it. -->\n")
+                         "code, don't copy it. -->\n\n## Critical Rules\n\n<!-- This doc's rules index: "
+                         "one list item per rule in this doc that a change must never break,\nstating it "
+                         "so the forbidden approach is named, then the doc:line of its detail. Once every "
+                         "rule is\nlisted, the section's first line reads `Indexed: every rule of this doc, "
+                         "YYYY-MM-DD.` — written only\nby whoever read the doc to the end. show, rules, "
+                         "module-discover and module-check read it. -->\n")
 
     def test_an_override_still_wins(self):
         write(self.root / ".segmently-modules/overrides/templates/roles/qa.md", "# ${title} QA (team)\n")
@@ -159,8 +157,7 @@ class ProvenanceTest(Fixture):  # P4A-AC-005
                 spec = {"reviewer": {"description": "What a reviewer checks"}}.get(
                     role, core_defaults()["roles"].get(role, {}))
                 expected = string.Template(text).safe_substitute(
-                    title="Reviews", role=role, role_description=spec["description"],
-                    indexed=INDEXED_LINE.format(date=date.today().isoformat()))
+                    title="Reviews", role=role, role_description=spec["description"])
                 self.assertEqual(self.doc(role), expected)
 
     def test_text_output_one_line_per_template(self):

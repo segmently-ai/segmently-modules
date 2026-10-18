@@ -24,6 +24,8 @@ skip <module> / cancel`; after each proposal `ok / skip / edit`.
 - the plan goal;
 - per module: the docs changed (child or baseline), the fields and edges, the docs flagged for the
   skill that owns them;
+- the rules index: per doc, the entries added, corrected, moved or removed, and the docs indexed
+  (`references/rules-index.md`), with the contradictions found;
 - the hook messages and errors, the `ci` result;
 - budget: each split or routing proposal as an action item (its MS030 / MS031 / MS032 line);
 - files outside every module, homeless items;

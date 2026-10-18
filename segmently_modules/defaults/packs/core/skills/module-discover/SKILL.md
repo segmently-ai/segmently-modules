@@ -25,9 +25,8 @@ a bug's cause — the conversation does that; discover gives it the map.
 ## Scope
 
 Read-only: Segmently Modules read verbs, docs, code search. It writes only temporary files outside the
-repository, at a path the user names the JSON result, and in `build` mode the missing
-critical-rules sections of a module to modify (`references/rules.md`); nothing else, never a
-commit. It runs in the user's conversation; a caller that wants a clean context runs it through
+repository, at a path the user names the JSON result, and under `[rules] index = "discover"` a
+missing rules index (`references/rules.md`). Never a commit. It runs in the user's conversation; a caller that wants a clean context runs it through
 the `module-discover-agent` agent, which returns this skill's report unchanged.
 
 If `segmently-modules` is not found, tell the user how to install it — the `segmently-modules` plugin for Claude Code, `uv tool install git+https://github.com/segmently-ai/segmently-modules.git`, or `pipx install git+https://github.com/segmently-ai/segmently-modules.git` — and stop until it runs.
@@ -62,8 +61,7 @@ rerun narrower.
    role; a doc with nothing for the task gets "read, nothing for this task". Never a retelling.
    `show` returns each kept module's critical rules (`rules`: title, text, `doc:line`; a child's with
    its parent's): every rule that applies to the task, or may once the change is designed, is an extract.
-   A `modify` module's rules come by `rules_mode` of `show --json` or the user's words:
-   `references/rules.md`.
+   A `modify` module's rules: `references/rules.md`.
 
 6. **Code touch points.** For each `modify` or `consume` module, find the existing code the task
    touches. Its code: `show`'s `code` and `code_globs`, or
@@ -88,8 +86,8 @@ rerun narrower.
    with a stated reason, on the rejected list.
 
 8. **Report** in the conversation, in the shape of `references/report.md` (the search line
-   first, every section there, the rejected candidates included, a `modify` module's `Rules:`
-   block, every `Code:` line tagged `edit` or `read`). The extracts are in the report itself, so the context
+   first, every section there, the rejected candidates included, every `Code:` line tagged
+   `edit` or `read`). The extracts are in the report itself, so the context
    reaches the conversation even when the agent ran the skill. Once a plan is written from it,
    `module-check` reads the plan against every rule of these modules.
 

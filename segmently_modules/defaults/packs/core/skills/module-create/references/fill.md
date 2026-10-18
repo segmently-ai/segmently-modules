@@ -8,12 +8,12 @@ never invent components or rules.
 - the description expanded to a short paragraph: what, why, when;
 - the components table — name · path · purpose, every row a real path (lint MS040 checks them);
 - usage: at least one example done right and one done wrong, each with why;
-- critical rules, under `## Critical Rules` (`[lint] critical_rules_heading`), after the
-  `Indexed:` line `create` wrote — this doc's must-know index: every rule of the module doc, and of
-  the module's docs that are not role docs, that a change must not break: one entry per rule stating
-  it so the forbidden approach is named — a `###` per rule (then why, what to do and what not to do) or
-  one list item per rule with the `doc:line` of its detail, one form per section — show, rules,
-  module-discover and module-check read them;
+- critical rules, under `## Critical Rules` (`[lint] critical_rules_heading`), the doc's last section
+  — this doc's must-know index: every rule of the module doc, and of the module's docs that are not
+  role docs, that a change must not break: one entry per rule stating it so the forbidden approach
+  is named — a `###` per rule (then why, what to do and what not to do) or one list item per rule
+  with the `doc:line` of its detail, one form per section — show, rules, module-discover and
+  module-check read them;
 - where its files live.
 
 Keep it short — about 200–300 lines. Route detail to the role docs before it lands here: full
@@ -24,10 +24,13 @@ flows → architect; test scenarios and test code → qa; a deep dive for one au
 common correct uses. **PO doc**: job stories (When … I want to … so that …) from the analysis
 and the user's answers, each with the conditions that change it; a story's status only from a
 delivery or QA record, else Unknown. **Other role docs**: what the analysis says for that
-audience; a section with nothing true to say yet is deleted. **Every role doc** keeps its own
-`## Critical Rules` section with the `Indexed:` line `create` wrote: one list item per rule that doc
-states, with the `doc:line` of its detail (the `module-sync` skill's rules index, step 3); a
-doc with no rule keeps the section with only that line.
+audience; a section with nothing true to say yet is deleted. **Every role doc** ends with its own
+`## Critical Rules` section: one list item per rule that doc states, with the `doc:line` of its detail
+(the `module-sync` skill's rules index, steps 3–4).
+
+**The index.** Unless `[rules] index` is `off`, once a doc is filled and its section lists every
+rule it states, make the section's first line `Indexed: every rule of this doc, YYYY-MM-DD.` with
+today's date; a doc with no rule keeps the section with only that line.
 
 **An active module (its code exists) — minimum:** at least three components with real paths;
 at least one right-and-wrong usage example; real import lines in the developer doc.
@@ -35,8 +38,8 @@ at least one right-and-wrong usage example; real import lines in the developer d
 "Planned:".
 
 **Quality check** before step 7, every doc of the module: no template comment (`<!-- … -->`)
-left; every doc's critical-rules section starts with its `Indexed:` line and lists every rule the
-doc states; the module doc holds no full signature and no architecture diagram; every component row has
+left; every doc's critical-rules section lists every rule the doc states, and starts with its
+`Indexed:` line unless `[rules] index` is `off`; the module doc holds no full signature and no architecture diagram; every component row has
 a path and a purpose; a UI module has its designer doc filled (when that role is on).
 
 **Report** (step 10): the files written, the registry entry (status, keywords) and its links, the

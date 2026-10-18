@@ -9,8 +9,8 @@ description: Brings module docs and registry fields in line with a work session 
 
 - A session changed module code or revealed module knowledge (a decision, a gotcha, a rule found
   while debugging); the gate reports drift (MS050); the user asks to sync the session or the docs.
-- A module's rules index is missing or incomplete (`module-check` found no rules): build it as
-  `references/rules-index.md` says, without steps 1–10.
+- To index a module, or all missing one (`segmently-modules rules --missing --json`):
+  `references/rules-index.md`, without steps 1–10.
 
 ## When not to use
 
@@ -84,6 +84,7 @@ The session is the primary source; the change in git confirms it and finds misse
 6. Only after that print, write each module's docs as `references/placement.md` says: the session's items and the
    change, each in the doc its readers look in. Add what they introduced, correct what they made
    untrue, remove nothing still true. Short, factual, linked to code paths, never copied code.
+   Keep the rules index: `references/rules-index.md`.
 
 7. Update the registry fields the hints point at.
 

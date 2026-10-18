@@ -85,7 +85,7 @@ def build(ws, diff_range: str | None, files: list[str] | None,
                if f.endswith(".legacy.md")] if diff_range else [])
     found = build_discover(ws, None, changed, None,
                            missing_files(ws.root, changed) if files else [])
-    drift, _ = drift_findings(ws, changed, frozen)
+    drift, _ = drift_findings(ws, changed, frozen, diff_range)
     rows = []
     for m in found["modules"]:
         own = [f for f in drift if (f.path in m["touched_files"] if f.path

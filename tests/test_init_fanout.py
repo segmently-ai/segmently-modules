@@ -1,6 +1,7 @@
 """`init fanout` (D1, phase 4): one work item per confirmed module — its files (capped at 200),
 neighbours, roles, staging dir and a prompt rendered from the template chain — and the modules
 created by hand after gate 3 (D15(d), SI-30)."""
+from datetime import date
 import json
 import os
 import re
@@ -116,8 +117,9 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
             self.assertIn(needle, flat)
         self.assertNotIn("${", prompt)
         self.assertIn("<one sentence: what the module does, why, when to use it>", prompt)
-        self.assertNotIn("<indexed>", prompt)  # the templates' `${indexed}` (2026-10-18) is empty here
-        self.assertNotIn("Indexed: every rule", prompt)
+        # the writer indexes each doc's rules in the same pass (2026-10-18, D3), dated today
+        self.assertIn(f"Indexed: every rule of this doc, {date.today().isoformat()}.", prompt)
+        self.assertIn("End every doc you write with its `## Critical Rules` section", flat)
 
     def test_the_keywords_bullet(self):  # P6-AC-040 (D15): domain words, every verb form
         root = shop(self.base)
@@ -152,7 +154,8 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
         self.assertEqual(placeholder_names(source), {  # f1f5e46's set
             "ask_fields", "description_max", "description_min", "docs", "files", "files_note",
             "min_keywords", "module", "module_doc", "modules_dir", "neighbours", "paths",
-            "relations", "staging_dir", "max_keywords", "generic_words", "others"})
+            "relations", "staging_dir", "max_keywords", "generic_words", "others",
+            "today"})  # + the `Indexed:` date of the rules index the writer builds (2026-10-18)
 
     def test_only_the_keywords_bullet_changed(self):  # P6-AC-041 (D15)
         old_bullet = (  # the bullet at f1f5e46, pinned
@@ -209,7 +212,7 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
                              placeholder_names(source))
         prose = source.split("## Rules", 1)[1]  # the template's own words hold no `${` but
         self.assertEqual(set(re.findall(r"\$\{(\w+)\}", prose)),  # the values it renders
-                         {"modules_dir", "module", "module_doc", "staging_dir"})
+                         {"modules_dir", "module", "module_doc", "staging_dir", "today"})
 
     def test_the_template_chain(self):
         root = shop(self.base)

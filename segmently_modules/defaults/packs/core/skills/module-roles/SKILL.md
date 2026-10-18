@@ -45,7 +45,7 @@ Then continue with step 1.
 2. `segmently-modules roles add ROLE --all --json` — writes them, never over an existing doc; `--recreate`
    only for a registered doc whose file is gone.
 3. Fill each new doc with what that role needs for that module, from its code and docs — one module
-   at a time, never inventing components.
+   at a time, never inventing components; then index its rules.
 4. `segmently-modules lint --json` — fix what the new docs caused.
 5. `segmently-modules next --json` — report what is left.
 

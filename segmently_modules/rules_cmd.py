@@ -59,7 +59,7 @@ def build_rules(ws, names: list[str], files: list[str], role: str | None = None)
         docs = [d for d in rules_of(ws, target) if role is None or d["role"] in ("all", role)]
         out.append({"module": target, "doc": _doc(ws, target), "via": via[target],
                     "files": touched.get(target, []),
-                    "docs": [{k: d[k] for k in ("doc", "role", "present", "indexed")}
+                    "docs": [{k: d[k] for k in ("doc", "role", "indexable", "present", "indexed")}
                              | {"rules": len(d["rules"])} for d in docs if d["exists"]],
                     "index": index_state(docs),
                     "rules": [r for d in docs for r in d["rules"]]})
@@ -79,10 +79,51 @@ def register(sub, common) -> None:
     src.add_argument("--from-diff", metavar="A..B")
     src.add_argument("--files", nargs="+", action="extend", metavar="PATH")
     r.add_argument("--role", help="only the module doc's rules and this role's docs' rules")
+    r.add_argument("--missing", action="store_true",
+                   help="list the docs without a rules index (every module and child when none "
+                        "is named); read-only")
     r.set_defaults(func=run_rules)
 
 
+def build_missing(ws, names: list[str]) -> dict:
+    """`rules --missing`: per target (the named ones, else every module and child), the docs
+    without an `Indexed:` line, the indexed ones with their date, and the docs another skill owns
+    (never indexed by hand); only targets with a missing doc are listed, the summary counts all."""
+    from segmently_modules.changes import target_names
+    from segmently_modules.config import rules_index_setting
+    targets = [_target(ws, n) for n in names] if names else sorted(target_names(ws.registry.modules))
+    rows, totals = [], {"targets": 0, "docs": 0, "indexed": 0, "missing": 0, "owned": 0}
+    for target in targets:
+        docs = [d for d in rules_of(ws, target) if d["exists"]]
+        missing = index_state(docs)["missing"]
+        owned = [d["doc"] for d in docs if not d["indexable"]]
+        indexed = [{"doc": d["doc"], "date": d["indexed"]} for d in docs if d["indexable"] and d["indexed"]]
+        totals["targets"] += 1
+        totals["docs"] += len(docs)
+        totals["indexed"] += len(indexed)
+        totals["missing"] += len(missing)
+        totals["owned"] += len(owned)
+        if missing:
+            rows.append({"module": target, "missing": missing, "indexed": indexed, "owned": owned})
+    return {"setting": rules_index_setting(ws.config), "modules": rows, "summary": totals}
+
+
+def _render_missing(d) -> None:
+    for m in d["modules"]:
+        print(f"{m['module']}  missing: {', '.join(m['missing'])}")
+    t = d["summary"]
+    print(f"{t['missing']} doc(s) without a rules index in {len(d['modules'])} of {t['targets']} "
+          f"module(s); {t['indexed']} indexed, {t['owned']} owned by another skill "
+          f"([rules] index = {d['setting']})")
+
+
 def run_rules(args) -> int:
+    if args.missing:
+        if args.files or args.from_diff or args.role:
+            raise UsageError("--missing takes module names only (or none: every module)")
+        ws = Workspace.from_args(args)
+        emit("rules", build_missing(ws, args.module), args.json, _render_missing)
+        return EXIT_OK
     if not (args.module or args.files or args.from_diff):
         raise UsageError("give the modules (module or module/child …), the change "
                          "(--files PATH … or --from-diff A..B), or both")

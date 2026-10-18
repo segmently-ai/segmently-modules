@@ -140,7 +140,7 @@ class SettingsTest(Split):  # DCP-AC-022
         self.assertEqual(env["schema"], "segmently-modules.catalog/1")
         data = env["data"]
         self.assertEqual(list(data), ["match", "search", "rules"])  # [rules] mode since 2026-10-18
-        self.assertEqual(data["rules"], {"mode": "build"})
+        self.assertEqual(data["rules"], {"index": "sync"})
         self.assertEqual(list(data["search"]), SEARCH_KEYS)
         self.assertEqual(list(data["match"]), MATCH_KEYS)
         self.assertEqual(data["search"], {
@@ -173,7 +173,7 @@ class SettingsTest(Split):  # DCP-AC-022
                               "[search]\nclaude_model = \"sonnet\"\n"
                               "codex_model = \"gpt-5.6-luna\"\neffort = \"standard\"\n"
                               "card_keywords = 10\nchooser = \"always\"\nsure_min_score = 2\n"
-                              "cards = \"full\"\ngeneric = []\n\n[rules]\nmode = \"build\"\n")
+                              "cards = \"full\"\ngeneric = []\n\n[rules]\nindex = \"sync\"\n")
 
     def test_no_module_card_and_no_registry_read(self):
         out = run("catalog", "--settings", *self.R)[1]
