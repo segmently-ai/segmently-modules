@@ -18,10 +18,12 @@ write docs"):
   every rule they state as an extract; its `Rules:` block quotes what `rules` gives and its last
   line names the docs left without an index. Under `sync`, module-sync indexes them after the
   change.
-- `discover` — the same, except that the missing docs are indexed before the report (below). A
-  branch review (`references/from-diff.md`), a run inside a pipeline (`SEGMENTLY_MODULES_RUN_ID`
-  set, or the caller says the docs must not be edited), or a host where no subagent can write
-  files: act as `sync` and say why on the block's last line.
+- `discover` — the same, except that the missing docs are indexed before the report (below): this
+  run builds them, however many there are, and then quotes the rules from the index (`show`'s
+  `rules_index.build` says so). A caller who asks not to edit code, or not to plan, has not
+  forbidden it. A branch review (`references/from-diff.md`), a run inside a pipeline
+  (`SEGMENTLY_MODULES_RUN_ID` set, or the caller says the docs must not be edited), or a host where
+  no subagent can write files: act as `sync` and say why on the block's last line.
 
 A `consume` or `reference` module has no `Rules:` block: its rules reach the report as step 5's
 extracts.

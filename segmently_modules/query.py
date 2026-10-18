@@ -103,6 +103,11 @@ def rules_of(ws, target: str) -> list[dict]:
     return out
 
 
+# `show`'s `rules_index.build` under `[rules] index = "discover"` when a doc has no index yet
+BUILD_NOW = ("module-discover indexes these docs in this run, before its report, when the task modifies "
+             "this module (its references/rules.md)")
+
+
 def index_state(docs: list[dict]) -> dict:
     """A target's rules index: complete when every indexable doc it has on disk carries the
     `Indexed:` line; `missing` names the indexable docs that do not (a missing file is lint's job,
@@ -184,6 +189,9 @@ def show_target(ws, target: str, role: str | None, all_roles: bool) -> tuple[int
     result["rules"] = [r for d in shown for r in d["rules"]]  # the parent's, then the child's
     result["rules_index"] = index_state(docs)  # each doc's date: `rules`' `docs`
     result["rules_setting"] = rules_index_setting(ws.config)
+    if result["rules_setting"] == "discover" and result["rules_index"]["missing"]:
+        # the pilot of 2026-10-18: a reader that saw the setting and the missing docs still only read them
+        result["rules_index"]["build"] = BUILD_NOW
     budget = as_dict(ws.config.get("budgets")).get("rules_text_max", 8000)
     own = as_dict(sub.get("context_files")).get("universal") if child else cf.get("universal")
 

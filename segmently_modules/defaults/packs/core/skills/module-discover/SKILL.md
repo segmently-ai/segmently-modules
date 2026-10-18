@@ -24,9 +24,9 @@ a bug's cause — the conversation does that; discover gives it the map.
 
 ## Scope
 
-Read-only: Segmently Modules read verbs, docs, code search. It writes only temporary files outside the
+Read-only by default: Segmently Modules read verbs, docs, code search. It writes only temporary files outside the
 repository, at a path the user names the JSON result, and under `[rules] index = "discover"` a
-missing rules index (`references/rules.md`). Never a commit. It runs in the user's conversation; a caller that wants a clean context runs it through
+missing rules index (step 5). Never a commit. It runs in the user's conversation; a caller that wants a clean context runs it through
 the `module-discover-agent` agent, which returns this skill's report unchanged.
 
 If `segmently-modules` is not found, tell the user how to install it — the `segmently-modules` plugin for Claude Code, `uv tool install git+https://github.com/segmently-ai/segmently-modules.git`, or `pipx install git+https://github.com/segmently-ai/segmently-modules.git` — and stop until it runs.
@@ -61,7 +61,8 @@ rerun narrower.
    role; a doc with nothing for the task gets "read, nothing for this task". Never a retelling.
    `show` returns each kept module's critical rules (`rules`: title, text, `doc:line`; a child's with
    its parent's): every rule that applies to the task, or may once the change is designed, is an extract.
-   A `modify` module's rules: `references/rules.md`.
+   A `modify` module's rules: `references/rules.md`; under `rules_setting: discover` this run
+   indexes its `missing` docs first.
 
 6. **Code touch points.** For each `modify` or `consume` module, find the existing code the task
    touches. Its code: `show`'s `code` and `code_globs`, or

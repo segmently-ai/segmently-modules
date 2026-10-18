@@ -386,8 +386,11 @@ class RoleDocs(unittest.TestCase):
 
     def test_rules_index_setting_catalog_and_refusal(self):
         cfg = self.root / ".segmently-modules/config.toml"
+        self.assertNotIn("build", run_json("show", "shop", *self.R)[1]["data"]["rules_index"])  # sync: only read
         cfg.write_text('[rules]\nindex = "discover"\n', encoding="utf-8")
-        self.assertEqual(run_json("show", "shop", *self.R)[1]["data"]["rules_setting"], "discover")
+        data = run_json("show", "shop", *self.R)[1]["data"]
+        self.assertEqual(data["rules_setting"], "discover")
+        self.assertIn("before its report", data["rules_index"]["build"])  # a doc is missing: this run builds it
         _, env, _ = run_json("catalog", "--settings", *self.R)
         self.assertEqual(env["data"]["rules"], {"index": "discover"})
         self.assertIn("[rules]\nindex = \"discover\"", run("catalog", "--settings", *self.R)[1])
