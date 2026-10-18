@@ -21,7 +21,10 @@ FAKE = r'''
 import json, os, sys
 from pathlib import Path
 order = json.loads(Path(os.environ["SEGMENTLY_MODULES_WORK_ORDER"]).read_text())
-assert "Build or refresh" in sys.stdin.read()     # the procedure arrives on stdin
+stdin = sys.stdin.read()
+assert "Build or refresh" in stdin                # the procedure arrives on stdin
+if os.environ.get("FAKE_STDIN"):
+    Path(os.environ["FAKE_STDIN"]).write_text(stdin)
 doc = Path(order["root"]) / order["doc"]
 mode = os.environ.get("FAKE_MODE", "good")
 if mode == "fail":
@@ -116,6 +119,28 @@ class BuildTest(Base):
         self.assertEqual(argv[:4], ["claude", "-p", "--model", "sonnet"])
         self.assertIn("Edit(//r/modules/shop/MODULE.md)", argv)
         self.assertNotIn("Write", " ".join(argv))
+
+    def test_the_prompt_names_the_section_the_engine_reads(self):
+        heading = "Critical Rules"
+        self.assertIn("no critical-rules section: add `## Critical Rules` at the end",
+                      index_build.where("# shop\n\nText.\n", heading))
+        doc = "# shop\n\n## Wallet\n\n### Critical rules when modifying\n\n- Do x\n\n### Debugging\n\nSteps.\n"
+        self.assertIn("`### Critical rules when modifying`, lines 5–8: put the index inside it",
+                      index_build.where(doc, heading))
+        self.doc.write_text(doc)
+        seen = self.root.parent / "stdin.txt"
+        with mock.patch.dict(os.environ, {**self.env, "FAKE_MODE": "good", "FAKE_STDIN": str(seen)}):
+            _, env, _ = run_json("rules", "--build", "shop", *self.R)
+        self.assertIn("`### Critical rules when modifying`, lines 5–8", seen.read_text())
+        # the fake writer appends a second section: refused, since the reader would never see it
+        self.assertTrue(env["data"]["docs"][0]["status"].startswith("refused"), env["data"]["docs"][0])
+
+    def test_a_break_before_a_new_section_is_free_but_not_under_text(self):
+        old = "# shop\n\nText.\n"
+        new = old + "\n---\n\n## Critical Rules\n\nIndexed: every rule of this doc, 2026-10-18.\n\n- Never x\n"
+        self.assertIsNone(index_build.outside_line(old, new, "Critical Rules"))
+        under = "# shop\n\nText.\n---\n\n## Critical Rules\n\n- Never x\n"   # "Text." becomes a heading
+        self.assertEqual(index_build.outside_line("# shop\n\nText.\n", under, "Critical Rules"), 4)
 
     def test_a_bad_command_is_refused(self):
         for bad in ('["claude", "{nope}"]', '["{root}"]', '"claude"'):

@@ -164,15 +164,26 @@ def procedure() -> str:
     return text[start:end if end > start else None].strip()
 
 
-def prompt(ws, item: dict, today: str) -> str:
+def where(text: str, heading: str) -> str:
+    """Where the doc's critical-rules section is, as the engine reads it: the first heading of any
+    level whose words start with `heading` (a c05 writer took `### Critical rules when modifying`
+    for something else and appended a second section, which no reader would have seen)."""
+    span = section_span(text, heading)
+    if span is None:
+        return f"The doc has no critical-rules section: add `## {heading}` at the end of the doc."
+    first = text.split("\n")[span[0] - 1].strip()
+    return (f"The doc's critical-rules section is `{first}`, lines {span[0]}–{span[1]}: put the index "
+            f"inside it, never in a second section (the engine reads only this one).")
+
+
+def prompt(ws, item: dict, today: str, text: str = "") -> str:
     heading = ws.config["lint"].get("critical_rules_heading", "Critical Rules")
     return (f"You index the critical rules of one module doc, in place, and nothing else.\n\n"
             f"Repository root: {ws.root}\nDoc: {item['doc']} (module `{item['target']}`, role "
-            f"`{item['role']}`)\nToday: {today}\n\n"
+            f"`{item['role']}`)\nToday: {today}\n{where(text, heading)}\n\n"
             f"Follow this procedure for this one doc (\"the doc\" below; you are the only writer of it):\n\n"
             f"{procedure()}\n\n"
-            f"Limits: change only the doc's critical-rules section (the heading starts with "
-            f"`{heading}`; a new section goes at the end of the doc): its entries and its `Indexed:` "
+            f"Limits: change only the doc's critical-rules section: its entries and its `Indexed:` "
             f"line, which you write last, with today's date. Never another part of the doc, never "
             f"another file, a registry field or code; never commit. Write with your file-edit tool "
             f"only, never through a shell. The engine checks the doc afterwards and undoes a change "
@@ -186,18 +197,26 @@ def confined(old: str, new: str, heading: str) -> bool:
     return outside_line(old, new, heading) is None
 
 
+_RULE_BREAK = re.compile(r"^\s*([-*_])(\s*\1){2,}\s*$")
+
+
 def outside_line(old: str, new: str, heading: str) -> int | None:
-    """The first line (1-based, of the new text) changed outside the critical-rules section, or None."""
+    """The first line (1-based, of the new text) changed outside the critical-rules section, or None.
+    Free: blank lines, and a `---` break after a blank line (a c05 writer put one before its new
+    section; after text it would turn that text into a heading)."""
     a, b = old.split("\n"), new.split("\n")
     so, sn = section_span(old, heading), section_span(new, heading)
-    inside = lambda sp, i, j: sp is not None and sp[0] - 1 <= i and j <= sp[1]
+    def ok(lines, sp, n):  # line n (0-based) inside the section, or free
+        return (sp is not None and sp[0] - 1 <= n < sp[1]) or not lines[n].strip() or \
+            (n > 0 and not lines[n - 1].strip() and bool(_RULE_BREAK.match(lines[n])))
     for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
         if op == "equal":
             continue
-        if i2 > i1 and not inside(so, i1, i2) and any(x.strip() for x in a[i1:i2]):
+        if not all(ok(a, so, n) for n in range(i1, i2)):
             return j1 + 1
-        if j2 > j1 and not inside(sn, j1, j2) and any(x.strip() for x in b[j1:j2]):
-            return j1 + 1
+        bad = next((n for n in range(j1, j2) if not ok(b, sn, n)), None)
+        if bad is not None:
+            return bad + 1
     return None
 
 
@@ -241,7 +260,7 @@ def build_one(ws, item: dict, command: list[str], today: str, work: Path, limit:
     path = ws.root / item["doc"]
     before = path.read_text("utf-8")
     siblings = {p.name for p in path.parent.iterdir()}
-    text = prompt(ws, item, today)
+    text = prompt(ws, item, today, before)
     order = work / (item["doc"].replace("/", "__") + ".json")
     order.write_text(json.dumps({**item, "root": str(ws.root), "heading": heading, "today": today,
                                  "prompt": text}, ensure_ascii=False), "utf-8")
