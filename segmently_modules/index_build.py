@@ -183,6 +183,11 @@ def prompt(ws, item: dict, today: str) -> str:
 def confined(old: str, new: str, heading: str) -> bool:
     """Every hunk of old → new lies inside the critical-rules section (the old span for what is
     removed, the new span for what is added); blank lines are free."""
+    return outside_line(old, new, heading) is None
+
+
+def outside_line(old: str, new: str, heading: str) -> int | None:
+    """The first line (1-based, of the new text) changed outside the critical-rules section, or None."""
     a, b = old.split("\n"), new.split("\n")
     so, sn = section_span(old, heading), section_span(new, heading)
     inside = lambda sp, i, j: sp is not None and sp[0] - 1 <= i and j <= sp[1]
@@ -190,10 +195,10 @@ def confined(old: str, new: str, heading: str) -> bool:
         if op == "equal":
             continue
         if i2 > i1 and not inside(so, i1, i2) and any(x.strip() for x in a[i1:i2]):
-            return False
+            return j1 + 1
         if j2 > j1 and not inside(sn, j1, j2) and any(x.strip() for x in b[j1:j2]):
-            return False
-    return True
+            return j1 + 1
+    return None
 
 
 def _snapshot(modules_dir: Path) -> dict:
@@ -267,8 +272,12 @@ def build_one(ws, item: dict, command: list[str], today: str, work: Path, limit:
             f"failed: the writer exited {code}" + (f" ({err.strip()[:200]})" if err.strip() else "")
     elif after is None:
         status = "failed: the doc is gone"
-    elif not confined(before, after, heading):
-        status = "refused: it changed the doc outside the critical-rules section"
+    elif (line := outside_line(before, after, heading)) is not None:
+        status = f"refused: it changed the doc outside the critical-rules section (line {line})"
+        kept = work.parent / "refused" / item["doc"].replace("/", "__")
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        kept.write_text(after, "utf-8")  # what the writer left, for a look
+        out["refused_text"] = str(kept)
     elif not sec["indexed"]:
         status = "failed: no Indexed: line"
     else:

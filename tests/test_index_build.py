@@ -74,8 +74,10 @@ class BuildTest(Base):
     def test_a_change_outside_the_section_is_undone(self):
         before = self.doc.read_text()
         _, env, _ = self.build("outside")
-        self.assertTrue(env["data"]["docs"][0]["status"].startswith("refused"))
+        r = env["data"]["docs"][0]
+        self.assertEqual(r["status"], "refused: it changed the doc outside the critical-rules section (line 1)")
         self.assertEqual(self.doc.read_text(), before)
+        self.assertIn("shop, rewritten", Path(r["refused_text"]).read_text())  # what the writer left, kept to look at
 
     def test_no_indexed_line_or_a_failed_writer_leaves_the_doc_as_it_was(self):
         before = self.doc.read_text()
