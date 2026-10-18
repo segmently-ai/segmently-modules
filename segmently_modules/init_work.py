@@ -40,7 +40,11 @@ from segmently_modules.workspace import Workspace
 
 FILES_CAP = 200
 DOC_PLACEHOLDERS = {"description": "<one sentence: what the module does, why, when to use it>",
-                    "keywords": "<the keywords>", "status": "active", "parent": ""}
+                    "keywords": "<the keywords>", "status": "active", "parent": "",
+                    # no `Indexed:` line: the writer does not index a doc's rules, so a doc init
+                    # writes has an incomplete rules index (module-discover's `build` mode or
+                    # module-sync's rules index fills it)
+                    "indexed": ""}
 _LEFT = re.compile(r"\$\{(\w*)\}?")
 _PLACEHOLDER = re.compile(r"\$\{([^}\s]*)\}?")  # `${name}`, or `${name` without its brace
 INVENTED = {"path": "path does not exist", "symbol": "symbol not found in its row's file",

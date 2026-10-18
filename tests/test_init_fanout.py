@@ -116,6 +116,8 @@ class ModulePromptTest(FanoutRepo):  # P5B-AC-002 (SI-1)
             self.assertIn(needle, flat)
         self.assertNotIn("${", prompt)
         self.assertIn("<one sentence: what the module does, why, when to use it>", prompt)
+        self.assertNotIn("<indexed>", prompt)  # the templates' `${indexed}` (2026-10-18) is empty here
+        self.assertNotIn("Indexed: every rule", prompt)
 
     def test_the_keywords_bullet(self):  # P6-AC-040 (D15): domain words, every verb form
         root = shop(self.base)
