@@ -177,6 +177,19 @@ class DiscoverTest(Base):
         self.assertEqual(rb["docs"], ["modules/cart/MODULE.md", "modules/shop/MODULE.md"])
         self.assertEqual(run("discover", "--files", "src/shop/pay.py", "--modify", "nope", *self.R)[0], 2)
 
+    def test_rules_of_named_modules_start_the_build_too(self):
+        with mock.patch.dict(os.environ, {**self.env, "FAKE_MODE": "good"}):
+            code, out, _ = run("rules", "shop", *self.R)
+        self.assertEqual(code, 0)
+        self.assertIn("being indexed in the background", out)
+        deadline = time.time() + 30
+        while time.time() < deadline and (index_build.running(self.root) or "Indexed:" not in self.doc.read_text()):
+            time.sleep(0.2)
+        self.assertIn("Indexed:", self.doc.read_text())
+        with mock.patch.dict(os.environ, self.env):
+            self.assertEqual(run_json("rules", "shop", *self.R)[1]["data"]["rules_build"]["status"], "complete")
+            self.assertNotIn("rules_build", run_json("rules", "--files", "src/shop/pay.py", *self.R)[1]["data"])
+
     def test_what_discover_says_when_it_does_not_build(self):
         os.environ.pop(index_build.ENV_ALLOW, None)
         self.assertEqual(self.discover()[1]["data"]["rules_build"]["status"], "not_allowed")

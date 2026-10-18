@@ -179,7 +179,15 @@ def run_rules(args) -> int:
         raise UsageError(f"unknown role '{args.role}' (roles: {', '.join(enabled_roles(ws.config))})")
     files = changed_files(ws.root, diff_range=args.from_diff, files=args.files) \
         if (args.files or args.from_diff) else []
-    emit("rules", build_rules(ws, args.module, files, args.role), args.json, _render_rules)
+    data = build_rules(ws, args.module, files, args.role)
+    if args.module and not args.from_diff:
+        # under `discover`, the modules a reader names here are the ones it chose: their docs without an
+        # index are built in the background (c05 pilot 8: the reader read `rules` but skipped step 7)
+        from segmently_modules.index_build import discover_hook
+        hook = discover_hook(ws, [_target(ws, m) for m in args.module], False)
+        if hook:
+            data["rules_build"] = hook
+    emit("rules", data, args.json, _render_rules)
     return EXIT_OK
 
 
@@ -213,3 +221,9 @@ def _render_rules(d) -> None:
         print(f"missing on disk: {', '.join(d['missing_files'])}")
     total = sum(len(m["rules"]) for m in d["modules"])
     print(f"{total} rule(s) in {len(d['modules'])} module(s)")
+    b = d.get("rules_build")
+    if b and b["status"] in ("started", "running"):
+        print(f"rules index: {len(b['docs'])} doc(s) being indexed in the background (rules --build); "
+              f"this run has the rules above, the next one the index")
+    elif b and b.get("note"):
+        print(f"rules index: not built — {b['note']}")
