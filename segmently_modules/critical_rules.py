@@ -121,4 +121,37 @@ def critical_section(path: Path, heading: str) -> dict:
                 cont.append(ln)
             body = cont
         r["text"] = "\n".join([r.pop("first").strip()] + body).strip()
+        if heads:
+            r["_body"] = (r["line"] + 1, body)
+    if heads:
+        rules = [x for r in rules for x in _group_items(r)]
     return {"present": level is not None, "indexed": indexed, "rules": rules}
+
+
+GROUP_WORDS_MAX = 3  # "DO", "DON'T", "Common Mistakes", "✅ Do": a label, not a rule
+
+
+def _group_items(rule: dict) -> list[dict]:
+    """A heading rule that only labels a group — a title of at most GROUP_WORDS_MAX words over a
+    list, not numbered — stands for its items: each top-level item becomes a rule, its title and
+    text led by the group's label ("DON'T: call track() directly"), so a quoted item never loses the
+    prohibition, and `group` naming the heading. Any other rule stays as it is."""
+    first, body = rule.pop("_body")
+    words = re.findall(r"[^\W\d_][\w'’-]*", rule["title"])
+    if re.match(r"^\W*\d", rule["title"]):  # "1. Use integers": a numbered rule, never a label
+        return [rule]
+    items = []
+    for k, ln in enumerate(body):
+        mi = _ITEM.match(ln) if not ln.startswith((" ", "\t")) else None
+        if mi:
+            cont = []
+            for nxt in body[k + 1:]:
+                if nxt.strip() and not nxt.startswith((" ", "\t")):
+                    break
+                cont.append(nxt)
+            lead = f"{rule['title']}: {mi.group(1).strip()}"
+            items.append({"line": first + k, "title": _clean(lead),
+                          "text": "\n".join([lead] + cont).strip(), "group": rule["title"]})
+    if len(words) > GROUP_WORDS_MAX or not items:
+        return [rule]
+    return items

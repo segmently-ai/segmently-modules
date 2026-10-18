@@ -4,7 +4,8 @@ MS041-MS043 the docs as files (segmently_modules.doc_checks) · MS020-MS023 keyw
 MS030-MS032 doc budgets · MS040 component paths ·
 MS052 a [[code_map]] rule whose `module` is not in the registry · MS053 two [[code_map]] rules
 route one file to two different modules · MS054 (info) an active module that maps no code ·
-MS056 `[coverage] doc_only` naming no module ·
+MS056 `[coverage] doc_only` naming no module · MS070 (info) a rules-index entry whose `doc:line` names
+no doc or a line past its doc's end ·
 MS060-MS062, MS064, MS065 pack checks (unknown
 pack.toml keys, role templates, skills agents cannot load, skills reading unconfigured roles,
 shadowed skill ids) · MS063 ejected skills behind their pack · MS066 a repository pack that
@@ -181,7 +182,7 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
             add("MS018", "warning", label,
                 f"context_files has no 'universal' (other doc keys: {others}) — the module doc is "
                 f"context_files.universal: show, the size checks (MS030/MS031), the components "
-                f"table (MS040) and the critical rules read only that key")
+                f"table (MS040) and the module doc's critical rules read only that key")
 
     def check_roles(label, cf):
         roles = cf.get("roles") if isinstance(cf, dict) else None
@@ -299,6 +300,7 @@ def lint_registry(ws, overlap: bool = True) -> list[Finding]:
         elif name not in modules:
             add("MS056", "warning", "*", f"[coverage] doc_only names '{name}', which is not a "
                 f"registry module")
+    out += rules_index_findings(ws)
     out += pack_findings(ws)
     if overlap:
         out += overlap_findings(ws, repo)
@@ -335,6 +337,47 @@ def code_findings(ws, doc_only: set, repo: RepoFiles) -> list[Finding]:
             out.append(Finding("MS054", "info", name, "active module maps no code file — map its "
                                "code (segmently-modules code-map add), list it in [coverage] doc_only when "
                                "it owns no code on purpose, or retire it"))
+    return out
+
+
+_CITE = re.compile(r"`?((?:[\w@.-]+/)*[\w@.-]+\.md):(\d+)")
+
+
+def rules_index_findings(ws) -> list[Finding]:
+    """MS070 (info): an entry of a doc's critical-rules section cites `doc:line` that names no doc
+    or a line past that doc's end — a citation the index's writer did not re-derive, or text that
+    moved later. A path is read from the repository root (`modules/…`), else from the citing doc's
+    module directory (`roles/qa.md:12`, `MODULE.md:40`; a bare role-doc name is tried under
+    `roles/` too). Info only: an index is optional, and a stale pointer is a hint, never a gate."""
+    from segmently_modules.changes import target_names
+    from segmently_modules.query import rules_of
+    mdir = re.compile(r"^(modules/[^/]+/(?:submodules/[^/]+/)?)")  # the module dir of a doc path
+    out, sizes = [], {}
+
+    def size(rel: str) -> int | None:
+        if rel not in sizes:
+            f = ws.root / rel
+            sizes[rel] = (len(f.read_text(encoding="utf-8", errors="replace").split("\n"))
+                          if f.is_file() else None)
+        return sizes[rel]
+
+    for target in sorted(target_names(ws.registry.modules)):
+        for d in rules_of(ws, target):
+            home = mdir.match(d["doc"])
+            for r in d["rules"]:
+                for m in _CITE.finditer(r["text"]):
+                    cited, line = m.group(1), int(m.group(2))
+                    tries = [cited] if cited.startswith("modules/") or not home else \
+                        [home.group(1) + cited] + ([home.group(1) + "roles/" + cited] if "/" not in cited else [])
+                    found = [(t, size(t)) for t in tries if size(t) is not None]
+                    if not found:
+                        problem = "no such doc"
+                    elif all(line > n for _, n in found):
+                        problem = f"the doc has {found[0][1]} lines"
+                    else:
+                        continue
+                    out.append(Finding("MS070", "info", target, f"rules index entry at line "
+                                       f"{r['line']} cites `{cited}:{line}`: {problem}", d["doc"]))
     return out
 
 

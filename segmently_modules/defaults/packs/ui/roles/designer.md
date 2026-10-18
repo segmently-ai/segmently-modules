@@ -56,3 +56,10 @@ graduate into this list. -->
 <!-- Optional: the command this team runs to check a UI change of this module (a linter, a
 screenshot test) and how to read its result; for this module it replaces `[ui] checker`. The
 designer skill runs a checker only when one is named. -->
+
+## Critical Rules
+
+<!-- This doc's rules index: one list item per rule in this doc that a change must never break,
+stating it so the forbidden approach is named, then the doc:line of its detail. Once every rule is
+listed, the section's first line reads `Indexed: every rule of this doc, YYYY-MM-DD.` — written only
+by whoever read the doc to the end. show, rules, module-discover and module-check read it. -->

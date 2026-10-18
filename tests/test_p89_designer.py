@@ -29,7 +29,8 @@ REFERENCES = ["artifacts.md", "checklist.md", "flow-patterns.md", "prototype.md"
 UI_KEYS = ["rules", "tokens", "capture", "sizes", "schemes", "checker", "artifacts"]
 TEMPLATE_HEADINGS = ["## Surface map", "## UX invariants", "## Interaction states",
                      "## Layout and accessibility", "## Visual patterns", "## Key flows",
-                     "## Tokens and colour schemes", "## Anti-patterns", "## Design checker"]
+                     "## Tokens and colour schemes", "## Anti-patterns", "## Design checker",
+                     "## Critical Rules"]  # the doc's rules index, last (2026-10-18)
 BUDGETS = core_defaults()["budgets"]
 OLD = "designer" + "-review"  # the retired name, never shipped again
 

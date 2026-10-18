@@ -12,6 +12,8 @@ You check a plan for a code change against the repository's rules for the module
 ## The plan
 <the plan, the design or the report; or the diff>
 
+A rule written in several docs can appear more than once below: treat the same rule as one.
+
 Return two lists.
 1. conflicts — the plan's own words prescribe, or clearly lead to, what a rule forbids. Quote the
    plan's words; no quote, no conflict. A rule the plan merely does not mention is never a

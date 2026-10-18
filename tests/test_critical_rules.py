@@ -278,6 +278,16 @@ class IndexMark(unittest.TestCase):
 class HeadingAndSpan(unittest.TestCase):
     doc = Parser.doc
 
+    def test_a_group_heading_stands_for_its_items_led_by_its_label(self):
+        rules = critical_rules(self.doc("## Critical Rules\n\n### DO\n\n- Use the emitter.\n  why\n- Keep ids.\n\n"
+                                        "### DON'T\n- Call track() directly.\n\n### 1. Use integers\n- because\n\n"
+                                        "### Writes use dot-notation, never merge\n- why: stale keys\n"), "Critical Rules")
+        self.assertEqual([(r["line"], r["title"]) for r in rules], [
+            (5, "DO: Use the emitter."), (7, "DO: Keep ids."), (10, "DON'T: Call track() directly."),
+            (12, "1. Use integers"), (15, "Writes use dot-notation, never merge")])
+        self.assertEqual(rules[0]["text"], "DO: Use the emitter.\n  why")
+        self.assertEqual(rules[2]["group"], "DON'T")
+
     def test_the_heading_starts_with_the_words_after_any_decoration(self):
         for heading, found in (("## 🔴 Critical Rules (Read First)", True), ("## CRITICAL RULES (Sprint 4)", True),
                                ("## Test cases from the Critical Rules", False), ("### Critical rules when modifying", True)):
@@ -311,7 +321,7 @@ class RoleDocs(unittest.TestCase):
 
     def test_show_returns_role_doc_rules_and_the_index_state(self):
         self.add_qa()
-        _, env, _ = run_json("show", "shop", *self.R)
+        _, env, _ = run_json("show", "shop", "--all-roles", *self.R)
         d = env["data"]
         self.assertEqual([(r["doc"], r["role"]) for r in d["rules"]],
                          [("modules/shop/MODULE.md", "all")] * 2 + [("modules/shop/roles/qa.md", "qa")])
@@ -325,7 +335,7 @@ class RoleDocs(unittest.TestCase):
 
     def test_a_child_gets_its_parents_docs_first_and_needs_both_indexed(self):
         self.add_qa()
-        _, env, _ = run_json("show", "shop/till", *self.R)
+        _, env, _ = run_json("show", "shop/till", "--all-roles", *self.R)
         self.assertEqual([r["role"] for r in env["data"]["rules"]], ["all", "all", "qa", "all", "all"])
         self.assertEqual(env["data"]["rules_index"]["missing"],
                          ["modules/shop/MODULE.md", "modules/shop/submodules/till/MODULE.md"])
@@ -337,13 +347,34 @@ class RoleDocs(unittest.TestCase):
         self.assertEqual([(x["doc"], x["role"], x["indexed"], x["rules"]) for x in m["docs"]],
                          [("modules/shop/MODULE.md", "all", None, 2),
                           ("modules/shop/roles/qa.md", "qa", "2026-10-18", 1)])
-        self.assertEqual(m["index"], {"complete": False, "missing": ["modules/shop/MODULE.md"]})
+        self.assertEqual(m["index"], {"complete": False, "missing": ["modules/shop/MODULE.md"], "stale": []})
         self.assertEqual(len(m["rules"]), 3)
         _, env, _ = run_json("rules", "shop", "--role", "developer", *self.R)
         self.assertEqual({r["role"] for r in env["data"]["modules"][0]["rules"]}, {"all"})
         out = run("rules", "shop", *self.R)[1]
         self.assertIn("- modules/shop/roles/qa.md:7  [qa] Never hardcode a test id", out)
         self.assertIn("   rules index: not indexed: modules/shop/MODULE.md\n", out)
+
+    def test_show_rules_follow_the_role_selection(self):
+        self.add_qa()
+        roles = lambda *a: [r["role"] for r in run_json("show", "shop", *a, *self.R)[1]["data"]["rules"]]
+        self.assertEqual(roles(), ["all", "all"])  # the module doc only, as `read` lists it
+        self.assertEqual(roles("--role", "qa"), ["all", "all", "qa"])
+        self.assertEqual(roles("--role", "developer"), ["all", "all"])
+        _, env, _ = run_json("show", "shop", *self.R)  # the index state covers every doc
+        self.assertEqual(env["data"]["rules_index"]["missing"], ["modules/shop/MODULE.md"])
+        code, _, err = run("rules", "shop", "--role", "developr", *self.R)
+        self.assertEqual(code, 2)
+        self.assertIn("unknown role 'developr'", err)
+
+    def test_the_budget_goes_to_the_targets_own_module_doc_first(self):
+        self.add_qa(QA_DOC.replace("- Never hardcode a test id", "- " + "x" * 60 + " never hardcode a test id"))
+        (self.root / ".segmently-modules/config.toml").write_text("[budgets]\nrules_text_max = 100\n",
+                                                                   encoding="utf-8")
+        _, env, _ = run_json("show", "shop/till", "--all-roles", *self.R)
+        texts = {(r["doc"], r["line"]): r["text"] for r in env["data"]["rules"]}
+        self.assertIsNotNone(texts[("modules/shop/submodules/till/MODULE.md", 5)])  # the child's own first
+        self.assertIsNone(texts[("modules/shop/roles/qa.md", 7)])  # a role doc's text is the first to go
 
     def test_a_legacy_role_doc_is_never_read(self):
         self.add_qa()
@@ -371,7 +402,7 @@ class RoleDocs(unittest.TestCase):
             '[roles.qa]\nrules_index = false\n', encoding="utf-8")
         (self.root / "modules/shop/roles/qa.md").write_text(QA_DOC.replace(
             "Indexed: every rule of this doc, 2026-10-18.\n\n", ""), encoding="utf-8")
-        _, env, _ = run_json("show", "shop", *self.R)
+        _, env, _ = run_json("show", "shop", "--role", "qa", *self.R)
         self.assertIn("qa", {r["role"] for r in env["data"]["rules"]})  # its rules still count
         self.assertEqual(env["data"]["rules_index"]["missing"], ["modules/shop/MODULE.md"])
         _, env, _ = run_json("rules", "shop", *self.R)
@@ -391,6 +422,49 @@ class RoleDocs(unittest.TestCase):
         self.assertIn("3 doc(s) without a rules index in 3 of 3 module(s); 1 indexed", out)
         code, _, err = run("rules", "--missing", "--files", "src/shop/till.py", *self.R)
         self.assertEqual(code, 2)
+
+
+class StaleIndex(unittest.TestCase):
+    """An indexed doc that changed after its `Indexed:` date is stale: still complete, named in
+    `rules_index.stale` for the next build to refresh."""
+
+    def test_stale_after_a_later_change(self):
+        from tests.helpers import init_git
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = make_repo(tmp.name, {"shop": ["shelf"]})
+        R = ("--root", str(root))
+        doc = root / "modules/shop/MODULE.md"
+        doc.write_text("# Shop\n\n## Critical Rules\n\nIndexed: every rule of this doc, 2999-01-01.\n\n- a\n",
+                       encoding="utf-8")
+        init_git(root)
+        idx = run_json("show", "shop", *R)[1]["data"]["rules_index"]
+        self.assertEqual((idx["complete"], idx["stale"]), (True, []))
+        doc.write_text(doc.read_text(encoding="utf-8").replace("2999-01-01", "2020-01-01"), encoding="utf-8")
+        idx = run_json("show", "shop", *R)[1]["data"]["rules_index"]  # an uncommitted change: today
+        self.assertEqual((idx["complete"], idx["stale"]), (True, ["modules/shop/MODULE.md"]))
+        self.assertIn("rules index: complete; stale: modules/shop/MODULE.md", run("rules", "shop", *R)[1])
+
+
+class CitationLint(unittest.TestCase):
+    """MS070 (info): an index entry whose `doc:line` names no doc or a line past its doc's end."""
+
+    def test_a_cite_past_the_end_and_a_missing_doc(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = make_repo(tmp.name, {"shop": ["shelf"]})
+        (root / "modules/shop/roles").mkdir()
+        (root / "modules/shop/roles/qa.md").write_text("# qa\n" * 5, encoding="utf-8")
+        (root / "modules/shop/MODULE.md").write_text(
+            "# Shop\n\nA rule here.\n\n## Critical Rules\n\n- A rule. — `MODULE.md:3`\n"
+            "- Past the end. — `MODULE.md:99`\n- In qa. — `roles/qa.md:4`\n- Gone. — `roles/gone.md:1`\n"
+            "- Rooted. — `modules/shop/roles/qa.md:9`\n", encoding="utf-8")
+        _, env, _ = run_json("lint", "--fail-on", "never", "--root", str(root))
+        got = [f["message"] for f in env["data"]["findings"] if f["code"] == "MS070"]
+        self.assertCountEqual(got, ["rules index entry at line 8 cites `MODULE.md:99`: the doc has 12 lines",
+                               "rules index entry at line 10 cites `roles/gone.md:1`: no such doc",
+                               "rules index entry at line 11 cites `modules/shop/roles/qa.md:9`: the doc has 6 lines"])
+        self.assertTrue(all(f["severity"] == "info" for f in env["data"]["findings"] if f["code"] == "MS070"))
 
 
 class CreateIndexes(unittest.TestCase):

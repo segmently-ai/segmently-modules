@@ -59,7 +59,7 @@ def build_rules(ws, names: list[str], files: list[str], role: str | None = None)
         docs = [d for d in rules_of(ws, target) if role is None or d["role"] in ("all", role)]
         out.append({"module": target, "doc": _doc(ws, target), "via": via[target],
                     "files": touched.get(target, []),
-                    "docs": [{k: d[k] for k in ("doc", "role", "indexable", "present", "indexed")}
+                    "docs": [{k: d[k] for k in ("doc", "role", "indexable", "present", "indexed", "stale")}
                              | {"rules": len(d["rules"])} for d in docs if d["exists"]],
                     "index": index_state(docs),
                     "rules": [r for d in docs for r in d["rules"]]})
@@ -128,6 +128,9 @@ def run_rules(args) -> int:
         raise UsageError("give the modules (module or module/child …), the change "
                          "(--files PATH … or --from-diff A..B), or both")
     ws = Workspace.from_args(args)
+    from segmently_modules.config import enabled_roles
+    if args.role and args.role not in enabled_roles(ws.config):
+        raise UsageError(f"unknown role '{args.role}' (roles: {', '.join(enabled_roles(ws.config))})")
     files = changed_files(ws.root, diff_range=args.from_diff, files=args.files) \
         if (args.files or args.from_diff) else []
     emit("rules", build_rules(ws, args.module, files, args.role), args.json, _render_rules)
@@ -141,12 +144,15 @@ def _render_rules(d) -> None:
         for f in m["files"]:
             print(f"   file {f}")
         if not m["rules"]:
-            print(f"   no rules: no doc of it has a '{d['heading']}' section" if m["doc"]
-                  else "   no rules: context_files has no universal doc")
+            with_section = [x for x in m["docs"] if x["present"]]
+            print("   no rules: context_files has no universal doc" if not m["doc"] else
+                  f"   no rules: its '{d['heading']}' section(s) list none" if with_section else
+                  f"   no rules: no doc of it has a '{d['heading']}' section")
         idx = m["index"]
         if m["docs"]:
             print("   rules index: " + ("complete" if idx["complete"] else
-                                       "not indexed: " + ", ".join(idx["missing"])))
+                                       "not indexed: " + ", ".join(idx["missing"]))
+                  + ("; stale: " + ", ".join(idx["stale"]) if idx["stale"] else ""))
         for r in m["rules"]:
             first, _, rest = r["text"].partition("\n")
             tag = "" if r["role"] == "all" else f"[{r['role']}] "

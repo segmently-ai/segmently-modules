@@ -69,16 +69,36 @@ def indexable_role(ws, role: str) -> bool:
     return role == "all" or as_dict(as_dict(ws.config.get("roles")).get(role)).get("rules_index", True) is not False
 
 
+def last_change(ws, doc: str) -> str | None:
+    """The day a doc last changed: today when it has uncommitted changes, else the date of the
+    last commit that touched it; None outside git or for a doc git does not know."""
+    import datetime
+    import subprocess
+    from segmently_modules.changes import git_env
+    run = lambda *a: subprocess.run(["git", "-C", str(ws.root), *a], capture_output=True,
+                                    encoding="utf-8", errors="replace", env=git_env())
+    status = run("status", "--porcelain", "--", doc)
+    if status.returncode != 0:
+        return None
+    if status.stdout.strip():
+        return datetime.date.today().isoformat()
+    log = run("log", "-1", "--format=%cs", "--", doc)
+    return log.stdout.strip() or None if log.returncode == 0 else None
+
+
 def rules_of(ws, target: str) -> list[dict]:
     """Every doc of the target with its critical-rules section: [{doc, role, exists, indexable,
-    present, indexed, rules: [{doc, role, line, title, text}]}]."""
+    present, indexed, stale, rules: [{doc, role, line, title, text}]}]; `stale`: an indexed doc
+    that changed after its `Indexed:` date (`last_change`)."""
     heading = as_dict(ws.config.get("lint")).get("critical_rules_heading") or ""
     out = []
     for doc, role in rule_docs(ws, target):
         sec = critical_section(ws.root / doc, heading)
+        changed = last_change(ws, doc) if sec["indexed"] else None
         out.append({"doc": doc, "role": role, "exists": (ws.root / doc).is_file(),
                     "indexable": indexable_role(ws, role),
                     "present": sec["present"], "indexed": sec["indexed"],
+                    "stale": bool(changed and changed > sec["indexed"]),
                     "rules": [{"doc": doc, "role": role, **r} for r in sec["rules"]]})
     return out
 
@@ -86,10 +106,12 @@ def rules_of(ws, target: str) -> list[dict]:
 def index_state(docs: list[dict]) -> dict:
     """A target's rules index: complete when every indexable doc it has on disk carries the
     `Indexed:` line; `missing` names the indexable docs that do not (a missing file is lint's job,
-    MS004; a doc another skill owns is never missing)."""
+    MS004; a doc another skill owns is never missing); `stale` the indexed ones changed since their
+    date — still complete, to be refreshed by the next build."""
     held = [d for d in docs if d["exists"] and d["indexable"]]
     missing = [d["doc"] for d in held if not d["indexed"]]
-    return {"complete": bool(held) and not missing, "missing": missing}
+    stale = [d["doc"] for d in held if d["indexed"] and d.get("stale")]
+    return {"complete": bool(held) and not missing, "missing": missing, "stale": stale}
 
 
 def _stub_or_unknown(ws, name: str) -> tuple[int, dict]:
@@ -156,12 +178,20 @@ def show_target(ws, target: str, role: str | None, all_roles: bool) -> tuple[int
             result.setdefault("not_needed", []).append({"role": r, "note": skip_note(held[r])})
     add("universal (parent INDEX)" if subs else "universal", cf.get("universal"))
     docs = rules_of(ws, parent) + (rules_of(ws, f"{parent}/{child}") if child else [])
-    result["rules"] = [r for d in docs for r in d["rules"]]  # the parent's, then the child's
+    # the rules shown follow `read`'s role selection: the module docs always, a role's docs only
+    # when it is asked (`--role R` / `--all-roles`); the index state covers every doc
+    shown = [d for d in docs if d["role"] == "all" or d["role"] in roles]
+    result["rules"] = [r for d in shown for r in d["rules"]]  # the parent's, then the child's
     result["rules_index"] = index_state(docs)  # each doc's date: `rules`' `docs`
     result["rules_setting"] = rules_index_setting(ws.config)
     budget = as_dict(ws.config.get("budgets")).get("rules_text_max", 8000)
+    own = as_dict(sub.get("context_files")).get("universal") if child else cf.get("universal")
+
+    def priority(r):  # the budget goes to the target's own module doc, the parent's, then roles
+        return 0 if r["doc"] == own else 1 if r["role"] == "all" else 2
+
     used = 0
-    for r in result["rules"]:  # a text that would pass the budget is dropped; the title stays
+    for r in sorted(result["rules"], key=priority):  # a text past the budget is dropped; the title stays
         if used + len(r["text"]) > budget:
             r["text"] = None
         else:
