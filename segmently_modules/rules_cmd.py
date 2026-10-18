@@ -1,13 +1,14 @@
 """`rules`: every critical rule, in full, of the modules a change touches — the modules named, the
 modules the given files map to (`--files` / `--from-diff`, as `discover` maps them), and the parent
 of each child among them. The input of a rule check: a plan or a diff read against the rules of
-the modules it changes. No budget: the caller asked for the rules, so every text is whole."""
+the modules it changes, and of discover's `Rules:` block. No budget: the caller asked for the rules,
+so every text is whole. Each target's rules come from every doc of it — the module doc, then each
+role doc — tagged with the doc's role; `index` says whether every doc carries its rules index."""
 from __future__ import annotations
 
 from segmently_modules.changes import changed_files, map_files, missing_files
-from segmently_modules.critical_rules import critical_rules
 from segmently_modules.output import EXIT_OK, UsageError, emit
-from segmently_modules.query import _stub_or_unknown
+from segmently_modules.query import _stub_or_unknown, index_state, rules_of
 from segmently_modules.registry import as_dict, resolve_module_arg
 from segmently_modules.workspace import Workspace
 
@@ -34,7 +35,7 @@ def _doc(ws, target: str):
     return doc if isinstance(doc, str) and doc else None
 
 
-def build_rules(ws, names: list[str], files: list[str]) -> dict:
+def build_rules(ws, names: list[str], files: list[str], role: str | None = None) -> dict:
     via: dict[str, list] = {}
     touched: dict[str, list] = {}
 
@@ -55,10 +56,13 @@ def build_rules(ws, names: list[str], files: list[str]) -> dict:
     heading = as_dict(ws.config.get("lint")).get("critical_rules_heading") or ""
     out = []
     for target in sorted(via):  # a parent sorts before its children
-        doc = _doc(ws, target)
-        out.append({"module": target, "doc": doc, "via": via[target],
+        docs = [d for d in rules_of(ws, target) if role is None or d["role"] in ("all", role)]
+        out.append({"module": target, "doc": _doc(ws, target), "via": via[target],
                     "files": touched.get(target, []),
-                    "rules": critical_rules(ws.root / doc, heading) if doc else []})
+                    "docs": [{k: d[k] for k in ("doc", "role", "present", "indexed")}
+                             | {"rules": len(d["rules"])} for d in docs if d["exists"]],
+                    "index": index_state(docs),
+                    "rules": [r for d in docs for r in d["rules"]]})
     return {"heading": heading, "modules": out,
             "files_outside_modules": mapping["unmapped"],
             "missing_files": missing_files(ws.root, files) if files else []}
@@ -74,6 +78,7 @@ def register(sub, common) -> None:
     src = r.add_mutually_exclusive_group()
     src.add_argument("--from-diff", metavar="A..B")
     src.add_argument("--files", nargs="+", action="extend", metavar="PATH")
+    r.add_argument("--role", help="only the module doc's rules and this role's docs' rules")
     r.set_defaults(func=run_rules)
 
 
@@ -84,7 +89,7 @@ def run_rules(args) -> int:
     ws = Workspace.from_args(args)
     files = changed_files(ws.root, diff_range=args.from_diff, files=args.files) \
         if (args.files or args.from_diff) else []
-    emit("rules", build_rules(ws, args.module, files), args.json, _render_rules)
+    emit("rules", build_rules(ws, args.module, files, args.role), args.json, _render_rules)
     return EXIT_OK
 
 
@@ -95,11 +100,16 @@ def _render_rules(d) -> None:
         for f in m["files"]:
             print(f"   file {f}")
         if not m["rules"]:
-            print(f"   no rules: the doc has no '{d['heading']}' section" if m["doc"]
+            print(f"   no rules: no doc of it has a '{d['heading']}' section" if m["doc"]
                   else "   no rules: context_files has no universal doc")
+        idx = m["index"]
+        if m["docs"]:
+            print("   rules index: " + ("complete" if idx["complete"] else
+                                       "not indexed: " + ", ".join(idx["missing"])))
         for r in m["rules"]:
             first, _, rest = r["text"].partition("\n")
-            print(f"- {m['doc']}:{r['line']}  {first}")
+            tag = "" if r["role"] == "all" else f"[{r['role']}] "
+            print(f"- {r['doc']}:{r['line']}  {tag}{first}")
             for line in rest.split("\n") if rest.strip() else []:
                 if line.strip():
                     print(f"    {line}")

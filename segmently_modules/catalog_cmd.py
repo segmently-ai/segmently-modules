@@ -8,7 +8,7 @@ import json
 
 from segmently_modules.output import EXIT_OK, UsageError, defer_note, emit
 from segmently_modules.registry import as_dict
-from segmently_modules.config import LAYER_SCHEMA, core_defaults, search_all, search_settings
+from segmently_modules.config import LAYER_SCHEMA, core_defaults, rules_mode, search_all, search_settings
 from segmently_modules.semantic import agent_configured, configured_mode
 from segmently_modules.workspace import Workspace
 
@@ -76,7 +76,8 @@ def match_settings(config: dict) -> dict:
 def run(args) -> int:
     ws = Workspace.from_args(args)
     if args.settings:
-        data = {"match": match_settings(ws.config), "search": search_all(ws.config)}
+        data = {"match": match_settings(ws.config), "search": search_all(ws.config),
+                "rules": {"mode": rules_mode(ws.config)}}
         emit("catalog", data, args.json, _render_settings)
         return EXIT_OK
     data = {"match": {"mode": configured_mode(ws.config), "semantic": _semantic(ws.config)},
@@ -87,9 +88,9 @@ def run(args) -> int:
 
 
 def _render_settings(data) -> None:
-    """One `key = value` line per key under a `[match]` and a `[search]` heading; each value as
-    TOML writes it."""
-    for i, group in enumerate(("match", "search")):
+    """One `key = value` line per key under a `[match]`, a `[search]` and a `[rules]` heading;
+    each value as TOML writes it."""
+    for i, group in enumerate(("match", "search", "rules")):
         if i:
             print()
         print(f"[{group}]")

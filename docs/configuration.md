@@ -165,8 +165,14 @@ engine reads none), and the engine ships, installs and suggests no model.
 | `[search] cards` | `"full"` | the cards of every work order (`choose`, `choose --apply` / `--run`, `--match semantic` / `hybrid`): `full` (name, description, the first `card_keywords` keywords; a child card names its parent) or `brief` (one card per module and per child: name and description, a parent's card naming its children, a child's its parent, no keyword — a smaller order). `choose --cards full\|brief` overrides it for one run; any other value is exit 2 |
 | `[search] generic` | `[]` | the modules that match almost any task (a shared UI kit, a shared data layer), by id, e.g. `["ui-kit", "data-core"]`; a listed module covers its family — the module and its children (`<id>/…`). `discover --json`'s `lexical_confidence` leaves their keyword rows out of its verdict: when every keyword row is theirs it is `unsure` with the reason `generic` (`top`: those at the top score); otherwise `tie`, `low_score` and `sure` are decided over the other modules' rows. So under `chooser = "when_unsure"` hits on these modules alone no longer skip the chooser. They stay in `discover`'s `modules` and in every other output. An id that names no module is ignored. Team, personal or pack config; the ids of every layer add up (arrays add); anything but a list of module ids (non-empty strings) is exit 2 naming the file |
 
-`segmently-modules catalog --settings` prints every `[match]` and `[search]` key with its merged value, defaults
-filled in (`--json`: `{match, search}`); `catalog` without it keeps its three `search` keys.
+`segmently-modules catalog --settings` prints every `[match]`, `[search]` and `[rules]` key with its merged value,
+defaults filled in (`--json`: `{match, search, rules}`); `catalog` without it keeps its three `search` keys.
+
+## `[rules]`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `mode` | `"build"` | how module-discover gets the rules of a module it will change. `build`: every doc of the module (its module doc and each role doc, a child's and its parent's) must hold its rules index — the critical-rules section whose first line reads `Indexed: every rule of this doc, YYYY-MM-DD.`; a doc without one gets it during the run (module-sync's rules-index procedure, one subagent per module), and the brief quotes every rule of the module. `index`: the brief quotes the rules as the docs hold them, no doc is read again for its rules and nothing is built. `read`: no index; the docs are read for the task as before. `show --json` returns it as `rules_mode` and the state of each doc's index as `rules_index`. The user's words for one run win over it. Team, personal or pack config; any other value is exit 2 |
 
 ## `[lint]`
 
@@ -174,7 +180,7 @@ filled in (`--json`: `{match, search}`); `catalog` without it keeps its three `s
 |---|---|---|
 | `fail_on` | `"error"` | `error` · `warning` · `never`: the lowest severity that makes `lint` exit 1 (`--fail-on` overrides) |
 | `component_table_heading` | `"EXISTING Components"` | the `MODULE.md` section whose table rows lint checks for backticked paths (MS040) |
-| `critical_rules_heading` | `"Critical Rules"` | the module-doc section whose rule headings (or top-level list items) `show` and `discover` return as `rules`; matched in any case, at any heading level |
+| `critical_rules_heading` | `"Critical Rules"` | the section of every module doc — the module doc and each role doc — whose rule headings (or top-level list items) `show`, `rules` and `discover` return as `rules`, each with its doc's role; matched in any case, at any heading level |
 | `drift_severity` | `"warning"` | severity of MS050 (`info`, `warning` or `error`) |
 | `overlap_severity` | `"warning"` | severity of MS053 (`info`, `warning` or `error`) |
 | `link_severity` | `"warning"` | severity of MS041, a link in a registered doc whose target is missing (`info`, `warning` or `error`) — `info` keeps a gate green while the links are fixed |

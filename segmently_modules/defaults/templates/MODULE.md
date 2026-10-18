@@ -20,11 +20,15 @@ wire code to the module: [[code_map]] rules or code_pointer fields in .segmently
 
 ## Critical Rules
 
-<!-- The must-know index: every rule a change here must never break, whichever doc holds its detail.
-One entry per rule, stating it so the forbidden approach is named: a `###` heading per rule
-("### Writes to nested fields use dot-notation, never set(..., {merge: true})"), then why, what to
-do and what not to do — or one list item per rule with the doc:line of its detail; one form per
-section. show, rules and module-check read them, so an agent sees them without reading every doc. -->
+${indexed}
+
+<!-- This doc's rules index: every rule of this doc a change here must never break, and the rules of
+the module's other docs that are not role docs (each role doc indexes its own). One entry per rule,
+stating it so the forbidden approach is named, with the numbers it depends on: a `###` heading per
+rule ("### Writes to nested fields use dot-notation, never set(..., {merge: true})"), then why, what
+to do and what not to do — or one list item per rule with the doc:line of its detail; one form per
+section. show, rules, module-discover and module-check read them, so an agent sees them without
+reading every doc. Keep the `Indexed:` line first; module-sync refreshes its date. -->
 
 ## Usage
 

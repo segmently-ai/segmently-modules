@@ -170,9 +170,16 @@ SEARCHED_RULE = [
 NEW_EXTRACT = ["  extract is short and says what it means for this task. A rule — a never / must / do not / always",
                "  statement, a ❌ line — is quoted in the doc's own words with its `doc:line`, never softened into an",
                "  option or a question."]
+# the rules index in discover (2026-10-18): a modify module's `Rules:` block after `Why:`, and its rule
+WHY = "Why: <what the task needs from it; \"named by the user\" when it was>"
+RULES_BLOCK = ["Rules:", "- `<doc>:<line>` (<role>) — <the rule's first line, verbatim>",
+               "- index: <built this run | from <date> | incomplete — <doc>, …>"]
+RULES_BULLET = ["- `Rules:` only for a `modify` module, in `build` and `index` mode (`references/rules.md`): each",
+                "  rule `segmently-modules rules <module> --json` gives, verbatim, in its order, then the `index:`",
+                "  line. A `consume` or `reference` module, or `read` mode: no `Rules:` lines."]
 REPLACED = {OLD_CODE: [EDIT, READ, TESTS], OLD_VERSION: [NEW_VERSION], OLD_FILES: NEW_FILES,
             OLD_HEADING: [NEW_HEADING], OLD_REJECTED: [NEW_REJECTED],
-            OLD_CONFIDENCE: [NEW_CONFIDENCE], OLD_DOCS_RULE: NEW_DOCS_RULE,
+            OLD_CONFIDENCE: [NEW_CONFIDENCE], OLD_DOCS_RULE: RULES_BULLET + NEW_DOCS_RULE,
             DOCS_RULE_END: NEW_EXTRACT + SEARCHED_RULE}
 
 # step 6 (R-3), in order, as the lite text says it: the form, under report.md's rules (RULES above);
@@ -184,8 +191,8 @@ STEP6 = [
     "No code search for a `reference` module.",
 ]
 STEP8 = ("8. **Report** in the conversation, in the shape of `references/report.md` (the search "
-         "line first, every section there, the rejected candidates included, every `Code:` line "
-         "tagged `edit` or `read`).")
+         "line first, every section there, the rejected candidates included, a `modify` module's "
+         "`Rules:` block, every `Code:` line tagged `edit` or `read`).")
 FROM_DIFF_LINE = ("the changed files are its `Code:` lines, each `edit` (`edit — file:line — symbol "
                   "— why` where a hunk shows it), a file the branch added too; no search line, no "
                   "`Tests:` line, no `Likely consequence:` line, no scores, no rejected list "
@@ -226,6 +233,8 @@ def expected_report() -> str:
             out.append(SEARCHED)
         elif line == TITLE:
             out += ["", SEARCH]
+        elif line == WHY:
+            out += RULES_BLOCK
         elif line == RISKS:
             out.append(CONSEQUENCE)
         elif line == CODE_RULE_END:
@@ -258,7 +267,7 @@ class RestUnchangedTest(unittest.TestCase):  # DCP-AC-016
                                    OLD_VERSION, OLD_FILES, OLD_CONFIDENCE])  # every other base line kept
         allowed = {"", SEARCH, EDIT, READ, TESTS, CONSEQUENCE, NEW_VERSION, JSON_REASON,
                    *RULES, *NEW_FILES, NEW_HEADING, NEW_REJECTED, NEW_CONFIDENCE, SEARCHED,
-                   *SEARCHED_RULE, *NEW_DOCS_RULE, *NEW_EXTRACT}
+                   *SEARCHED_RULE, *NEW_DOCS_RULE, *NEW_EXTRACT, *RULES_BLOCK, *RULES_BULLET}
         self.assertEqual([line for line in added if line not in allowed], [])
 
     def test_the_sections_are_the_base_sections(self):

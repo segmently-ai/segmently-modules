@@ -6,12 +6,12 @@ list holds the parent's docs too). Then put each item where its readers look:
 
 | Doc | Gets | Rule |
 |---|---|---|
-| module doc | what the module is, its components (name · path · purpose), usage done right and wrong, critical rules — the module's must-know index (`references/rules-index.md`): every rule a change must not break, a role doc's too, one entry each stating the rule, in the section's form — each its own `###` under the critical-rules heading, the heading stating the rule, or one list item — with the `doc:line` of its detail | stays short: full signatures, flows and test code go to the role docs; past about 300 lines after the edit, route the excess to them |
-| developer | imports, API changes, patterns, gotchas | the session's real code paths; append to the matching section |
-| qa | test scenarios, selectors, test patterns | the team's test conventions as its docs state them |
-| po | user stories, business rules | only when business behaviour changed |
-| architect | architecture, data flows between modules | keep the map across modules coherent |
-| designer | UX invariants, anti-patterns | only when the UI changed |
+| module doc | what the module is, its components (name · path · purpose), usage done right and wrong, critical rules — the module's must-know index (`references/rules-index.md`) for this doc: every rule of the module doc and of the module's docs that are not role docs, one entry each stating the rule, in the section's form — each its own `###` under the critical-rules heading, the heading stating the rule, or one list item — with the `doc:line` of its detail, after the section's `Indexed:` line | stays short: full signatures, flows and test code go to the role docs; past about 300 lines after the edit, route the excess to them |
+| developer | imports, API changes, patterns, gotchas; its own critical-rules section indexes its rules | the session's real code paths; append to the matching section |
+| qa | test scenarios, selectors, test patterns; its own critical-rules section indexes its rules | the team's test conventions as its docs state them |
+| po | user stories, business rules; its own critical-rules section indexes its rules | only when business behaviour changed |
+| architect | architecture, data flows between modules; its own critical-rules section indexes its rules | keep the map across modules coherent |
+| designer | UX invariants, anti-patterns; its own critical-rules section indexes its rules | only when the UI changed |
 | any other role | what its header says it holds | a doc a skill owns (its header or the team's config names the skill, as a `qa_acceptance` doc belongs to the skill that generates it): never hand-edited — flag it for that skill in the report |
 
 Split modules: area content goes to the child's role doc. A child without its own doc for that

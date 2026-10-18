@@ -32,7 +32,7 @@ ENGINE = Path(__file__).resolve().parents[1]
 CORE = builtin_packs_root() / "core" / "skills"
 FINDING = ("module-discover", "module-scout", "module-research")
 SPLIT_SIGNAL = core_defaults()["budgets"]["skill_split_signal"]
-REFERENCES = {"module-discover": ["choose.md", "from-diff.md", "report.md"],
+REFERENCES = {"module-discover": ["choose.md", "from-diff.md", "report.md", "rules.md"],
               "module-scout": ["brief.md", "choose.md"], "module-research": ["choose.md"]}
 
 

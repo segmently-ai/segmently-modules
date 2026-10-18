@@ -35,7 +35,7 @@ DECISION = re.compile(r"^discussed with the owner (\d{4}-\d{2}-\d{2}): (keep|rou
 #   segmently-modules context --task "add a payment retry to the checkout" --role developer --json --root <root>
 #   segmently-modules show catalog --json --root <root>
 CONTEXT_MEASURED = 1866
-SHOW_MEASURED = 541
+SHOW_MEASURED = 860  # 541 until 2026-10-18; + `rules_index` and `rules_mode` (a rules index in every doc)
 CONTEXT_MAX = int(CONTEXT_MEASURED * 1.2)
 SHOW_MAX = int(SHOW_MEASURED * 1.2)
 TASK = "add a payment retry to the checkout"

@@ -12,6 +12,9 @@ Search: <lexical | by meaning | hybrid> — <the setting or the user's words> �
 
 ### <module>[/<child>] — usage: modify | consume | reference (score <0–10>)
 Why: <what the task needs from it; "named by the user" when it was>
+Rules:
+- `<doc>:<line>` (<role>) — <the rule's first line, verbatim>
+- index: <built this run | from <date> | incomplete — <doc>, …>
 Docs:
 - `<path>` (<role>): <a rule, constraint, contract or pitfall that bears on the task>
 - `<path>` (<role>): read, nothing for this task
@@ -34,6 +37,9 @@ Likely consequence: <what the implementation will probably also need> — <the e
 - `<file>`
 ```
 
+- `Rules:` only for a `modify` module, in `build` and `index` mode (`references/rules.md`): each
+  rule `segmently-modules rules <module> --json` gives, verbatim, in its order, then the `index:`
+  line. A `consume` or `reference` module, or `read` mode: no `Rules:` lines.
 - Every doc step 5 read or searched is on a `Docs:` line: an extract, "read, nothing for this task"
   or "searched (<terms>), nothing for this task". An
   extract is short and says what it means for this task. A rule — a never / must / do not / always

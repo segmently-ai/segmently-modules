@@ -295,8 +295,9 @@ class SettingsTest(Split):
                 self.config(search(value))
                 code, out, err = run("catalog", "--settings", *self.R)
                 self.assertEqual((code, err), (0, ""))
-                self.assertEqual(out.split("\n")[-2], line)
-                self.assertTrue(out.split("\n")[-3].startswith("cards = "))
+                search_part = out.split("\n\n[rules]")[0]  # [rules] follows [search] since 2026-10-18
+                self.assertEqual(search_part.split("\n")[-1], line)
+                self.assertTrue(search_part.split("\n")[-2].startswith("cards = "))
 
     def test_catalog_without_the_flag_keeps_three_search_keys(self):
         self.config('[search]\ngeneric = ["orders"]\n')

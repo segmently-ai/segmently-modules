@@ -2,6 +2,14 @@
 
 > ${role_description}
 
+## Critical Rules
+
+${indexed}
+
+<!-- This doc's rules index: every rule in this doc that a change must never break, one list item per
+rule stating it so the forbidden approach is named, then the doc:line of its detail. show, rules,
+module-discover and module-check read it. Keep the `Indexed:` line first. -->
+
 <!-- For someone who plans a change or weighs an alternative: the product meaning of this module,
 not its code and not a test plan. Be specific about the user and the situation where they shape the
 need; no generic benefits. Link the doc that owns a subject instead of copying it. Keep proposed
