@@ -175,6 +175,7 @@ class DiscoverTest(Base):
         self.assertEqual(rb["docs"], ["modules/cart/MODULE.md"])  # the code map would give shop's
         rb = self.discover(("--modify", "cart", "--consume", "shop"))[1]["data"]["rules_build"]
         self.assertEqual(rb["docs"], ["modules/cart/MODULE.md", "modules/shop/MODULE.md"])
+        self.assertEqual(rb["read"], "segmently-modules rules cart shop > <temp file>, then read the file to the end")
         self.assertEqual(run("discover", "--files", "src/shop/pay.py", "--modify", "nope", *self.R)[0], 2)
 
     def test_rules_of_named_modules_start_the_build_too(self):

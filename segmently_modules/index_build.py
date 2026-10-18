@@ -407,6 +407,14 @@ def discover_hook(ws, targets: list[str], from_diff: bool) -> dict | None:
     from segmently_modules.config import rules_index_setting
     if rules_index_setting(ws.config) != "discover" or from_diff:
         return None
+    out = _hook(ws, targets)
+    if targets:  # c10 pilot: discover said `complete` and the reader wrote its brief without the rules of 3 of
+        # its 4 modify modules; the command that gives them sits where it reads the status
+        out["read"] = f"segmently-modules rules {' '.join(targets)} > <temp file>, then read the file to the end"
+    return out
+
+
+def _hook(ws, targets: list[str]) -> dict:
     items = pending(ws, targets)
     if not items:
         return {"status": "complete", "docs": []}

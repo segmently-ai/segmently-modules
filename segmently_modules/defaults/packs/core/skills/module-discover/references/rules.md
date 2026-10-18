@@ -32,6 +32,7 @@ parent's too; without marks, of the modules the files belong to) and what happen
   change checked to stay inside the critical-rules section); this run reads them in full, the
   next one reads the index;
 - `complete`: nothing was missing;
+- `read` (any status): the command that gives these modules' rules whole; run it and read the file;
 - `not_allowed`, `no_writer`, `skipped`: nothing is written; its `note` says why (the user's own
   permission `SEGMENTLY_MODULES_ALLOW_INDEX_WRITER=1` is not set, there is no writer, a pipeline
   run). Give the note in the block's last line.
