@@ -28,12 +28,14 @@ docs as `missing`, unless the setting is `off`:
    `context_files` docs, a deep-dive doc), citing that doc.
 3. Compare with `segmently-modules rules <module> --json` (each rule names its `doc`), and add each
    missing rule to the critical-rules section of the doc that holds it: the module doc's to the
-   module doc, a role doc's to that role doc, a child's area to the child's docs, the whole
-   module's to the parent's. Use the section's form — a `###` per rule, or one list item per
-   rule; a new section: list items, at the end of the doc. Each entry states the rule so the
-   forbidden approach is named, keeps the numbers it depends on (a size, a limit, a count), at
-   most about 200 characters, then the `doc:line` of its detail; a rule written in several docs
-   gets an entry in each, citing its own line. The rules that cause damage when broken first.
+   module doc, a role doc's to that role doc, a child's area to the child's docs, the whole module's
+   to the parent's. A rule written only inside another entry's body, which that entry's title does
+   not name, is missing too: give it its own entry, citing its line; the body stays. Use the
+   section's form — a `###` per rule, or one list item per rule; a new section: list items, at the
+   end of the doc. Each entry states the rule so the forbidden approach is named, keeps the numbers
+   it depends on (a size, a limit, a count), at most about 200 characters, then the `doc:line` of
+   its detail; a rule written in several docs gets an entry in each, citing its own line. The rules
+   that cause damage when broken first.
 4. Re-read the doc as written and set each entry's `doc:line` to the line its detail is on now
    (`roles/developer.md:16` for a role doc, the module directory as the root).
 5. Make the section's first line, before any rule, `Indexed: every rule of this doc, YYYY-MM-DD.`
