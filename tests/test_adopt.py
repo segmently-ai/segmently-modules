@@ -140,7 +140,7 @@ class AdoptOutputsTest(AdoptRepo):  # P5A-AC-015
         self.assertEqual(set(data["inferred"]), {"paths", "roles", "fields", "dir_whitelist",
                                                  "updated_at_path", "code_map",
                                                  "code_map_suggestion", "budgets", "skipped",
-                                                 "statuses", "relations"})  # P5B-AC-044
+                                                 "statuses", "relations", "rules"})  # P5B-AC-044; rules 2026-10-18
         steps = " ".join(data["next_steps"])
         self.assertIn("review .segmently-modules/config.toml", steps)
         self.assertIn('[packs] builtin = ["core"]', steps)
@@ -874,7 +874,7 @@ class EdgeInputsTest(AdoptRepo):  # P5A-AC-043
                                             "skipped": [], "dir_whitelist": [],
                                             "updated_at_path": None, "statuses": [],
                                             "relations": [], "code_map": None,
-                                            "code_map_suggestion": None, "budgets": []})
+                                            "code_map_suggestion": None, "budgets": [], "rules": {}})
         self.assertIn("segmently-modules init map", " ".join(data["next_steps"]))
 
     def test_odd_names_and_non_ascii_evidence(self):
@@ -990,3 +990,31 @@ class AdoptContractTest(AdoptRepo):  # P5A-AC-046, P5A-AC-042
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RulesHeadingTest(unittest.TestCase):
+    """adopt reads the rules sections the docs already have (2026-10-18): with no section under the
+    configured heading and at least half of the module docs sharing another rules heading, that
+    heading becomes `[lint] critical_rules_heading`."""
+
+    def run_adopt(self, headings):
+        import tempfile as _t
+        from tests.helpers import make_repo as _make
+        tmp = _t.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = _make(tmp.name, {m: [m] for m in headings})
+        for m, h in headings.items():
+            (root / f"modules/{m}/MODULE.md").write_text(f"# {m}\n\n{h}\n\n- a rule\n", encoding="utf-8")
+        (root / ".segmently-modules").rmdir()
+        code, env, err = run_json("adopt", "--json", "--root", str(root))
+        self.assertEqual(code, 0, err)
+        return env["data"]["inferred"]["rules"], (root / ".segmently-modules/config.toml").read_text(encoding="utf-8")
+
+    def test_another_shared_heading_is_inferred(self):
+        rules, text = self.run_adopt({"a": "## ⚠️ Key Rules (read first)", "b": "## Key Rules", "c": "## Usage"})
+        self.assertEqual(rules["critical_rules_heading"], "Key Rules")
+        self.assertIn('critical_rules_heading = "Key Rules"', text)
+
+    def test_the_configured_heading_present_or_no_majority_infers_nothing(self):
+        self.assertEqual(self.run_adopt({"a": "## Critical Rules", "b": "## Key Rules"})[0], {})
+        self.assertEqual(self.run_adopt({"a": "## Key Rules", "b": "## Usage", "c": "## Usage"})[0], {})

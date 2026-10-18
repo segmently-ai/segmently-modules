@@ -21,6 +21,24 @@ Queue the change instead:
 `segmently-modules proposals reject --run-id <id> --reason "<why>" --json`. A sync applies them at its end
 with `--apply-proposals`.
 
+## The rules index (optional)
+Each doc of a module may end with a critical-rules section listing its rules; a first line
+`Indexed: every rule of this doc, YYYY-MM-DD.` says the list is complete, so readers get the rules
+without reading the doc. `[rules] index` says who writes it: `sync` (the default — create, init,
+roles, split and the `module-sync` skill), `discover` (also the `module-discover` skill, before
+its report), `off` (nobody). State: `segmently-modules rules --missing --json` (the docs without one, every
+module and child) and `segmently-modules rules <module> --json` (each doc's `indexed` date, `stale`).
+
+**Index a module, or every one missing an index, as its own task:** show the user the summary of
+`segmently-modules rules --missing --json` (N docs in M modules) and wait for an OK. Then run the
+`module-sync` skill's rules index ("Build or refresh", `references/rules-index.md`) per module, in
+batches of writer subagents — one per doc, at most `[init] max_parallel` at a time; after each batch
+run `segmently-modules rules --missing --json` and `segmently-modules lint --json` (budget findings of the touched
+docs). It can stop and resume: an indexed doc carries its line. Never commit: the user reviews the
+diff. Docs another skill owns (`[roles.<r>] rules_index = false`) are never indexed.
+
+**Change who writes it:** `[rules] index = "discover"` (or `"off"`) in `.segmently-modules/config.toml`.
+
 ## The CI gate
 `segmently-modules ci --base <base> --json` runs lint, the drift since the base and coverage; exit 1 when
 a step fails. In a CI job the base is the target branch as CI fetched it (`origin/main`, with

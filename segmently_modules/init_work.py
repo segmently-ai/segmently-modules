@@ -45,7 +45,8 @@ DOC_PLACEHOLDERS = {"description": "<one sentence: what the module does, why, wh
 _LEFT = re.compile(r"\$\{(\w*)\}?")
 _PLACEHOLDER = re.compile(r"\$\{([^}\s]*)\}?")  # `${name}`, or `${name` without its brace
 INVENTED = {"path": "path does not exist", "symbol": "symbol not found in its row's file",
-            "no-file": "no file to check"}  # the words of `init verify`'s text
+            "no-file": "no file to check",
+            "line": "line past the end of its doc"}  # the words of `init verify`'s text
 PATH_HINT = " (write paths from the repository root, as in the file list)"
 NOTE = ("\n## The previous attempt was refused\n\nThe files written last time did not pass "
         "`segmently-modules init done`. Fix each of these problems:\n\n")  # engine text (D3, SI-6)

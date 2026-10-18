@@ -262,6 +262,7 @@ class Inference:
             self.section("[registry]", self.registry_keys)
         self.infer_code_map()
         self.infer_budgets()
+        self.infer_rules()
         return self.data
 
     def infer_paths(self) -> None:
@@ -567,6 +568,40 @@ class Inference:
                 personal = self.personal["budgets"].get(key) != budgets[key]
                 self.budget_lines += [f"# {key} = {value}", f"# adopt: {evidence}"
                                       + (f"; {PERSONAL}" if personal else "")]
+
+    def infer_rules(self) -> None:
+        """The rules sections the docs already have. When no module doc has a section under the
+        configured `[lint] critical_rules_heading` but at least half of them share another rules
+        heading ("Key Rules", "Invariants"), that heading becomes the key, so show, rules and the
+        index read the sections the team wrote instead of adding a second one. adopt changes no
+        doc: the index stays optional (`[rules] index`, default `sync`)."""
+        heading = self.config["lint"]["critical_rules_heading"]
+        want = heading.strip().lower()
+        lead = re.compile(r"^[^\w]+")
+        head = re.compile(r"^#{2,6}\s+(.*?)\s*#*\s*$")
+        docs, configured, candidates = 0, 0, Counter()
+        for name, entry in self.modules.items():
+            if not isinstance(entry, dict):
+                continue
+            for _, universal, _roles in _docs(entry, name):
+                if not (isinstance(universal, str) and (self.root / universal).is_file()):
+                    continue
+                docs += 1
+                titles = [lead.sub("", m.group(1)) for m in map(head.match, (self.root / universal).read_text(
+                    encoding="utf-8", errors="replace").split("\n")) if m]
+                if any(t.lower().startswith(want) for t in titles):
+                    configured += 1
+                found = {re.split(r"\s*[(—:–-]\s*", t)[0].strip() for t in titles
+                         if re.search(r"\b(rules?|invariants?)\b", t, re.I)}
+                candidates.update(f for f in found if f)
+        self.data["rules"] = {}  # {"critical_rules_heading": …} when adopt infers it
+        if not configured and candidates:
+            best, count = candidates.most_common(1)[0]
+            if at_least_50(count, docs):
+                self.section("[lint]", [("critical_rules_heading", best, [
+                    f"{count} of {docs} module docs have a '{best}' section and none a '{heading}' "
+                    f"one: show, rules and the rules index read it"])])
+                self.data["rules"] = {"critical_rules_heading": best, "docs": docs, "with_it": count}
 
     def text(self) -> str:
         blocks = ["\n".join(lines) for lines in self.sections if lines]

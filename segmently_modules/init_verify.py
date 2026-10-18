@@ -108,9 +108,12 @@ def source_text(path) -> str | None:
     return None if b"\0" in data[:SNIFF] else data.decode("utf-8", errors="replace")
 
 
+_DOC_LINE = re.compile(r"\.md:(\d+)$")
+
+
 def invented(ws, docs: dict) -> list[dict]:
-    """{doc, line, kind: path | symbol | no-file, token} for every component a doc names that
-    is not there; `docs` = {final path: the file to read, or its text when the caller has read
+    """{doc, line, kind: path | symbol | no-file | line, token} for every component a doc names
+    that is not there, and every `doc.md:<line>` citation (a rules-index entry) past its doc's end; `docs` = {final path: the file to read, or its text when the caller has read
     it already (`init done`)}."""
     out = []
 
@@ -149,6 +152,14 @@ def invented(ws, docs: dict) -> list[dict]:
                 target = component_path(token, found)
                 if target and not (inside(target) and ws.exists(target)):
                     out.append({"doc": rel, "line": n, "kind": "path", "token": target})
+                    continue
+                cite = _DOC_LINE.search(token)  # a rules-index entry's `doc.md:<line>`
+                if target and cite and target.endswith(".md"):
+                    body = docs.get(target)
+                    body = body if isinstance(body, str) else source_text(body if body is not None
+                                                                          else ws.disk(target))
+                    if body is not None and int(cite.group(1)) > len(body.splitlines()):
+                        out.append({"doc": rel, "line": n, "kind": "line", "token": token})
             if not text.lstrip().startswith("|"):
                 header = None
                 continue

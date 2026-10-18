@@ -18,7 +18,7 @@ from segmently_modules.lint import drift_findings
 from segmently_modules.output import EXIT_OK, UsageError, emit
 from segmently_modules.pipeline import build_discover, split_children
 from segmently_modules.proposals import pending
-from segmently_modules.query import show_target
+from segmently_modules.query import index_state, rules_of, show_target
 from segmently_modules.workspace import Workspace
 
 
@@ -74,7 +74,8 @@ def build(ws, diff_range: str | None, files: list[str] | None,
         if children:  # a split parent: the skill picks the child the change is in
             out["children"] = list(children)
         out.update(drift=[{k: v for k, v in asdict(f).items() if k != "module"} for f in drift],
-                   fields=_fields(ws, module), proposals_pending=queued.get(module, 0))
+                   fields=_fields(ws, module), proposals_pending=queued.get(module, 0),
+                   rules_index=index_state(rules_of(ws, module)))  # what module-sync keeps or builds
         return out
 
     if modules:

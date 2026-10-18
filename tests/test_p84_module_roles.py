@@ -126,8 +126,10 @@ class RolesSkillShapeTest(unittest.TestCase):  # P84-AC-017
 
 
 class MovedWordForWordTest(unittest.TestCase):  # P84-AC-018
+    INDEXED = "; then index its rules."  # step 3's one addition since (2026-10-18, the rules index)
+
     def test_every_sentence_and_step_is_in_module_roles_in_order(self):
-        text = flat(ROLES.read_text("utf-8"))
+        text = flat(ROLES.read_text("utf-8")).replace(self.INDEXED, ".")
         at = 0
         for sentence in sentences(OLD_SECTION):
             i = text.find(sentence, at)
@@ -143,7 +145,7 @@ class MovedWordForWordTest(unittest.TestCase):  # P84-AC-018
         self.assertIn("segmently-modules next --json", upgrade)
         self.assertIn("start at step 1", upgrade)
         without = steps.replace(upgrade + "\n\n", "", 1)
-        self.assertEqual(flat(without), flat(OLD_SECTION))
+        self.assertEqual(flat(without).replace(self.INDEXED, "."), flat(OLD_SECTION))
 
     def test_the_upgrade_case_is_one_line_naming_next_and_roles_add(self):
         steps = flat(section(ROLES.read_text("utf-8"), "## Steps"))

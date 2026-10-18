@@ -42,9 +42,9 @@ NOT_COPIED = {MANAGED, EJECTED, ".DS_Store"}  # never part of a skill's files
 SKILL_AGENTS = {
     "module-discover-agent": {
         "skill": "module-discover",
-        "description": "Maps a confirmed task, a branch or changed files to the modules, docs and "
-                       "code files they touch through the segmently-modules CLI, read-only, and reports the "
-                       "touch-set with file:line evidence."},
+        "description": "Maps a task, a branch or changed files to the modules, docs and code "
+                       "they touch through the segmently-modules CLI, with file:line evidence; "
+                       "read-only unless [rules] index = discover."},
     "module-research-agent": {
         "skill": "module-research",
         "description": "Answers one question about one or more modules in depth from their docs "

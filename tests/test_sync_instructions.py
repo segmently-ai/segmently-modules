@@ -63,7 +63,7 @@ class ModesTest(SyncInstructionsRepo):  # P4B-AC-011
                                          "message": "code changed (1 file(s)) but none of its "
                                                     "docs"}])
         self.assertEqual(sorted(row), ["docs_to_update", "drift", "fields", "module",
-                                       "proposals_pending", "usage"])
+                                       "proposals_pending", "rules_index", "usage"])
         discover = run_json("discover", "--from-diff", "HEAD~1..HEAD", *self.R)[1]["data"]
         self.assertEqual([(m["module"], m["docs_to_update"]) for m in discover["modules"]],
                          [(r["module"], r["docs_to_update"]) for r in data["modules"]])

@@ -84,6 +84,21 @@ import x from `packages/catalog/src/fenced.ts`;
             found = invented(Workspace.load(root), {"modules/catalog/roles/developer.md": doc})
         return [(f["line"], f["kind"], f["token"].replace(str(root), "<root>")) for f in found]
 
+    def test_a_rules_index_citation_past_its_docs_end(self):  # 2026-10-18 (D3)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve() / "repo"
+            (root / "modules/catalog").mkdir(parents=True)
+            doc = Path(tmp) / "MODULE.md"
+            doc.write_text("# Catalog\n\nPrices are cents.\n\n## Critical Rules\n\n"
+                           "Indexed: every rule of this doc, 2026-10-18.\n\n"
+                           "- Prices are cents. — `modules/catalog/MODULE.md:3`\n"
+                           "- Never delete. — `modules/catalog/MODULE.md:40`\n")
+            ws = Workspace.load(root)
+            ws.overlay = {"modules/catalog/MODULE.md": doc}
+            found = invented(ws, {"modules/catalog/MODULE.md": doc})
+        self.assertEqual(found, [{"doc": "modules/catalog/MODULE.md", "line": 10, "kind": "line",
+                                  "token": "modules/catalog/MODULE.md:40"}])
+
     def test_a_table_without_a_path_column(self):  # PR-19 (I-5): not a components table
         text = ("| Name | Kind | Purpose |\n|---|---|---|\n| `searchBooks` | function | finds "
                 "books |\n| `pytest` | tool | runs the tests |\n\n| Symbol | Type |\n|---|---|\n"

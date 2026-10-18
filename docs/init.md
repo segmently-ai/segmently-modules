@@ -189,7 +189,9 @@ no file of the module holds (its text, its identifiers' parts, its path): the fi
    the root (the staging docs count at their final paths), and in a table with a `Symbol` or
    `Name` column and a `Path` column, a backticked symbol occurs, as a whole identifier, in the
    file of its row's `Path` cell (a table without a `Path` column is not checked; a file that
-   cannot be read as text — a directory, unreadable, binary — is `no file to check`);
+   cannot be read as text — a directory, unreadable, binary — is `no file to check`); and every
+   rules-index entry's `<doc>.md:<line>` (the writer indexes each doc's rules in its
+   `## Critical Rules` section, in the same pass) points at a line its doc has;
 3. **keywords** — every new module holds at most `[create] max_keywords` distinct words (forms
    of one word count once) and no generic word (`create`, `user`, `screen`, … in any form; a word
    of the module's own name is fine): `keywords: [{module, words, max_keywords, generic}]`, each
