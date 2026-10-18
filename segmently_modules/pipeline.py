@@ -211,6 +211,11 @@ def register(sub, common) -> None:
     src.add_argument("--from-diff", metavar="A..B")
     src.add_argument("--files", nargs="+", action="extend", metavar="PATH")
     d.add_argument("--top", type=int)
+    d.add_argument("--modify", nargs="*", action="extend", metavar="MODULE",
+                   help="the modules the caller marked modify: under [rules] index = \"discover\" "
+                        "the engine indexes their docs (and their parents') in the background")
+    d.add_argument("--consume", nargs="*", action="extend", metavar="MODULE",
+                   help="the modules the caller marked consume: indexed as --modify")
     add_match_flag(d)
     d.set_defaults(func=run_discover)
 
@@ -264,7 +269,12 @@ def run_discover(args) -> int:
         # the setting, before the rows; with --files the engine starts the writers itself
         # (four trial runs: the agent never wrote a doc nobody asked it to)
         from segmently_modules.index_build import discover_hook
-        hook = discover_hook(ws, sorted(map_files(ws, files)["modules"]), False) if files else None
+        from segmently_modules.rules_cmd import _target
+        # the caller's own marks choose the docs (c05: the code map gave the edit files to parents and to
+        # a wrong owner, while the case's rules sat in children and the backend); the code map without them
+        marked = [_target(ws, m) for m in (args.modify or []) + (args.consume or [])]
+        targets = list(dict.fromkeys(marked)) or sorted(map_files(ws, files)["modules"])
+        hook = discover_hook(ws, targets, False) if (files or marked) else None
         data = {"rules_setting": "discover", **({"rules_build": hook} if hook else {}), **data}
     if has_task and mode in ("lexical", "hybrid"):  # keyword routing ran: how sure it is, first, so a cut read still shows it
         data = {"lexical_confidence": _confidence(ws, text), **data}

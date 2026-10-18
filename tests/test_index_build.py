@@ -144,6 +144,14 @@ class DiscoverTest(Base):
         with mock.patch.dict(os.environ, self.env):
             self.assertEqual(self.discover()[1]["data"]["rules_build"]["status"], "complete")
 
+    def test_the_callers_marks_choose_the_docs_over_the_code_map(self):
+        os.environ.pop(index_build.ENV_ALLOW, None)  # not_allowed: the docs are named, nothing starts
+        rb = self.discover(("--modify", "cart"))[1]["data"]["rules_build"]
+        self.assertEqual(rb["docs"], ["modules/cart/MODULE.md"])  # the code map would give shop's
+        rb = self.discover(("--modify", "cart", "--consume", "shop"))[1]["data"]["rules_build"]
+        self.assertEqual(rb["docs"], ["modules/cart/MODULE.md", "modules/shop/MODULE.md"])
+        self.assertEqual(run("discover", "--files", "src/shop/pay.py", "--modify", "nope", *self.R)[0], 2)
+
     def test_what_discover_says_when_it_does_not_build(self):
         os.environ.pop(index_build.ENV_ALLOW, None)
         self.assertEqual(self.discover()[1]["data"]["rules_build"]["status"], "not_allowed")

@@ -198,7 +198,8 @@ FROM_DIFF_LINE = ("the changed files are its `Code:` lines, each `edit` (`edit �
                   "`Tests:` line, no `Likely consequence:` line, no scores, no rejected list "
                   "(nothing was chosen).")  # task-2 review M-3
 STEP7 = ("segmently-modules discover --files <edit files> --task-file <file> --match lexical "
-         "--json")  # task-2 review M-4: the owners and docs to update of the files the change edits
+         "--modify <modify> --consume <consume> --json")  # task-2 review M-4: the owners and docs to update of the
+# files the change edits; 2026-10-18: + the step 4 marks, which choose the docs the engine indexes under "discover"
 TAGGED = re.compile(r"^- `(edit|read)` — `<file>:<line>` — `<symbol>` — <[^<>]+>$")
 MODES = ("lexical", "by meaning", "hybrid", "<lexical | by meaning | hybrid>")
 

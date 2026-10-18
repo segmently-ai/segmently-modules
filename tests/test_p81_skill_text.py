@@ -399,7 +399,7 @@ class CommandsRunTest(unittest.TestCase):  # P82-AC-036, 038, 039, 040
         keywords.write_text("refund\norder service\n", encoding="utf-8")
         found = "src/orders/service.py src/payments/gateway.py"  # separate arguments (F20)
         args, _ = filled(command("module-discover", "segmently-modules discover --files"),
-                         {"<edit files>": found, "<file>": str(keywords)})
+                         {"<edit files>": found, "<file>": str(keywords), "<modify>": "", "<consume>": ""})
         self.assertEqual(args[:3], ["discover", "--files", "src/orders/service.py"])
         data = json.loads(self.cli(args))["data"]
         self.assertEqual([f["path"] for f in data["files"]],
@@ -509,7 +509,7 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20
         "`<edit | read> — file:line — symbol — why`",  # DCP-AC-011: the tag first
         "the files the work will create are the plan's decision and are never listed",
         "**Owners and docs to update.**",
-        "segmently-modules discover --files <edit files> --task-file <file> --match lexical --json",
+        "segmently-modules discover --files <edit files> --task-file <file> --match lexical --modify <modify> --consume <consume> --json",
         F20,  # P82-AC-040
         "**Report**", "`references/report.md`",
     ]

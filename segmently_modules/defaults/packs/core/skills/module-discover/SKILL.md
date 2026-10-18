@@ -38,7 +38,7 @@ is your call. Run independent reads together (parallel tool calls, or one Bash c
 output is short). A host may cut a long output to a preview: then read the file it names, or
 rerun narrower.
 
-1. **Candidates.** Follow `references/choose.md`; its terms `<file>` serves steps 6 and 7 too.
+1. **Candidates.** Follow `references/choose.md`.
 
    Modules the user named are verified like the rest but never dropped, and the list is never
    limited to them.
@@ -74,11 +74,11 @@ rerun narrower.
 7. **Owners and docs to update.**
 
    ```bash
-   segmently-modules discover --files <edit files> --task-file <file> --match lexical --json
+   segmently-modules discover --files <edit files> --task-file <file> --match lexical --modify <modify> --consume <consume> --json
    ```
 
-   `--files` takes the paths as separate arguments (`--files a.ts b/c.ts`); one quoted string is one path. Its
-   `rules_build`: `references/rules.md`. Per module: its
+   `--files` takes the paths as separate arguments (`--files a.ts b/c.ts`); one quoted string is one path. `--modify`
+   / `--consume`: step 4's marks; `rules_build`: `references/rules.md`. Per module: its
    `docs_to_update` (role docs too, not only the main doc); a module that owns a touch point but
    is not on your list — verify it (step 2) or name it in the risks; `files_outside_modules` (no
    module owns them: each needs `module-create` or a `[[code_map]]` rule); `missing_files`. A

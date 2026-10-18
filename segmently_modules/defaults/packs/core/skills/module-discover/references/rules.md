@@ -16,9 +16,9 @@ the end in step 5 and give every rule they state as an extract; its `Rules:` blo
 `rules` gives and its last line names the docs left without an index. Under `sync` (the default),
 module-sync indexes them after the change.
 
-Under `discover`, the engine writes the index itself: step 7's `discover --files` gives
-`rules_build` — the docs without an index of the modules the files belong to (a parent's too) and
-what happened to them:
+Under `discover`, the engine writes the index itself: step 7's `discover --files … --modify …
+--consume …` gives `rules_build` — the docs without an index of the modules you marked (a child's
+parent's too; without marks, of the modules the files belong to) and what happened to them:
 - `started` or `running`: writers it started index them in the background (one per doc; every
   change checked to stay inside the critical-rules section); this run reads them in full, the
   next one reads the index;
