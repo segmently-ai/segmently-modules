@@ -176,11 +176,59 @@ def where(text: str, heading: str) -> str:
             f"inside it, never in a second section (the engine reads only this one).")
 
 
+_LINK = re.compile(r"\]\(([^)#\s]+\.md)(?:#[^)]*)?\)|`([\w./-]+\.md)`")
+
+
+def other_docs(ws, item: dict, text: str) -> list[str]:
+    """The docs whose rules a module doc's index takes besides its own (rules-index.md step 2): the
+    target's `context_files` entries that are not its module or role docs, then the docs its text links
+    to — on disk under the modules directory, never another target's own doc, a role doc or a frozen
+    `*.legacy.md`. Empty for a role doc. (c02, 2026-10-19: told to index "one doc and nothing else", the
+    writers indexed none of them, and the rules in `ux-rework-plan.md` and a memo reached no reader.)"""
+    if item.get("role") != "all":
+        return []
+    from segmently_modules.changes import target_names
+    from segmently_modules.query import rule_docs
+    owned = {d for t in target_names(ws.registry.modules) for d, _ in rule_docs(ws, t)}
+    parent, _, child = item["target"].partition("/")
+    entry = ws.registry.modules.get(parent) or {}
+    holder = ((entry.get("submodules") or {}).get(child) or {}) if child else entry
+    found: list[str] = []
+    def walk(v):
+        if isinstance(v, str):
+            found.append(v)
+        elif isinstance(v, list):
+            for x in v: walk(x)
+        elif isinstance(v, dict):
+            for x in v.values(): walk(x)
+    for key, value in (holder.get("context_files") or {}).items():
+        if key not in ("universal", "roles"):
+            walk(value)
+    here = Path(item["doc"]).parent
+    modules_dir = ws.config["paths"]["modules_dir"].rstrip("/") + "/"
+    for m in _LINK.finditer(text):
+        ref = m.group(1) or m.group(2)
+        if "://" in ref:
+            continue
+        found.append(ref if ref.startswith(modules_dir) else os.path.normpath(str(here / ref)))
+    out = []
+    for d in found:
+        if (d.endswith(".md") and not d.endswith(".legacy.md") and d.startswith(modules_dir) and d != item["doc"]
+                and d not in owned and d not in out and (ws.root / d).is_file()):
+            out.append(d)
+    return out
+
+
 def prompt(ws, item: dict, today: str, text: str = "") -> str:
     heading = ws.config["lint"].get("critical_rules_heading", "Critical Rules")
+    extras = other_docs(ws, item, text)
+    take = ("" if not extras else
+            f"\n\nThis is the module doc. Its {len(extras)} other doc(s) ({', '.join(extras)}) are read by "
+            f"writers of their own, and the engine adds their rules to this section after you: index this "
+            f"doc's own rules only (step 2's other docs are done).")
     return (f"You index the critical rules of one module doc, in place, and nothing else.\n\n"
             f"Repository root: {ws.root}\nDoc: {item['doc']} (module `{item['target']}`, role "
-            f"`{item['role']}`)\nToday: {today}\n{where(text, heading)}\n\n"
+            f"`{item['role']}`)\nToday: {today}\n{where(text, heading)}{take}\n\n"
             f"Follow this procedure for this one doc (\"the doc\" below; you are the only writer of it):\n\n"
             f"{procedure()}\n\n"
             f"Limits: change only the doc's critical-rules section: its entries and its `Indexed:` "
@@ -189,6 +237,107 @@ def prompt(ws, item: dict, today: str, text: str = "") -> str:
             f"only, never through a shell. The engine checks the doc afterwards and undoes a change "
             f"outside the section. Reply with one line: the number of entries you added and the "
             f"contradictions you found.\n")
+
+
+def extra_prompt(ws, job: dict, today: str) -> str:
+    """The order of an other doc's writer (`other_docs`): list its rules, change nothing."""
+    n = len((ws.root / job["doc"]).read_text("utf-8", errors="replace").splitlines())
+    return (f"You list the critical rules of one doc for its module's rules index; you change nothing.\n\n"
+            f"Repository root: {ws.root}\nDoc: {job['doc']} ({n} lines), one of the other docs of module "
+            f"`{job['target']}`; the engine adds the rules you list to the critical-rules section of "
+            f"{job['into']}.\nToday: {today}\n\n"
+            f"Read the doc to the end (in parts when it is long), with your file-read tool, never a search in it. "
+            f"List every rule in it that a change to the module, or a use of it, must not break: constraints, "
+            f"invariants, \"never / always / must\" statements, required patterns and the traps someone already "
+            f"fell into, for every role: code and data rules, test rules, UX invariants, architecture limits, "
+            f"business rules. Not feature descriptions, history, status or how-to steps, and not a rule the doc "
+            f"itself says was replaced. Each rule in one sentence that keeps its own words: the prohibition, "
+            f"the names and the numbers.\n\n"
+            f"Reply with JSON only: [{{\"line\": <the rule's line in the doc>, \"rule\": \"<the rule>\"}}, ...], "
+            f"or [] when the doc states none. Never edit a file.\n")
+
+
+def _listed(reply: str) -> list | None:
+    """The JSON list an other doc's writer replied, from a `claude -p --output-format json` envelope or bare."""
+    text = reply
+    try:
+        env = json.loads(reply)
+        if isinstance(env, list):
+            return env
+        if isinstance(env, dict) and isinstance(env.get("result"), str):
+            text = env["result"]
+    except ValueError:
+        pass
+    m = re.search(r"\[.*\]", text, re.S)
+    if not m:
+        return None
+    try:
+        got = json.loads(m.group(0))
+    except ValueError:
+        return None
+    return got if isinstance(got, list) else None
+
+
+def list_one(ws, job: dict, command: list[str], today: str, work: Path, limit: int) -> dict:
+    """One other doc's writer: its rules as [{line, rule}], the doc left as it was (else refused)."""
+    from segmently_modules.config import search_settings
+    path = ws.root / job["doc"]
+    before = path.read_bytes()
+    text = extra_prompt(ws, job, today)
+    order = work / ("extra__" + job["into"].replace("/", "__") + "__" + job["doc"].replace("/", "__") + ".json")
+    order.write_text(json.dumps({**job, "root": str(ws.root), "today": today, "prompt": text}, ensure_ascii=False), "utf-8")
+    values = {**search_settings(ws.config), "doc": str(path), "root": str(ws.root),
+              "doc_rule": "/" + str((work / "no-edit").resolve())}  # it may edit nothing
+    started = time.monotonic()
+    code, err, reply = _run_writer(_fill(command, {k: str(v) for k, v in values.items()}), text, order, ws.root, limit)
+    out = {"doc": job["doc"], "into": job["into"], "target": job["target"], "seconds": round(time.monotonic() - started)}
+    try:
+        env = json.loads(reply)
+        if isinstance(env, dict) and isinstance(env.get("total_cost_usd"), (int, float)):
+            out["cost_usd"] = round(env["total_cost_usd"], 4)
+    except ValueError:
+        pass
+    lines = before.decode("utf-8", errors="replace").splitlines()
+    if path.read_bytes() != before:
+        path.write_bytes(before)
+        out["status"], out["restored"] = f"refused: it changed {job['doc']}", True
+        return out
+    if code != 0:
+        why = next((ln.strip() for ln in reversed(err.splitlines()) if ln.strip()), "")
+        out["status"] = "timeout" if code is None else f"failed: the writer exited {code}" + (f" ({why[:200]})" if why else "")
+        return out
+    got = _listed(reply)
+    if got is None:
+        out["status"] = "failed: no JSON list in its reply"
+        return out
+    rules = [{"line": int(r["line"]), "rule": " ".join(str(r["rule"]).split())} for r in got
+             if isinstance(r, dict) and str(r.get("line", "")).isdigit() and 1 <= int(r["line"]) <= len(lines)
+             and str(r.get("rule", "")).strip()]
+    out["status"], out["rules"] = "listed", rules
+    return out
+
+
+def merge_extras(path: Path, heading: str, listed: list[dict]) -> int:
+    """Add the rules other docs' writers listed to the doc's critical-rules section, one list item each
+    citing its doc and line; under a `### Rules from the module's other docs` heading when the section's
+    rules are headings. The number added."""
+    items = [f"- {r['rule']} (`{d['doc']}:{r['line']}`)" for d in listed for r in d.get("rules", [])]
+    if not items:
+        return 0
+    text = path.read_text("utf-8")
+    span = section_span(text, heading)
+    if span is None:
+        return 0
+    lines = text.split("\n")
+    end = span[1]
+    while end > span[0] and not lines[end - 1].strip():
+        end -= 1
+    inner = lines[span[0]:end]
+    headed = any(re.match(r"^#{2,6}\s", ln) for ln in inner)
+    block = [""] + (["### Rules from the module's other docs", ""] if headed else []) + items
+    lines[end:end] = block
+    path.write_text("\n".join(lines), "utf-8")
+    return len(items)
 
 
 def confined(old: str, new: str, heading: str) -> bool:
@@ -363,20 +512,38 @@ def build(ws, items: list[dict]) -> dict:
     try:
         work = Path(tempfile.mkdtemp(prefix="orders-", dir=state))
         parallel = max(1, int((ws.config.get("init") or {}).get("max_parallel", 4)))
+        jobs = [{"doc": d, "target": i["target"], "role": "extra", "into": i["doc"]} for i in items
+                for d in other_docs(ws, i, (ws.root / i["doc"]).read_text("utf-8"))]
+        listed = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=parallel) as pool:
             futures = [pool.submit(build_one, ws, item, command, today, work, limit) for item in items]
+            extra_futures = [pool.submit(list_one, ws, job, command, today, work, limit) for job in jobs]
             for f in futures:
                 try:
                     results.append(f.result())
                 except Exception as e:  # one doc's failure never stops the others
                     results.append({"doc": "?", "status": f"failed: {e}"})
+            for f, job in zip(extra_futures, jobs):
+                try:
+                    listed.append(f.result())
+                except Exception as e:
+                    listed.append({"doc": job["doc"], "into": job["into"], "status": f"failed: {e}"})
+        heading = ws.config["lint"].get("critical_rules_heading", "Critical Rules")
+        for r in results:  # the other docs' rules go into a module doc its own writer built
+            mine = [x for x in listed if x["into"] == r.get("doc")]
+            if not mine:
+                continue
+            r["extras"] = [x["doc"] for x in mine]
+            r["extras_failed"] = [x["doc"] for x in mine if x["status"] != "listed"]
+            if r["status"] == "built":
+                r["extras_added"] = merge_extras(ws.root / r["doc"], heading, [x for x in mine if x["status"] == "listed"])
         docs = {ws.root / i["doc"] for i in items}
         after = _snapshot(modules_dir)
         other = sorted(str(p.relative_to(ws.root)) for p in set(after) | set(before)
                        if p not in docs and before.get(p) != after.get(p)
                        and not any(str(p.relative_to(ws.root)) in r.get("removed", []) for r in results))
         summary = {k: sum(1 for r in results if r["status"].startswith(k)) for k in ("built", "failed", "refused", "timeout")}
-        report = {"docs": results, "other_changes": other, "summary": summary,
+        report = {"docs": results, "extras": listed, "other_changes": other, "summary": summary,
                   "finished": datetime.datetime.now().isoformat(timespec="seconds")}
         (state / "last.json").write_text(json.dumps(report, indent=1, ensure_ascii=False), "utf-8")
         return report

@@ -18,7 +18,7 @@ from pathlib import Path
 from unittest import mock
 
 from segmently_modules import index_build
-from tests.helpers import make_repo, run, run_json
+from tests.helpers import make_repo, mutate_registry, run, run_json
 
 FAKE = r'''
 import json, os, sys, time
@@ -26,6 +26,12 @@ from pathlib import Path
 time.sleep(float(os.environ.get("FAKE_SLEEP", "0")))
 order = json.loads(Path(os.environ["SEGMENTLY_MODULES_WORK_ORDER"]).read_text())
 stdin = sys.stdin.read()
+if order.get("role") == "extra":                  # an other doc's writer: a JSON list, no edit
+    assert "you change nothing" in stdin
+    if os.environ.get("FAKE_EXTRA") == "edit":
+        (Path(order["root"]) / order["doc"]).write_text("rewritten\n")
+    print(json.dumps([{"line": 3, "rule": "Never refund twice."}] if order["doc"].endswith("extra.md") else []))
+    sys.exit(0)
 assert "Build or refresh" in stdin                # the procedure arrives on stdin
 if os.environ.get("FAKE_STDIN"):
     Path(os.environ["FAKE_STDIN"]).write_text(stdin)
@@ -52,6 +58,11 @@ if mode == "other":
     (Path(order["root"]) / "modules/cart/MODULE.md").write_text("# cart, touched\n")
 print("1 entry, no contradictions")
 '''
+
+
+def index_build_ws(root):
+    from segmently_modules.workspace import Workspace
+    return Workspace.load(root)
 
 
 class Base(unittest.TestCase):
@@ -151,6 +162,46 @@ class BuildTest(Base):
         self.assertIn("`### Critical rules when modifying`, lines 5–8", seen.read_text())
         # the fake writer appends a second section: refused, since the reader would never see it
         self.assertTrue(env["data"]["docs"][0]["status"].startswith("refused"), env["data"]["docs"][0])
+
+    def other_docs(self):
+        def extra(reg):
+            reg["modules"]["shop"]["context_files"]["supplementary"] = ["modules/shop/extra.md", "modules/cart/MODULE.md"]
+        mutate_registry(self.root, extra)
+        (self.root / "modules/shop/extra.md").write_text("# Extra\n\nNever refund twice.\n", encoding="utf-8")
+        (self.root / "modules/shop/memo.md").write_text("# Memo\n\nSome history.\n", encoding="utf-8")
+        (self.root / "modules/shop/old.legacy.md").write_text("# old\n", encoding="utf-8")
+        self.doc.write_text("# shop\n\nRead [the memo](memo.md) first; not `old.legacy.md`, not [cart](../cart/MODULE.md).\n",
+                            encoding="utf-8")
+
+    def test_the_module_doc_takes_the_rules_of_its_other_docs(self):  # c02, 2026-10-19
+        self.other_docs()
+        seen = self.root.parent / "stdin.txt"
+        with mock.patch.dict(os.environ, {**self.env, "FAKE_MODE": "good", "FAKE_STDIN": str(seen)}):
+            _, env, _ = run_json("rules", "--build", "shop", *self.R)
+        self.assertIn("Its 2 other doc(s) (modules/shop/extra.md, modules/shop/memo.md) are read by writers of their own",
+                      seen.read_text())  # another module's own doc and a frozen copy are never among them
+        r = env["data"]["docs"][0]
+        self.assertEqual((r["status"], r["extras"], r["extras_failed"], r["extras_added"]),
+                         ("built", ["modules/shop/extra.md", "modules/shop/memo.md"], [], 1))
+        self.assertEqual([(x["doc"], x["status"], x["rules"]) for x in env["data"]["extras"]],
+                         [("modules/shop/extra.md", "listed", [{"line": 3, "rule": "Never refund twice."}]),
+                          ("modules/shop/memo.md", "listed", [])])
+        self.assertIn("- Never refund twice. (`modules/shop/extra.md:3`)", self.doc.read_text())
+        rules = run_json("rules", "shop", *self.R)[1]["data"]["modules"][0]["rules"]
+        self.assertIn("Never refund twice. (`modules/shop/extra.md:3`)", [x["text"] for x in rules])  # a reader gets it
+        self.assertEqual(index_build.other_docs(index_build_ws(self.root), {"doc": "modules/shop/roles/qa.md",
+                                                                           "target": "shop", "role": "qa"}, ""), [])
+
+    def test_an_other_docs_writer_that_edits_is_refused_and_undone(self):
+        self.other_docs()
+        with mock.patch.dict(os.environ, {**self.env, "FAKE_MODE": "good", "FAKE_EXTRA": "edit"}):
+            _, env, _ = run_json("rules", "--build", "shop", *self.R)
+        self.assertEqual((self.root / "modules/shop/extra.md").read_text(), "# Extra\n\nNever refund twice.\n")
+        listed = {x["doc"]: x["status"] for x in env["data"]["extras"]}
+        self.assertEqual(listed["modules/shop/extra.md"], "refused: it changed modules/shop/extra.md")
+        r = env["data"]["docs"][0]
+        self.assertEqual((r["status"], r["extras_added"]), ("built", 0))
+        self.assertIn("modules/shop/extra.md", r["extras_failed"])
 
     def test_a_break_before_a_new_section_is_free_but_not_under_text(self):
         old = "# shop\n\nText.\n"

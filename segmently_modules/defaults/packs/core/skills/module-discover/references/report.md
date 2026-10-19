@@ -65,6 +65,8 @@ Index the rules of <doc>, … now? A writer per doc, in the background, edits on
 - `Search:` is the first line under the title, in the form `references/choose.md` gives.
 - The closing question only when an `index:` line says `not indexed` (`references/rules.md`):
   every such doc, once; on a yes run `rules_build`'s `build`, never without it.
+- Whatever is written from this report — a brief, a plan — keeps every `Rules:` line verbatim with
+  its `doc:line`: a rule stays a rule (never / must), never a question to check or a risk.
 - An empty section says "none"; it is never left out.
 
 ## JSON (`discovery-results.json`)

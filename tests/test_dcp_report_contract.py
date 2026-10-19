@@ -138,6 +138,10 @@ RULES = [
     # 2026-10-19 (owner): discover writes nothing; after the report it asks to index the docs without one
     "- The closing question only when an `index:` line says `not indexed` (`references/rules.md`):",
     "  every such doc, once; on a yes run `rules_build`'s `build`, never without it.",
+    # 2026-10-19 (owner): what is written from the report carries its rules as rules (the stand's briefs lost 9 of 14
+    # rules they had read: dropped, or turned into "check whether …")
+    "- Whatever is written from this report — a brief, a plan — keeps every `Rules:` line verbatim with",
+    "  its `doc:line`: a rule stays a rule (never / must), never a question to check or a risk.",
 ]
 MISSING_FILE = "- `<file>`"
 QUESTION = ("Index the rules of <doc>, … now? A writer per doc, in the background, edits only their "
