@@ -113,8 +113,8 @@ class DiscoverContractTest(unittest.TestCase):  # D2: the host's MODE=discover c
         "`consume` (calls its API as it is)",
         "`reference` (follows its patterns or rules)",
         # docs for every role, the extracts that bear on the task, the "nothing" line
-        "A `modify` or `consume` module: every doc `segmently-modules show <module> --all-roles "
-        "--json` lists",
+        "A `modify` or `consume` module: every doc `segmently-modules show <module> --all-roles > "
+        "<temp file>` lists, each read to the end",  # owner 2026-10-19: text through a file, read whole
         "a `reference` module: its main doc only.",  # C5 read a reference module's role docs
         "Never `MODULE.legacy.md` or `roles/*.legacy.md`.",
         "Take from each doc what bears on the task — rules, constraints, contracts, pitfalls — as "
@@ -133,7 +133,7 @@ class DiscoverContractTest(unittest.TestCase):  # D2: the host's MODE=discover c
         "module or to none",
         "drop a kept module only with a stated reason, on the rejected list",
         # the report reaches the conversation, the JSON on request
-        "so the context reaches the conversation even when the agent ran the skill",
+        "The extracts are in the report, so they reach the conversation through an agent too.",
         "the `discovery-results.json` shape in `references/report.md`",
     ]
     GONE = [  # P8.3 / P8.5 rules D2 removes: discover is no root-cause search

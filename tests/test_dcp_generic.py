@@ -167,7 +167,11 @@ class NothingElseChangesTest(Shop):
         for generic in (None, ["shelf"]):
             self.use(generic)
             texts.append(run("discover", "--task", task, "--match", "lexical", *self.R))
-        self.assertEqual(texts[0], texts[1])
+        # the text's first line is the verdict (2026-10-19), and only it changes
+        self.assertEqual([t[1].split("\n", 1)[0] for t in texts],
+                         ["lexical: sure (top: shelf)", "lexical: sure (top: till)"])
+        self.assertEqual([(t[0], t[1].split("\n", 1)[1], t[2]) for t in texts][0],
+                         [(t[0], t[1].split("\n", 1)[1], t[2]) for t in texts][1])
         self.assertEqual(texts[0][0], 0)
         contexts = []
         for generic in (None, ["shelf"]):

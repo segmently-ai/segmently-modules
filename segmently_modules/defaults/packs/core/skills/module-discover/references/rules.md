@@ -4,11 +4,9 @@ Every doc of a module — its module doc and each role doc, a child's and its pa
 critical-rules section with the rules of that doc; a first line `Indexed: every rule of this doc,
 YYYY-MM-DD.` says the section lists them all (the doc's rules index). The index is optional: a
 hand-written section counts the same, and a module may have none.
-`segmently-modules show <module> --json` gives `rules_setting` (`[rules] index`) and `rules_index`
-(`complete`; `missing`: the docs without the line; a doc another skill owns is never missing);
-`rules <module>` gives every rule of every doc, whole, each with its doc and role (as text, the
-form read below); `show`'s `rules` are a preview (a title cut at 160 characters, a text past the
-budget `null`).
+`segmently-modules rules <module>… > <temp file>` gives every rule of every doc, whole, each with its doc and role,
+and per module a `rules index:` line (`complete`, or `not indexed: <doc>, …`; a doc another skill
+owns is never missing); `show`'s `rule` lines are a preview (titles only).
 
 **Read them whole, choose by meaning.** Which rules apply to the task is a judgement of meaning,
 made over every rule: `segmently-modules rules <module>… > <temp file>`, then read the file to the
@@ -18,29 +16,31 @@ task can hold the constraint in its text. This holds for every rule you read, of
 any step (a later look at a module you consume or only check too): a search for words finds the
 words you thought of, not the rule that applies.
 
-**What to do.** This skill never writes a doc. Whatever `rules_setting` says, a `modify` module
+**What to do.** This skill never writes a doc. Whatever `[rules] index` says, a `modify` module
 whose index is complete: its `Rules:` block quotes `rules <module>`, and its docs are not read
-again for those rules. One whose index is not complete: read each of its `missing` docs to the end
+again for those rules. One whose index is not complete: read each doc its line names to the end
 in step 5 (the whole file with your file-read tool, not a search in it) and give every rule they
 state as an extract; its `Rules:` block quotes what `rules` gives and its last line names the docs
 left without an index. Under `sync` (the default), module-sync indexes them after the change.
 
 Under `discover`, you offer the index and the user decides; nothing is written while you work.
-`show <module>`, `rules <module>…` and step 7's `discover --files … --modify … --consume …` give
-`rules_build` — the docs without an index of the modules you marked (a child's parent's too; without
+`show <module>`, `rules <module>…` and step 7's `discover --files … --modify … --consume …` end with a
+`rules index:` line (`rules_build` in JSON) — the docs without an index of the modules you marked (a child's parent's too; without
 marks, of the modules the files belong to):
-- `missing`: their rules are only in their text, so this run reads each to the end. After the
-  report, ask the user once whether to index them, naming the docs; on a yes run its `build`
-  (`rules --build <module>… --background`: one writer per doc in the background, every change
-  checked to stay inside the critical-rules section), and the next reader gets the index instead of
-  doing this reading again. Never run it without that yes; run through an agent, the question ends
-  the report for the caller to ask;
-- `running`: a build the user said yes to is still going; read those docs in full;
-- `complete`: nothing was missing;
-- `read` (any status): the command that gives these modules' rules whole; run it and read the file;
-- `not_allowed`, `no_writer`, `skipped`: nothing can be written; its `note` says why (the user's own
-  permission `SEGMENTLY_MODULES_ALLOW_INDEX_WRITER=1` is not set, there is no writer, a pipeline
-  run). Give the note in the block's last line.
+- "N doc(s) without one" (`missing`): their rules are only in their text, so this run reads each to
+  the end. After the report, ask the user once whether to index them, naming the docs; on a yes run
+  the command the line ends with (`rules --build <module>… --background`: one writer per doc in the
+  background, every change checked to stay inside the critical-rules section), and the next reader
+  gets the index instead of doing this reading again. Never run it without that yes; run through an
+  agent, the question ends the report for the caller to ask;
+- "being indexed in the background" (`running`): a build the user said yes to is still going; read
+  those docs in full;
+- no line (`complete`): nothing was missing;
+- discover's `rules:` line (`read`): the command that gives these modules' rules whole; run it and
+  read the file;
+- "not built (<note>)" (`not_allowed`, `no_writer`, `skipped`): nothing can be written; the note says
+  why (the user's own permission `SEGMENTLY_MODULES_ALLOW_INDEX_WRITER=1` is not set, there is no
+  writer, a pipeline run). Give the note in the block's last line.
 A branch review (`references/from-diff.md`) never builds. `segmently-modules rules --build <module> --json`
 builds on request and waits (`--json`: per doc its `status`).
 

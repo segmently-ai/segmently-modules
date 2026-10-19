@@ -260,11 +260,14 @@ class ConfidenceTableTest(Shop):  # DCP-AC-004
         self.assertEqual(data["lexical_confidence"],
                          {"level": "unsure", "reason": "no_hits", "top": []})
 
-    def test_text_output_is_unchanged(self):
+    def test_the_text_output_leads_with_it(self):  # 2026-10-19: module-discover reads the text, whole
         code, out, err = run("discover", "--task", "a shelf", "--match", "lexical", *self.R)
         self.assertEqual((code, err), (0, ""))
-        self.assertNotIn("confidence", out)
-        self.assertNotIn("sure", out)
+        self.assertEqual(out.splitlines()[0], "lexical: unsure: low_score (top: shelf)")
+        code, out, _ = run("discover", "--task", "a shelf in the aisle", "--match", "lexical", *self.R)
+        self.assertEqual(out.splitlines()[0], "lexical: sure (top: shelf)")
+        code, out, _ = run("discover", "--files", "modules/till/MODULE.md", *self.R)  # no task: no line
+        self.assertFalse(out.startswith("lexical:"))
 
 
 class ScoreBoundaryTest(Shop):  # DCP-AC-005

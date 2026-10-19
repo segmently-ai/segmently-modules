@@ -398,13 +398,22 @@ class TextRulesTest(SkillRules):  # P4B-AC-014, P4B-AC-017
         saved_gate = [["ci", "--base", "X", "--json"]]
         cards = [e for e in exempt if e == ["catalog", "--plain"]]  # module-discover's step 1 (owner 2026-10-19)
         self.assertEqual(len(cards), 1)
-        others = [e for e in exempt if e != saved_gate[0] and e[:1] != ["rules"] and e not in cards]
+        # owner 2026-10-19: module-discover reads every output it needs as text through a temp file, read
+        # whole (the stand's readers cut every `--json` they were given with a script or `head`)
+        reads = [["catalog", "--settings"], ["discover", "--task-file", "X", "--match", "lexical"],
+                 ["show", "X"], ["related", "X"], ["show", "X", "--all-roles"],
+                 ["discover", "--files", "X", "--task-file", "X", "--match", "lexical", "--modify", "X",
+                  "--consume", "X"]]
+        self.assertEqual(sorted(e for e in exempt if e in reads), sorted(reads))
+        others = [e for e in exempt if e != saved_gate[0] and e[:1] != ["rules"] and e not in cards
+                  and e not in reads]
         self.assertEqual(others.count(["choose", "--task-file", "-"]), 3)  # AC-015: one line in
         self.assertEqual(others.count(["choose", "--task-file", "X"]), len(others) - 3)  # each
         self.assertEqual(exempt.count(saved_gate[0]), 1)
         handoff = [e for e in exempt if e[:1] == ["rules"]]  # the rules as text, read whole: module-check's,
         # and module-discover's since c05 pilot 6 (a reader filtered `rules --json` by keyword)
-        self.assertEqual(sorted(handoff), [["rules", "XX"], ["rules", "XX", "--files", "XX"]])
+        self.assertEqual(sorted(handoff), [["rules", "X"], ["rules", "XX"], ["rules", "XX"],
+                                           ["rules", "XX", "--files", "XX"]])  # + discover's step 5 (2026-10-19)
         self.assertEqual(path_lists, [("module-discover",
                                        ["code-map", "files", "X", "--source-only", "--paths"])])
 

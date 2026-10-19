@@ -12,7 +12,7 @@ goes to segmently-modules through a file (final review M-6), and every `match` /
 given a task in a shipped skill, reference or template runs `--match lexical` (final review I-1,
 P8.2 ruling M-6): a repository's `[match] mode` never turns a skill's keyword check into an agent
 run. The chooser setting changed module-discover's half of the step: it reads `segmently-modules
-catalog --settings --json` and decides the mode in one table (`test_discover_choose_text`); its
+catalog --settings > <temp file>` and decides the mode in one table (`test_discover_choose_text`); its
 by-meaning bullet, the keyword half and the merge stay word for word the shared ones.
 Formalization eval 2026-10-15: the owner adopted the lite text — the procedure is the model's, the
 contract is pinned: module-discover's steps keep their order and their commands, step 2 one score
@@ -181,7 +181,8 @@ class SharedStepTest(unittest.TestCase):  # P82-AC-034…039
     # module-discover under the chooser setting: the settings from `catalog --settings`, the mode
     # sentence replaced by the routing table (pinned by test_discover_choose_text)
     DISCOVER_SAYS = {
-        "segmently-modules catalog --json": "segmently-modules catalog --settings --json"}
+        "segmently-modules catalog --json": "segmently-modules catalog --settings > <temp file>",
+        "read `match.mode` and `search`.": "read `[match] mode` and `[search]`."}  # its text output
     NOT_IN_DISCOVER = (
         "The mode: `hybrid` unless the user says otherwise",
         '("only lexical", "by meaning", in any language)', "or `match.mode` is `semantic`;",
@@ -401,12 +402,13 @@ class CommandsRunTest(unittest.TestCase):  # P82-AC-036, 038, 039, 040
         args, _ = filled(command("module-discover", "segmently-modules discover --files"),
                          {"<edit files>": found, "<file>": str(keywords), "<modify>": "", "<consume>": ""})
         self.assertEqual(args[:3], ["discover", "--files", "src/orders/service.py"])
-        data = json.loads(self.cli(args))["data"]
+        self.assertIn("file      src/orders/service.py -> orders", self.cli(args))  # the text the skill reads
+        data = json.loads(self.cli([*args, "--json"]))["data"]
         self.assertEqual([f["path"] for f in data["files"]],
                          ["src/orders/service.py", "src/payments/gateway.py"])
         self.assertEqual(data["missing_files"], [])
         # one quoted string is one path: a file that does not exist
-        data = json.loads(self.cli(["discover", "--files", found, *args[4:]]))["data"]
+        data = json.loads(self.cli(["discover", "--files", found, *args[4:], "--json"]))["data"]
         self.assertEqual(data["missing_files"], [found])
 
 
@@ -485,7 +487,7 @@ class OtherKeysTest(unittest.TestCase):  # review M-9: the keys the steps read, 
 
 class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20)
     ORDER = [  # P8.6 D2: the complete context pull of the host original
-        "segmently-modules catalog --settings --json",  # the chooser setting (DCP-AC-023)
+        "segmently-modules catalog --settings > <temp file>",  # the chooser setting (DCP-AC-023)
         "1–3 short English queries",  # F6a: the registry's language, domain terms, identifiers
         "(steps 6 and 7 use it too)",  # review M-4
         "the domain terms and code identifiers",
@@ -493,7 +495,7 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20
         '"only lexical"',
         MEANING,
         f"`{APPLY}`",
-        f"{KEYWORD} `segmently-modules discover --task-file <file> --match lexical --json`",
+        f"{KEYWORD} `segmently-modules discover --task-file <file> --match lexical > <temp file>`",
         HYBRID,
         "Modules the user named are verified like the rest but never dropped",  # the lite text
         "**Verify.**", "the child the task is in",
@@ -501,7 +503,7 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20
         "**One hop out.**", "(follow forward edges only)",
         "**Usage.**", "`modify` (the task changes its code or contracts)",
         "`consume` (calls its API as it is)", "`reference` (follows its patterns or rules)",
-        "**Docs for every role.**", "segmently-modules show <module> --all-roles --json",
+        "**Docs for every role.**", "segmently-modules show <module> --all-roles > <temp file>",
         "read, nothing for this task",
         "**Code touch points.**",
         "segmently-modules code-map files <module> --source-only --paths",  # DCP-AC-024
@@ -509,7 +511,7 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20
         "`<edit | read> — file:line — symbol — why`",  # DCP-AC-011: the tag first
         "the files the work will create are the plan's decision and are never listed",
         "**Owners and docs to update.**",
-        "segmently-modules discover --files <edit files> --task-file <file> --match lexical --modify <modify> --consume <consume> --json",
+        "segmently-modules discover --files <edit files> --task-file <file> --match lexical --modify <modify> --consume <consume> > <temp file>",
         F20,  # P82-AC-040
         "**Report**", "`references/report.md`",
     ]

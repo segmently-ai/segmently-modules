@@ -320,7 +320,13 @@ def _render_context(d, top: int | None = None) -> None:
 
 def _render_discover(d, ref: str | None = None) -> None:
     """`ref`: the single ref of `--from-diff REF` — its `diff` source is labelled `diff
-    (working tree vs REF)`."""
+    (working tree vs REF)`. The text carries what module-discover reads (2026-10-19: every reader
+    cut `--json` with a script or `head`, while it read a text file to the end): how sure the keyword
+    result is first, the rules index and the `rules` command last."""
+    lc = d.get("lexical_confidence")
+    if lc:
+        why = f": {lc['reason']}" if lc.get("reason") else ""
+        print(f"lexical: {lc['level']}{why} (top: {', '.join(lc.get('top') or []) or 'none'})")
     for m in d["modules"]:
         score = f"score {m['score']:<3} " if m["score"] is not None else \
             (f"confidence {m['confidence']:.2f} " if "confidence" in m else "")
@@ -341,3 +347,11 @@ def _render_discover(d, ref: str | None = None) -> None:
         print(f"not on disk: {f} (typo? a deleted file still maps)")
     for n in d.get("notes", []):
         print(n)
+    b = d.get("rules_build")
+    if b:
+        from segmently_modules.index_build import build_line
+        if b.get("read"):
+            print(f"rules: {b['read']}")
+        line = build_line(b)
+        if line:
+            print(line)

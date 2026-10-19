@@ -9,7 +9,13 @@ for a `modify` or `consume` module, the main doc only for a `reference` one, nev
 `*.legacy.md` files; step 6 reads just enough to name the symbol and what changes, not whole files.
 The per-step batching examples, "never batch commands whose input depends on an earlier output"
 and the outline-first reading left the skill on purpose, and the test that ran the outline command
-taken from `SKILL.md` went with them."""
+taken from `SKILL.md` went with them.
+
+Owner ruling 2026-10-19 (after the benchmark stand): how much to read is no longer the agent's call.
+Every reader had cut its `--json` outputs with a script or `head` and read few docs whole, while it
+read a text output written to a file to the end. The intro now says what the steps name is read
+whole — a command's text output through a temp file, never `--json`; a doc with the file-read tool —
+and only code is read in part; each step names its command with the temp file."""
 from __future__ import annotations
 
 import re
@@ -21,23 +27,21 @@ from tests.test_builtin_skills import section
 
 ENGINE = Path(__file__).resolve().parents[1]
 SKILL = builtin_packs_root() / "core/skills/module-discover/SKILL.md"
-INTRO = [  # the lite text's steps intro, in this order, before step 1
-    "The steps say what to find and what the report must hold; how to search and how much to read "
-    "is your call.",
-    # final review I-1: a Bash batch only of short outputs
-    "Run independent reads together (parallel tool calls, or one Bash call when every output is "
-    "short).",
-    # final review I-1: a cut output is read back, never used as it is
-    "A host may cut a long output to a preview: then read the file it names, or rerun narrower.",
+INTRO = [  # the steps intro, in this order, before step 1
+    "The steps say what to find and what the report must hold; how to search is your call.",
+    # owner 2026-10-19: what the steps name is read whole, a command's output through a file
+    "What they name is read whole, to the end: a command's text output (never `--json`) through a "
+    "temp file, a doc with your file-read tool; only code is read in part.",
+    "Run independent reads together.",
 ]
 NOT_BATCHED = (  # final review I-1: outputs that can be long never join a Bash batch
     "and then the docs they list", "step 6's searches", "in one Bash call (`a; b; c`, or a loop) "
     "or as parallel tool calls")
-COMMANDS = {2: "segmently-modules show <module> --json",  # the read command each step runs
-            3: "segmently-modules related <module> --json",
-            5: "segmently-modules show <module> --all-roles --json"}
+COMMANDS = {2: "segmently-modules show <module> > <temp file>",  # the read command each step runs
+            3: "segmently-modules related <module> > <temp file>",
+            5: "segmently-modules show <module> --all-roles > <temp file>"}
 STEPS = {  # each step's own rule, in its own step and in this order
-    2: ["Read each candidate's description and main doc",
+    2: ["Read each candidate's main doc to the end",
         "a split module: its INDEX, then the child the task is in;",
         "exit 1 is a pointer stub: read its successor",
         "Score how much the task needs the module, 0–10, and keep it at 5 or more;",
@@ -45,15 +49,17 @@ STEPS = {  # each step's own rule, in its own step and in this order
         "description\"."],
     3: ["of a kept module may show another module the task needs (follow forward edges only); "
         "verify it as in step 2."],
-    5: ["A `modify` or `consume` module: every doc `segmently-modules show <module> --all-roles "
-        "--json` lists;",
+    5: ["A `modify` or `consume` module: every doc `segmently-modules show <module> --all-roles > "
+        "<temp file>` lists, each read to the end;",
         "a `reference` module: its main doc only.",
         "Never `MODULE.legacy.md` or `roles/*.legacy.md`.",
         "Take from each doc what bears on the task — rules, constraints, contracts, pitfalls — as "
         "short extracts with the doc's path and role;",
         "a doc with nothing for the task gets \"read, nothing for this task\".",
-        "Never a retelling."],
-    6: ["Read just enough to name the symbol and what changes, not whole files."],
+        "Never a retelling.",
+        "`segmently-modules rules <every kept module> > <temp file>`, read to the end, gives their "
+        "critical rules whole:"],
+    6: ["Read just enough code to name the symbol and what changes."],
 }
 
 
@@ -91,15 +97,16 @@ class StepsIntroTest(unittest.TestCase):  # DCP-AC-025, as the lite text says it
         self.assertLess(found[-1], body.index("1. **Candidates.**"))  # before the first step
         self.assertEqual(flat(raw()).count(INTRO[0]), 1)  # once in the whole skill
 
-    def test_only_short_outputs_join_a_bash_batch(self):  # final review I-1
+    def test_what_the_steps_name_is_read_whole(self):  # owner 2026-10-19
         body = flat(raw())
-        for gone in NOT_BATCHED:
+        for gone in NOT_BATCHED + ("how much to read", "not whole files", "cut a long output"):
             with self.subTest(gone=gone):
                 self.assertNotIn(gone, body)
         rule = flat(steps()).split("1. **Candidates.**", 1)[0]
         self.assertNotIn("git grep", rule)  # a search is never named as a Bash batch
-        self.assertIn("parallel tool calls", rule)
-        self.assertIn("when every output is short", rule)
+        for said in ("never `--json`", "through a temp file", "file-read tool", "only code is read in part"):
+            with self.subTest(said=said):
+                self.assertIn(said, rule)
 
 
 class StepRulesTest(unittest.TestCase):  # the rule each step keeps in the lite text
@@ -125,11 +132,14 @@ class StepRulesTest(unittest.TestCase):  # the rule each step keeps in the lite 
         self.assertNotIn("<file>", body)  # final review M-2: `<file>` is the terms file
 
 
-CHANGELOG_LINE = (  # the lite text's one Unreleased line (owner ruling, formalization eval)
-    "- module-discover's steps say what to find and what the report must hold, and leave how to "
-    "search and how much to read to the agent (independent reads still run together; an output "
-    "cut to a preview is read back from the file it names); in a 7-task comparison with the "
-    "step-by-step text it found as much (more `edit` files) at about 80% of the cost.")
+CHANGELOG_LINE = (  # the one Unreleased line (owner rulings: formalization eval; the stand, 2026-10-19)
+    "- module-discover's steps say what to find and what the report must hold, and leave how to s"
+    "earch to the agent; what they name is read whole, to the end — a command's text output throu"
+    'gh a temp file (never `--json`), a doc with the file-read tool — and only code is read in pa'
+    'rt. In a 7-task comparison with the step-by-step text the lite text found as much (more `edi'
+    't` files) at about 80% of the cost; on the benchmark stand (2026-10-19) every reader then cu'
+    't its `--json` outputs with a script or `head` and read few docs to the end, so how much to '
+    'read is no longer its call.')
 
 
 class ChangelogTest(unittest.TestCase):  # R-5

@@ -28,8 +28,8 @@ BY_MEANING = (
     "  (`low`, `medium`, `high` for `quick`, `standard`, `deep`). **Elsewhere** (no subagent, no\n"
     "  `codex exec`, or it fails, as inside a sandbox): answer the order yourself, every card read, by its rules. Pipe the answer to\n"
     "  `segmently-modules choose --apply - --json`.\n")
-KEYWORD = ("- By keyword (`lexical`, `hybrid`): "
-           "`segmently-modules discover --task-file <file> --match lexical --json`.\n")
+KEYWORD = ("- By keyword (`lexical`, `hybrid`): "  # owner 2026-10-19: text to a file, read whole
+           "`segmently-modules discover --task-file <file> --match lexical > <temp file>`,\n  read to the end.\n")
 HYBRID = "- `hybrid`: merge the lists; a module found both ways ranks first.\n"
 # AC-006: one row per line of the decision table, in the table's order
 HEADER = "| The user's words, this run | `search.chooser` | Keyword result | Mode |"
@@ -55,10 +55,10 @@ ROUTING = [  # the sentences that make the table one decision
 ]
 WHEN_UNSURE = [  # AC-007
     # final review M-1: the keyword command alone, never batched with a `choose`
-    "`when_unsure`: run the keyword command first, on its own; its `lexical_confidence.level` is "
-    "the keyword result.",
+    "`when_unsure`: run the keyword command first, on its own; its first line, `lexical: sure` or "
+    "`lexical: unsure: <reason>`, is the keyword result.",
     # final review M-3: the candidates are every keyword row, not the top family only
-    "On `sure` the keyword list (`modules`, not only `lexical_confidence.top`) is the candidates: "
+    "On `sure` the keyword list (every row, not only the `top`) is the candidates: "
     "no `choose` command and no chooser agent.",
     "On `unsure` run the by-meaning half too, then merge the lists as `hybrid` does.",
 ]
@@ -97,12 +97,12 @@ def flat(text: str) -> str:
 class SettingsTest(unittest.TestCase):  # DCP-AC-023
     def test_settings_come_from_catalog_settings(self):
         text = raw()
-        self.assertIn("Run `segmently-modules catalog --settings --json`; read `match.mode` and "
-                      "`search`.", flat(text))
+        self.assertIn("Run `segmently-modules catalog --settings > <temp file>`; read `[match] mode` and "
+                      "`[search]`.", flat(text))
         self.assertNotIn("catalog --json", text)
         catalogs = [argv(c) for c in commands(text) if argv(c)[:1] == ["catalog"]]
         # owner 2026-10-19: every card read by the agent first (`catalog --plain`, to a file read whole)
-        self.assertEqual(catalogs, [["catalog", "--plain"], ["catalog", "--settings", "--json"]])
+        self.assertEqual(catalogs, [["catalog", "--plain"], ["catalog", "--settings"]])  # both read as text
         self.assertIn("Never narrow the cards with grep, a regex, a script or a keyword score before reading "
                       "them: the verdict is yours, from what each card says.", flat(text))
 

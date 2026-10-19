@@ -236,7 +236,9 @@ class TextsSayIt(unittest.TestCase):
         prompt = (SKILLS / "module-check/references/prompt.md").read_text(encoding="utf-8")
         self.assertIn("no quote, no conflict", " ".join(prompt.split()))
         disc = " ".join((SKILLS / "module-discover/SKILL.md").read_text(encoding="utf-8").split())
-        self.assertIn("`show` returns each kept module's critical rules (`rules`: title, text", disc)
+        # owner 2026-10-19: the rules come whole from `rules`, to a file read to the end (not show's preview)
+        self.assertIn("`segmently-modules rules <every kept module> > <temp file>`, read to the end, gives "
+                      "their critical rules whole", disc)
         self.assertIn("`module-check` reads the plan", disc)
         cfg = (ENGINE / "segmently_modules/defaults/config.toml").read_text(encoding="utf-8")
         self.assertIn('critical_rules_heading = "Critical Rules"', cfg)

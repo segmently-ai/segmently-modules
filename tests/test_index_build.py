@@ -187,6 +187,16 @@ class DiscoverTest(Base):
         self.assertFalse(index_build.running(self.root))
         self.assertEqual(self.doc.read_text(), before)
 
+    def test_discovers_text_ends_with_the_rules_command_and_the_offer(self):
+        with mock.patch.dict(os.environ, {**self.env, "FAKE_MODE": "good"}):
+            code, out, _ = run("discover", "--files", "src/shop/pay.py", *self.R)
+        self.assertEqual(code, 0)
+        self.assertEqual(out.splitlines()[-2:], [
+            "rules: segmently-modules rules shop > <temp file>, then read the file to the end",
+            "rules index: 1 doc(s) without one; their rules are only in their text: read each to the end — "
+            "modules/shop/MODULE.md. After your report, ask the user whether to index them: "
+            "segmently-modules rules --build shop --background"])
+
     def test_the_offered_command_builds_in_the_background(self):
         with mock.patch.dict(os.environ, {**self.env, "FAKE_MODE": "good", "FAKE_SLEEP": "2"}):
             code, env, err = run_json("rules", "--build", "shop", "--background", *self.R)

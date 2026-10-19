@@ -239,13 +239,7 @@ def _render_rules(d) -> None:
         print(f"missing on disk: {', '.join(d['missing_files'])}")
     total = sum(len(m["rules"]) for m in d["modules"])
     print(f"{total} rule(s) in {len(d['modules'])} module(s)")
-    b = d.get("rules_build")
-    if b and b["status"] == "running":  # c05 pilot 9: "the rules above" read as enough
-        print(f"rules index: {len(b['docs'])} doc(s) being indexed in the background (rules --build); "
-              f"until then their rules are only in their text: read each to the end — {', '.join(b['docs'])}")
-    elif b and b["status"] == "missing":
-        print(f"rules index: {len(b['docs'])} doc(s) without one; their rules are only in their text: read each "
-              f"to the end — {', '.join(b['docs'])}. After your report, ask the user whether to index them: "
-              f"{b['build']}")
-    elif b and b.get("note"):
-        print(f"rules index: not built ({b['note']}); read each doc not indexed to the end for its rules")
+    from segmently_modules.index_build import build_line
+    line = build_line(d["rules_build"]) if d.get("rules_build") else None
+    if line:
+        print(line)

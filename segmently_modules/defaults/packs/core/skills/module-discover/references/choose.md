@@ -11,7 +11,7 @@ Never narrow the cards with grep, a regex, a script or a keyword score before re
 verdict is yours, from what each card says. The keyword list and the chooser below only add
 candidates; they never remove one the cards gave you. Step 2 then reads each candidate's main doc.
 
-Run `segmently-modules catalog --settings --json`; read `match.mode` and `search`. The text: the task as
+Run `segmently-modules catalog --settings > <temp file>`; read `[match] mode` and `[search]`. The text: the task as
 given. For the keyword half write 1–3 short English queries to a temporary `<file>` (steps 6 and 7
 use it too): the domain terms and code identifiers the task implies (registry keywords are English
 and match whole words). The user may set the model ("use opus") and the depth ("search deep":
@@ -33,9 +33,9 @@ pass `--match lexical`.
 | none | `when_unsure` | `unsure` | `hybrid`: the chooser runs after the keyword command |
 | none | `never` | any | `lexical`: no chooser |
 
-`when_unsure`: run the keyword command first, on its own; its `lexical_confidence.level` is the
-keyword result. On `sure` the keyword list (`modules`, not only `lexical_confidence.top`) is the
-candidates: no `choose` command and no chooser agent. On `unsure` run the by-meaning half too,
+`when_unsure`: run the keyword command first, on its own; its first line, `lexical: sure` or
+`lexical: unsure: <reason>`, is the keyword result. On `sure` the keyword list (every row, not only
+the `top`) is the candidates: no `choose` command and no chooser agent. On `unsure` run the by-meaning half too,
 then merge the lists as `hybrid` does.
 
 - By meaning (`semantic`, `hybrid`): write the text, verbatim, to `<task file>`. **Claude Code:**
@@ -48,7 +48,8 @@ then merge the lists as `hybrid` does.
   (`low`, `medium`, `high` for `quick`, `standard`, `deep`). **Elsewhere** (no subagent, no
   `codex exec`, or it fails, as inside a sandbox): answer the order yourself, every card read, by its rules. Pipe the answer to
   `segmently-modules choose --apply - --json`.
-- By keyword (`lexical`, `hybrid`): `segmently-modules discover --task-file <file> --match lexical --json`.
+- By keyword (`lexical`, `hybrid`): `segmently-modules discover --task-file <file> --match lexical > <temp file>`,
+  read to the end.
 - `hybrid`: merge the lists; a module found both ways ranks first.
 
 **A failing chooser** — no agent to hand the order to, an answer that is not JSON, or

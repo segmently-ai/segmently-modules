@@ -417,6 +417,20 @@ def start_background(ws, items: list[dict]) -> dict:
     return {"status": "started", "docs": docs, "log": str(log)}
 
 
+def build_line(b: dict) -> str | None:
+    """The text line of a `rules_build` (`rules`, `discover`), or None when it has nothing to say."""
+    if b["status"] == "running":  # c05 pilot 9: "the rules above" read as enough
+        return (f"rules index: {len(b['docs'])} doc(s) being indexed in the background (rules --build); "
+                f"until then their rules are only in their text: read each to the end — {', '.join(b['docs'])}")
+    if b["status"] == "missing":
+        return (f"rules index: {len(b['docs'])} doc(s) without one; their rules are only in their text: read each "
+                f"to the end — {', '.join(b['docs'])}. After your report, ask the user whether to index them: "
+                f"{b['build']}")
+    if b.get("note"):
+        return f"rules index: not built ({b['note']}); read each doc not indexed to the end for its rules"
+    return None
+
+
 def discover_hook(ws, targets: list[str], from_diff: bool) -> dict | None:
     """`rules_build` of `discover --files`, `rules <module>` and `show` under `[rules] index =
     "discover"`: the docs without an index of these modules and the command that indexes them.
