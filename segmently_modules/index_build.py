@@ -403,10 +403,15 @@ def start_background(ws, items: list[dict]) -> dict:
     argv = [sys.executable, "-c", RUN_ENGINE, "rules", "--build", *[i["doc"] for i in items],
             "--root", str(ws.root), "--json"]
     with open(log, "w", encoding="utf-8") as out:
-        subprocess.Popen(argv, cwd=ws.root, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
-                         start_new_session=True, env={**os.environ, "PYTHONPATH": os.pathsep.join(
-                             p for p in [str(Path(__file__).resolve().parents[1]), os.environ.get("PYTHONPATH", "")] if p)})
-    return {"status": "started", "docs": [i["doc"] for i in items], "log": str(log)}
+        proc = subprocess.Popen(argv, cwd=ws.root, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
+                                start_new_session=True, env={**os.environ, "PYTHONPATH": os.pathsep.join(
+                                    p for p in [str(Path(__file__).resolve().parents[1]), os.environ.get("PYTHONPATH", "")] if p)})
+    # the lock in the child's name now, before the child takes it (`build` lets its own pid through): a
+    # caller that asks `running` right away sees the build (stand c10, 2026-10-19: it waited 0 s)
+    docs = [i["doc"] for i in items]
+    (state / "build.lock").write_text(json.dumps({"pid": proc.pid, "docs": docs, "started": datetime.datetime.now()
+                                                  .isoformat(timespec="seconds")}), "utf-8")
+    return {"status": "started", "docs": docs, "log": str(log)}
 
 
 def discover_hook(ws, targets: list[str], from_diff: bool) -> dict | None:

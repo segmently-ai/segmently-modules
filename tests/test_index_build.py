@@ -21,8 +21,9 @@ from segmently_modules import index_build
 from tests.helpers import make_repo, run, run_json
 
 FAKE = r'''
-import json, os, sys
+import json, os, sys, time
 from pathlib import Path
+time.sleep(float(os.environ.get("FAKE_SLEEP", "0")))
 order = json.loads(Path(os.environ["SEGMENTLY_MODULES_WORK_ORDER"]).read_text())
 stdin = sys.stdin.read()
 assert "Build or refresh" in stdin                # the procedure arrives on stdin
@@ -174,10 +175,13 @@ class DiscoverTest(Base):
         self.assertEqual(self.doc.read_text(), before)
 
     def test_the_offered_command_builds_in_the_background(self):
-        with mock.patch.dict(os.environ, {**self.env, "FAKE_MODE": "good"}):
+        with mock.patch.dict(os.environ, {**self.env, "FAKE_MODE": "good", "FAKE_SLEEP": "2"}):
             code, env, err = run_json("rules", "--build", "shop", "--background", *self.R)
         self.assertEqual(code, 0, err)
         self.assertEqual((env["data"]["status"], env["data"]["docs"]), ("started", ["modules/shop/MODULE.md"]))
+        self.assertEqual(index_build.running(self.root)["docs"], ["modules/shop/MODULE.md"])  # at once, not later
+        with mock.patch.dict(os.environ, self.env):
+            self.assertEqual(self.discover()[1]["data"]["rules_build"]["status"], "running")
         self.wait_built()
         last = json.loads((index_build.state_dir(self.root) / "last.json").read_text())
         self.assertEqual(last["summary"]["built"], 1)
