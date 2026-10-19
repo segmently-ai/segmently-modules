@@ -41,7 +41,9 @@ LAYER_SCHEMA = {
                  "stub_pattern": "str", "updated_at_path": "str"},
     "budgets": {**{k: "int" for k in ("module_doc_split_signal", "module_doc_hard_stop",
                                       "role_doc_max", "keywords_soft", "keyword_shared_warn")},
-                "skill_split_signal": "int>=1", "pack_split_signal": "int>=1", "rules_text_max": "int"},
+                "skill_split_signal": "int>=1", "pack_split_signal": "int>=1", "rules_text_max": "int",
+                "rules_index_entries": "int>=1"},
+    "discover": {"read": "str"},
     "match": {**{k: "int" for k in ("keyword_weight", "combination_weight", "negative_weight",
                                     "min_score", "top")}, "mode": "str", "normalize": "str"},
     "lint": {"fail_on": "str", "component_table_heading": "str", "critical_rules_heading": "str", "drift_severity": "str",
@@ -69,6 +71,8 @@ CARDS = ("full", "brief")  # [search] cards: the cards of the work order
 # module it will change, during the run. "off": nothing writes an index (a section that exists is
 # still read).
 RULES_INDEX = ("sync", "discover", "off")
+DISCOVER_READ = ("whole", "index")  # [discover] read: every listed doc whole, or an indexed doc's rules from `rules`
+DISCOVER_DOCS_KINDS = ("module", "extras")  # [discover] docs: these, and role names
 RULES_INDEX_DEFAULT = "sync"
 # every [search] key with its default, in the order `catalog --settings` shows them; `generic`:
 # the modules (and their children) whose keyword hits alone never make the keyword result sure
@@ -111,6 +115,24 @@ def search_all(config: dict) -> dict:
 def rules_index_setting(config: dict) -> str:
     """`[rules] index` of the merged config, the default filled in."""
     return (config.get("rules") or {}).get("index", RULES_INDEX_DEFAULT)
+
+
+def discover_settings(config: dict) -> dict:
+    """`[discover]` of the merged config, the defaults filled in: `docs` ("all" or a list of "module",
+    "extras" and role names) and `read` ("whole" or "index")."""
+    table = config.get("discover") or {}
+    return {"docs": table.get("docs", "all"), "read": table.get("read", "whole")}
+
+
+def _validate_discover(table, source) -> None:
+    table = _require_table(table, "discover", source)
+    docs = table.get("docs", "all")
+    if not (docs == "all" or (isinstance(docs, list) and docs and all(isinstance(d, str) and d for d in docs))):
+        raise UsageError(f"{source}: [discover] docs: expected \"all\" or a list of \"module\", \"extras\" "
+                         f"and role names, got {docs!r}")
+    if "read" in table and table["read"] not in DISCOVER_READ:
+        raise UsageError(f"{source}: [discover] read: expected one of {', '.join(DISCOVER_READ)}, "
+                         f"got {table['read']!r}")
 
 
 def _validate_rules(table, source) -> None:
@@ -175,6 +197,8 @@ def validate_layer(layer: dict, source) -> None:
         _validate_search(layer["search"], source)
     if "rules" in layer:
         _validate_rules(layer["rules"], source)
+    if "discover" in layer:
+        _validate_discover(layer["discover"], source)
     init = layer.get("init")
     if isinstance(init, dict) and "max_parallel" in init and \
             not (_is_int(init["max_parallel"]) and init["max_parallel"] >= 1):

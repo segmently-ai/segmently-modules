@@ -25,6 +25,7 @@ keyword_shared_warn = 4
 skill_split_signal = 9000
 pack_split_signal = 64000
 rules_text_max = 8000         # characters of critical-rule text `show` returns (titles always)
+rules_index_entries = 25      # MS071 (warning): an indexed doc whose critical-rules section has more entries
 
 [match]
 keyword_weight = 3
@@ -38,6 +39,13 @@ normalize = "suffix"          # word endings -s/-es/-ies/-ed/-ing ignored on bot
 index = "sync"                # who writes the rules index of a module's docs: "sync" (create, init, roles add,
                               # split and module-sync write and keep it; module-discover only reads),
                               # "discover" (module-discover also builds a missing one), "off" (nothing writes it)
+
+[discover]
+docs = "all"                  # the docs module-discover's step 5 reads (`show --discover`): "all", or a list of
+                              # "module" (the module doc), "extras" (its other context_files docs) and role names,
+                              # e.g. ["module", "developer"]
+read = "whole"                # "whole": every listed doc is read to the end; "index": a doc whose rules index is
+                              # complete is not read — its rules come from `rules` (a doc without one is read whole)
 
 [lint]
 fail_on = "error"

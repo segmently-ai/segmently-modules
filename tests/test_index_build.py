@@ -170,8 +170,9 @@ class BuildTest(Base):
         (self.root / "modules/shop/extra.md").write_text("# Extra\n\nNever refund twice.\n", encoding="utf-8")
         (self.root / "modules/shop/memo.md").write_text("# Memo\n\nSome history.\n", encoding="utf-8")
         (self.root / "modules/shop/old.legacy.md").write_text("# old\n", encoding="utf-8")
-        self.doc.write_text("# shop\n\nRead [the memo](memo.md) first; not `old.legacy.md`, not [cart](../cart/MODULE.md).\n",
-                            encoding="utf-8")
+        (self.root / "modules/cart/plan.md").write_text("# cart plan\n", encoding="utf-8")
+        self.doc.write_text("# shop\n\nRead [the memo](memo.md) first; not `old.legacy.md`, not [cart](../cart/MODULE.md), "
+                            "not [its plan](../cart/plan.md).\n", encoding="utf-8")
 
     def test_the_module_doc_takes_the_rules_of_its_other_docs(self):  # c02, 2026-10-19
         self.other_docs()
@@ -325,6 +326,76 @@ class DiscoverTest(Base):
             d = run_json("discover", "--task", "shop checkout", *self.R)[1]["data"]
         self.assertEqual(d["rules_setting"], "discover")
         self.assertNotIn("rules_build", d)
+
+
+class DiscoverReadTest(Base):  # owner 2026-10-19: which docs discover reads, and the index in place of reading
+    def setUp(self):
+        super().setUp()
+        def roles(reg):
+            reg["modules"]["shop"]["context_files"].update(
+                {"roles": {"developer": "modules/shop/roles/developer.md", "qa": "modules/shop/roles/qa.md"},
+                 "supplementary": ["modules/shop/memo.md"]})
+        mutate_registry(self.root, roles)
+        (self.root / "modules/shop/roles").mkdir()
+        for name in ("developer", "qa"):
+            (self.root / f"modules/shop/roles/{name}.md").write_text(f"# shop {name}\n", encoding="utf-8")
+        (self.root / "modules/shop/memo.md").write_text("# memo\n", encoding="utf-8")
+
+    def config(self, discover: str):
+        with open(self.root / ".segmently-modules/config.toml", "a", encoding="utf-8") as f:
+            f.write("\n[discover]\n" + discover + "\n")
+
+    def show(self):
+        code, env, err = run_json("show", "shop", "--discover", *self.R)
+        self.assertEqual(code, 0, err)
+        d = env["data"]
+        return [r["path"] for r in d["read"]], {r["path"]: r["why"] for r in d.get("not_read", [])}
+
+    def test_the_defaults_read_every_doc(self):
+        read, aside = self.show()
+        self.assertEqual(read, ["modules/shop/MODULE.md", "modules/shop/roles/developer.md", "modules/shop/roles/qa.md",
+                                "modules/shop/memo.md"])
+        self.assertEqual(aside, {})
+
+    def test_docs_keeps_the_module_doc_and_the_named_roles(self):
+        self.config('docs = ["module", "developer"]')
+        read, aside = self.show()
+        self.assertEqual(read, ["modules/shop/MODULE.md", "modules/shop/roles/developer.md"])
+        self.assertEqual(aside, {"modules/shop/roles/qa.md": "docs", "modules/shop/memo.md": "docs"})
+        code, out, _ = run("show", "shop", "--discover", *self.R)
+        self.assertIn("  skip  role:qa", out)
+
+    def test_read_index_sets_aside_an_indexed_doc_and_a_cited_other_doc(self):
+        self.config('read = "index"')
+        (self.root / "modules/shop/roles/developer.md").write_text(
+            "# shop developer\n\n## Critical Rules\n\nIndexed: every rule of this doc, 2026-10-19.\n\n- Never x\n",
+            encoding="utf-8")
+        self.doc.write_text("# shop\n\n## Critical Rules\n\nIndexed: every rule of this doc, 2026-10-19.\n\n"
+                            "- Always y (`modules/shop/memo.md:1`)\n", encoding="utf-8")
+        read, aside = self.show()
+        self.assertEqual(read, ["modules/shop/roles/qa.md"])  # no index: read whole
+        self.assertEqual(aside, {"modules/shop/MODULE.md": "index", "modules/shop/roles/developer.md": "index",
+                                 "modules/shop/memo.md": "index"})
+        code, out, _ = run("show", "shop", "--discover", *self.R)
+        self.assertIn("  index role:developer", out)
+        self.assertIn("its rules are in `segmently-modules rules shop`, not read", out)
+
+    def test_bad_settings_are_refused(self):
+        self.assertEqual(run("show", "shop", "--discover", "--role", "qa", *self.R)[0], 2)
+        self.config('docs = ["module", "tester"]')
+        code, _, err = run("show", "shop", "--discover", *self.R)
+        self.assertEqual(code, 2)
+        self.assertIn("[discover] docs: unknown tester", err)
+
+    def test_a_swollen_index_warns_and_a_hand_written_section_does_not(self):
+        rules = "".join(f"- Never break rule {i}\n" for i in range(30))
+        (self.root / "modules/shop/roles/qa.md").write_text("# shop qa\n\n## Critical Rules\n\n" + rules, encoding="utf-8")
+        self.doc.write_text("# shop\n\n## Critical Rules\n\nIndexed: every rule of this doc, 2026-10-19.\n\n" + rules,
+                            encoding="utf-8")
+        _, env, _ = run_json("lint", *self.R)
+        found = [f for f in env["data"]["findings"] if f["code"] == "MS071"]
+        self.assertEqual([(f["severity"], f["path"]) for f in found], [("warning", "modules/shop/MODULE.md")])
+        self.assertIn("30 entries, over [budgets] rules_index_entries (25)", found[0]["message"])
 
 
 if __name__ == "__main__":

@@ -5,7 +5,8 @@ MS030-MS032 doc budgets · MS040 component paths ·
 MS052 a [[code_map]] rule whose `module` is not in the registry · MS053 two [[code_map]] rules
 route one file to two different modules · MS054 (info) an active module that maps no code ·
 MS056 `[coverage] doc_only` naming no module · MS070 (info) a rules-index entry whose `doc:line` names
-no doc or a line past its doc's end ·
+no doc or a line past its doc's end · MS071 (warning) an indexed doc whose critical-rules section has more
+entries than `[budgets] rules_index_entries` ·
 MS060-MS062, MS064, MS065 pack checks (unknown
 pack.toml keys, role templates, skills agents cannot load, skills reading unconfigured roles,
 shadowed skill ids) · MS063 ejected skills behind their pack · MS066 a repository pack that
@@ -344,7 +345,9 @@ _CITE = re.compile(r"`?((?:[\w@.-]+/)*[\w@.-]+\.md):(\d+)")
 
 
 def rules_index_findings(ws) -> list[Finding]:
-    """MS070 (info): an entry of a doc's critical-rules section cites `doc:line` that names no doc
+    """MS071 (warning): an indexed doc (an `Indexed:` line) whose critical-rules section has more entries than
+    `[budgets] rules_index_entries` (25) — hand-written sections are never flagged. MS070 (info): an entry of a
+    doc's critical-rules section cites `doc:line` that names no doc
     or a line past that doc's end — a citation the index's writer did not re-derive, or text that
     moved later. A path is read from the repository root (`modules/…`), else from the citing doc's
     module directory (`roles/qa.md:12`, `MODULE.md:40`; a bare role-doc name is tried under
@@ -361,8 +364,13 @@ def rules_index_findings(ws) -> list[Finding]:
                           if f.is_file() else None)
         return sizes[rel]
 
+    limit = (ws.config.get("budgets") or {}).get("rules_index_entries", 25)
     for target in sorted(target_names(ws.registry.modules)):
         for d in rules_of(ws, target):
+            if d["indexed"] and len(d["rules"]) > limit:  # owner 2026-10-19: a warning when an index swells, no cap
+                out.append(Finding("MS071", "warning", target, f"its rules index has {len(d['rules'])} entries, "
+                                   f"over [budgets] rules_index_entries ({limit}): keep the rules that are important, "
+                                   f"not evident from the code and in force", d["doc"]))
             home = mdir.match(d["doc"])
             for r in d["rules"]:
                 for m in _CITE.finditer(r["text"]):

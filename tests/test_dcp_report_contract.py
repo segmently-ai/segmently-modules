@@ -179,8 +179,8 @@ NEW_EXTRACT = ["  extract is short and says what it means for this task. A rule 
 WHY = "Why: <what the task needs from it; \"named by the user\" when it was>"
 RULES_BLOCK = ["Rules:", "- `<doc>:<line>` (<role>) — <the rule's first line, verbatim>",
                "- index: <complete (<date>) | building in the background — <doc>, … | not indexed — <doc>, … | incomplete — <doc>, …>"]
-RULES_BULLET = ["- `Rules:` only for a `modify` module (`references/rules.md`): each rule",
-                "  `rules <module>` gives (`references/rules.md`), verbatim, in its order, then the `index:` line.",
+RULES_BULLET = ["- `Rules:` only for a `modify` module (`references/rules.md`): each rule `rules <module>` gives",
+                "  that applies to the task (`references/rules.md`), verbatim, in its order, then the `index:` line.",  # 2026-10-19
                 "  A `consume` or `reference` module: no `Rules:` lines."]
 REPLACED = {OLD_CODE: [EDIT, READ, TESTS], OLD_VERSION: [NEW_VERSION], OLD_FILES: NEW_FILES,
             OLD_HEADING: [NEW_HEADING], OLD_REJECTED: [NEW_REJECTED],

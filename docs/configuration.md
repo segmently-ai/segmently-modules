@@ -73,6 +73,7 @@ stub_pattern = 'status:?\**\s*\**(retired|merged|migrated|superseded)'
 | `skill_split_signal` | `9000` | characters of a pack's `SKILL.md` or of one `references/*.md` file above this: MS068 (route its scenarios or split the skill; a signal, not a cap). An integer >= 1; any layer (a pack, `config.toml`, `config.user.toml`) |
 | `pack_split_signal` | `64000` | characters of a pack's `SKILL.md` files together above this: MS069 (route, split a skill out, or split the pack). An integer >= 1; any layer. Both apply to every pack (built-in, repository, user) |
 | `rules_text_max` | `8000` | characters of critical-rule text `show` returns for one target, the rules in order; a rule past it keeps its title, its `text` is `null` |
+| `rules_index_entries` | `25` | lint MS071 (warning) when an indexed doc's critical-rules section (an `Indexed:` line) has more entries: a warning, never a cap — the entries are checked again against what a rule is (§ `[rules]`) |
 
 ## `[match]`
 
@@ -155,7 +156,7 @@ engine reads none), and the engine ships, installs and suggests no model.
 |---|---|---|
 | `SEGMENTLY_MODULES_AGENT_COMMAND` | unset | the argv list of the agent command, a JSON array of strings, read ONLY from this environment variable (`catalog` reports `match.semantic` true only for a valid one outside an agent run; with a malformed value, or a bad `SEGMENTLY_MODULES_AGENT_TIMEOUT`, `catalog` exits 0 with `match.semantic` false and one stderr note, while the verbs that run the agent refuse it with exit 2); items may use `{claude_model}`, `{codex_model}`, `{effort}` and `{reasoning}` (`quick` → `low`, `standard` → `medium`, `deep` → `high`), `{{` / `}}` are literal braces; run without a shell. An `[agent]` table in any config file (team, personal or a pack) is refused (exit 2 naming the file): a repository could commit it. Inside an agent run (`SEGMENTLY_MODULES_WORK_ORDER` set) the command is unavailable: `semantic` and `choose --run` are refused, `hybrid` runs lexically with a note |
 | `SEGMENTLY_MODULES_AGENT_ALLOW_REPO_MODE` | unset | environment only (never a config file): `1` lets a `[match] mode` from a config file run your agent command; unset, empty or `0` = off (the run is lexical, with one stderr note, and `SEGMENTLY_MODULES_AGENT_COMMAND` / `SEGMENTLY_MODULES_AGENT_TIMEOUT` are not read); anything else (`true`, `" 1 "`) is exit 2 `SEGMENTLY_MODULES_AGENT_ALLOW_REPO_MODE: expected 1 or 0, got '<value>'` (at most 40 characters shown). Validated only when a config file sets a non-lexical mode and no `--match` is given; `catalog` and `choose` never read it |
-| `SEGMENTLY_MODULES_ALLOW_INDEX_WRITER` | unset | environment only (never a config file): `1` lets the engine start a writer that indexes the rules of a doc (`rules --build`, and `discover --files` under `[rules] index = "discover"`); unset, empty or `0` = no writer is started; anything else is exit 2. A committed `[rules] index = "discover"` alone never starts an agent |
+| `SEGMENTLY_MODULES_ALLOW_INDEX_WRITER` | unset | environment only (never a config file): `1` lets the engine start a writer that indexes the rules of a doc (`rules --build`, run by module-discover on the user's yes under `[rules] index = "discover"`); unset, empty or `0` = no writer is started; anything else is exit 2. A committed `[rules] index = "discover"` alone never starts an agent |
 | `SEGMENTLY_MODULES_INDEX_COMMAND` | unset | the writer's argv, a JSON array of strings, environment only; items may use `{doc}` (its absolute path), `{doc_rule}` (`//` + that path, for a Claude Code permission rule), `{root}`, `{claude_model}`, `{codex_model}` (`{{` / `}}`: literal braces); run without a shell, the prompt on stdin. Unset inside Claude Code (`CLAUDECODE=1`): `claude -p --model {claude_model} --output-format json --permission-mode dontAsk --allowedTools Read Grep Glob Edit({doc_rule}) "Bash(segmently-modules rules:*)" "Bash(segmently-modules lint:*)"`. Elsewhere set it, e.g. `["codex", "exec", "-m", "{codex_model}", "--sandbox", "workspace-write", "-"]` (a sandboxed Codex session cannot give its child write access, and Codex has no marker the engine could read) |
 | `SEGMENTLY_MODULES_INDEX_TIMEOUT` | `900` | seconds per writer, 1 to 3600 |
 | `SEGMENTLY_MODULES_AGENT_TIMEOUT` | `300` | seconds: an integer from 1 to 3600 written with at most 4 digits (`0300` is accepted, `00300` is not; spaces around it are ignored); anything else is exit 2 naming the variable |
@@ -181,7 +182,21 @@ flow reads whatever sections exist; this key says who writes them.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `index` | `"sync"` | `sync`: the flows that write docs anyway write and keep the index — module-create and module-init index the docs they write, module-roles and module-split the docs they fill or split, module-sync keeps the entries of the rules a session changes and indexes the docs of a module the session changed that have none; module-discover only reads it (a module without a complete index: its docs read to the end). `discover`: the same, and `discover --files` (module-discover's step 7) has the engine index, in the background, the docs of the modules the change modifies — only with `SEGMENTLY_MODULES_ALLOW_INDEX_WRITER=1` in the user's environment (never in a branch review or a pipeline); module-discover itself still writes nothing. `off`: nothing writes an index or a new section. `show --json` returns it as `rules_setting` and each target's state as `rules_index`; `rules --missing` lists the docs without one. Team, personal or pack config; any other value is exit 2 |
+| `index` | `"sync"` | `sync`: the flows that write docs anyway write and keep the index — module-create and module-init index the docs they write, module-roles and module-split the docs they fill or split, module-sync keeps the entries of the rules a session changes and indexes the docs of a module the session changed that have none; module-discover only reads it (a module without a complete index: its docs read to the end). `discover`: the same, and module-discover, which writes nothing while it works, names the docs without an index of the modules it chose (`discover --files`, `rules`, `show`) and asks the user after its report whether to index them; on a yes `rules --build <module>… --background` gives each doc a writer, and each of the module doc's other docs in its own folder a writer that lists their rules for the engine to add — only with `SEGMENTLY_MODULES_ALLOW_INDEX_WRITER=1` in the user's environment (never in a branch review or a pipeline). `off`: nothing writes an index or a new section. `show --json` returns it as `rules_setting` and each target's state as `rules_index`; `rules --missing` lists the docs without one. Team, personal or pack config; any other value is exit 2 |
+
+A rule, for every writer of an index, passes three tests: important (breaking it silently breaks money, data,
+security, a UX invariant or another module's contract), not evident from the code it is about (not what that code
+plainly does, not what a type, a test or a linter already enforces), and in force now (not history, a plan step or a
+status). Feature descriptions and how-to steps are not rules.
+
+## `[discover]`
+
+What module-discover's step 5 reads (`show <module> --discover`).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `docs` | `"all"` | the docs it reads: `"all"`, or a list of `"module"` (the module doc), `"extras"` (its other `context_files` docs) and role names, e.g. `["module", "developer"]`; a doc left out is a `skip` line (`not_read`, `why: "docs"`); an unknown name is exit 2 |
+| `read` | `"whole"` | `"whole"`: every listed doc is read to the end; `"index"`: a doc whose rules index is complete, and an other doc its module doc's index cites, is an `index` line (`why: "index"`): not read, its rules are the `rules` output; a doc without an index is still read whole |
 
 ## `[lint]`
 
@@ -703,6 +718,7 @@ fails on it, because plain `lint`'s own default is `fail_on = "error"`.
 | MS068 | warning | a pack skill's `SKILL.md`, or one `*.md` file directly in its `references/` (an ejected copy's too), is longer than `[budgets] skill_split_signal` characters: `<skill>[/<file>]: N characters > skill split signal S — route its scenarios or split the skill`; path = the file (plain `lint` only) |
 | MS069 | warning | a pack's `SKILL.md` files together (never `references/`, never ejected copies) are longer than `[budgets] pack_split_signal` characters: `pack '<pack>': N characters of skills > pack split signal P — route, split a skill out, or split the pack`; path = its `pack.toml` (plain `lint` only) |
 | MS070 | — (info) | an entry of a doc's critical-rules section cites `doc:line` that names no doc, or a line past that doc's end: a citation its writer did not re-derive, or text that moved since; a path from the repository root (`modules/…`), else from the citing doc's module directory (`roles/qa.md:12`) |
+| MS071 | — (warning) | an indexed doc (an `Indexed:` line) whose critical-rules section has more entries than `[budgets] rules_index_entries` (25); a hand-written section is never flagged |
 
 MS053 compares every pair of `[[code_map]]` rules over the repository's files (git-tracked +
 new, not ignored; `[coverage]` filters do not apply) after `exclusive` precedence: a pair is

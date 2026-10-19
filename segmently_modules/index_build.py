@@ -182,8 +182,8 @@ _LINK = re.compile(r"\]\(([^)#\s]+\.md)(?:#[^)]*)?\)|`([\w./-]+\.md)`")
 def other_docs(ws, item: dict, text: str) -> list[str]:
     """The docs whose rules a module doc's index takes besides its own (rules-index.md step 2): the
     target's `context_files` entries that are not its module or role docs, then the docs its text links
-    to — on disk under the modules directory, never another target's own doc, a role doc or a frozen
-    `*.legacy.md`. Empty for a role doc. (c02, 2026-10-19: told to index "one doc and nothing else", the
+    to — on disk in the module's own folder (never a child's, never another module's), never another
+    target's own doc, a role doc or a frozen `*.legacy.md`. Empty for a role doc. (c02, 2026-10-19: told to index "one doc and nothing else", the
     writers indexed none of them, and the rules in `ux-rework-plan.md` and a memo reached no reader.)"""
     if item.get("role") != "all":
         return []
@@ -205,6 +205,8 @@ def other_docs(ws, item: dict, text: str) -> list[str]:
         if key not in ("universal", "roles"):
             walk(value)
     here = Path(item["doc"]).parent
+    own = here.as_posix() + "/"  # the module's own folder, never a child's under it (owner 2026-10-19: the c02
+    # writers listed 764 rules, most from other modules' plans; their rules are those modules' own index)
     modules_dir = ws.config["paths"]["modules_dir"].rstrip("/") + "/"
     for m in _LINK.finditer(text):
         ref = m.group(1) or m.group(2)
@@ -213,7 +215,8 @@ def other_docs(ws, item: dict, text: str) -> list[str]:
         found.append(ref if ref.startswith(modules_dir) else os.path.normpath(str(here / ref)))
     out = []
     for d in found:
-        if (d.endswith(".md") and not d.endswith(".legacy.md") and d.startswith(modules_dir) and d != item["doc"]
+        if (d.endswith(".md") and not d.endswith(".legacy.md") and d.startswith(own)
+                and not d.startswith(own + "submodules/") and d != item["doc"]
                 and d not in owned and d not in out and (ws.root / d).is_file()):
             out.append(d)
     return out
@@ -239,6 +242,16 @@ def prompt(ws, item: dict, today: str, text: str = "") -> str:
             f"contradictions you found.\n")
 
 
+# what a rule is, for every writer (owner 2026-10-19: "rules must really be rules — only what is really important and
+# poorly derivable from the code — and must not bloat the rules' context")
+RULE_TEST = ("List the rules in it that a change to the module, or a use of it, must not break, for every role (code "
+             "and data, tests, UX invariants, architecture limits, business rules) — each one passing all three tests: "
+             "important (breaking it silently breaks money, data, security, a UX invariant or another module's "
+             "contract); not evident from the code it is about (not what that code plainly does, not what a type, a "
+             "test or a linter already enforces); in force now (not history, a plan step, a status or something the "
+             "doc says was replaced). Feature descriptions and how-to steps are not rules.")
+
+
 def extra_prompt(ws, job: dict, today: str) -> str:
     """The order of an other doc's writer (`other_docs`): list its rules, change nothing."""
     n = len((ws.root / job["doc"]).read_text("utf-8", errors="replace").splitlines())
@@ -247,12 +260,8 @@ def extra_prompt(ws, job: dict, today: str) -> str:
             f"`{job['target']}`; the engine adds the rules you list to the critical-rules section of "
             f"{job['into']}.\nToday: {today}\n\n"
             f"Read the doc to the end (in parts when it is long), with your file-read tool, never a search in it. "
-            f"List every rule in it that a change to the module, or a use of it, must not break: constraints, "
-            f"invariants, \"never / always / must\" statements, required patterns and the traps someone already "
-            f"fell into, for every role: code and data rules, test rules, UX invariants, architecture limits, "
-            f"business rules. Not feature descriptions, history, status or how-to steps, and not a rule the doc "
-            f"itself says was replaced. Each rule in one sentence that keeps its own words: the prohibition, "
-            f"the names and the numbers.\n\n"
+            f"{RULE_TEST}\n\nEach rule in one sentence that keeps its own words: the prohibition, the names and "
+            f"the numbers.\n\n"
             f"Reply with JSON only: [{{\"line\": <the rule's line in the doc>, \"rule\": \"<the rule>\"}}, ...], "
             f"or [] when the doc states none. Never edit a file.\n")
 

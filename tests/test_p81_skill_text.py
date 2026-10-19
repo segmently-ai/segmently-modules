@@ -503,7 +503,7 @@ class DiscoverTest(unittest.TestCase):  # P81-AC-041 (F6a, F6b), P82-AC-040 (F20
         "**One hop out.**", "(follow forward edges only)",
         "**Usage.**", "`modify` (the task changes its code or contracts)",
         "`consume` (calls its API as it is)", "`reference` (follows its patterns or rules)",
-        "**Docs for every role.**", "segmently-modules show <module> --all-roles > <temp file>",
+        "**Docs for every role.**", "segmently-modules show <module> --discover > <temp file>",
         "read, nothing for this task",
         "**Code touch points.**",
         "segmently-modules code-map files <module> --source-only --paths",  # DCP-AC-024

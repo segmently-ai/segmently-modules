@@ -401,7 +401,7 @@ class TextRulesTest(SkillRules):  # P4B-AC-014, P4B-AC-017
         # owner 2026-10-19: module-discover reads every output it needs as text through a temp file, read
         # whole (the stand's readers cut every `--json` they were given with a script or `head`)
         reads = [["catalog", "--settings"], ["discover", "--task-file", "X", "--match", "lexical"],
-                 ["show", "X"], ["related", "X"], ["show", "X", "--all-roles"],
+                 ["show", "X"], ["related", "X"], ["show", "X", "--discover"],
                  ["discover", "--files", "X", "--task-file", "X", "--match", "lexical", "--modify", "X",
                   "--consume", "X"]]
         self.assertEqual(sorted(e for e in exempt if e in reads), sorted(reads))

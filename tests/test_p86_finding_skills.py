@@ -113,7 +113,7 @@ class DiscoverContractTest(unittest.TestCase):  # D2: the host's MODE=discover c
         "`consume` (calls its API as it is)",
         "`reference` (follows its patterns or rules)",
         # docs for every role, the extracts that bear on the task, the "nothing" line
-        "A `modify` or `consume` module: every doc `segmently-modules show <module> --all-roles > "
+        "A `modify` or `consume` module: every doc `segmently-modules show <module> --discover > "
         "<temp file>` lists, each read to the end",  # owner 2026-10-19: text through a file, read whole
         "a `reference` module: its main doc only.",  # C5 read a reference module's role docs
         "Never `MODULE.legacy.md` or `roles/*.legacy.md`.",

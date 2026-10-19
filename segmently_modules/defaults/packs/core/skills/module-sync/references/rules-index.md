@@ -20,12 +20,16 @@ docs as `missing`, unless the setting is `off`:
 
 1. Read each doc to index to the end (`segmently-modules show <module> --all-roles --json` lists the
    docs; a split module: the parent and each child). Note its lines against `[budgets]`.
-2. List every rule in it that a change to the module, or a use of it, must not break: constraints,
-   invariants, "never / always / must" statements, required patterns and the traps someone already
-   fell into — for every role: code and data rules, test rules, UX invariants (sizes, layouts,
-   states), architecture limits, business rules. Not feature descriptions, history or how-to steps.
-   The module doc also takes the rules of the module's docs that are not role docs (other
-   `context_files` docs, a deep-dive doc), citing that doc.
+2. List the rules in it that a change to the module, or a use of it, must not break, for every
+   role (code and data, tests, UX invariants — sizes, layouts, states —, architecture limits,
+   business rules), each passing all three tests: important (breaking it silently breaks money,
+   data, security, a UX invariant or another module's contract); not evident from the code it is
+   about (not what that code plainly does, not what a type, a test or a linter already enforces);
+   in force now (not history, a plan step, a status or something the doc says was replaced).
+   Feature descriptions and how-to steps are not rules. The module doc also takes the rules of the
+   module's docs in its own folder that are not role docs (other `context_files` docs, a deep-dive
+   doc), citing that doc. Past `[budgets] rules_index_entries` entries (25) lint warns (MS071):
+   check each entry against the three tests again.
 3. Compare with `segmently-modules rules <module> --json` (each rule names its `doc`), and add each
    missing rule to the critical-rules section of the doc that holds it: the module doc's to the
    module doc, a role doc's to that role doc, a child's area to the child's docs, the whole module's

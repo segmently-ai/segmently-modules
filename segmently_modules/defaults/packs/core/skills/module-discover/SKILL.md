@@ -54,7 +54,7 @@ file, a doc with your file-read tool; only code is read in part. Run independent
    `consume` (calls its API as it is) or `reference` (follows its patterns or rules).
 
 5. **Docs for every role.** A `modify` or `consume` module: every doc
-   `segmently-modules show <module> --all-roles > <temp file>` lists, each read to the end; a `reference` module: its main
+   `segmently-modules show <module> --discover > <temp file>` lists, each read to the end; a `reference` module: its main
    doc only. Never `MODULE.legacy.md` or `roles/*.legacy.md`. Take from each doc what bears on the
    task — rules, constraints, contracts, pitfalls — as short extracts with the doc's path and
    role; a doc with nothing for the task gets "read, nothing for this task". Never a retelling.

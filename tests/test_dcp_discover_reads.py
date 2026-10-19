@@ -39,7 +39,7 @@ NOT_BATCHED = (  # final review I-1: outputs that can be long never join a Bash 
     "or as parallel tool calls")
 COMMANDS = {2: "segmently-modules show <module> > <temp file>",  # the read command each step runs
             3: "segmently-modules related <module> > <temp file>",
-            5: "segmently-modules show <module> --all-roles > <temp file>"}
+            5: "segmently-modules show <module> --discover > <temp file>"}  # [discover] docs / read (2026-10-19)
 STEPS = {  # each step's own rule, in its own step and in this order
     2: ["Read each candidate's main doc to the end",
         "a split module: its INDEX, then the child the task is in;",
@@ -49,7 +49,7 @@ STEPS = {  # each step's own rule, in its own step and in this order
         "description\"."],
     3: ["of a kept module may show another module the task needs (follow forward edges only); "
         "verify it as in step 2."],
-    5: ["A `modify` or `consume` module: every doc `segmently-modules show <module> --all-roles > "
+    5: ["A `modify` or `consume` module: every doc `segmently-modules show <module> --discover > "
         "<temp file>` lists, each read to the end;",
         "a `reference` module: its main doc only.",
         "Never `MODULE.legacy.md` or `roles/*.legacy.md`.",

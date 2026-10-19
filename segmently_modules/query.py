@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from segmently_modules.changes import code_globs
-from segmently_modules.config import enabled_roles, rules_index_setting
+from segmently_modules.config import DISCOVER_DOCS_KINDS, discover_settings, enabled_roles, rules_index_setting
 from segmently_modules.critical_rules import critical_section
 from segmently_modules.fields import CORE_FIELDS
 from segmently_modules.output import EXIT_FINDINGS, EXIT_OK, UsageError, emit
@@ -134,7 +134,7 @@ def _object(entry, label: str) -> dict:
     return entry
 
 
-def show_module(ws, arg: str, role: str | None, all_roles: bool) -> tuple[int, dict]:
+def show_module(ws, arg: str, role: str | None, all_roles: bool, discover: bool = False) -> tuple[int, dict]:
     """`show` for USER input: a module name, `module/child`, or a path into the modules dir;
     an argument that names an existing path outside the modules dir is refused as a file path."""
     modules_dir = ws.config["paths"]["modules_dir"]
@@ -142,10 +142,10 @@ def show_module(ws, arg: str, role: str | None, all_roles: bool) -> tuple[int, d
     if resolved == arg and "/" in arg and (Path(arg).exists() or (ws.root / arg).exists()):
         raise UsageError(f"'{arg}' is a file path outside {modules_dir}/ — not a module; "
                          f"read it directly")
-    return show_target(ws, resolved, role, all_roles)
+    return show_target(ws, resolved, role, all_roles, discover)
 
 
-def show_target(ws, target: str, role: str | None, all_roles: bool) -> tuple[int, dict]:
+def show_target(ws, target: str, role: str | None, all_roles: bool, discover: bool = False) -> tuple[int, dict]:
     """The read set of a `module[/child]` target the engine produced itself (match rows,
     changed-file mapping): no user-input path heuristics, so a code directory that happens to
     be spelled like `parent/child` never shadows the module."""
@@ -239,7 +239,37 @@ def show_target(ws, target: str, role: str | None, all_roles: bool) -> tuple[int
                         if k in ws.fields and k not in CORE_FIELDS
                         and ws.fields[k].kind != "code_pointer"}
     result["code_globs"] = code_globs(ws.config, result["module"])
+    if discover:
+        _apply_discover(ws, result, docs)
     return EXIT_OK, result
+
+
+def _apply_discover(ws, result: dict, docs: list[dict]) -> None:
+    """`show --discover`: the read list under `[discover]` (2026-10-19, owner: which docs discover reads, and
+    the index in place of reading, as settings). `docs` keeps the module doc ("module"), its other docs
+    ("extras") and the named roles' docs; `read = "index"` sets aside a doc whose rules index is complete,
+    and an other doc its module doc's index cites — their rules are the `rules` output."""
+    st = discover_settings(ws.config)
+    roles = set(enabled_roles(ws.config))
+    if st["docs"] != "all":
+        unknown = [d for d in st["docs"] if d not in DISCOVER_DOCS_KINDS and d not in roles]
+        if unknown:
+            raise UsageError(f"[discover] docs: unknown {', '.join(unknown)} (\"module\", \"extras\" or a role: "
+                             f"{', '.join(sorted(roles))})")
+    indexed = {d["doc"] for d in docs if d["indexed"]}
+    cited = "\n".join(r["text"] for d in docs if d["role"] == "all" and d["indexed"] for r in d["rules"])
+    keep, aside = [], []
+    for r in result["read"]:
+        label = r["label"]
+        kind = "module" if "universal" in label else label.rsplit("role:", 1)[1] if "role:" in label else "extras"
+        if st["docs"] != "all" and kind not in st["docs"]:
+            aside.append({**r, "why": "docs"})
+        elif st["read"] == "index" and (r["path"] in indexed or (kind == "extras" and (
+                r["path"] in cited or Path(r["path"]).name in cited))):
+            aside.append({**r, "why": "index"})
+        else:
+            keep.append(r)
+    result["read"], result["not_read"], result["discover"] = keep, aside, st
 
 
 def related_edges(ws, arg: str, relation: str | None) -> tuple[int, dict]:
@@ -294,6 +324,8 @@ def register(sub, common) -> None:
     s.add_argument("module")
     s.add_argument("--role")
     s.add_argument("--all-roles", action="store_true")
+    s.add_argument("--discover", action="store_true",
+                   help="every role, the read list under [discover] docs and read (module-discover's step 5)")
     s.set_defaults(func=run_show)
     r = sub.add_parser("related", parents=[common], help="typed edges of a module (+ reverse)")
     r.add_argument("module")
@@ -309,7 +341,9 @@ def run_show(args) -> int:
     roles = enabled_roles(ws.config)
     if args.role and args.role not in roles:
         raise UsageError(f"unknown role '{args.role}' (roles: {', '.join(roles)})")
-    code, data = show_module(ws, args.module, args.role, args.all_roles)
+    if args.discover and args.role:
+        raise UsageError("--discover reads every role [discover] docs keeps: give it without --role")
+    code, data = show_module(ws, args.module, args.role, args.all_roles or args.discover, args.discover)
     if code == 0 and data.get("rules_setting") == "discover" and data["rules_index"]["missing"]:
         # c10: a run that only `show`ed its modules (no `rules`, no step 7) never heard of the missing
         # index, and the next run grepped the unindexed docs; the module a reader shows is one it is weighing
@@ -345,6 +379,12 @@ def _render_show(d) -> None:
     for r in d["read"]:
         mark = "" if r["exists"] else "  (MISSING ON DISK)"
         print(f"  read  {r['label']:<32} {r['path']}{mark}")
+    for r in d.get("not_read") or []:
+        if r["why"] == "index":
+            print(f"  index {r['label']:<32} {r['path']}  (its rules index is complete: its rules are in "
+                  f"`segmently-modules rules {d['module']}`, not read)")
+        else:
+            print(f"  skip  {r['label']:<32} {r['path']}  (not in [discover] docs)")
     for r in d.get("rules") or []:
         print(f"  rule  {r['doc']}:{r['line']}  {r['title']}")
     b = d.get("rules_build")

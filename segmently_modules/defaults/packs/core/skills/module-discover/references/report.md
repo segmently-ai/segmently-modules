@@ -38,8 +38,8 @@ Likely consequence: <what the implementation will probably also need> — <the e
 Index the rules of <doc>, … now? A writer per doc, in the background, edits only their critical-rules sections; the next reader gets the index instead of reading them again.
 ```
 
-- `Rules:` only for a `modify` module (`references/rules.md`): each rule
-  `rules <module>` gives (`references/rules.md`), verbatim, in its order, then the `index:` line.
+- `Rules:` only for a `modify` module (`references/rules.md`): each rule `rules <module>` gives
+  that applies to the task (`references/rules.md`), verbatim, in its order, then the `index:` line.
   A `consume` or `reference` module: no `Rules:` lines.
 - Every doc step 5 lists is read to the end — the whole file with your file-read tool, never a
   search in it, a line range or a cut — and is on a `Docs:` line: an extract, or "read, nothing

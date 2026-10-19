@@ -44,11 +44,15 @@ marks, of the modules the files belong to):
 A branch review (`references/from-diff.md`) never builds. `segmently-modules rules --build <module> --json`
 builds on request and waits (`--json`: per doc its `status`).
 
+**What `show --discover` lists** (step 5), under `[discover]`: a `read` line is a doc to read to the
+end; an `index` line (`read = "index"`) a doc whose rules index is complete, not read — its rules are
+the `rules` output; a `skip` line a doc `[discover] docs` leaves out.
+
 A `consume` or `reference` module has no `Rules:` block: its rules reach the report as step 5's
 extracts.
 
 **The block.** Under the module's `Why:` line, `Rules:`, then one line per rule of
-`rules <module>` in its order, verbatim: `` - `<doc>:<line>` (<role>) — <rule> `` (`(all)` for
+`rules <module>` that applies to the task, chosen by meaning over every rule, in its order, verbatim: `` - `<doc>:<line>` (<role>) — <rule> `` (`(all)` for
 the module doc; a rule that is a group heading — "DO", "DON'T", "Common Mistakes" — quotes its
 items instead). The parent's rules appear under the first of its children in the report, not again.
 The last line says where the rules came from: `index: complete (<the oldest Indexed date>)`,
