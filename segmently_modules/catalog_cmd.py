@@ -3,8 +3,11 @@ status, description, keywords (a child also names its parent) — the input an a
 choose modules by meaning (P8.1 S2). Read-only: no lock, no write, never runs the agent. JSON
 carries `match: {mode, semantic}` (`semantic` = a valid `SEGMENTLY_MODULES_AGENT_COMMAND` is set)
 and the `search` settings. `catalog --settings` prints only the settings: every `[match]` and
-`[search]` key, defaults filled in, and no card (the registry is not read)."""
+`[search]` key, defaults filled in, and no card (the registry is not read). `catalog --plain` prints
+only each card's id, description and keywords, one wrapped block each, for an agent to read whole
+and judge by meaning (2026-10-19: discover's step 1 reads every card itself)."""
 import json
+import textwrap
 
 from segmently_modules.output import EXIT_OK, UsageError, defer_note, emit
 from segmently_modules.registry import as_dict
@@ -48,6 +51,9 @@ def register(sub, common) -> None:
     p.add_argument("--settings", action="store_true",
                    help="print only the settings: every [match] and [search] key, defaults "
                         "filled in")
+    p.add_argument("--plain", action="store_true",
+                   help="print only each module's and child's id, description and keywords, one "
+                        "block each, to read whole")
     p.set_defaults(func=run)
 
 
@@ -75,10 +81,17 @@ def match_settings(config: dict) -> dict:
 
 def run(args) -> int:
     ws = Workspace.from_args(args)
+    if args.settings and args.plain:
+        raise UsageError("--settings and --plain are two different prints: give one")
     if args.settings:
         data = {"match": match_settings(ws.config), "search": search_all(ws.config),
                 "rules": {"index": rules_index_setting(ws.config)}}
         emit("catalog", data, args.json, _render_settings)
+        return EXIT_OK
+    if args.plain:
+        data = {"modules": [{"module": c["name"], "description": c["description"], "keywords": c["keywords"]}
+                            for c in cards(ws.registry.modules)]}
+        emit("catalog", data, args.json, _render_cards)
         return EXIT_OK
     data = {"match": {"mode": configured_mode(ws.config), "semantic": _semantic(ws.config)},
             "search": search_settings(ws.config),
@@ -96,6 +109,20 @@ def _render_settings(data) -> None:
         print(f"[{group}]")
         for key, value in data[group].items():
             print(f"{key} = {json.dumps(value, ensure_ascii=False)}")
+
+
+def _render_cards(data) -> None:
+    """One block per card: the id, then the description and the keywords wrapped at 100 characters, so
+    a reader that cuts long lines still gets every word."""
+    for c in data["modules"]:
+        print(c["module"])
+        print(textwrap.fill(c["description"] or "(no description)", 100, initial_indent="  ",
+                            subsequent_indent="  ", break_long_words=False, break_on_hyphens=False))
+        if c["keywords"]:
+            print(textwrap.fill("keywords: " + ", ".join(c["keywords"]), 100, initial_indent="  ",
+                                subsequent_indent="    ", break_long_words=False, break_on_hyphens=False))
+        print()
+    print(f"{len(data['modules'])} modules and children")
 
 
 def _render(data) -> None:

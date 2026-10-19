@@ -101,7 +101,10 @@ class SettingsTest(unittest.TestCase):  # DCP-AC-023
                       "`search`.", flat(text))
         self.assertNotIn("catalog --json", text)
         catalogs = [argv(c) for c in commands(text) if argv(c)[:1] == ["catalog"]]
-        self.assertEqual(catalogs, [["catalog", "--settings", "--json"]])
+        # owner 2026-10-19: every card read by the agent first (`catalog --plain`, to a file read whole)
+        self.assertEqual(catalogs, [["catalog", "--plain"], ["catalog", "--settings", "--json"]])
+        self.assertIn("Never narrow the cards with grep, a regex, a script or a keyword score before reading "
+                      "them: the verdict is yours, from what each card says.", flat(text))
 
     def test_every_command_parses(self):
         for c in commands(raw()):

@@ -1,5 +1,16 @@
 # Choosing the candidates (step 1)
 
+**Every card, read and judged by you.** `segmently-modules catalog --plain > <cards file>` gives each
+module and child of the registry: its id, description and keywords, nothing else. Read the file to
+the end (in parts when it is long) and judge every card against the task by meaning:
+- its description says the task needs the module → a candidate;
+- its description is close, or its keywords name what the task implies → a candidate to verify;
+- otherwise → not a candidate.
+
+Never narrow the cards with grep, a regex, a script or a keyword score before reading them: the
+verdict is yours, from what each card says. The keyword list and the chooser below only add
+candidates; they never remove one the cards gave you. Step 2 then reads each candidate's main doc.
+
 Run `segmently-modules catalog --settings --json`; read `match.mode` and `search`. The text: the task as
 given. For the keyword half write 1–3 short English queries to a temporary `<file>` (steps 6 and 7
 use it too): the domain terms and code identifiers the task implies (registry keywords are English

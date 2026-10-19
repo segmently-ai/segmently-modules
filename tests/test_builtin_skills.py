@@ -396,7 +396,9 @@ class TextRulesTest(SkillRules):  # P4B-AC-014, P4B-AC-017
         # only the work order's text form, once in each skill that chooses modules by meaning,
         # and module-sync's saved gate (P83-AC-012: `ci --base <base> --json > <ci file>`)
         saved_gate = [["ci", "--base", "X", "--json"]]
-        others = [e for e in exempt if e != saved_gate[0] and e[:1] != ["rules"]]
+        cards = [e for e in exempt if e == ["catalog", "--plain"]]  # module-discover's step 1 (owner 2026-10-19)
+        self.assertEqual(len(cards), 1)
+        others = [e for e in exempt if e != saved_gate[0] and e[:1] != ["rules"] and e not in cards]
         self.assertEqual(others.count(["choose", "--task-file", "-"]), 3)  # AC-015: one line in
         self.assertEqual(others.count(["choose", "--task-file", "X"]), len(others) - 3)  # each
         self.assertEqual(exempt.count(saved_gate[0]), 1)

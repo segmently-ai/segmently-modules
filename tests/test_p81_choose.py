@@ -336,5 +336,22 @@ class CatalogAgentTest(Base):
         self.assertEqual(self.calls(), [])  # catalog never runs the agent
 
 
+
+class PlainCardsTest(Base):  # owner 2026-10-19: discover's step 1 reads every card itself
+    def test_only_id_description_and_keywords(self):
+        _, env, _ = run_json("catalog", "--plain", *self.R)
+        cards = env["data"]["modules"]
+        self.assertTrue(cards)
+        self.assertEqual({k for c in cards for k in c}, {"module", "description", "keywords"})
+        self.assertEqual(list(env["data"]), ["modules"])  # no settings, no status
+
+    def test_one_wrapped_block_per_card(self):
+        code, out, _ = run("catalog", "--plain", *self.R)
+        self.assertEqual(code, 0)
+        n = len(run_json("catalog", "--plain", *self.R)[1]["data"]["modules"])
+        self.assertTrue(out.rstrip().endswith(f"{n} modules and children"))
+        self.assertLessEqual(max(len(line) for line in out.splitlines()), 100 + 20)  # a long word may overrun
+        self.assertEqual(run("catalog", "--plain", "--settings", *self.R)[0], 2)
+
 if __name__ == "__main__":
     unittest.main()
