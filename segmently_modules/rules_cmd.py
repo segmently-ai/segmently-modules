@@ -85,6 +85,8 @@ def register(sub, common) -> None:
     r.add_argument("--build", action="store_true",
                    help="index the named docs or modules' docs without an index now, one writer "
                         "per doc (needs SEGMENTLY_MODULES_ALLOW_INDEX_WRITER=1 and a writer)")
+    r.add_argument("--background", action="store_true",
+                   help="with --build: start the writers in a detached process and return at once")
     r.set_defaults(func=run_rules)
 
 
@@ -152,15 +154,31 @@ def _render_build(d) -> None:
     print(f"{t['built']} built, {t['failed']} failed, {t['refused']} refused, {t['timeout']} timed out")
 
 
+def _render_background(d) -> None:
+    if not d["docs"]:
+        print("nothing to index: every doc of these modules has a rules index")
+    elif d["status"] == "running":
+        print(f"a build of this repository is already running: {', '.join(d['docs'])}")
+    else:
+        print(f"{len(d['docs'])} doc(s) being indexed in the background, one writer each: "
+              f"{', '.join(d['docs'])}; log: {d['log']}")
+
+
 def run_rules(args) -> int:
+    if args.background and not args.build:
+        raise UsageError("--background goes with --build")
     if args.build:
         if args.files or args.from_diff or args.role or args.missing:
             raise UsageError("--build takes module names or doc paths only")
         if not args.module:
             raise UsageError("--build: name the modules or docs (rules --missing lists them)")
         ws = Workspace.from_args(args)
-        from segmently_modules.index_build import build
+        from segmently_modules.index_build import build, start_background
         items = build_targets(ws, args.module)
+        if args.background:
+            emit("rules", start_background(ws, items) if items else {"status": "complete", "docs": []},
+                 args.json, _render_background)
+            return EXIT_OK
         emit("rules", build(ws, items) if items else {"docs": [], "other_changes": [],
              "summary": {"built": 0, "failed": 0, "refused": 0, "timeout": 0}}, args.json, _render_build)
         return EXIT_OK
@@ -182,7 +200,7 @@ def run_rules(args) -> int:
     data = build_rules(ws, args.module, files, args.role)
     if args.module and not args.from_diff:
         # under `discover`, the modules a reader names here are the ones it chose: their docs without an
-        # index are built in the background (c05 pilot 8: the reader read `rules` but skipped step 7)
+        # index and the command that indexes them, offered to the user after the report
         from segmently_modules.index_build import discover_hook
         hook = discover_hook(ws, [_target(ws, m) for m in args.module], False)
         if hook:
@@ -222,8 +240,12 @@ def _render_rules(d) -> None:
     total = sum(len(m["rules"]) for m in d["modules"])
     print(f"{total} rule(s) in {len(d['modules'])} module(s)")
     b = d.get("rules_build")
-    if b and b["status"] in ("started", "running"):  # c05 pilot 9: "the rules above" read as enough
+    if b and b["status"] == "running":  # c05 pilot 9: "the rules above" read as enough
         print(f"rules index: {len(b['docs'])} doc(s) being indexed in the background (rules --build); "
               f"until then their rules are only in their text: read each to the end — {', '.join(b['docs'])}")
+    elif b and b["status"] == "missing":
+        print(f"rules index: {len(b['docs'])} doc(s) without one; their rules are only in their text: read each "
+              f"to the end — {', '.join(b['docs'])}. After your report, ask the user whether to index them: "
+              f"{b['build']}")
     elif b and b.get("note"):
         print(f"rules index: not built ({b['note']}); read each doc not indexed to the end for its rules")

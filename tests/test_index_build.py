@@ -1,8 +1,11 @@
 """The rules index written by an agent the engine starts (2026-10-18, after four trial runs in which the
 agent running module-discover never wrote a doc nobody asked it to): `rules --build` gives each doc
 one writer and checks what it did — an `Indexed:` line, every change inside the critical-rules
-section, no backup files — and `discover --files` under `[rules] index = "discover"` starts it in
-the background, only with SEGMENTLY_MODULES_ALLOW_INDEX_WRITER=1 in the environment."""
+section, no backup files — only with SEGMENTLY_MODULES_ALLOW_INDEX_WRITER=1 in the environment. Under
+`[rules] index = "discover"`, `discover --files`, `rules <module>` and `show` name the docs without an
+index and the command that indexes them in the background, which module-discover offers the user
+after its report; they write nothing themselves (2026-10-19: two readers told not to edit the
+repository killed a writer the engine had started)."""
 from __future__ import annotations
 
 import json
@@ -153,21 +156,43 @@ class DiscoverTest(Base):
     def discover(self, extra=()):
         return run_json("discover", "--files", "src/shop/pay.py", *extra, *self.R)
 
-    def test_discover_files_starts_the_build_in_the_background(self):
+    def wait_built(self):
+        deadline = time.time() + 30
+        while time.time() < deadline and (index_build.running(self.root) or "Indexed:" not in self.doc.read_text()):
+            time.sleep(0.2)
+        self.assertIn("Indexed:", self.doc.read_text())
+
+    def test_discover_files_offers_the_build_and_writes_nothing(self):
+        before = self.doc.read_text()
         with mock.patch.dict(os.environ, {**self.env, "FAKE_MODE": "good"}):
             _, env, _ = self.discover()
         rb = env["data"]["rules_build"]
-        self.assertEqual((rb["status"], rb["docs"]), ("started", ["modules/shop/MODULE.md"]))
-        deadline = time.time() + 30
-        while time.time() < deadline and "Indexed:" not in self.doc.read_text():
-            time.sleep(0.2)
-        self.assertIn("Indexed:", self.doc.read_text(), Path(rb["log"]).read_text())
-        while time.time() < deadline and index_build.running(self.root):
-            time.sleep(0.2)
+        self.assertEqual((rb["status"], rb["docs"], rb["build"]),
+                         ("missing", ["modules/shop/MODULE.md"], "segmently-modules rules --build shop --background"))
+        time.sleep(0.5)
+        self.assertFalse(index_build.running(self.root))
+        self.assertEqual(self.doc.read_text(), before)
+
+    def test_the_offered_command_builds_in_the_background(self):
+        with mock.patch.dict(os.environ, {**self.env, "FAKE_MODE": "good"}):
+            code, env, err = run_json("rules", "--build", "shop", "--background", *self.R)
+        self.assertEqual(code, 0, err)
+        self.assertEqual((env["data"]["status"], env["data"]["docs"]), ("started", ["modules/shop/MODULE.md"]))
+        self.wait_built()
         last = json.loads((index_build.state_dir(self.root) / "last.json").read_text())
         self.assertEqual(last["summary"]["built"], 1)
         with mock.patch.dict(os.environ, self.env):
             self.assertEqual(self.discover()[1]["data"]["rules_build"]["status"], "complete")
+            code, out, _ = run("rules", "--build", "shop", "--background", *self.R)
+        self.assertEqual((code, out.strip()), (0, "nothing to index: every doc of these modules has a rules index"))
+
+    def test_the_background_build_is_refused_as_the_build_is(self):
+        os.environ.pop(index_build.ENV_ALLOW, None)
+        code, _, err = run("rules", "--build", "shop", "--background", *self.R)
+        self.assertEqual(code, 2)
+        self.assertIn(index_build.ENV_ALLOW, err)
+        self.assertFalse(index_build.running(self.root))
+        self.assertEqual(run("rules", "shop", "--background", *self.R)[0], 2)  # --background goes with --build
 
     def test_the_callers_marks_choose_the_docs_over_the_code_map(self):
         os.environ.pop(index_build.ENV_ALLOW, None)  # not_allowed: the docs are named, nothing starts
@@ -178,31 +203,26 @@ class DiscoverTest(Base):
         self.assertEqual(rb["read"], "segmently-modules rules cart shop > <temp file>, then read the file to the end")
         self.assertEqual(run("discover", "--files", "src/shop/pay.py", "--modify", "nope", *self.R)[0], 2)
 
-    def test_rules_of_named_modules_start_the_build_too(self):
+    def test_rules_and_show_of_named_modules_offer_it_too(self):
+        before = self.doc.read_text()
         with mock.patch.dict(os.environ, {**self.env, "FAKE_MODE": "good"}):
             code, out, _ = run("rules", "shop", *self.R)
-        self.assertEqual(code, 0)
-        self.assertIn("being indexed in the background (rules --build); until then their rules are only in "
-                      "their text: read each to the end — modules/shop/MODULE.md", out)
-        deadline = time.time() + 30
-        while time.time() < deadline and (index_build.running(self.root) or "Indexed:" not in self.doc.read_text()):
-            time.sleep(0.2)
-        self.assertIn("Indexed:", self.doc.read_text())
-        with mock.patch.dict(os.environ, self.env):
-            self.assertEqual(run_json("rules", "shop", *self.R)[1]["data"]["rules_build"]["status"], "complete")
+            self.assertEqual(code, 0)
+            self.assertIn("rules index: 1 doc(s) without one; their rules are only in their text: read each to the "
+                          "end — modules/shop/MODULE.md. After your report, ask the user whether to index them: "
+                          "segmently-modules rules --build shop --background", out)
             self.assertNotIn("rules_build", run_json("rules", "--files", "src/shop/pay.py", *self.R)[1]["data"])
-
-    def test_show_of_a_module_starts_the_build_too(self):
-        with mock.patch.dict(os.environ, {**self.env, "FAKE_MODE": "good"}):
             code, out, _ = run("show", "shop", *self.R)
-        self.assertEqual(code, 0)
-        self.assertIn("1 doc(s) being indexed in the background; until then read each in full: "
-                      "modules/shop/MODULE.md", out)
-        deadline = time.time() + 30
-        while time.time() < deadline and (index_build.running(self.root) or "Indexed:" not in self.doc.read_text()):
-            time.sleep(0.2)
-        self.assertIn("Indexed:", self.doc.read_text())
-        with mock.patch.dict(os.environ, self.env):
+            self.assertEqual(code, 0)
+            self.assertIn("  index 1 doc(s) without one; read each in full: modules/shop/MODULE.md. After your "
+                          "report, ask the user whether to index them: segmently-modules rules --build shop "
+                          "--background", out)
+        time.sleep(0.5)
+        self.assertFalse(index_build.running(self.root))
+        self.assertEqual(self.doc.read_text(), before)
+        with mock.patch.dict(os.environ, {**self.env, "FAKE_MODE": "good"}):
+            run("rules", "--build", "shop", *self.R)
+            self.assertEqual(run_json("rules", "shop", *self.R)[1]["data"]["rules_build"]["status"], "complete")
             self.assertNotIn("rules_build", run_json("show", "shop", *self.R)[1]["data"])  # nothing missing now
 
     def test_what_discover_says_when_it_does_not_build(self):

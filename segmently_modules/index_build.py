@@ -385,7 +385,15 @@ def build(ws, items: list[dict]) -> dict:
 
 
 def start_background(ws, items: list[dict]) -> dict:
-    """`rules --build` for `items` in a detached process; returns at once. {status, docs, log}."""
+    """`rules --build --background`: `rules --build` for `items` in a detached process; returns at
+    once. {status, docs, log}. Refused (exit 2) as `build` refuses, checked here: the process has no
+    one to tell."""
+    if nested():
+        raise UsageError("inside an agent run (SEGMENTLY_MODULES_WORK_ORDER is set): a writer starts no writer")
+    if not allowed():
+        raise UsageError(NOT_ALLOWED)
+    if writer_command() is None:
+        raise UsageError(NO_WRITER)
     held = running(ws.root)
     if held:
         return {"status": "running", "docs": held.get("docs", []), "log": str(state_dir(ws.root) / "build.log")}
@@ -402,8 +410,12 @@ def start_background(ws, items: list[dict]) -> dict:
 
 
 def discover_hook(ws, targets: list[str], from_diff: bool) -> dict | None:
-    """`discover --files`' `rules_build` under `[rules] index = "discover"`: the modify modules'
-    docs without an index, and what the engine does about them. None when the setting is another."""
+    """`rules_build` of `discover --files`, `rules <module>` and `show` under `[rules] index =
+    "discover"`: the docs without an index of these modules and the command that indexes them.
+    Nothing is written here: module-discover offers the command to the user after its report and
+    runs it on a yes (c10, 2026-10-19: two readers told not to edit the repository saw a writer the
+    engine had started change a doc, killed it and undid the change). None when the setting is
+    another."""
     from segmently_modules.config import rules_index_setting
     if rules_index_setting(ws.config) != "discover" or from_diff:
         return None
@@ -419,6 +431,9 @@ def _hook(ws, targets: list[str]) -> dict:
     if not items:
         return {"status": "complete", "docs": []}
     docs = [i["doc"] for i in items]
+    held = running(ws.root)
+    if held:  # a build the user said yes to is still going
+        return {"status": "running", "docs": held.get("docs", []), "log": str(state_dir(ws.root) / "build.log")}
     if os.environ.get("SEGMENTLY_MODULES_RUN_ID"):
         return {"status": "skipped", "docs": docs, "note": "inside a pipeline run: module-sync indexes them"}
     if nested():
@@ -430,4 +445,5 @@ def _hook(ws, targets: list[str]) -> dict:
             return {"status": "no_writer", "docs": docs, "note": NO_WRITER}
     except UsageError as e:
         return {"status": "not_allowed", "docs": docs, "note": str(e)}
-    return start_background(ws, items)
+    return {"status": "missing", "docs": docs,
+            "build": f"segmently-modules rules --build {' '.join(targets)} --background"}

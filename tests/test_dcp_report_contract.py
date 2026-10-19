@@ -135,7 +135,13 @@ RULES = [
     "  test runner resolves) and the existing file it would touch, or \"a new file: the plan decides",
     "  where\". A consequence never enters `Code:` and never names a new path.",
     "- `Search:` is the first line under the title, in the form `references/choose.md` gives.",
+    # 2026-10-19 (owner): discover writes nothing; after the report it asks to index the docs without one
+    "- The closing question only when an `index:` line says `not indexed` (`references/rules.md`):",
+    "  every such doc, once; on a yes run `rules_build`'s `build`, never without it.",
 ]
+MISSING_FILE = "- `<file>`"
+QUESTION = ("Index the rules of <doc>, … now? A writer per doc, in the background, edits only their "
+            "critical-rules sections; the next reader gets the index instead of reading them again.")
 NEW_VERSION = '  "version": "1.1",'
 NEW_FILES = [
     '      "files": [{"path": "<file>", "offset": 42, "limit": 30, '
@@ -168,7 +174,7 @@ NEW_EXTRACT = ["  extract is short and says what it means for this task. A rule 
 # the rules index in discover (2026-10-18): a modify module's `Rules:` block after `Why:`, and its rule
 WHY = "Why: <what the task needs from it; \"named by the user\" when it was>"
 RULES_BLOCK = ["Rules:", "- `<doc>:<line>` (<role>) — <the rule's first line, verbatim>",
-               "- index: <complete (<date>) | building in the background — <doc>, … | incomplete — <doc>, …>"]
+               "- index: <complete (<date>) | building in the background — <doc>, … | not indexed — <doc>, … | incomplete — <doc>, …>"]
 RULES_BULLET = ["- `Rules:` only for a `modify` module (`references/rules.md`): each rule",
                 "  `rules <module>` gives (`references/rules.md`), verbatim, in its order, then the `index:` line.",
                 "  A `consume` or `reference` module: no `Rules:` lines."]
@@ -235,6 +241,8 @@ def expected_report() -> str:
             out += RULES
         elif line == JSON_END:
             out.append(JSON_REASON)
+        elif line == MISSING_FILE:
+            out += ["", QUESTION]
     return "\n".join(out)
 
 
@@ -259,7 +267,7 @@ class RestUnchangedTest(unittest.TestCase):  # DCP-AC-016
                 added += new[j1:j2]
         self.assertEqual(removed, [OLD_HEADING, OLD_CODE, OLD_REJECTED, OLD_DOCS_RULE, DOCS_RULE_END,
                                    OLD_VERSION, OLD_FILES, OLD_CONFIDENCE])  # every other base line kept
-        allowed = {"", SEARCH, EDIT, READ, TESTS, CONSEQUENCE, NEW_VERSION, JSON_REASON,
+        allowed = {"", SEARCH, EDIT, READ, TESTS, CONSEQUENCE, NEW_VERSION, JSON_REASON, QUESTION,
                    *RULES, *NEW_FILES, NEW_HEADING, NEW_REJECTED, NEW_CONFIDENCE,
                    *NEW_DOCS_RULE, *NEW_EXTRACT, *RULES_BLOCK, *RULES_BULLET}
         self.assertEqual([line for line in added if line not in allowed], [])

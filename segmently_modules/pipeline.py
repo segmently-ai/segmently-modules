@@ -266,8 +266,8 @@ def run_discover(args) -> int:
     if mode != "lexical":
         data = {**data, "mode": mode, "notes": notes}
     if rules_index_setting(ws.config) == "discover" and not args.from_diff:
-        # the setting, before the rows; with --files the engine starts the writers itself
-        # (four trial runs: the agent never wrote a doc nobody asked it to)
+        # the setting, before the rows; with --files the docs without an index and the command that
+        # indexes them, which module-discover offers the user after its report
         from segmently_modules.index_build import discover_hook
         from segmently_modules.rules_cmd import _target
         # the caller's own marks choose the docs (c05: the code map gave the edit files to parents and to

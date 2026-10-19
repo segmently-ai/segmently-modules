@@ -25,8 +25,8 @@ a bug's cause — the conversation does that; discover gives it the map.
 ## Scope
 
 Read-only: Segmently Modules read verbs, docs, code search. It writes only temporary files outside the
-repository and the JSON result where the user asks; under `[rules] index = "discover"` the engine
-indexes docs in the background (step 7). Never a commit. It runs in the user's conversation; a caller that wants a clean context runs it through
+repository and the JSON result where the user asks; under `[rules] index = "discover"` it offers
+to index docs after the report (step 7). Never a commit. It runs in the user's conversation; a caller that wants a clean context runs it through
 the `module-discover-agent` agent, which returns this skill's report unchanged.
 
 If `segmently-modules` is not found, tell the user how to install it — the `segmently-modules` plugin for Claude Code, `uv tool install git+https://github.com/segmently-ai/segmently-modules.git`, or `pipx install git+https://github.com/segmently-ai/segmently-modules.git` — and stop until it runs.

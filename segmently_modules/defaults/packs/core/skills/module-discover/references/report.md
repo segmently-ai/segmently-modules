@@ -14,7 +14,7 @@ Search: <lexical | by meaning | hybrid> — <the setting or the user's words> �
 Why: <what the task needs from it; "named by the user" when it was>
 Rules:
 - `<doc>:<line>` (<role>) — <the rule's first line, verbatim>
-- index: <complete (<date>) | building in the background — <doc>, … | incomplete — <doc>, …>
+- index: <complete (<date>) | building in the background — <doc>, … | not indexed — <doc>, … | incomplete — <doc>, …>
 Docs:
 - `<path>` (<role>): <a rule, constraint, contract or pitfall that bears on the task>
 - `<path>` (<role>): read, nothing for this task
@@ -34,6 +34,8 @@ Likely consequence: <what the implementation will probably also need> — <the e
 
 ### Missing files
 - `<file>`
+
+Index the rules of <doc>, … now? A writer per doc, in the background, edits only their critical-rules sections; the next reader gets the index instead of reading them again.
 ```
 
 - `Rules:` only for a `modify` module (`references/rules.md`): each rule
@@ -61,6 +63,8 @@ Likely consequence: <what the implementation will probably also need> — <the e
   test runner resolves) and the existing file it would touch, or "a new file: the plan decides
   where". A consequence never enters `Code:` and never names a new path.
 - `Search:` is the first line under the title, in the form `references/choose.md` gives.
+- The closing question only when an `index:` line says `not indexed` (`references/rules.md`):
+  every such doc, once; on a yes run `rules_build`'s `build`, never without it.
 - An empty section says "none"; it is never left out.
 
 ## JSON (`discovery-results.json`)
