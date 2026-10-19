@@ -287,8 +287,11 @@ def build_one(ws, item: dict, command: list[str], today: str, work: Path, limit:
     after = path.read_text("utf-8") if path.is_file() else None
     sec = critical_section(path, heading) if after is not None else {"indexed": None, "rules": []}
     if code != 0:
+        # the writer's own last words, else its last stderr line: the first stderr lines are warnings
+        # (stand c10, 2026-10-19: "Ignoring 9 permissions.allow entries…" hid "Not logged in")
+        why = out.get("reply") or next((ln.strip() for ln in reversed(err.splitlines()) if ln.strip()), "")
         status = "timeout" if code is None else \
-            f"failed: the writer exited {code}" + (f" ({err.strip()[:200]})" if err.strip() else "")
+            f"failed: the writer exited {code}" + (f" ({why[:200]})" if why else "")
     elif after is None:
         status = "failed: the doc is gone"
     elif (line := outside_line(before, after, heading)) is not None:

@@ -33,6 +33,13 @@ doc = Path(order["root"]) / order["doc"]
 mode = os.environ.get("FAKE_MODE", "good")
 if mode == "fail":
     sys.exit(3)
+if mode == "nologin":  # what `claude -p --output-format json` does when its login is gone
+    print("Ignoring 9 permissions.allow entries from .claude/settings.json: not trusted", file=sys.stderr)
+    print(json.dumps({"type": "result", "is_error": True, "result": "Not logged in · Please run /login"}))
+    sys.exit(1)
+if mode == "stderr":
+    print("a warning first\nthe real reason last", file=sys.stderr)
+    sys.exit(4)
 text = doc.read_text()
 line = "" if mode == "noline" else f"Indexed: every rule of this doc, {order['today']}.\n\n"
 text += f"\n## Critical Rules\n\n{line}- Never charge twice — `MODULE.md:1`\n"
@@ -92,6 +99,12 @@ class BuildTest(Base):
             _, env, _ = self.build(mode)
             self.assertEqual(env["data"]["docs"][0]["status"], status)
             self.assertEqual(self.doc.read_text(), before)
+
+    def test_a_failure_names_the_writers_own_reason_not_the_first_warning(self):
+        for mode, status in (("nologin", "failed: the writer exited 1 (Not logged in · Please run /login)"),
+                             ("stderr", "failed: the writer exited 4 (the real reason last)")):
+            _, env, _ = self.build(mode)
+            self.assertEqual(env["data"]["docs"][0]["status"], status)
 
     def test_a_backup_next_to_the_doc_is_removed_and_another_files_change_is_reported(self):
         _, env, _ = self.build("stray")
