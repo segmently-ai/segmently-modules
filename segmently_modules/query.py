@@ -104,8 +104,8 @@ def rules_of(ws, target: str) -> list[dict]:
 
 
 # `show`'s `rules_index.build` under `[rules] index = "discover"` when a doc has no index yet
-BUILD_NOW = ("`discover --files` with this module's files has the engine index these docs in the background "
-             "(`rules --build`); until then read them in full")
+BUILD_NOW = ("the engine indexes these docs in the background (`rules --build`, started by `show`, `rules` or "
+             "`discover --files`); until then read them in full")
 
 
 def index_state(docs: list[dict]) -> dict:
@@ -310,6 +310,13 @@ def run_show(args) -> int:
     if args.role and args.role not in roles:
         raise UsageError(f"unknown role '{args.role}' (roles: {', '.join(roles)})")
     code, data = show_module(ws, args.module, args.role, args.all_roles)
+    if code == 0 and data.get("rules_setting") == "discover" and data["rules_index"]["missing"]:
+        # c10: a run that only `show`ed its modules (no `rules`, no step 7) built nothing, and the next
+        # run grepped the unindexed docs; the module a reader shows is one it is weighing
+        from segmently_modules.index_build import discover_hook
+        hook = discover_hook(ws, [data["module"]], False)
+        if hook:
+            data["rules_build"] = hook
     emit("show", data, args.json, _render_show)
     return code
 
@@ -340,6 +347,10 @@ def _render_show(d) -> None:
         print(f"  read  {r['label']:<32} {r['path']}{mark}")
     for r in d.get("rules") or []:
         print(f"  rule  {r['doc']}:{r['line']}  {r['title']}")
+    b = d.get("rules_build")
+    if b and b["status"] in ("started", "running"):
+        print(f"  index {len(b['docs'])} doc(s) being indexed in the background; until then read each in full: "
+              f"{', '.join(b['docs'])}")
     for n in d.get("not_needed") or []:
         why = f" — {n['note']}" if n["note"] else ""
         print(f"  skip  role:{n['role']} not needed{why}")
