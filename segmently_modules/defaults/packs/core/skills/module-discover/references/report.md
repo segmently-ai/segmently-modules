@@ -84,7 +84,9 @@ edits there. Write the input below to a temp file outside the repository, then:
 segmently-modules task-context save --from <temp file> --json
 ```
 
-Its `path` is the saved file; the report's last line is `Saved: <path>` (none when nothing was saved). Exit 2:
+Its `path` is the saved file; the report's last line is `Saved: <path>` (none when nothing was saved). Save once: a
+correction goes to that file with `task-context add <path> --phase discover --from <temp file>`, never a second save
+(it makes a second file). Exit 2:
 read stderr, fix the input, run it again.
 
 The input holds your judgements; the engine fills the rest — each doc's role and hash, every rule of the docs
