@@ -1,4 +1,5 @@
 """Golden contract: every verb's --json envelope and data keys match docs/cli-contract.md."""
+import json
 import re
 import tempfile
 import unittest
@@ -75,7 +76,10 @@ GOLDEN = [
     (("setup", "--dry-run"), {"dry_run", "agents", "targets", "steps"}),  # P6.1 W5
     (("rules", "catalog", "--files", "src/catalog/service.py"),
      {"heading", "modules", "files_outside_modules", "missing_files"}),
+    # 2026-10-20: the task context file; `{root}` is the fixture copy, TASK_INPUT its input there
+    (("task-context", "save", "--from", "{root}/task-input.json", "--out", "{root}/ctx.json"), {"path", "revision"}),
 ]
+TASK_INPUT = {"task": "isbn lookup", "modules": [{"module": "catalog", "usage": "modify", "score": 8}]}
 
 
 class CliContractTest(unittest.TestCase):
@@ -83,7 +87,9 @@ class CliContractTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = copy_fixture(tmp)
             init_git(root)  # coverage lists files through git
+            (root / "task-input.json").write_text(json.dumps(TASK_INPUT), encoding="utf-8")
             for argv, keys in GOLDEN:
+                argv = tuple(a.replace("{root}", str(root)) for a in argv)
                 with self.subTest(verb=argv[0]):
                     code, env, err = run_json(*argv, "--root", str(root))
                     self.assertEqual((code, err), (0, ""))

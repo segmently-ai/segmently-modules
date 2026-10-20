@@ -14,7 +14,7 @@ from segmently_modules import (adopt_cmd, agents_md_cmd, catalog_cmd, choose_cmd
                     eject_cmd, eval_cmd, hooks_cmd, index_cmd, init_cmd, lint, match,
                     migrate_cmd, next_cmd, packs_cmd, pipeline, proposals_cmd, query,
                     registry_cmd, roles_cmd, rules_cmd, schema_cmd, setup_cmd, sync_cmd,
-                    sync_instructions_cmd, templates_cmd)
+                    sync_instructions_cmd, task_context_cmd, templates_cmd)
 from segmently_modules.output import (EXIT_INTERRUPTED, EXIT_OK, EXIT_USAGE, UsageError,  # noqa: E402
                                       clear_notes, flush_notes, quiet_streams)
 
@@ -22,7 +22,8 @@ COMMANDS: list = [init_cmd, schema_cmd, match, query, lint, registry_cmd, index_
                   proposals_cmd, hooks_cmd, sync_cmd, create_cmd, migrate_cmd, pipeline,
                   coverage_cmd, code_map_cmd, ci_cmd, templates_cmd, packs_cmd,
                   eject_cmd, agents_md_cmd, sync_instructions_cmd, adopt_cmd, eval_cmd,
-                  roles_cmd, next_cmd, setup_cmd, catalog_cmd, choose_cmd, rules_cmd]
+                  roles_cmd, next_cmd, setup_cmd, catalog_cmd, choose_cmd, rules_cmd,
+                  task_context_cmd]
 
 
 def common_parser() -> argparse.ArgumentParser:

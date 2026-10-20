@@ -169,8 +169,8 @@ engine reads none), and the engine ships, installs and suggests no model.
 | `[search] cards` | `"full"` | the cards of every work order (`choose`, `choose --apply` / `--run`, `--match semantic` / `hybrid`): `full` (name, description, the first `card_keywords` keywords; a child card names its parent) or `brief` (one card per module and per child: name and description, a parent's card naming its children, a child's its parent, no keyword — a smaller order). `choose --cards full\|brief` overrides it for one run; any other value is exit 2 |
 | `[search] generic` | `[]` | the modules that match almost any task (a shared UI kit, a shared data layer), by id, e.g. `["ui-kit", "data-core"]`; a listed module covers its family — the module and its children (`<id>/…`). `discover --json`'s `lexical_confidence` leaves their keyword rows out of its verdict: when every keyword row is theirs it is `unsure` with the reason `generic` (`top`: those at the top score); otherwise `tie`, `low_score` and `sure` are decided over the other modules' rows. So under `chooser = "when_unsure"` hits on these modules alone no longer skip the chooser. They stay in `discover`'s `modules` and in every other output. An id that names no module is ignored. Team, personal or pack config; the ids of every layer add up (arrays add); anything but a list of module ids (non-empty strings) is exit 2 naming the file |
 
-`segmently-modules catalog --settings` prints every `[match]`, `[search]` and `[rules]` key with its merged value,
-defaults filled in (`--json`: `{match, search, rules}`); `catalog` without it keeps its three `search` keys.
+`segmently-modules catalog --settings` prints every `[match]`, `[search]`, `[rules]` and `[discover]` key with its merged value,
+defaults filled in (`--json`: `{match, search, rules, discover}`); `catalog` without it keeps its three `search` keys.
 
 ## `[rules]`
 
@@ -191,12 +191,14 @@ status). Feature descriptions and how-to steps are not rules.
 
 ## `[discover]`
 
-What module-discover's step 5 reads (`show <module> --discover`).
+What module-discover's step 5 reads (`show <module> --discover`), and whether its step 9 saves the result.
 
 | Key | Default | Meaning |
 |---|---|---|
 | `docs` | `"all"` | the docs it reads: `"all"`, or a list of `"module"` (the module doc), `"extras"` (its other `context_files` docs) and role names, e.g. `["module", "developer"]`; a doc left out is a `skip` line (`not_read`, `why: "docs"`); an unknown name is exit 2 |
 | `read` | `"whole"` | `"whole"`: every listed doc is read to the end; `"index"`: a doc whose rules index is complete, and an other doc its module doc's index cites, is an `index` line (`why: "index"`): not read, its rules are the `rules` output; a doc without an index is still read whole |
+| `save` | `"always"` | module-discover's step 9 saves its result as a task context file (`task-context save`, `docs/cli-contract.md`): `"always"`; `"ask"`: it asks after the report; `"off"`: only when the user or a caller asks. A path the user or a caller gives always wins. `catalog --settings` prints it; any other value is exit 2 |
+| `save_dir` | `".segmently-modules/tasks"` | where `task-context save` writes a file when no `--out` is given, relative to the root: `<YYYY-MM-DD>-<slug of the task>.json`; on first use the directory gets a `.gitignore` holding `*`. An empty value is exit 2 |
 
 ## `[lint]`
 

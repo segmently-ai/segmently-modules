@@ -3,7 +3,7 @@ status, description, keywords (a child also names its parent) — the input an a
 choose modules by meaning (P8.1 S2). Read-only: no lock, no write, never runs the agent. JSON
 carries `match: {mode, semantic}` (`semantic` = a valid `SEGMENTLY_MODULES_AGENT_COMMAND` is set)
 and the `search` settings. `catalog --settings` prints only the settings: every `[match]` and
-`[search]` key, defaults filled in, and no card (the registry is not read). `catalog --plain` prints
+`[search]` key, `[rules] index` and `[discover]`, defaults filled in, and no card (the registry is not read). `catalog --plain` prints
 only each card's id, description and keywords, one wrapped block each, for an agent to read whole
 and judge by meaning (2026-10-19: discover's step 1 reads every card itself)."""
 import json
@@ -11,7 +11,8 @@ import textwrap
 
 from segmently_modules.output import EXIT_OK, UsageError, defer_note, emit
 from segmently_modules.registry import as_dict
-from segmently_modules.config import LAYER_SCHEMA, core_defaults, rules_index_setting, search_all, search_settings
+from segmently_modules.config import (LAYER_SCHEMA, core_defaults, discover_settings, rules_index_setting, search_all,
+                                      search_settings)
 from segmently_modules.semantic import agent_configured, configured_mode
 from segmently_modules.workspace import Workspace
 
@@ -85,7 +86,9 @@ def run(args) -> int:
         raise UsageError("--settings and --plain are two different prints: give one")
     if args.settings:
         data = {"match": match_settings(ws.config), "search": search_all(ws.config),
-                "rules": {"index": rules_index_setting(ws.config)}}
+                "rules": {"index": rules_index_setting(ws.config)},
+                # 2026-10-20: module-discover reads `[discover] save` here (step 1's settings) for its step 9
+                "discover": discover_settings(ws.config)}
         emit("catalog", data, args.json, _render_settings)
         return EXIT_OK
     if args.plain:
@@ -101,9 +104,9 @@ def run(args) -> int:
 
 
 def _render_settings(data) -> None:
-    """One `key = value` line per key under a `[match]`, a `[search]` and a `[rules]` heading;
-    each value as TOML writes it."""
-    for i, group in enumerate(("match", "search", "rules")):
+    """One `key = value` line per key under a `[match]`, a `[search]`, a `[rules]` and a `[discover]`
+    heading; each value as TOML writes it."""
+    for i, group in enumerate(("match", "search", "rules", "discover")):
         if i:
             print()
         print(f"[{group}]")

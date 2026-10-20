@@ -244,6 +244,13 @@ def show_target(ws, target: str, role: str | None, all_roles: bool, discover: bo
     return EXIT_OK, result
 
 
+def doc_kind(label: str) -> str:
+    """The kind of a doc by its `show` read label: "module" (a universal doc — the module's, a child's own
+    and its parent's), the role name of a role doc (a child's and its parent baseline's), or "extras"
+    (the module's other docs). `[discover] docs` and the task context's doc roles (2026-10-20) read it."""
+    return "module" if "universal" in label else label.rsplit("role:", 1)[1] if "role:" in label else "extras"
+
+
 def _apply_discover(ws, result: dict, docs: list[dict]) -> None:
     """`show --discover`: the read list under `[discover]` (2026-10-19, owner: which docs discover reads, and
     the index in place of reading, as settings). `docs` keeps the module doc ("module"), its other docs
@@ -260,8 +267,7 @@ def _apply_discover(ws, result: dict, docs: list[dict]) -> None:
     cited = "\n".join(r["text"] for d in docs if d["role"] == "all" and d["indexed"] for r in d["rules"])
     keep, aside = [], []
     for r in result["read"]:
-        label = r["label"]
-        kind = "module" if "universal" in label else label.rsplit("role:", 1)[1] if "role:" in label else "extras"
+        kind = doc_kind(r["label"])
         if st["docs"] != "all" and kind not in st["docs"]:
             aside.append({**r, "why": "docs"})
         elif st["read"] == "index" and (r["path"] in indexed or (kind == "extras" and (

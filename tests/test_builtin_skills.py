@@ -301,8 +301,9 @@ class InstallLineTest(SkillRules):  # P6-AC-019 (D6, SI-4)
         # (P8.8, owner: qa-acceptance's delivery sentence — shown in the conversation, not a file)
         # (P8.9, owner: designer-review renamed `designer`, its description names the three routes)
         # (the rename to Segmently Modules, owner: the product name left the verb mentions)
+        # (2026-10-20, task context plan §8.4: module-discover saves its result, no more "JSON at a path")
         "module-adopt": "c8f67a732e47681a", "module-create": "88844df447f72c53",
-        "module-discover": "c94d722d31235c69", "module-init": "2bed37af36af61b7",
+        "module-discover": "d8a963a97561d902", "module-init": "2bed37af36af61b7",
         "module-lint": "d19804f58e3380f7", "module-research": "be7f867931e5c0ce",
         "module-scout": "79df2d2b49d5ccb6", "module-split": "134b4160f4344630",
         "module-sync": "373a648c232de290", "module-roles": "686cf561ceb829bf",

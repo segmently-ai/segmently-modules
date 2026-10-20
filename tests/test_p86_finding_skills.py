@@ -132,9 +132,9 @@ class DiscoverContractTest(unittest.TestCase):  # D2: the host's MODE=discover c
         "A module step 2 kept stays in the report even when this gives its files to another "
         "module or to none",
         "drop a kept module only with a stated reason, on the rejected list",
-        # the report reaches the conversation, the JSON on request
+        # the report reaches the conversation; the result is saved (task context plan 2026-10-20, §8.4)
         "The extracts are in the report, so they reach the conversation through an agent too.",
-        "the `discovery-results.json` shape in `references/report.md`",
+        "**Save the result** under `[discover] save` (step 1's settings), as `references/report.md` says.",
     ]
     GONE = [  # P8.3 / P8.5 rules D2 removes: discover is no root-cause search
         "computed and set", "files the change edits", "read for evidence", "Go to the code",
@@ -165,25 +165,33 @@ class DiscoverContractTest(unittest.TestCase):  # D2: the host's MODE=discover c
         self.assertEqual(heads, [("1", "Candidates."), ("2", "Verify."), ("3", "One hop out."),
                                  ("4", "Usage."), ("5", "Docs for every role."),
                                  ("6", "Code touch points."), ("7", "Owners and docs to update."),
-                                 ("8", "Report"), ("9", "JSON on request")])
+                                 ("8", "Report"), ("9", "Save the result")])
 
     def test_the_report_template(self):
         text = ref("module-discover", "report.md")
         self.assertEqual([p for p in self.REPORT if p not in text], [])
         self.assertIn("A file the work will create is never listed", flat(text))
 
-    def test_the_json_shape(self):  # the keys the host's planning pipeline reads
-        block = re.search(r"```json\n(.*?)\n```", ref("module-discover", "report.md"), re.S)
+    def test_the_saved_result(self):  # the §8.1 input of `task-context save` (plan 2026-10-20); 1.1 by export only
+        text = ref("module-discover", "report.md")
+        block = re.search(r"```json\n(.*?)\n```", text, re.S)
         doc = json.loads(block.group(1))
-        self.assertEqual(list(doc), ["version", "task", "modules", "files_outside_modules",
-                                     "summary"])
-        self.assertEqual(list(doc["modules"][0]), ["name", "score", "confidence", "usage_type",
-                                                   "documentation", "files"])
-        self.assertEqual(list(doc["modules"][0]["files"][0]), ["path", "offset", "limit", "reason"])
-        self.assertIn("module_md", doc["modules"][0]["documentation"])
-        mapping = flat(ref("module-discover", "report.md"))
-        self.assertIn("`modify` → `MODIFY` (`EXTEND` when the task adds new code on the module's "
-                      "patterns), `consume` and `reference` → `READ-ONLY`", mapping)
+        self.assertEqual(list(doc), ["task", "search", "modules", "docs", "rules", "rejected", "summary"])
+        self.assertEqual(list(doc["modules"][0]), ["module", "usage", "score", "why", "named_by_user", "files",
+                                                   "tests", "risks", "consequences"])
+        self.assertEqual(list(doc["modules"][0]["files"][0]), ["path", "line", "tag", "symbol", "why"])
+        self.assertEqual(list(doc["rules"][0]), ["ref", "applies"])  # named by doc:line, never retyped
+        self.assertEqual(list(doc["docs"][0]), ["path", "nothing", "extracts"])
+        body = flat(text)
+        for phrase in ("segmently-modules task-context save --from <temp file> --json",
+                       "`--out <path>`", "the report's last line is `Saved: <path>`",
+                       "A rule is named by its `doc:line` as `rules` prints it, never retyped",
+                       "`task-context export <file> --format discovery-1.1`",
+                       '`"always"` — save; `"ask"` — ask after the report; `"off"` — only when the user or a caller '
+                       "asks"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, body)
+        self.assertNotIn('"version"', block.group(1))
 
     def test_the_change_only_scenario(self):
         text = flat(ref("module-discover", "from-diff.md"))

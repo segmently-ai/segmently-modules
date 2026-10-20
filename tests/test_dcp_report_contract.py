@@ -14,7 +14,10 @@ module. Owner rulings 2026-10-16: step 2 gives one score, so the template writes
 (the module heading and the rejected line) and the JSON's `confidence` is `high` when the score
 is ≥ 7. Owner ruling 2026-10-18 (c05 pilots: the reader grepped docs and rules by keyword): the
 `searched (<terms>)` form of 2026-10-16 is gone — every doc step 5 lists is read to the end with
-the file-read tool, never a search in it, a line range or a cut."""
+the file-read tool, never a search in it, a line range or a cut. Task context plan 2026-10-20 (§8.4): the
+JSON section is gone — step 9 saves the result through `task-context save`, its input pinned in
+`test_p86_finding_skills` and below, the 1.1 shape only through `task-context export`, so the report part is
+the base's report part with these edits and its last line names the saved file."""
 from __future__ import annotations
 
 import difflib
@@ -100,17 +103,20 @@ BASE_REPORT = (
     "module, one key per role (`developer_md`, `qa_md`, …). `files[].offset` is the touch point's line.\n"
 )
 
+# the base's report part: everything before its JSON section, which the saved result replaced (2026-10-20)
+JSON_HEADING = "## JSON (`discovery-results.json`)\n"
+SAVED_HEADING = "## Saved result\n"
+BASE_PART = BASE_REPORT.split(JSON_HEADING)[0]
+
 # the base lines this task replaces, and the lines after which it inserts
 TITLE = "## Discovery: <task, one line>"
+OLD_TITLE = "# The report (step 8) and the JSON (step 9)"
+NEW_TITLE = "# The report (step 8) and the saved result (step 9)"
+SAVED_LINE = "Saved: `<path>`"  # the report's last line names the saved file (§8.4)
 OLD_CODE = "- `<file>:<line>` — `<symbol>` — <why: what the task touches there>"
 RISKS = ("Risks / unknowns: <open questions, a doc the code contradicts, an assumption the plan "
          "must check>")
 CODE_RULE_END = "  goes is the plan's decision."
-OLD_VERSION = '  "version": "1.0",'
-OLD_FILES = ('      "files": [{"path": "<file>", "offset": 42, "limit": 30, '
-             '"reason": "<symbol> — <why>"}]')
-JSON_END = ("module, one key per role (`developer_md`, `qa_md`, …). `files[].offset` is the touch "
-            "point's line.")
 
 # the new lines (R-2): the search line, the two tagged code lines, the tests line, the consequence
 SEARCH = ("Search: <lexical | by meaning | hybrid> — <the setting or the user's words> — "
@@ -146,24 +152,12 @@ RULES = [
 MISSING_FILE = "- `<file>`"
 QUESTION = ("Index the rules of <doc>, … now? A writer per doc, in the background, edits only their "
             "critical-rules sections; the next reader gets the index instead of reading them again.")
-NEW_VERSION = '  "version": "1.1",'
-NEW_FILES = [
-    '      "files": [{"path": "<file>", "offset": 42, "limit": 30, '
-    '"reason": "edit — <symbol> — <what changes there>"},',
-    '                {"path": "<file>", "offset": 7, "limit": 30, '
-    '"reason": "read — <symbol> — <why it was read>"}]',
-]
-JSON_REASON = "`files[].reason` starts with the tag of its `Code:` line: `edit — ` or `read — `."
 
 # owner rulings 2026-10-16: one score (step 2), and a doc only searched says so
 OLD_HEADING = "### <module>[/<child>] — usage: modify | consume | reference (score <average>)"
 NEW_HEADING = "### <module>[/<child>] — usage: modify | consume | reference (score <0–10>)"
 OLD_REJECTED = "- <module> — <reason> (score <average>, or \"off-topic by its description\")"
 NEW_REJECTED = "- <module> — <reason> (score <0–10>, or \"off-topic by its description\")"
-OLD_CONFIDENCE = ("named, else `high` (average ≥ 7) or `medium`. `documentation` holds every doc "
-                  "step 5 read for the")
-NEW_CONFIDENCE = ("named, else `high` when the score is ≥ 7, otherwise `medium`. `documentation` "
-                  "holds every doc step 5 read for the")
 OLD_DOCS_RULE = "- Every doc step 5 read is on a `Docs:` line: an extract, or \"read, nothing for this task\". An"
 NEW_DOCS_RULE = ["- Every doc step 5 lists is read to the end — the whole file with your file-read tool, never a",
                  "  search in it, a line range or a cut — and is on a `Docs:` line: an extract, or \"read, nothing",
@@ -182,10 +176,9 @@ RULES_BLOCK = ["Rules:", "- `<doc>:<line>` (<role>) — <the rule's first line, 
 RULES_BULLET = ["- `Rules:` only for a `modify` module (`references/rules.md`): each rule `rules <module>` gives",
                 "  that applies to the task (`references/rules.md`), verbatim, in its order, then the `index:` line.",  # 2026-10-19
                 "  A `consume` or `reference` module: no `Rules:` lines."]
-REPLACED = {OLD_CODE: [EDIT, READ, TESTS], OLD_VERSION: [NEW_VERSION], OLD_FILES: NEW_FILES,
+REPLACED = {OLD_TITLE: [NEW_TITLE], OLD_CODE: [EDIT, READ, TESTS],
             OLD_HEADING: [NEW_HEADING], OLD_REJECTED: [NEW_REJECTED],
-            OLD_CONFIDENCE: [NEW_CONFIDENCE], OLD_DOCS_RULE: RULES_BULLET + NEW_DOCS_RULE,
-            DOCS_RULE_END: NEW_EXTRACT}
+            OLD_DOCS_RULE: RULES_BULLET + NEW_DOCS_RULE, DOCS_RULE_END: NEW_EXTRACT}
 
 # step 6 (R-3), in order, as the lite text says it: the form, under report.md's rules (RULES above);
 # task 3's compact-list sentence stays (test_dcp_code_lists)
@@ -227,10 +220,19 @@ def json_block(source: str) -> dict:
     return json.loads(re.search(r"```json\n(.*?)\n```", source, re.S).group(1))
 
 
+def report_part() -> str:
+    """The report part of `references/report.md`: everything before its saved-result section."""
+    return report().split(SAVED_HEADING)[0]
+
+
+def saved_part() -> str:
+    return SAVED_HEADING + report().split(SAVED_HEADING, 1)[1]
+
+
 def expected_report() -> str:
-    """The base with exactly this task's edits: nothing else may differ."""
+    """The base's report part with exactly this task's edits: nothing else may differ."""
     out = []
-    for line in BASE_REPORT.split("\n"):
+    for line in BASE_PART.split("\n"):
         if line in REPLACED:
             out += REPLACED[line]
             continue
@@ -243,43 +245,40 @@ def expected_report() -> str:
             out.append(CONSEQUENCE)
         elif line == CODE_RULE_END:
             out += RULES
-        elif line == JSON_END:
-            out.append(JSON_REASON)
         elif line == MISSING_FILE:
-            out += ["", QUESTION]
+            out += ["", QUESTION, "", SAVED_LINE]
     return "\n".join(out)
 
 
 class RestUnchangedTest(unittest.TestCase):  # DCP-AC-016
     def test_the_anchors_are_base_lines_once(self):
-        lines = BASE_REPORT.split("\n")
-        for anchor in (TITLE, OLD_CODE, RISKS, CODE_RULE_END, OLD_VERSION, OLD_FILES, JSON_END,
-                       *REPLACED, NOTHING, DOCS_RULE_END):
+        lines = BASE_PART.split("\n")
+        for anchor in (TITLE, OLD_CODE, RISKS, CODE_RULE_END, *REPLACED, NOTHING, DOCS_RULE_END):
             with self.subTest(anchor=anchor):
                 self.assertEqual(lines.count(anchor), 1)
 
     def test_the_report_is_the_base_with_these_edits_only(self):
-        self.assertEqual(report(), expected_report())
+        self.assertEqual(report_part(), expected_report())
 
     def test_only_the_listed_lines_change(self):
-        base, new = BASE_REPORT.split("\n"), report().split("\n")
+        base, new = BASE_PART.split("\n"), report_part().split("\n")
         removed, added = [], []
         for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, base, new,
                                                           autojunk=False).get_opcodes():
             if op != "equal":
                 removed += base[i1:i2]
                 added += new[j1:j2]
-        self.assertEqual(removed, [OLD_HEADING, OLD_CODE, OLD_REJECTED, OLD_DOCS_RULE, DOCS_RULE_END,
-                                   OLD_VERSION, OLD_FILES, OLD_CONFIDENCE])  # every other base line kept
-        allowed = {"", SEARCH, EDIT, READ, TESTS, CONSEQUENCE, NEW_VERSION, JSON_REASON, QUESTION,
-                   *RULES, *NEW_FILES, NEW_HEADING, NEW_REJECTED, NEW_CONFIDENCE,
-                   *NEW_DOCS_RULE, *NEW_EXTRACT, *RULES_BLOCK, *RULES_BULLET}
+        self.assertEqual(removed, [OLD_TITLE, OLD_HEADING, OLD_CODE, OLD_REJECTED, OLD_DOCS_RULE,
+                                   DOCS_RULE_END])  # every other line of the base's report part kept
+        allowed = {"", NEW_TITLE, SEARCH, EDIT, READ, TESTS, CONSEQUENCE, QUESTION, SAVED_LINE,
+                   *RULES, NEW_HEADING, NEW_REJECTED, *NEW_DOCS_RULE, *NEW_EXTRACT, *RULES_BLOCK, *RULES_BULLET}
         self.assertEqual([line for line in added if line not in allowed], [])
 
     def test_the_sections_are_the_base_sections(self):
         heads = [line for line in report().split("\n") if line.startswith("#")]
-        base = [line for line in BASE_REPORT.split("\n") if line.startswith("#")]
-        self.assertEqual(heads, [NEW_HEADING if line == OLD_HEADING else line for line in base])
+        base = [line for line in BASE_PART.split("\n") if line.startswith("#")]
+        renamed = {OLD_HEADING: NEW_HEADING, OLD_TITLE: NEW_TITLE}
+        self.assertEqual(heads, [renamed.get(line, line) for line in base] + [SAVED_HEADING.strip()])
 
 
 class TaggedCodeLineTest(unittest.TestCase):  # DCP-AC-011 (the template and the step-6 wording)
@@ -389,34 +388,23 @@ class SearchLineTest(unittest.TestCase):  # R-1: the report's line is choose.md'
                     self.assertTrue(parts[2].startswith("lexical "))
 
 
-class JsonTest(unittest.TestCase):  # DCP-AC-017
-    def test_version_and_tagged_reasons(self):
-        doc = json_block(report())
-        self.assertEqual(doc["version"], "1.1")
-        reasons = [f["reason"] for m in doc["modules"] for f in m["files"]]
-        self.assertEqual([r.split(" — ", 1)[0] for r in reasons], ["edit", "read"])
-        for r in reasons:
-            self.assertTrue(r.startswith(("edit — ", "read — ")), r)
-        self.assertIn(JSON_REASON, report())
+class SavedResultTest(unittest.TestCase):  # DCP-AC-017, moved by the task context plan (2026-10-20, §8.4)
+    def test_the_input_has_no_version_and_tagged_files(self):
+        doc = json_block(saved_part())
+        self.assertNotIn("version", doc)
+        self.assertEqual([f["tag"] for m in doc["modules"] for f in m["files"]], ["edit | read"])
+        self.assertEqual(doc["rules"], [{"ref": "<doc>:<line>", "applies": "<why it applies to this task>"}])
 
-    def test_every_other_key_is_unchanged(self):
-        base, new = json_block(BASE_REPORT), json_block(report())
+    def test_the_old_shape_only_through_export(self):
+        body = flat(saved_part())
+        self.assertIn("former `discovery-results.json` (`version` `1.1`) gets it from the saved file: "
+                      "`task-context export <file> --format discovery-1.1`", body)
+        self.assertNotIn("usage_type", report())
+        self.assertNotIn("offset", report())
 
-        def keys(node, path=""):
-            if isinstance(node, dict):
-                return [k for key, value in node.items()
-                        for k in [f"{path}.{key}", *keys(value, f"{path}.{key}")]]
-            if isinstance(node, list):
-                return [k for item in node for k in keys(item, f"{path}[]")]
-            return []
-        self.assertEqual(sorted(set(keys(new))), sorted(set(keys(base))))
-        self.assertEqual(keys(new["modules"][0]["files"][0]), keys(base["modules"][0]["files"][0]))
-        for key in ("task", "files_outside_modules", "summary"):
-            self.assertEqual(new[key], base[key])
-        module, old = new["modules"][0], base["modules"][0]
-        self.assertEqual({k: v for k, v in module.items() if k != "files"},
-                         {k: v for k, v in old.items() if k != "files"})
-        self.assertEqual(new["modules"][0]["files"][0]["path"], old["files"][0]["path"])
+    def test_the_saved_line_is_the_templates_last(self):
+        self.assertEqual(template()[-1], SAVED_LINE)
+        self.assertIn("the report's last line is `Saved: <path>` (none when nothing was saved)", flat(report()))
 
 
 class ReadWholeTest(unittest.TestCase):  # owner ruling 2026-10-18: no `searched` form, docs read whole
@@ -439,9 +427,12 @@ class OneScoreTest(unittest.TestCase):  # owner ruling 2026-10-16: step 2 gives 
         self.assertIn(NEW_REJECTED, lines)
         self.assertNotIn("average", report())
 
-    def test_the_json_confidence(self):
-        self.assertIn("`confidence`: `user_specified` for a module the user named, else `high` "
-                      "when the score is ≥ 7, otherwise `medium`.", flat(report()))
+    def test_the_exported_confidence(self):  # the 1.1 rule, now the engine's (`task-context export`)
+        from segmently_modules.task_context import export_1_1
+        modules = [{"module": n, "usage": "modify", "score": sc, "named_by_user": named, "files": []}
+                   for n, sc, named in (("a", 7, False), ("b", 6.5, False), ("c", 2, True))]
+        doc = export_1_1({"task": "t", "modules": modules, "docs": [], "rules": []})
+        self.assertEqual([m["confidence"] for m in doc["modules"]], ["high", "medium", "user_specified"])
 
 
 class DocsTest(unittest.TestCase):  # R-6: the docs show the tagged shape, the changelog says so
@@ -455,7 +446,7 @@ class DocsTest(unittest.TestCase):  # R-6: the docs show the tagged shape, the c
                        "each tagged `edit` (an existing file the change edits) or `read`",
                        "`<edit | read> — file:line — symbol — why`",
                        "`Tests: add new — …`", "`Likely consequence:`",
-                       "`version` `1.1`"):
+                       "saves its result as a task context file", "`task-context export`"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, row)
         self.assertNotIn("(`file:line — symbol — why`, never", row)
@@ -468,7 +459,8 @@ class DocsTest(unittest.TestCase):  # R-6: the docs show the tagged shape, the c
         unreleased = flat(log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0])
         for phrase in ("module-discover's report tags every `Code:` line `edit`",
                        "`Tests: add new — <what to cover>`", "`Likely consequence:`",
-                       "`Search: …`", "`discovery-results.json` is `version` `1.1`"):
+                       "`Search: …`", "module-discover saves its result as a task context file",
+                       "`task-context export <file> --format discovery-1.1`"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, unreleased)
         self.assertIn("### Changed", unreleased)

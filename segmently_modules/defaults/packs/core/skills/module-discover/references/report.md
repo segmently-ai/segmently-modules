@@ -1,4 +1,4 @@
-# The report (step 8) and the JSON (step 9)
+# The report (step 8) and the saved result (step 9)
 
 ## Report
 
@@ -36,6 +36,8 @@ Likely consequence: <what the implementation will probably also need> — <the e
 - `<file>`
 
 Index the rules of <doc>, … now? A writer per doc, in the background, edits only their critical-rules sections; the next reader gets the index instead of reading them again.
+
+Saved: `<path>`
 ```
 
 - `Rules:` only for a `modify` module (`references/rules.md`): each rule `rules <module>` gives
@@ -69,32 +71,44 @@ Index the rules of <doc>, … now? A writer per doc, in the background, edits on
   its `doc:line`: a rule stays a rule (never / must), never a question to check or a risk.
 - An empty section says "none"; it is never left out.
 
-## JSON (`discovery-results.json`)
+## Saved result
 
-Only when the user asks, at the path the user names — the shape a planning pipeline reads:
+Step 9 saves the report as a task context file, the source the phases after discovery read and add to.
+`[discover] save` (step 1's settings): `"always"` — save; `"ask"` — ask after the report; `"off"` — only when the
+user or a caller asks. A path the user or a caller names always wins: it goes to `--out <path>`, and the file is
+saved whatever the setting. Write the input below to a temp file outside the repository, then:
+
+```bash
+segmently-modules task-context save --from <temp file> --json
+```
+
+Its `path` is the saved file; the report's last line is `Saved: <path>` (none when nothing was saved). Exit 2:
+read stderr, fix the input, run it again.
+
+The input holds your judgements; the engine fills the rest — each doc's role and hash, every rule of the docs
+whole, the docs to update, the files outside every module and the missing ones, the commit:
 
 ```json
 {
-  "version": "1.1",
   "task": "<the task, verbatim>",
-  "modules": [
-    {
-      "name": "<module>[/<child>]",
-      "score": 7.5,
-      "confidence": "high | medium | user_specified",
-      "usage_type": "MODIFY | EXTEND | READ-ONLY",
-      "documentation": {"module_md": "<main doc>", "<role>_md": "<role doc>"},
-      "files": [{"path": "<file>", "offset": 42, "limit": 30, "reason": "edit — <symbol> — <what changes there>"},
-                {"path": "<file>", "offset": 7, "limit": 30, "reason": "read — <symbol> — <why it was read>"}]
-    }
-  ],
-  "files_outside_modules": [{"path": "<file>", "offset": 1, "limit": 30, "reason": "<why>"}],
+  "search": {"mode": "lexical | semantic | hybrid", "lexical": "sure | unsure | not run", "reason": null},
+  "modules": [{"module": "<module>[/<child>]", "usage": "modify | consume | reference", "score": 8,
+               "why": "<the Why: line>", "named_by_user": false,
+               "files": [{"path": "<file>", "line": 42, "tag": "edit | read", "symbol": "<symbol>",
+                          "why": "<what changes there, or why it was read>"}],
+               "tests": "<the Tests: line>", "risks": ["<a risk or unknown>"],
+               "consequences": [{"text": "<a likely consequence>", "file": "<the existing file, or null>"}]}],
+  "docs": [{"path": "<doc>", "nothing": false, "extracts": [{"text": "<the extract>", "ref": "<doc>:<line>"}]}],
+  "rules": [{"ref": "<doc>:<line>", "applies": "<why it applies to this task>"}],
+  "rejected": [{"module": "<module>", "score": 3, "why": "<the reason>"}],
   "summary": "<two or three sentences: the modules, the main risks>"
 }
 ```
 
-`usage_type`: `modify` → `MODIFY` (`EXTEND` when the task adds new code on the module's patterns),
-`consume` and `reference` → `READ-ONLY`. `confidence`: `user_specified` for a module the user
-named, else `high` when the score is ≥ 7, otherwise `medium`. `documentation` holds every doc step 5 read for the
-module, one key per role (`developer_md`, `qa_md`, …). `files[].offset` is the touch point's line.
-`files[].reason` starts with the tag of its `Code:` line: `edit — ` or `read — `.
+- Everything the report holds is in the input: each module with its `Code:` lines as `files`, each `Docs:` line
+  (a doc read with nothing for the task: `"nothing": true`), each rejected candidate.
+- A rule is named by its `doc:line` as `rules` prints it, never retyped: the engine copies its text from the
+  doc. A rule quoted from a doc's body, outside its critical-rules section, also carries `"text"`, its words; the
+  engine keeps the doc's own line next to them.
+- A pipeline that still reads the former `discovery-results.json` (`version` `1.1`) gets it from the saved file:
+  `task-context export <file> --format discovery-1.1`.

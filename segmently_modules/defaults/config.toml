@@ -46,6 +46,9 @@ docs = "all"                  # the docs module-discover's step 5 reads (`show -
                               # e.g. ["module", "developer"]
 read = "whole"                # "whole": every listed doc is read to the end; "index": a doc whose rules index is
                               # complete is not read — its rules come from `rules` (a doc without one is read whole)
+save = "always"               # module-discover's step 9 saves its result as a task context file (`task-context save`):
+                              # "always", "ask" (asks after the report) or "off" (only when asked); a path given wins
+save_dir = ".segmently-modules/tasks"  # where `task-context save` puts a file when no --out is given (git-ignored)
 
 [lint]
 fail_on = "error"

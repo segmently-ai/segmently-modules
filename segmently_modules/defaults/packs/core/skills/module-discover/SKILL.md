@@ -1,6 +1,6 @@
 ---
 name: module-discover
-description: Maps a confirmed task, or a change on a branch, to the modules it touches before planning or review, read-only. Runs discover to list each module as modify or reference with the docs to read and to update, lists the code files of every module to modify, and names the files that belong to no module. Can save the result as JSON at a path the user gives. Use when the user asks which modules or files a task will touch, says "do discovery", after a plan is agreed, or when a pipeline needs the touch-set of a change.
+description: Maps a confirmed task, or a change on a branch, to the modules it touches before planning or review, read-only. Runs discover to list each module as modify or reference with the docs to read and to update, lists the code files of every module to modify, and names the files that belong to no module. Saves its result to a task context file. Use when the user asks which modules or files a task will touch, says "do discovery", after a plan is agreed, or when a pipeline needs the touch-set of a change.
 argument-hint: "[task]"
 ---
 
@@ -25,7 +25,7 @@ a bug's cause — the conversation does that; discover gives it the map.
 ## Scope
 
 Read-only: Segmently Modules read verbs, docs, code search. It writes only temporary files outside the
-repository and the JSON result where the user asks; under `[rules] index = "discover"` it offers
+repository and its saved result (step 9); under `[rules] index = "discover"` it offers
 to index docs after the report (step 7). Never a commit. A caller that wants a clean context runs it
 through the `module-discover-agent` agent, which returns this report unchanged.
 
@@ -91,8 +91,7 @@ file, a doc with your file-read tool; only code is read in part. Run independent
    conversation through an agent too. Once a plan is written from it,
    `module-check` reads the plan against every rule of these modules.
 
-9. **JSON on request**, at the path the user names: the `discovery-results.json` shape in
-   `references/report.md`.
+9. **Save the result** under `[discover] save` (step 1's settings), as `references/report.md` says.
 
 ## Exit codes
 
@@ -101,5 +100,5 @@ stderr, fix the input or report it; never retry the same command.
 
 ## Gates
 
-No gates — read-only: it reports and stops. It asks only for a missing input, a JSON file's path
-or, after the report, whether to index docs (step 7); run by the agent, a question is its output.
+No gates — read-only: it reports and stops. It asks only for a missing input or, after the
+report, whether to save (`save = "ask"`) or index docs (step 7); run by the agent, a question is its output.
