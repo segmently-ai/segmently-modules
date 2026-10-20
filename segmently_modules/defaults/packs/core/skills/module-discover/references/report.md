@@ -76,7 +76,9 @@ Saved: `<path>`
 Step 9 saves the report as a task context file, the source the phases after discovery read and add to.
 `[discover] save` (step 1's settings): `"always"` — save; `"ask"` — ask after the report; `"off"` — only when the
 user or a caller asks. A path the user or a caller names always wins: it goes to `--out <path>`, and the file is
-saved whatever the setting. Write the input below to a temp file outside the repository, then:
+saved whatever the setting. Without a path the file goes outside the repository (the user's cache, unless
+`[discover] save_dir` names a folder), so saving never edits the repository, even when the user asked for no
+edits there. Write the input below to a temp file outside the repository, then:
 
 ```bash
 segmently-modules task-context save --from <temp file> --json

@@ -24,8 +24,8 @@ a bug's cause — the conversation does that; discover gives it the map.
 
 ## Scope
 
-Read-only: Segmently Modules read verbs, docs, code search. It writes only temporary files outside the
-repository and its saved result (step 9); under `[rules] index = "discover"` it offers
+Read-only: Segmently Modules read verbs, docs, code search. It writes only temporary files and its saved
+result (step 9), both outside the repository; under `[rules] index = "discover"` it offers
 to index docs after the report (step 7). Never a commit. A caller that wants a clean context runs it
 through the `module-discover-agent` agent, which returns this report unchanged.
 

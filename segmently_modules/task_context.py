@@ -12,7 +12,9 @@ next to the file, an atomic replace, and a revision a writer may pin (`--base-re
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
+import os
 import re
 import subprocess
 from datetime import date
@@ -163,12 +165,23 @@ def head_of(root: Path) -> str | None:
     return proc.stdout.strip() or None if proc.returncode == 0 else None
 
 
+def save_folder(ws) -> Path:
+    """`[discover] save_dir`, or by default (`""`) the user's cache outside the repository:
+    `$XDG_CACHE_HOME` or `~/.cache`, then `segmently-modules/tasks-<hash of the root>`. The c10 stand session
+    of 2026-10-20 skipped the save: told not to edit the repository, it would not write into it."""
+    setting = discover_settings(ws.config)["save_dir"].strip()
+    if not setting:
+        key = f"tasks-{hashlib.sha1(str(ws.root.resolve()).encode('utf-8')).hexdigest()[:12]}"
+        return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "segmently-modules" / key
+    folder = Path(setting).expanduser()
+    return folder if folder.is_absolute() else ws.root / folder
+
+
 def default_path(ws, task: str) -> Path:
-    """`[discover] save_dir`/<YYYY-MM-DD>-<slug of the task's first words>.json; another run's file is never
-    replaced (`-2`, `-3`, … after the slug). The directory gets a `.gitignore` holding `*` on first use: a
-    task's context is a working file, never committed."""
-    folder = Path(discover_settings(ws.config)["save_dir"])
-    folder = folder if folder.is_absolute() else ws.root / folder
+    """`save_folder`/<YYYY-MM-DD>-<slug of the task's first words>.json; another run's file is never
+    replaced (`-2`, `-3`, … after the slug). A folder inside the repository gets a `.gitignore` holding `*`
+    on first use: a task's context is a working file, never committed."""
+    folder = save_folder(ws)
     words = re.findall(r"[a-z0-9]+", task.lower())[:6]
     slug = "-".join(words)[:48].rstrip("-") or "task"
     stem = f"{date.today().isoformat()}-{slug}"
@@ -177,9 +190,33 @@ def default_path(ws, task: str) -> Path:
         path, n = folder / f"{stem}-{n}.json", n + 1
     folder.mkdir(parents=True, exist_ok=True)
     ignore = folder / ".gitignore"
-    if not ignore.exists():
+    if _inside(folder, ws.root) and not ignore.exists():
         ignore.write_text("*\n", encoding="utf-8")
     return path
+
+
+def _inside(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def list_saved(ws) -> list[dict]:
+    """The task context files in `save_folder`, newest first: {path, task, revision, created, phases}; a file
+    that is not one (another schema, unreadable) is left out."""
+    folder = save_folder(ws)
+    out = []
+    for p in sorted(folder.glob("*.json")) if folder.is_dir() else []:
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(d, dict) and d.get("schema") == SCHEMA:
+            out.append({"path": str(p), "task": d.get("task"), "revision": d.get("revision"),
+                        "created": d.get("created"), "phases": [x.get("phase") for x in d.get("phases") or []]})
+    return sorted(out, key=lambda x: x["created"] or "", reverse=True)
 
 
 # ---- the mechanical part -----------------------------------------------------------------------------------------

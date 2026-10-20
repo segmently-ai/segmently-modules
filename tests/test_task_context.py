@@ -8,7 +8,9 @@ from __future__ import annotations
 import datetime
 import json
 import tempfile
+import os
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from tests.helpers import git, init_git, make_repo, mutate_registry, run, run_json
@@ -26,6 +28,9 @@ class Base(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.tmp = Path(tmp.name)
+        cache = mock.patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.tmp / "cache")})  # never the user's cache
+        cache.start()
+        self.addCleanup(cache.stop)
         self.root = make_repo(tmp.name, {"shop": ["shop", "checkout"], "cart": ["cart"]},
                               config='[packs]\nbuiltin = ["ui"]\n\n',  # the role designer
                               files=["src/shop/pay.py", "src/cart/cart.py", "tools/x.py"])
@@ -143,16 +148,23 @@ class SaveTest(Base):
         self.assertEqual(shop["files"][0], {"path": "src/shop/pay.py", "line": 1, "tag": "edit", "symbol": "pay",
                                             "why": "add the refund call"})
 
-    def test_the_default_path_is_ignored_by_git(self):
-        path = self.save()
-        today = datetime.date.today().isoformat()
-        self.assertEqual(path.relative_to(self.root).as_posix(),
-                         f".segmently-modules/tasks/{today}-refund-a-paid-order-to-the.json")
-        self.assertEqual((path.parent / ".gitignore").read_text(), "*\n")
-        self.assertEqual(git(self.root, "status", "--porcelain"), "")
-        self.assertNotEqual(self.save(), path)  # another run's file is never replaced
-        code, out, _ = run("task-context", "save", "--from", self.input(self.judgements()), *self.R)
-        self.assertEqual(out.strip(), f".segmently-modules/tasks/{today}-refund-a-paid-order-to-the-3.json")
+    def test_the_default_path_is_outside_the_repository(self):  # 2026-10-20: a session told not to edit the repository
+        cache = self.tmp / "cache"                                  # skipped a save into it (setUp points the cache here)
+        if True:
+            path = self.save()
+            today = datetime.date.today().isoformat()
+            self.assertEqual(path.parent.parent, cache / "segmently-modules")
+            self.assertTrue(path.parent.name.startswith("tasks-"))
+            self.assertEqual(path.name, f"{today}-refund-a-paid-order-to-the.json")
+            self.assertFalse((path.parent / ".gitignore").exists())
+            self.assertEqual(git(self.root, "status", "--porcelain"), "")
+            self.assertNotEqual(self.save(), path)  # another run's file is never replaced
+            code, out, _ = run("task-context", "save", "--from", self.input(self.judgements()), *self.R)
+            self.assertTrue(out.strip().endswith(f"{today}-refund-a-paid-order-to-the-3.json"))
+            code, env, _ = run_json("task-context", "list", *self.R)
+            self.assertEqual(code, 0)
+            self.assertEqual(len(env["data"]["files"]), 3)
+            self.assertEqual(env["data"]["files"][0]["phases"], ["discover"])
 
     def test_out_and_save_dir(self):
         out = self.root / "specs/7/discovery-results.json"
@@ -160,7 +172,9 @@ class SaveTest(Base):
         self.assertFalse((out.parent / ".gitignore").exists())
         with open(self.root / ".segmently-modules/config.toml", "a", encoding="utf-8") as f:
             f.write('\n[discover]\nsave_dir = "work/ctx"\n')
-        self.assertEqual(self.save().parent, self.root / "work/ctx")
+        path = self.save()
+        self.assertEqual(path.parent, self.root / "work/ctx")
+        self.assertEqual((path.parent / ".gitignore").read_text(), "*\n")  # inside the repository: kept out of git
 
     def test_bad_input_is_refused(self):
         for bad in ({"modules": []}, self.judgements(module=[]),
@@ -176,7 +190,7 @@ class SaveTest(Base):
     def test_the_settings(self):
         cfg = self.root / ".segmently-modules/config.toml"
         for bad, msg in (('save = "sometimes"', "[discover] save: expected one of always, ask, off"),
-                         ('save_dir = ""', "[discover] save_dir: expected a directory")):
+                         ('save_dir = 3', "[discover] save_dir: expected a directory")):
             with self.subTest(bad=bad):
                 cfg.write_text(f"[discover]\n{bad}\n", encoding="utf-8")
                 code, _, err = run("catalog", "--settings", *self.R)

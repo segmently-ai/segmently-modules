@@ -1,4 +1,4 @@
-"""`segmently-modules task-context save|add|show|check|refresh|export`: the task context file (`task_context`) —
+"""`segmently-modules task-context save|add|show|check|refresh|export|list`: the task context file (`task_context`) —
 module-discover saves its result there, later phases add to it and read the slice they need (2026-10-20)."""
 from __future__ import annotations
 
@@ -21,11 +21,12 @@ def register(sub, common) -> None:
                                    "the docs, the rules verbatim, the docs to update, the files outside every "
                                    "module). add: add a phase's findings. show: a slice by role and module. "
                                    "check: is it still fresh (exit 1 when stale). refresh: re-fill stale "
-                                   "modules. export: the old discovery-results.json (1.1).")
-    verbs = p.add_subparsers(dest="action", required=True, metavar="save|add|show|check|refresh|export")
+                                   "modules. export: the old discovery-results.json (1.1). list: the saved files, "
+                                   "newest first.")
+    verbs = p.add_subparsers(dest="action", required=True, metavar="save|add|show|check|refresh|export|list")
     s = verbs.add_parser("save", parents=[common], help="create the file from a judgements file")
     s.add_argument("--from", dest="source", required=True, metavar="FILE", help="the input JSON (- for stdin)")
-    s.add_argument("--out", metavar="PATH", help="the file (default: [discover] save_dir/<date>-<slug>.json)")
+    s.add_argument("--out", metavar="PATH", help="the file (default: [discover] save_dir, by default the user's cache, /<date>-<slug>.json)")
     s.add_argument("--actor", default="module-discover", help="who saves it (default module-discover)")
     s.add_argument("--phase", default="discover", help="the phase it records (default discover)")
     s.set_defaults(func=run_save)
@@ -56,6 +57,8 @@ def register(sub, common) -> None:
     e.add_argument("file")
     e.add_argument("--format", required=True, choices=tc.EXPORT_FORMATS)
     e.set_defaults(func=run_export)
+    ls = verbs.add_parser("list", parents=[common], help="the task context files of the save folder, newest first")
+    ls.set_defaults(func=run_list)
 
 
 def _file(ws, value: str) -> Path:
@@ -247,3 +250,16 @@ def _render_refresh(d: dict) -> None:
     print(f"{d['path']}  revision {d['revision']}  refreshed: {', '.join(d['modules'])}")
     for p in d["changed_docs"]:
         print(f"  changed  {p}  (its extracts are marked stale)")
+
+
+def run_list(args) -> int:
+    ws = Workspace.from_args(args)
+    rows = tc.list_saved(ws)
+
+    def render(d):
+        if not d["files"]:
+            print(f"no task context file in {d['folder']}")
+        for f in d["files"]:
+            print(f"{f['path']}  r{f['revision']}  {f['created']}  {' → '.join(f['phases'])}  {f['task'][:80]!s}")
+    emit(VERB, {"folder": str(tc.save_folder(ws)), "files": rows}, args.json, render)
+    return EXIT_OK

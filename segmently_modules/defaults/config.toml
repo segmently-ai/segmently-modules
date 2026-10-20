@@ -48,7 +48,8 @@ read = "whole"                # "whole": every listed doc is read to the end; "i
                               # complete is not read — its rules come from `rules` (a doc without one is read whole)
 save = "always"               # module-discover's step 9 saves its result as a task context file (`task-context save`):
                               # "always", "ask" (asks after the report) or "off" (only when asked); a path given wins
-save_dir = ".segmently-modules/tasks"  # where `task-context save` puts a file when no --out is given (git-ignored)
+save_dir = ""                 # where `task-context save` puts a file when no --out is given: "" = the user's cache,
+                              # outside the repository; a path relative to the root gets its own .gitignore
 
 [lint]
 fail_on = "error"

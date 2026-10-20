@@ -76,7 +76,7 @@ DISCOVER_DOCS_KINDS = ("module", "extras")  # [discover] docs: these, and role n
 # [discover] save (2026-10-20, owner: saving the result is a setting): module-discover saves its result as a task
 # context file always, asks after the report, or saves only when asked; a path the user or a caller gives always wins
 DISCOVER_SAVE = ("always", "ask", "off")
-DISCOVER_SAVE_DIR = ".segmently-modules/tasks"  # [discover] save_dir: where `task-context save` puts a file
+DISCOVER_SAVE_DIR = ""  # [discover] save_dir: where `task-context save` puts a file; "" = the user's cache, outside the repository
 RULES_INDEX_DEFAULT = "sync"
 # every [search] key with its default, in the order `catalog --settings` shows them; `generic`:
 # the modules (and their children) whose keyword hits alone never make the keyword result sure
@@ -141,8 +141,8 @@ def _validate_discover(table, source) -> None:
     if "save" in table and table["save"] not in DISCOVER_SAVE:
         raise UsageError(f"{source}: [discover] save: expected one of {', '.join(DISCOVER_SAVE)}, "
                          f"got {table['save']!r}")
-    if "save_dir" in table and not (isinstance(table["save_dir"], str) and table["save_dir"].strip()):
-        raise UsageError(f"{source}: [discover] save_dir: expected a directory, got {table['save_dir']!r}")
+    if "save_dir" in table and not isinstance(table["save_dir"], str):
+        raise UsageError(f"{source}: [discover] save_dir: expected a directory or \"\", got {table['save_dir']!r}")
 
 
 def _validate_rules(table, source) -> None:

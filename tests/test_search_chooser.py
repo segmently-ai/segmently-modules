@@ -142,7 +142,7 @@ class SettingsTest(Split):  # DCP-AC-022
         self.assertEqual(list(data), ["match", "search", "rules", "discover"])  # [rules] mode since 2026-10-18,
         self.assertEqual(data["rules"], {"index": "sync"})  # [discover] since 2026-10-20 (module-discover's save)
         self.assertEqual(data["discover"], {"docs": "all", "read": "whole", "save": "always",
-                                            "save_dir": ".segmently-modules/tasks"})
+                                            "save_dir": ""})
         self.assertEqual(list(data["search"]), SEARCH_KEYS)
         self.assertEqual(list(data["match"]), MATCH_KEYS)
         self.assertEqual(data["search"], {
@@ -177,7 +177,7 @@ class SettingsTest(Split):  # DCP-AC-022
                               "card_keywords = 10\nchooser = \"always\"\nsure_min_score = 2\n"
                               "cards = \"full\"\ngeneric = []\n\n[rules]\nindex = \"sync\"\n\n"
                               "[discover]\ndocs = \"all\"\nread = \"whole\"\nsave = \"always\"\n"
-                              "save_dir = \".segmently-modules/tasks\"\n")
+                              "save_dir = \"\"\n")
 
     def test_no_module_card_and_no_registry_read(self):
         out = run("catalog", "--settings", *self.R)[1]
