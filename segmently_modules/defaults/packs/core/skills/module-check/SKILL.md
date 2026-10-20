@@ -1,7 +1,6 @@
 ---
 name: module-check
 description: Checks a written plan, or a diff before commit, against every critical rule of the modules it touches; reports conflicts quoting the plan and at most five reminders. Read-only.
-argument-hint: "[plan file or base]"
 ---
 
 # module-check

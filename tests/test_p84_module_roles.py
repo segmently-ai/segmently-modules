@@ -19,7 +19,7 @@ ENGINE = Path(__file__).resolve().parents[1]
 CORE = builtin_packs_root() / "core"
 ROLES = CORE / "skills/module-roles/SKILL.md"
 SYNC = CORE / "skills/module-sync/SKILL.md"
-DESCRIPTIONS_MAX = 7_000
+DESCRIPTIONS_MAX = 7_150  # as tests/test_budgets.py: 7_000 -> 7_150 for module-check (2026-10-16), owner to confirm
 OLD_DESCRIPTIONS_TOTAL = 6_003
 
 # the `## A new role` section of module-sync as the previous task shipped it (951 characters)
@@ -96,7 +96,7 @@ class RolesSkillShapeTest(unittest.TestCase):  # P84-AC-017
 
     def test_the_thirteen_descriptions_fit_the_budget(self):
         found = shipped_descriptions()
-        self.assertEqual(len(found), 14)  # + module-assistant (2026-10-07)
+        self.assertEqual(len(found), 15)  # + module-assistant (2026-10-07), module-check (2026-10-16)
         self.assertLessEqual(sum(len(d) for d in found.values()), DESCRIPTIONS_MAX)
 
     def test_sections_scope_and_gates(self):
@@ -122,7 +122,7 @@ class RolesSkillShapeTest(unittest.TestCase):  # P84-AC-017
     def test_the_declared_pack_row(self):
         data = tomllib.loads((CORE / "pack.toml").read_text("utf-8"))
         self.assertEqual(data["skills"]["module-roles"], {"path": "skills/module-roles"})
-        self.assertEqual(len([s for s in data["skills"]]), 11)
+        self.assertEqual(len([s for s in data["skills"]]), 12)  # + module-check
 
 
 class MovedWordForWordTest(unittest.TestCase):  # P84-AC-018
@@ -260,7 +260,7 @@ class ModuleSyncShapeTest(unittest.TestCase):  # P84-AC-021, as P8.7 D5 rewrote 
     def test_no_arguments_no_agent_and_its_references(self):
         self.assertEqual(set(read_front_matter(SYNC)), {"name", "description"})
         self.assertEqual(sorted(p.name for p in (SYNC.parent / "references").iterdir()),
-                         ["choose.md", "placement.md", "report.md", "session.md"])
+                         ["choose.md", "placement.md", "report.md", "rules-index.md", "session.md"])
         for path in (ENGINE / "segmently_modules/defaults/agents").rglob("*"):
             if path.is_file():
                 self.assertNotIn("module-sync", path.read_text("utf-8"), path)
@@ -279,7 +279,7 @@ class ThirteenSkillsTest(unittest.TestCase):  # P84-AC-022
         self.assertEqual((code, err), (0, ""))
         core = next(r for r in env["data"] if r["id"] == "core")
         ids = [s["id"] for s in core["skills"]]
-        self.assertEqual(len(ids), 11)
+        self.assertEqual(len(ids), 12)  # + module-check
         self.assertIn("module-roles", ids)
 
     def test_the_agents_md_block_lists_thirteen_lines_and_stays_small(self):
@@ -292,10 +292,10 @@ class ThirteenSkillsTest(unittest.TestCase):  # P84-AC-022
             self.assertEqual((code, err), (0, ""))
             text = (root / "AGENTS.md").read_text("utf-8")
         lines = re.findall(r"^- `(module-[a-z-]+|designer|qa-[a-z-]+)` — (.*)$", text, re.M)
-        self.assertEqual(len(lines), 14)
+        self.assertEqual(len(lines), 15)  # + module-check
         first = flat(read_front_matter(ROLES)["description"]).split(". ")[0].rstrip(".") + "."
         self.assertIn(("module-roles", first), lines)
-        self.assertLess(len(text), 3_300)  # 3_200 before the 11 characters longer name
+        self.assertLess(len(text), 3_500)  # 3_200 before the 11 characters longer name; 3_300 before module-check's line
 
     def test_docs_name_it(self):
         skills = flat((ENGINE / "docs/skills.md").read_text("utf-8"))
@@ -305,7 +305,7 @@ class ThirteenSkillsTest(unittest.TestCase):  # P84-AC-022
         self.assertIn("`module-roles` — ", (ENGINE / "README.md").read_text("utf-8"))
         releasing = flat((ENGINE / "docs/releasing.md").read_text("utf-8"))
         self.assertIn("fourteen skill descriptions", releasing)
-        self.assertIn("eleven core skills", releasing)
+        self.assertIn("twelve core skills", releasing)
         self.assertNotIn("twelve skill descriptions", releasing)
 
     def test_the_adoption_eval_counts_thirteen(self):

@@ -30,7 +30,8 @@ WRAPPED = {"module-discover", "module-scout", "module-research"}  # D3: Task 2 p
 SINGLE = {  # one scenario: steps and `## Exit codes` inline, no keys, references as before
     "module-adopt": [], "module-init": ["references/phases.md"],
     "module-lint": ["references/lint-codes.md"],
-    "module-roles": []}
+    "module-roles": [],
+    "module-check": ["references/prompt.md"]}  # 2026-10-16: the rule check of a plan or a diff
 # P8.7 (X4): the writing skills keep their steps and `## Exit codes` inline, no keys, and point
 # into references/ by step — a scenario (a child, an already-split module) or a step's detail
 STEP_ROUTED = {
@@ -55,7 +56,8 @@ STEP_ROUTED["designer"] = [("prototype", ["references/prototype.md"]),
 # 2026-10-07 (owner): module-assistant routes by scenario with its own keys — pinned by
 # tests/test_module_assistant.py
 ASSISTANT = {"module-assistant"}
-STEP_ROUTED_EXTRA = {"module-sync": ["references/choose.md"]}  # named by step 4, not a route
+STEP_ROUTED_EXTRA = {"module-sync": ["references/choose.md",  # named by step 4, not a route
+                                     "references/rules-index.md"]}  # the rules index, named by its own route
 LEAD = ("the scenario named by the invocation (`$scenario`) when one is given, else by the "
         "user's words", "read it, then follow it")
 IF_LINE = "If a `segmently-modules` command exits 1 or 2, read `references/exit-codes.md`."

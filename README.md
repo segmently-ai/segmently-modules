@@ -578,6 +578,7 @@ segmently-modules packs sync --agent claude --agent codex   # .claude/skills/mod
 
 - `module-scout` — quick context on the modules a task names (or finds by meaning), while it is discussed;
 - `module-discover` — the touch-set of a confirmed task or a branch: modules, docs, code files;
+- `module-check` — a written plan, or a diff before commit, checked against every critical rule of the modules it touches: the conflicts, quoting the plan, and at most five reminders;
 - `module-research` — one question answered in depth from docs and code, with the gaps;
 - `module-sync` — after a work session: what it decided, learned and changed written into the docs, keywords and links, `ci` green;
 - `module-roles` — a new role's doc added to every existing module, confirmed by a dry run;
