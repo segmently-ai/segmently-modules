@@ -178,7 +178,7 @@ class DiscoverContractTest(unittest.TestCase):  # D2: the host's MODE=discover c
         doc = json.loads(block.group(1))
         self.assertEqual(list(doc), ["task", "search", "modules", "docs", "rules", "rejected", "summary"])
         self.assertEqual(list(doc["modules"][0]), ["module", "usage", "score", "why", "named_by_user", "files",
-                                                   "tests", "risks", "consequences"])
+                                                   "tests", "risks", "consequences", "one_way"])
         self.assertEqual(list(doc["modules"][0]["files"][0]), ["path", "line", "tag", "symbol", "why"])
         self.assertEqual(list(doc["rules"][0]), ["ref", "applies"])  # named by doc:line, never retyped
         self.assertEqual(list(doc["docs"][0]), ["path", "nothing", "extracts"])

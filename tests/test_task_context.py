@@ -223,6 +223,16 @@ class AddTest(Base):
         self.assertEqual([(p["phase"], p["actor"], p["revision"]) for p in data["phases"]],
                          [("discover", "module-discover", 1), ("grooming", "grooming", 2)])
 
+    def test_one_way_is_kept_and_replaced_with_history(self):  # a pipeline's size verdict reads it (2026-10-20)
+        path = self.save()
+        one = {"kind": "schema", "reason": "a stored field is renamed"}
+        self.assertEqual(self.add(path, {"modules": [{"module": "shop", "one_way": one}]})[0], 0)
+        shop = self.load(path)["modules"][0]
+        self.assertEqual((shop["one_way"], shop["history"][-1]["field"]), (one, "one_way"))
+        code, _, err = self.add(path, {"modules": [{"module": "shop", "one_way": {"kind": "schema"}}]})
+        self.assertEqual(code, 2, err)
+        self.assertIn("one_way", err)
+
     def test_a_new_module_is_filled_as_on_save(self):
         path = self.save(self.judgements(modules=[{"module": "cart", "usage": "reference"}]))
         self.assertEqual(self.add(path, {"modules": [{"module": "shop", "usage": "modify"}]})[0], 0)

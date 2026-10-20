@@ -30,9 +30,10 @@ USAGES = ("new", "modify", "extend", "consume", "reference")
 TAGS = ("edit", "read")
 CHANGES = ("new", "modify", "extend")  # the usages whose docs are to be updated
 UPDATE_ROLES = ("module", "developer", "qa")  # the docs to update of a module the task changes
-SCALARS = ("usage", "why", "score", "tests")  # replaced by `add`, the old value kept in `history`
+SCALARS = ("usage", "why", "score", "tests", "one_way")  # replaced by `add`, the old value kept in `history`
 INPUT_KEYS = {"task", "search", "modules", "docs", "rules", "rejected", "notes", "summary"}
-MODULE_KEYS = {"module", "usage", "score", "why", "named_by_user", "files", "tests", "risks", "consequences"}
+MODULE_KEYS = {"module", "usage", "score", "why", "named_by_user", "files", "tests", "risks", "consequences",
+               "one_way"}  # one_way: {kind, reason}, a change that cannot be undone (a pipeline's size verdict reads it)
 EXPORT_FORMATS = ("discovery-1.1",)
 
 
@@ -93,6 +94,10 @@ def read_input(path: str, need_task: bool) -> dict:
             _fail(where, f"score {m['score']!r} is not a number")
         for key in ("why", "tests"):
             _opt_str(m.get(key), f"{where}.{key}")
+        ow = m.get("one_way")
+        if ow is not None and not (isinstance(ow, dict) and set(ow) == {"kind", "reason"}
+                                   and all(isinstance(ow[k], str) and ow[k] for k in ow)):
+            _fail(f"{where}.one_way", "expected an object with `kind` and `reason`")
         for j, f in enumerate(_check_list(m.get("files"), f"{where}.files")):
             if not isinstance(f, dict) or not isinstance(f.get("path"), str) or not f["path"]:
                 _fail(f"{where}.files[{j}]", "expected an object with `path`")
@@ -377,7 +382,8 @@ def _module_entry(m: dict, target: str) -> dict:
             "why": m.get("why"), "named_by_user": bool(m.get("named_by_user")), "children": [],
             "files": [_file(f) for f in m.get("files") or []], "docs_to_update": [], "tests": m.get("tests"),
             "risks": list(m.get("risks") or []),
-            "consequences": [{"text": c["text"], "file": c.get("file")} for c in m.get("consequences") or []]}
+            "consequences": [{"text": c["text"], "file": c.get("file")} for c in m.get("consequences") or []],
+            **({"one_way": m["one_way"]} if m.get("one_way") else {})}
 
 
 def _file(f: dict) -> dict:

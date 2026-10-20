@@ -204,6 +204,8 @@ def _render_show(v: dict) -> None:
             print("- none")
         if m.get("tests"):
             print(f"Tests: {m['tests']}")
+        if m.get("one_way"):
+            print(f"One way: {m['one_way']['kind']} — {m['one_way']['reason']}")
         print("Risks / unknowns: " + ("; ".join(m.get("risks") or []) or "none"))
         for c in m.get("consequences") or []:
             print(f"Likely consequence: {c['text']}" + (f" — {c['file']}" if c.get("file") else ""))
