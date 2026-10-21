@@ -14,7 +14,7 @@ from tests.helpers import copy_fixture, run, run_json
 
 CORE = builtin_packs_root() / "core" / "skills"
 WRITING = ("module-sync", "module-create", "module-split")
-REFERENCES = {"module-sync": ["choose.md", "placement.md", "report.md", "session.md"],
+REFERENCES = {"module-sync": ["choose.md", "placement.md", "report.md", "rules-index.md", "session.md"],
               "module-create": ["analyse.md", "child.md", "fill.md"],
               "module-split": ["already-split.md", "check.md", "shapes.md"]}
 

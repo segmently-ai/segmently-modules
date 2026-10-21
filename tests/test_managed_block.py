@@ -278,7 +278,7 @@ class SkillListTest(BlockRepo):  # P81-AC-038, P81-AC-039
             first = full.split(". ")[0].rstrip(".")
             self.assertEqual(ln, f"- `{sid}` — {first}.")
             self.assertLessEqual(len(ln), len(f"- `{sid}` — {full}"))
-        self.assertLess(len(self.block()), 3300)  # 3200 before the 11 characters longer name
+        self.assertLess(len(self.block()), 3500)  # 3200 before the 11 characters longer name; 3300 before module-check
 
     def test_check_is_stable(self):  # P81-AC-039
         self.enable("plugin")

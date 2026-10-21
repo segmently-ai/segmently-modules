@@ -1,6 +1,6 @@
 """The verbs the chooser setting touches print what they printed before it, byte for byte:
 `catalog` and `catalog --json`, `choose` without `--cards` (the text and the JSON order,
-`--effort`, `--top`, `--apply`), the nested-agent refusal, `discover` text, `discover --files`
+`--effort`, `--top`, `--apply`), the nested-agent refusal, `discover` text but for its first line `lexical: …`, `discover --files`
 JSON, `discover --json` but for its first key `lexical_confidence`, and `context`. The golden
 outputs in
 `tests/fixtures/search_base_outputs/` were captured from the engine before the setting existed,
@@ -59,6 +59,9 @@ WITH_CONFIDENCE = ("discover.json", "discover-hybrid.json", "discover-top.json")
 # `data.lexical_confidence` of each case above, captured before `[search] generic` existed
 BASE_CONFIDENCE = {name: {"level": "sure", "reason": None, "top": ["orders/refunds"]}
                    for name in WITH_CONFIDENCE}
+# the first line `discover` text gained after the capture: how sure the keyword result is (module-discover reads it)
+TEXT_WITH_LEXICAL = ("discover.txt", "discover-files-task.txt")
+LEXICAL_LINE = "lexical: sure (top: orders/refunds)\n"
 # `[search] generic` values that change no output: none listed, or no id that names a module
 NO_GENERIC = ('[search]\ngeneric = []\n', '[search]\ngeneric = ["bookmarks", "orders/gifts"]\n')
 
@@ -125,6 +128,9 @@ class BaseOutputsTest(unittest.TestCase):
                     self.assertEqual(first, "lexical_confidence")
                 if name.startswith("discover") and name.endswith(".json"):
                     got = without_rules(self, got)
+                if name in TEXT_WITH_LEXICAL:  # the one addition to the text: its first line
+                    self.assertTrue(got.startswith(LEXICAL_LINE), got[:80])
+                    got = got[len(LEXICAL_LINE):]
                 self.assertEqual(got, golden)
 
     def test_generic_empty_or_unknown_ids_change_no_output(self):

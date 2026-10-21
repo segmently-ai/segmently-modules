@@ -306,7 +306,7 @@ class ContractTest(unittest.TestCase):  # P5B-AC-037 (the verb count; P6.1 W3-W5
         parser = set(build_parser()._subparsers._group_actions[0].choices)
         contract = set(re.findall(r"^\| `([a-z-]+)", CONTRACT.read_text(encoding="utf-8"), re.M))
         self.assertEqual((len(parser), parser, {argv[0] for argv, _ in GOLDEN}),
-                         (33, contract, contract))
+                         (34, contract, contract))  # 2026-10-20: + task-context
         self.assertIn("eval", parser)
 
 
