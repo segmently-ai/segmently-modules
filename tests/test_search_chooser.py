@@ -451,7 +451,7 @@ class CardsTest(Split):
         self.assertNotIn("one per top-level module", contract)
         self.assertIn("a child's ` (child of a)`", contract)  # flat: the two spaces are one
         log = (ENGINE / "CHANGELOG.md").read_text("utf-8")
-        unreleased = " ".join(log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0].split())
+        unreleased = " ".join(log.split("## [Unreleased]", 1)[1].split("\n## [0.3.0]", 1)[0].split())
         self.assertIn("a smaller work order with a card per module and per child — its name and "
                       "description, a parent's card naming its children, a child's its parent — "
                       "without keywords", unreleased)

@@ -456,7 +456,7 @@ class DocsTest(unittest.TestCase):  # R-6: the docs show the tagged shape, the c
 
     def test_changelog(self):
         log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
-        unreleased = flat(log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0])
+        unreleased = flat(log.split("## [Unreleased]", 1)[1].split("\n## [0.3.0]", 1)[0])
         for phrase in ("module-discover's report tags every `Code:` line `edit`",
                        "`Tests: add new — <what to cover>`", "`Likely consequence:`",
                        "`Search: …`", "module-discover saves its result as a task context file",

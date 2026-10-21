@@ -353,7 +353,7 @@ class DocsTest(unittest.TestCase):
 
     def test_changelog(self):
         log = self.read("CHANGELOG.md")
-        unreleased = flat(log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0])
+        unreleased = flat(log.split("## [Unreleased]", 1)[1].split("\n## [0.3.0]", 1)[0])
         self.assertIn("`[search] generic` lists the modules that match almost any task", unreleased)
         self.assertIn("the reason `generic`", unreleased)
 

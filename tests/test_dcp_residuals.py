@@ -25,7 +25,7 @@ def read(name: str) -> str:
 
 
 def unreleased() -> str:
-    return read("CHANGELOG.md").split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+    return read("CHANGELOG.md").split("## [Unreleased]", 1)[1].split("\n## [0.3.0]", 1)[0]
 
 
 class SkillsDocTest(unittest.TestCase):  # task-1 review M1, extended by the final review

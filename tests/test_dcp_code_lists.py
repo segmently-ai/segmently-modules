@@ -416,7 +416,7 @@ class DocsTest(unittest.TestCase):  # R-5: the table, the flags and the changelo
 
     def test_the_changelog(self):
         log = self.read("CHANGELOG.md")
-        unreleased = log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+        unreleased = log.split("## [Unreleased]", 1)[1].split("\n## [0.3.0]", 1)[0]
         self.assertIn("`code-map files TARGET --source-only`", unreleased)
         self.assertIn("`[tests] globs`", unreleased)
         # task-3 review M-1 (final review: and `--c`): the abbreviations the new flags made ambiguous

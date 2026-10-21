@@ -145,7 +145,7 @@ CHANGELOG_LINE = (  # the one Unreleased line (owner rulings: formalization eval
 class ChangelogTest(unittest.TestCase):  # R-5
     def test_the_unreleased_line(self):
         log = (ENGINE / "CHANGELOG.md").read_text(encoding="utf-8")
-        unreleased = log.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+        unreleased = log.split("## [Unreleased]", 1)[1].split("\n## [0.3.0]", 1)[0]
         changed = unreleased.split("### Changed\n", 1)[1].split("\n### ", 1)[0]
         self.assertEqual(changed.splitlines().count(CHANGELOG_LINE), 1)
         self.assertEqual(unreleased.count("module-discover's steps say"), 1)
