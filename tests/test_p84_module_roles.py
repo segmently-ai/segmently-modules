@@ -310,9 +310,9 @@ class ThirteenSkillsTest(unittest.TestCase):  # P84-AC-022
 
     def test_the_adoption_eval_counts_thirteen(self):
         text = (ENGINE / "evals/adoption/run_eval.py").read_text("utf-8")
-        for needle in ('"module-roles"', '== 28 and rows == BUILTIN_SKILLS',  # + module-assistant
-                       '"packs sync: 14 skills x 2 agents created"',
-                       '"agents-md lists the fourteen skills"'):
+        for needle in ('"module-roles"', '== 30 and rows == BUILTIN_SKILLS',  # + module-assistant, module-check
+                       '"packs sync: 15 skills x 2 agents created"',
+                       '"agents-md lists the fifteen skills"'):
             self.assertIn(needle, text)
 
 
