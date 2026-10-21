@@ -76,7 +76,7 @@ Marketplace: segmently-ai/segmently-modules-plugins on ref stable. Plugin: segme
 
 Run the steps in order and show me the exact output of every command:
 1. git --version and python3 --version — git must answer, and Python must be 3.9 or newer. On macOS, if either one asks for the command line developer tools, run xcode-select --install, ask me to finish the installer it opens, then run both again. If Python is still missing or older than 3.9, tell me how to get Python 3.9 or newer on this operating system and stop there.
-2. npm install -g @segmently/modules, then segmently-modules --version — it must print segmently-modules and a version. Without npm, run uv tool install git+https://github.com/segmently-ai/segmently-modules.git@v0.3.0 instead.
+2. npm install -g @segmently/modules, then segmently-modules --version — it must print segmently-modules and a version. Without npm, run uv tool install git+https://github.com/segmently-ai/segmently-modules.git@v0.4.0 instead.
 3. codex plugin marketplace add segmently-ai/segmently-modules-plugins --ref stable
    codex plugin add segmently-modules@segmently-modules
    If the marketplace is already there, run codex plugin marketplace upgrade segmently-modules and then codex plugin add segmently-modules@segmently-modules again.
@@ -136,7 +136,7 @@ own context and returns the skill's output; for Codex, `segmently-modules packs 
 nothing on `PATH`), at the released version the plugin comes from:
 
 ```bash
-uv tool install git+https://github.com/segmently-ai/segmently-modules.git@v0.3.0   # or npm install -g @segmently/modules, below
+uv tool install git+https://github.com/segmently-ai/segmently-modules.git@v0.4.0   # or npm install -g @segmently/modules, below
 codex plugin marketplace add segmently-ai/segmently-modules-plugins --ref stable
 codex plugin add segmently-modules@segmently-modules
 ```
@@ -153,7 +153,7 @@ the repository (`segmently-modules init` enables the `core` pack; or set `[packs
 need the default `"repo"` delivery:
 
 ```bash
-uv tool install git+https://github.com/segmently-ai/segmently-modules.git@v0.3.0
+uv tool install git+https://github.com/segmently-ai/segmently-modules.git@v0.4.0
 segmently-modules init                                 # once: the config, with [packs] builtin = ["core"]
 segmently-modules packs sync --agent cursor            # or --agent gemini, --agent copilot
 segmently-modules packs sync --agent cursor --remove   # later: take the copies out again
@@ -178,16 +178,16 @@ Or in a virtual environment, from a checkout or the repository:
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
 pip install /path/to/segmently-modules                       # a checkout
-pip install git+https://github.com/segmently-ai/segmently-modules.git@v0.3.0   # or the repository
+pip install git+https://github.com/segmently-ai/segmently-modules.git@v0.4.0   # or the repository
 segmently-modules --help
 ```
 
 Or from git, without a checkout (Python 3.9 or newer; no other dependency):
 
 ```bash
-uv tool install git+https://github.com/segmently-ai/segmently-modules.git@v0.3.0   # on PATH; uv fetches a Python when none fits
-uvx --from git+https://github.com/segmently-ai/segmently-modules.git@v0.3.0 segmently-modules --version   # or run it without installing
-pipx install git+https://github.com/segmently-ai/segmently-modules.git@v0.3.0      # needs a Python 3.9+ already installed
+uv tool install git+https://github.com/segmently-ai/segmently-modules.git@v0.4.0   # on PATH; uv fetches a Python when none fits
+uvx --from git+https://github.com/segmently-ai/segmently-modules.git@v0.4.0 segmently-modules --version   # or run it without installing
+pipx install git+https://github.com/segmently-ai/segmently-modules.git@v0.4.0      # needs a Python 3.9+ already installed
 ```
 
 The `@v…` suffix pins the latest release tag (each stable release moves it); without it you get

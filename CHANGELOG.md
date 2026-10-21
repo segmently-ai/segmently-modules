@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-21
+
 ### Added
 
 - `[search] chooser` (`always`, the default; `when_unsure`; `never`) sets when module-discover asks the chooser to pick modules by meaning, and `discover --json` says how sure its keyword result is (`lexical_confidence`: `sure` or `unsure` with the reason `no_hits`, `tie` or `low_score` against `[search] sure_min_score`, and the modules at the top score; at the default weights a keyword hit scores 3, so the default `sure_min_score` 2 never yields `low_score` — set 4 or more to make a single hit unsure). With `when_unsure` the keyword command runs first and the chooser only on an unsure result; the user's words for a run still win.
