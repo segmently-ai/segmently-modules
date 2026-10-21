@@ -51,6 +51,7 @@ from segmently_modules._toml import tomllib
 from segmently_modules.changes import DEPENDENCY_DIRS
 from segmently_modules.code_map_cmd import _toml_string
 from segmently_modules.config import REGISTRY_LAYOUTS, load_config
+from segmently_modules.critical_rules import parse_heading
 from segmently_modules.fields import CORE_FIELDS, load_field_defs
 from segmently_modules.init_cmd import _HEADER, ignore_lines
 from segmently_modules.layout import load_per_module
@@ -578,7 +579,6 @@ class Inference:
         heading = self.config["lint"]["critical_rules_heading"]
         want = heading.strip().lower()
         lead = re.compile(r"^[^\w]+")
-        head = re.compile(r"^#{2,6}\s+(.*?)\s*#*\s*$")
         docs, configured, candidates = 0, 0, Counter()
         for name, entry in self.modules.items():
             if not isinstance(entry, dict):
@@ -587,8 +587,8 @@ class Inference:
                 if not (isinstance(universal, str) and (self.root / universal).is_file()):
                     continue
                 docs += 1
-                titles = [lead.sub("", m.group(1)) for m in map(head.match, (self.root / universal).read_text(
-                    encoding="utf-8", errors="replace").split("\n")) if m]
+                titles = [lead.sub("", h[1]) for h in (parse_heading(line, 2) for line in (self.root / universal).read_text(
+                    encoding="utf-8", errors="replace").split("\n")) if h]
                 if any(t.lower().startswith(want) for t in titles):
                     configured += 1
                 found = {re.split(r"\s*[(—:–-]\s*", t)[0].strip() for t in titles

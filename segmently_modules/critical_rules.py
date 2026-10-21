@@ -15,12 +15,24 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-_HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
+_HEADING_START = re.compile(r"(#{1,6})\s+")
 _ITEM = re.compile(r"^(?:[-*+]|\d+[.)])\s+(.*)$")
 _INDEXED = re.compile(r"^[*_]*indexed[*_]*:.*?(\d{4}-\d{2}-\d{2})", re.I)  # `**Indexed:**` too
 _LEAD = re.compile(r"^[^\w]+")  # emoji, symbols and punctuation before a heading's words
 TITLE_MAX = 160
 INDEXED_LINE = "Indexed: every rule of this doc, {date}."
+
+
+def parse_heading(line: str, min_level: int = 1) -> tuple[int, str] | None:
+    """(level, words) of a Markdown heading line (`#` to `######`, then whitespace), None for any
+    other line or one above `min_level`: the words without the trailing whitespace, the closing
+    `#`s and the whitespace before them. The same as matching `^(#{1,6})\\s+(.*?)\\s*#*\\s*$`, in
+    linear time: that pattern backtracked cubically on a long run of spaces, and lint took minutes
+    on a doc with a 16,000-space heading."""
+    m = _HEADING_START.match(line)
+    if not m or len(m.group(1)) < min_level:
+        return None
+    return len(m.group(1)), line[m.end():].rstrip().rstrip("#").rstrip()
 
 
 def _clean(text: str) -> str:
@@ -41,13 +53,13 @@ def section_span(text: str, heading: str) -> tuple[int, int] | None:
         if line.lstrip().startswith(("```", "~~~")):
             fence = not fence
             continue
-        m = None if fence else _HEADING.match(line)
-        if not m:
+        h = None if fence else parse_heading(line)
+        if not h:
             continue
         if start is None:
-            if _LEAD.sub("", m.group(2)).lower().startswith(want):
-                start, level = n, len(m.group(1))
-        elif len(m.group(1)) <= level:
+            if _LEAD.sub("", h[1]).lower().startswith(want):
+                start, level = n, h[0]
+        elif h[0] <= level:
             return start, n - 1
     return (start, len(lines)) if start is not None else None
 
@@ -94,16 +106,16 @@ def critical_section(path: Path, heading: str) -> dict:
             if mark and indexed is None:
                 indexed = mark.group(1)
                 continue
-        m = _HEADING.match(line)
+        h = parse_heading(line)
         if level is None:
-            if m and _LEAD.sub("", m.group(2)).lower().startswith(want):
-                level = len(m.group(1))
+            if h and _LEAD.sub("", h[1]).lower().startswith(want):
+                level = h[0]
             continue
-        if m:
-            if len(m.group(1)) <= level:
+        if h:
+            if h[0] <= level:
                 end = n
                 break
-            heads.append({"line": n, "title": _clean(m.group(2)), "first": m.group(2)})
+            heads.append({"line": n, "title": _clean(h[1]), "first": h[1]})
             continue
         if not line.startswith((" ", "\t")):
             mi = _ITEM.match(line)
