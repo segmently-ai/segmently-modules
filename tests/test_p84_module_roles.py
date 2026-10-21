@@ -19,7 +19,7 @@ ENGINE = Path(__file__).resolve().parents[1]
 CORE = builtin_packs_root() / "core"
 ROLES = CORE / "skills/module-roles/SKILL.md"
 SYNC = CORE / "skills/module-sync/SKILL.md"
-DESCRIPTIONS_MAX = 7_150  # as tests/test_budgets.py: 7_000 -> 7_150 for module-check (2026-10-16), owner to confirm
+DESCRIPTIONS_MAX = 7_150  # as tests/test_budgets.py: 7_000 -> 7_150 for module-check (owner 2026-10-21)
 OLD_DESCRIPTIONS_TOTAL = 6_003
 
 # the `## A new role` section of module-sync as the previous task shipped it (951 characters)
